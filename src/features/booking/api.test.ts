@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearAuthTokens } from "../../api/httpClient";
+import { clearAuthTokens, setAuthTokens } from "../../api/httpClient";
 import { bookingApi, createBookingIdempotencyKey, mapBookingOrderToDomainOrder, type BookingOrder } from "./api";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -286,6 +286,7 @@ describe("bookingApi", () => {
   });
 
   it("serializes the opt-in unavailable-slot query", async () => {
+    setAuthTokens({ accessToken: "viewer-access-token" });
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       code: 0,
       message: "success",
@@ -313,6 +314,11 @@ describe("bookingApi", () => {
       pageSize: "100"
     });
     expect(requestInit).toEqual(expect.objectContaining({ method: "GET" }));
+    expect(requestInit).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer viewer-access-token" })
+      })
+    );
   });
 
   it("serializes overlapping order windows for the merchant calendar", async () => {

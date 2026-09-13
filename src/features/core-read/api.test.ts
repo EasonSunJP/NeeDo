@@ -254,6 +254,22 @@ describe("core read API adapter", () => {
     );
   });
 
+  it("sends the current viewer credential for visibility-scoped shop reads", async () => {
+    setAuthTokens({ accessToken: "viewer-access-token" });
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 0, message: "success", data: {} })
+    );
+
+    await coreReadApi.getShopDetail("shop5831047296");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/shops/shop5831047296",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer viewer-access-token" })
+      })
+    );
+  });
+
   it("maps service DTOs into the legacy service card shape without mock IDs", () => {
     const service = mapCoreServiceToServiceItem(coreService);
 

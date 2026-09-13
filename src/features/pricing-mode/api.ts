@@ -2,6 +2,14 @@ import { httpClient } from "../../api/httpClient";
 import { optimizeImageUpload } from "../../lib/image-upload";
 
 export type ShopPricingMode = "merchant" | "technician";
+export type ShopVisibility = "public" | "privateAll" | "limited" | "network";
+
+export type ShopVisibilityResponse = {
+  shopId: number;
+  visibility: ShopVisibility;
+  updatedAt: string | null;
+  updatedBy: number | null;
+};
 
 export type ShopPricingModeResponse = {
   shopId: number;
@@ -104,6 +112,19 @@ export type TechnicianServiceBody = {
 };
 
 export const pricingModeApi = {
+  getShopVisibility(shopId: number) {
+    return httpClient.request<ShopVisibilityResponse>(
+      `/merchant-admin/shops/${shopId}/visibility`
+    );
+  },
+
+  updateShopVisibility(shopId: number, visibility: ShopVisibility) {
+    return httpClient.request<ShopVisibilityResponse>(
+      `/merchant-admin/shops/${shopId}/visibility`,
+      { body: { visibility }, method: "PUT" }
+    );
+  },
+
   getShopPricingMode(shopId: number) {
     return httpClient.request<ShopPricingModeResponse>(`/shops/${shopId}/pricing-mode`);
   },
@@ -117,7 +138,6 @@ export const pricingModeApi = {
 
   getBookingNavigation(shopId: number, query: { page?: number; pageSize?: number } = {}) {
     return httpClient.request<BookingNavigationResponse>(`/shops/${shopId}/booking-navigation`, {
-      auth: false,
       query
     });
   },
@@ -208,7 +228,6 @@ export const pricingModeApi = {
     return httpClient.request<PaginatedPricingData<TechnicianServicePayload>>(
       `/shops/${shopId}/technicians/${technicianId}/services`,
       {
-        auth: false,
         query
       }
     );
@@ -218,7 +237,6 @@ export const pricingModeApi = {
     return httpClient.request<PaginatedPricingData<TechnicianServicePayload>>(
       `/technicians/${technicianId}/services`,
       {
-        auth: false,
         query
       }
     );

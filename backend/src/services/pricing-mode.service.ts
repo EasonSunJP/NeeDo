@@ -11,6 +11,8 @@ import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { ContentMediaMimeType } from "./content-media.storage";
 import { assertMerchantShopId } from "./merchant-shop-scope";
+import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
+import type { ShopVisibilityRepositoryPort } from "./shop-visibility.service";
 
 export type PricingModePayload = "merchant" | "technician";
 export type BookingNavigationEntry = "service_menu" | "technician_list";
@@ -160,7 +162,10 @@ export interface PricingModeRepositoryPort {
     input: PaginationInput & { technicianId: number; activeOnly?: boolean }
   ) => Promise<PaginatedResponse<TechnicianServicePayload>>;
   listPublicTechnicianProfileServices: (
-    input: PaginationInput & { technicianId: number }
+    input: PaginationInput & {
+      technicianId: number;
+      shopVisibilityWhere?: Record<string, unknown>;
+    }
   ) => Promise<PaginatedResponse<TechnicianServicePayload>>;
   findPrimaryTechnicianService: (technicianId: number) => Promise<TechnicianServicePayload | null>;
   reorderTechnicianServices: (
@@ -208,7 +213,11 @@ type AuditRecorder = Pick<AuditLogService, "record">;
 export class PricingModeService {
   public constructor(
     private readonly repository: PricingModeRepositoryPort,
-    private readonly auditLogService: AuditRecorder
+    private readonly auditLogService: AuditRecorder,
+    private readonly shopVisibility?: Pick<
+      ShopVisibilityRepositoryPort,
+      "canView" | "buildVisibilityWhere"
+    >
   ) {}
 
   public async getShopPricingMode(
@@ -475,8 +484,10 @@ export class PricingModeService {
 
   public async getBookingNavigation(
     shopId: number,
-    input: PaginationInput
+    input: PaginationInput,
+    viewer?: ShopVisibilityViewer
   ): Promise<BookingNavigationPayload> {
+    await this.assertShopVisible(shopId, viewer);
     const pricingMode = await this.getExistingShopPricingMode(shopId);
 
     if (pricingMode.pricingMode === "technician") {
@@ -501,8 +512,10 @@ export class PricingModeService {
   public async listPublicTechnicianServices(
     shopId: number,
     technicianId: number,
-    input: PaginationInput
+    input: PaginationInput,
+    viewer?: ShopVisibilityViewer
   ): Promise<PaginatedResponse<TechnicianServicePayload>> {
+    await this.assertShopVisible(shopId, viewer);
     const pricingMode = await this.getExistingShopPricingMode(shopId);
     if (pricingMode.pricingMode !== "technician") {
       return buildPaginatedResponse([], 0, input);
@@ -515,13 +528,17 @@ export class PricingModeService {
     });
   }
 
-  public listPublicTechnicianProfileServices(
+  public async listPublicTechnicianProfileServices(
     technicianId: number,
-    input: PaginationInput
+    input: PaginationInput,
+    viewer?: ShopVisibilityViewer
   ): Promise<PaginatedResponse<TechnicianServicePayload>> {
     return this.repository.listPublicTechnicianProfileServices({
       ...input,
-      technicianId
+      technicianId,
+      shopVisibilityWhere: this.shopVisibility
+        ? await this.shopVisibility.buildVisibilityWhere(viewer)
+        : { visibility: "public" }
     });
   }
 
@@ -531,6 +548,15 @@ export class PricingModeService {
     }
 
     return Math.min(100, Math.max(10, Math.round(value)));
+  }
+
+  private async assertShopVisible(
+    shopId: number,
+    viewer?: ShopVisibilityViewer
+  ): Promise<void> {
+    if (this.shopVisibility && !(await this.shopVisibility.canView(shopId, viewer))) {
+      throw this.notFound("error.shop.not_found");
+    }
   }
 
   private transactionalAuditLog(

@@ -59,7 +59,11 @@ import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/route
 import { ImScopeProvider } from "../../features/im/scope";
 import { useImStore } from "../../features/im/store";
 import { MerchantPrimaryNavCarousel } from "../../features/merchant-navigation/MerchantPrimaryNavCarousel";
-import { pricingModeApi, type ShopPricingMode } from "../../features/pricing-mode/api";
+import {
+  pricingModeApi,
+  type ShopPricingMode,
+  type ShopVisibility
+} from "../../features/pricing-mode/api";
 import {
   adjustTechnicianSettlementShare,
   MAX_TECHNICIAN_SETTLEMENT_SHARE_PERCENT,
@@ -1675,6 +1679,7 @@ function MerchantStorePrivacyControl({
   onEnabledChange,
   onMenuOpenChange,
   onVisibilityChange,
+  pending,
   visibility
 }: {
   enabled: boolean;
@@ -1682,6 +1687,7 @@ function MerchantStorePrivacyControl({
   onEnabledChange: (enabled: boolean) => void;
   onMenuOpenChange: (open: boolean) => void;
   onVisibilityChange: (visibility: MerchantStorePrivacyVisibility) => void;
+  pending: boolean;
   visibility: MerchantStorePrivacyVisibility;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1720,7 +1726,12 @@ function MerchantStorePrivacyControl({
               {getMerchantStorePrivacySummary(enabled, visibility)}
             </strong>
           </button>
-          <ToggleSwitch ariaLabel="开启店铺隐私模式" checked={enabled} onChange={onEnabledChange} />
+          <ToggleSwitch
+            ariaLabel="开启店铺隐私模式"
+            checked={enabled}
+            disabled={pending}
+            onChange={onEnabledChange}
+          />
         </div>
       </div>
       {enabled && menuOpen ? (
@@ -1750,6 +1761,7 @@ function MerchantStorePrivacyControl({
                         ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]"
                         : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-transparent"
                     )}
+                    disabled={pending}
                     onClick={() => onVisibilityChange(option.value)}
                     type="button"
                   >
@@ -1758,6 +1770,7 @@ function MerchantStorePrivacyControl({
                   <div className="flex min-w-0 flex-1 items-center gap-1.5">
                     <button
                       className="min-w-0 truncate text-left text-sm font-black"
+                      disabled={pending}
                       onClick={() => onVisibilityChange(option.value)}
                       type="button"
                     >
@@ -1845,6 +1858,8 @@ export function MerchantPortalContent({
   const activeView = getMerchantView(view);
   const activeMeTab = getMerchantMeTab(searchParams.get("meTab"));
   const storeApiId = getMerchantStoreApiId(store.id);
+  const storeApiIdRef = useRef(storeApiId);
+  storeApiIdRef.current = storeApiId;
   const storeTechnicians = useMemo(() => {
     return technicians.filter((tech) => tech.storeId === store.id);
   }, [store.id, technicians]);
@@ -1881,6 +1896,7 @@ export function MerchantPortalContent({
   const [storePricingModeConfirmOpen, setStorePricingModeConfirmOpen] = useState(false);
   const [storePrivacyEnabled, setStorePrivacyEnabled] = useState(false);
   const [storePrivacyVisibility, setStorePrivacyVisibility] = useState<MerchantStorePrivacyVisibility>("privateAll");
+  const [storePrivacySaving, setStorePrivacySaving] = useState(false);
   const [storePrivacyMenuOpen, setStorePrivacyMenuOpen] = useState(false);
   const [storePrivacyConfirmOpen, setStorePrivacyConfirmOpen] = useState(false);
   const [activeDirectoryShortcut, setActiveDirectoryShortcut] = useState<string | null>(null);
@@ -2097,6 +2113,39 @@ export function MerchantPortalContent({
       .catch(() => {
         if (mounted) {
           setStorePricingMode("store");
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [storeApiId]);
+
+  useEffect(() => {
+    if (!storeApiId) {
+      setStorePrivacyEnabled(false);
+      setStorePrivacySaving(false);
+      return;
+    }
+
+    let mounted = true;
+    setStorePrivacySaving(true);
+    pricingModeApi.getShopVisibility(storeApiId)
+      .then((result) => {
+        if (!mounted) return;
+        setStorePrivacyEnabled(result.visibility !== "public");
+        if (result.visibility !== "public") {
+          setStorePrivacyVisibility(result.visibility);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setContactLog(t("隐私模式加载失败，请稍后重试。"));
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setStorePrivacySaving(false);
         }
       });
 
@@ -2568,28 +2617,57 @@ export function MerchantPortalContent({
     }
   }, []);
 
+  const saveStorePrivacyVisibility = async (
+    visibility: ShopVisibility,
+    openMenuAfterSave = false
+  ) => {
+    if (!storeApiId || storePrivacySaving) {
+      if (!storeApiId) {
+        setContactLog(t("当前店铺资料尚未绑定正式店铺 ID，无法保存隐私模式。"));
+      }
+      return;
+    }
+    setStorePrivacySaving(true);
+    const requestedShopId = storeApiId;
+    try {
+      const result = await pricingModeApi.updateShopVisibility(requestedShopId, visibility);
+      if (storeApiIdRef.current !== requestedShopId) return;
+      setStorePrivacyEnabled(result.visibility !== "public");
+      if (result.visibility !== "public") {
+        setStorePrivacyVisibility(result.visibility);
+      }
+      setStorePrivacyMenuOpen(openMenuAfterSave && result.visibility !== "public");
+      setContactLog(t("店铺隐私模式设置已保存。"));
+    } catch {
+      if (storeApiIdRef.current === requestedShopId) {
+        setContactLog(t("店铺隐私模式保存失败，请稍后重试。"));
+      }
+    } finally {
+      if (storeApiIdRef.current === requestedShopId) {
+        setStorePrivacySaving(false);
+      }
+    }
+  };
+
   const updateStorePrivacyEnabled = (enabled: boolean) => {
     if (enabled) {
       setStorePrivacyConfirmOpen(true);
       return;
     }
-
-    setStorePrivacyEnabled(enabled);
     setStorePrivacyMenuOpen(false);
     setStorePrivacyConfirmOpen(false);
+    void saveStorePrivacyVisibility("public");
   };
 
   const confirmStorePrivacyEnabled = () => {
     setStorePrivacyConfirmOpen(false);
-    setStorePrivacyEnabled(true);
-    setStorePrivacyMenuOpen(true);
     setStorePricingRatioMenuOpen(false);
+    void saveStorePrivacyVisibility(storePrivacyVisibility, true);
   };
 
   const updateStorePrivacyVisibility = (visibility: MerchantStorePrivacyVisibility) => {
-    setStorePrivacyEnabled(true);
-    setStorePrivacyVisibility(visibility);
     setStorePrivacyMenuOpen(false);
+    void saveStorePrivacyVisibility(visibility);
   };
 
   const updateStorePricingMode = async (nextMode: MerchantStorePricingMode, nextRatePercent = storeTechnicianPricingRatePercent) => {
@@ -2667,6 +2745,7 @@ export function MerchantPortalContent({
         onEnabledChange={updateStorePrivacyEnabled}
         onMenuOpenChange={updateStorePrivacyMenuOpen}
         onVisibilityChange={updateStorePrivacyVisibility}
+        pending={storePrivacySaving}
         visibility={storePrivacyVisibility}
       />
       <PrivacyModeConfirmDialog

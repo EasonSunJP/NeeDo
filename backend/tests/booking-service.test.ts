@@ -234,6 +234,102 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
+  it("rejects direct booking when the selected identity cannot view the slot shop", async () => {
+    const order = makeOrder("pending");
+    const repository = createRepository(order);
+    repository.findScheduleSlotShopId = jest.fn(async () => 11);
+    const visibility = { canView: jest.fn(async () => false) };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      visibility as never
+    );
+
+    await expect(
+      service.createBooking(
+        {
+          userId: 1,
+          roles: ["customer"],
+          currentIdentityId: 10,
+          currentIdentityType: "customer",
+          currentIdentityScopeType: "customer_profile",
+          currentIdentityScopeId: 12
+        },
+        {
+          expectedPriceAmountJpy: 8_800,
+          serviceId: 1,
+          scheduleSlotId: 11,
+          fulfillmentMode: "store"
+        }
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND, statusCode: 404 });
+    expect(visibility.canView).toHaveBeenCalledWith(11, {
+      userId: 1,
+      identityId: 10,
+      identityType: "customer",
+      identityScopeType: "customer_profile",
+      identityScopeId: 12
+    });
+    expect(repository.createBooking).not.toHaveBeenCalled();
+  });
+
+  it("filters public availability before pagination with the same selected identity policy", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.listAvailableSlots.mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20
+    });
+    const visibilityWhere = { OR: [{ visibility: "public" }, { ownerUserId: 1 }] };
+    const visibility = {
+      canView: jest.fn(),
+      buildVisibilityWhere: jest.fn(async () => visibilityWhere)
+    };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      visibility as never
+    );
+    const input = {
+      page: 1,
+      pageSize: 20,
+      from: new Date("2026-09-14T00:00:00.000Z"),
+      to: new Date("2026-09-15T00:00:00.000Z")
+    };
+    const viewer = {
+      userId: 1,
+      identityId: 10,
+      identityType: "customer",
+      identityScopeType: "customer_profile",
+      identityScopeId: 12
+    };
+
+    await service.listAvailableSlots(input, viewer);
+
+    expect(repository.listAvailableSlots).toHaveBeenCalledWith(input, visibilityWhere);
+  });
+
   it("cancels affected confirmed bookings through the formal transition before an impact-confirmed schedule edit", async () => {
     const confirmed = { ...makeOrder("confirmed"), technicianProfileId: 31, scheduleSlotId: scheduleSlot.id };
     const repository = createRepository(confirmed);

@@ -10,6 +10,7 @@ import { BackofficeUserReviewRepository } from "../repositories/backoffice-user-
 import { AuditLogService } from "../services/audit-log.service";
 import { BackofficeUserReviewService } from "../services/backoffice-user-review.service";
 import {
+  backofficeOperationsReviewListQuerySchema,
   backofficeUserReviewAmendmentBodySchema,
   backofficeUserReviewListQuerySchema,
   backofficeUserReviewParamSchema,
@@ -39,6 +40,21 @@ export const createBackofficeUserReviewRoutes = (
       audit
     );
   const controller = new BackofficeUserReviewController(service as BackofficeUserReviewService);
+
+  router.get(
+    "/backoffice/reviews",
+    authenticate(),
+    createAuthorizeMiddleware(BACKOFFICE_USER_REVIEW_PERMISSIONS.operationsRead),
+    validateRequest({ query: backofficeOperationsReviewListQuerySchema }),
+    controller.listOperationsReviews
+  );
+  router.get(
+    "/backoffice/reviews/:reviewId",
+    authenticate(),
+    createAuthorizeMiddleware(BACKOFFICE_USER_REVIEW_PERMISSIONS.operationsRead),
+    validateRequest({ params: backofficeUserReviewParamSchema }),
+    controller.getOperationsReview
+  );
 
   router.get(
     "/backoffice/users/:userId/received-reviews",

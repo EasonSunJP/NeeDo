@@ -1,10 +1,14 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   BackofficeUserReviewRepositoryPort,
+  OperationsReview,
+  OperationsReviewPage,
   ReceivedUserReviewPage
 } from "../repositories/backoffice-user-review.repository";
+import { shiftCalendarDate, startOfTokyoCalendarDate } from "../domain/dashboard-period";
 import { AppError } from "../utils/app-error";
 import type {
+  BackofficeOperationsReviewListQuery,
   BackofficeUserReviewAmendmentBody,
   BackofficeUserReviewListQuery
 } from "../validators/backoffice-user-review.validator";
@@ -17,6 +21,40 @@ export class BackofficeUserReviewService {
     private readonly repository: BackofficeUserReviewRepositoryPort,
     private readonly audit: AuditLogService
   ) {}
+
+  public async listOperationsReviews(
+    actor: AuthenticatedAccessContext,
+    input: BackofficeOperationsReviewListQuery
+  ): Promise<OperationsReviewPage> {
+    this.assertOperationsActor(actor);
+    return this.repository.listOperationsReviews({
+      page: input.page,
+      pageSize: 20,
+      ...(input.keyword ? { keyword: input.keyword } : {}),
+      ...(input.rating === undefined ? {} : { rating: input.rating }),
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.targetType ? { targetType: input.targetType } : {}),
+      ...(input.from ? { from: startOfTokyoCalendarDate(input.from) } : {}),
+      ...(input.to
+        ? { to: startOfTokyoCalendarDate(shiftCalendarDate(input.to, 1)) }
+        : {})
+    });
+  }
+
+  public async getOperationsReview(
+    actor: AuthenticatedAccessContext,
+    reviewId: number
+  ): Promise<OperationsReview> {
+    this.assertOperationsActor(actor);
+    if (!Number.isInteger(reviewId) || reviewId <= 0) throw this.validationError();
+    const review = await this.repository.getOperationsReview(reviewId);
+    if (review) return review;
+    throw new AppError({
+      code: ERROR_CODES.BACKOFFICE_USER_REVIEW_NOT_FOUND,
+      message: "error.backoffice.user_review_not_found",
+      statusCode: 404
+    });
+  }
 
   public async listForOperations(
     actor: AuthenticatedAccessContext,

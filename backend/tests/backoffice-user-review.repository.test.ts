@@ -48,7 +48,115 @@ const review = {
   }
 };
 
+const operationsReview = {
+  ...review,
+  targetType: OrderReviewTargetType.TECHNICIAN,
+  authorType: "USER",
+  amendments: review.amendments,
+  customerProfile: null,
+  technicianProfile: {
+    id: 186,
+    displayName: "LifeDance 管理员 2",
+    user: { needoId: "s0000000002" }
+  },
+  bookingOrder: {
+    ...review.bookingOrder,
+    customer: {
+      needoId: "u0000000001",
+      username: "Eason",
+      customerProfile: { displayName: "Eason" }
+    },
+    shop: { id: 79, shopNo: "b000000079", name: "LifeDance" },
+    technicianProfile: {
+      id: 186,
+      displayName: "LifeDance 管理员 2",
+      user: { needoId: "s0000000002" }
+    }
+  }
+};
+
 describe("BackofficeUserReviewRepository", () => {
+  it("paginates the global review center by effective rating and persisted review facts", async () => {
+    const queryRaw = jest
+      .fn()
+      .mockResolvedValueOnce([{ total: 41n }])
+      .mockResolvedValueOnce([{ id: 77 }]);
+    const findMany = jest.fn(async () => [operationsReview]);
+    const repository = new BackofficeUserReviewRepository({
+      $queryRaw: queryRaw,
+      orderReview: { findMany }
+    } as never);
+
+    await expect(
+      repository.listOperationsReviews({
+        page: 2,
+        pageSize: 20,
+        keyword: "QA-20260910-RQ-001",
+        rating: 4,
+        status: "amended",
+        targetType: "technician",
+        from: new Date("2026-09-09T15:00:00.000Z"),
+        to: new Date("2026-09-10T15:00:00.000Z")
+      })
+    ).resolves.toMatchObject({
+      total: 41,
+      page: 2,
+      page_size: 20,
+      list: [
+        {
+          reviewId: 77,
+          status: "amended",
+          targetType: "technician",
+          rating: 4,
+          reviewer: { needoId: "s0000000042", displayName: "Mika" },
+          customer: { needoId: "u0000000001", displayName: "Eason" },
+          shop: { id: 79, publicId: "b000000079", name: "LifeDance" },
+          technician: {
+            id: 186,
+            publicId: "s0000000002",
+            displayName: "LifeDance 管理员 2"
+          },
+          order: { id: 88, orderNo: "B-88", serviceName: "Home care" }
+        }
+      ]
+    });
+
+    const sql = queryRaw.mock.calls
+      .map(([query]) => String(query.sql ?? query.text ?? query))
+      .join("\n");
+    expect(sql).toContain("COALESCE(review.amendment_rating, review.rating)");
+    expect(sql).toContain("review.amendment_version IS NOT NULL");
+    expect(sql).toContain("review.target_type");
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: [77] } }, take: 20 })
+    );
+  });
+
+  it("returns one global review detail with immutable amendment history", async () => {
+    const findFirst = jest.fn(async () => operationsReview);
+    const repository = new BackofficeUserReviewRepository({
+      orderReview: { findFirst }
+    } as never);
+
+    await expect(repository.getOperationsReview(77)).resolves.toMatchObject({
+      reviewId: 77,
+      status: "amended",
+      amendmentVersion: 1,
+      amendmentHistory: [
+        {
+          version: 1,
+          reason: "Complaint evidence confirmed",
+          revisedBy: "Operator"
+        }
+      ]
+    });
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 77, deletedAt: null })
+      })
+    );
+  });
+
   it("lists effective received customer reviews within the merchant shop scope", async () => {
     const findMany = jest.fn(async () => [review]);
     const count = jest.fn(async () => 1);

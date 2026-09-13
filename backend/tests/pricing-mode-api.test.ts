@@ -17,6 +17,14 @@ const paginated = <T>(list: T[]) => ({
   page_size: 20
 });
 
+const createPublicShopVisibilityRepository = () => ({
+  buildVisibilityWhere: jest.fn(async () => ({ visibility: "public" })),
+  canView: jest.fn(async () => true),
+  canViewTarget: jest.fn(async () => true),
+  findVisibility: jest.fn(),
+  updateVisibility: jest.fn()
+});
+
 const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
   ({
     findShopPricingMode: jest.fn(async () => ({
@@ -112,7 +120,8 @@ describe("pricing mode public API", () => {
     const pricingModeRepository = createRepository();
     const app = createApp(undefined, {
       redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
-      pricingModeRepository
+      pricingModeRepository,
+      shopVisibilityRepository: createPublicShopVisibilityRepository()
     } as never);
 
     const navigationResponse = await request(app)
@@ -161,7 +170,8 @@ describe("pricing mode public API", () => {
     );
     const app = createApp(undefined, {
       redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
-      pricingModeRepository
+      pricingModeRepository,
+      shopVisibilityRepository: createPublicShopVisibilityRepository()
     } as never);
 
     const navigationResponse = await request(app)
@@ -193,7 +203,8 @@ describe("pricing mode public API", () => {
     });
     const app = createApp(undefined, {
       redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
-      pricingModeRepository
+      pricingModeRepository,
+      shopVisibilityRepository: createPublicShopVisibilityRepository()
     } as never);
 
     const response = await request(app)
@@ -208,7 +219,8 @@ describe("pricing mode public API", () => {
     expect(pricingModeRepository.listPublicTechnicianProfileServices).toHaveBeenCalledWith({
       technicianId: 3,
       page: 1,
-      pageSize: 20
+      pageSize: 20,
+      shopVisibilityWhere: { visibility: "public" }
     });
   });
 

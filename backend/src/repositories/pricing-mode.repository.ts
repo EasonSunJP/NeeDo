@@ -212,7 +212,10 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
   }
 
   public async listPublicTechnicianProfileServices(
-    input: PaginationInput & { technicianId: number }
+    input: PaginationInput & {
+      technicianId: number;
+      shopVisibilityWhere?: Record<string, unknown>;
+    }
   ): Promise<PaginatedResponse<TechnicianServicePayload>> {
     const pagination = toPrismaPagination(input);
     const now = new Date();
@@ -257,7 +260,8 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
                 },
                 entitySuspensions: {
                   none: { activeKey: { not: null }, status: "active", deletedAt: null }
-                }
+                },
+                ...(input.shopVisibilityWhere ?? { visibility: "public" })
               }
             }
           },
@@ -294,7 +298,8 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
           },
           entitySuspensions: {
             none: { activeKey: { not: null }, status: "active", deletedAt: null }
-          }
+          },
+          ...(input.shopVisibilityWhere ?? { visibility: "public" })
         }
       },
       technicianProfile: {

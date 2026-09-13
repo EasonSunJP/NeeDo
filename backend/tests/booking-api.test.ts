@@ -279,6 +279,9 @@ const createFixture = async () => {
     timelineEvents: typeof timelineEvents;
   } | null = null;
   const bookingRepository = {
+    findScheduleSlotShopId: jest.fn(async (scheduleSlotId: number) =>
+      scheduleSlotId === slot.id ? slot.shopId : null
+    ),
     listAvailableSlots: jest.fn(async () => ({
       list: slot.status === "available" ? [slot] : [],
       total: slot.status === "available" ? 1 : 0,
@@ -427,7 +430,14 @@ const createFixture = async () => {
     testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
-    bookingRepository
+    bookingRepository,
+    shopVisibilityRepository: {
+      buildVisibilityWhere: jest.fn(async () => ({ visibility: "public" })),
+      canView: jest.fn(async () => true),
+      canViewTarget: jest.fn(async () => true),
+      findVisibility: jest.fn(),
+      updateVisibility: jest.fn()
+    }
   } as never);
   const login = async () => {
     const response = await request(app)
@@ -551,13 +561,16 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       )
       .expect(200);
 
-    expect(fixture.bookingRepository.listAvailableSlots).toHaveBeenCalledWith({
-      technicianId: 1,
-      from: new Date("2026-05-26T00:00:00.000Z"),
-      to: new Date("2026-05-27T00:00:00.000Z"),
-      page: 1,
-      pageSize: 100
-    });
+    expect(fixture.bookingRepository.listAvailableSlots).toHaveBeenCalledWith(
+      {
+        technicianId: 1,
+        from: new Date("2026-05-26T00:00:00.000Z"),
+        to: new Date("2026-05-27T00:00:00.000Z"),
+        page: 1,
+        pageSize: 100
+      },
+      { visibility: "public" }
+    );
   });
 
   it("forwards the opt-in unavailable-slot flag to the public availability repository query", async () => {
@@ -569,14 +582,17 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       )
       .expect(200);
 
-    expect(fixture.bookingRepository.listAvailableSlots).toHaveBeenCalledWith({
-      serviceId: 1,
-      includeUnavailable: true,
-      from: new Date("2026-05-26T00:00:00.000Z"),
-      to: new Date("2026-05-27T00:00:00.000Z"),
-      page: 1,
-      pageSize: 100
-    });
+    expect(fixture.bookingRepository.listAvailableSlots).toHaveBeenCalledWith(
+      {
+        serviceId: 1,
+        includeUnavailable: true,
+        from: new Date("2026-05-26T00:00:00.000Z"),
+        to: new Date("2026-05-27T00:00:00.000Z"),
+        page: 1,
+        pageSize: 100
+      },
+      { visibility: "public" }
+    );
   });
 
   it("rejects unscoped and longer-than-93-day public availability windows", async () => {

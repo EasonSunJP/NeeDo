@@ -342,3 +342,11 @@ Migration 为 `20260901040000_shop_membership_card_topup`。本地 `needo_dev` �
 运营后台 `/pf-admin.html#/admin/finance` 的结算表复用现有 `FilterBar`、`DataTable` 和正式 `GET /api/v1/backoffice/finance/settlements`。搜索提交后按商家名、订单号或数字结算单 ID 查询；状态只接受已持久化的结算状态；周期按服务端当前时间解析为东京时区本周或本月；城市按订单所属店铺的持久化 `city` 字段精确过滤。
 
 列表每页请求 20 条，以 API 返回的 `total`、`page` 和 `page_size` 显示唯一的服务端分页器。提交搜索或改变任一筛选条件都会回到第 1 页，空结果与请求失败有明确页面状态。OpenAPI 同步声明 `keyword`、`status`、`period`、`city`、`page` 和 `pageSize`；本微步骤没有新增 schema、migration、mock 或财务写入能力。
+
+## 21. 2026-09-13 运营评价中心正式数据
+
+运营后台 `/pf-admin.html#/admin/reviews` 已移除过时的能力门禁，复用现有 `OrderReview`、`OrderReviewAmendment`、标签、订单和身份关系。正式接口为 `GET /api/v1/backoffice/reviews` 与 `GET /api/v1/backoffice/reviews/:reviewId`，均要求平台或全局运营身份及 `backoffice:users:read`；原有追加式修订接口继续要求 `backoffice:customers:write`，不改写历史记录。
+
+列表固定每页 20 条，支持评价/订单/用户/店铺/技师关键词、最新有效评分、持久化事实状态、评价对象与东京自然日筛选。`original`、`amended`、`system` 分别表示用户原始记录、存在不可变修订、系统生成；没有虚构回复、审核或风控状态。详情显示订单、评价人、客户、店铺、技师、支付事实、当前有效内容和完整修订原因/经办人/版本历史。
+
+本微步骤没有新增 schema 或 migration，没有 mock、批量操作、导出、评价回复或风控写入。OpenAPI、Zod、路由 RBAC、Repository/Service/API 与页面交互回归共同锁定正式合同。

@@ -2,6 +2,7 @@
 
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   backofficeRealDataApi,
@@ -128,7 +129,7 @@ describe("FinancePage formal settlement filters", () => {
   });
 
   it("submits settlement search and all three real filters to the formal API", async () => {
-    await act(async () => root.render(<FinancePage />));
+    await act(async () => root.render(<MemoryRouter><FinancePage /></MemoryRouter>));
     await flush();
 
     const search = container.querySelector<HTMLInputElement>('[aria-label="搜索结算"]');
@@ -161,7 +162,7 @@ describe("FinancePage formal settlement filters", () => {
   });
 
   it("uses authoritative server totals and resets pagination when a search is submitted", async () => {
-    await act(async () => root.render(<FinancePage />));
+    await act(async () => root.render(<MemoryRouter><FinancePage /></MemoryRouter>));
     await flush();
 
     const paginator = container.querySelector<HTMLElement>('[aria-label="结算分页"]');
