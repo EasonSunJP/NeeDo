@@ -879,7 +879,8 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     const customer = await this.client.customerProfile.findFirst({
       where: {
         id,
-        deletedAt: null
+        deletedAt: null,
+        user: { is: { isActive: true, deletedAt: null } }
       },
       include: {
         mediaAssets: activeMediaArgs,

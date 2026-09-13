@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
+import { FORMAL_MERCHANT_IDENTITY_TYPES } from "../services/merchant-shop-scope";
 
 export type CustomerProfileVisibility = "public" | "privateAll" | "limited" | "network";
 
@@ -19,7 +20,8 @@ export interface CustomerProfileViewer {
 }
 
 const CUSTOMER_IDENTITY_TYPES = ["customer", "user", "u"];
-const MERCHANT_IDENTITY_TYPES = ["merchant", "merchant_owner", "merchant_staff"];
+const CUSTOMER_VIEWER_IDENTITY_TYPES = new Set(["customer", "user", "u"]);
+const AFFILIATE_VIEWER_IDENTITY_TYPES = new Set(["scout", "affiliate", "alliance_marketing"]);
 const ACTIVE_ATTRIBUTION_STATUSES = ["ATTRIBUTED", "QUALIFIED", "SETTLED"] as const;
 
 export class CustomerProfileVisibilityRepository {
@@ -35,27 +37,27 @@ export class CustomerProfileVisibilityRepository {
     if (target.visibility === "privateAll") return false;
     if (target.visibility !== "limited" && target.visibility !== "network") return false;
 
-    const targetIdentityId = viewer.identityId
+    const resolvedViewer = await this.resolveViewerIdentity(viewer);
+    const targetIdentityId = resolvedViewer.identityId
       ? await this.findTargetCustomerIdentityId(target)
       : null;
     if (
-      viewer.identityId &&
+      resolvedViewer.identityId &&
       targetIdentityId &&
-      (await this.isFriend(targetIdentityId, viewer.identityId))
+      (await this.isFriend(targetIdentityId, resolvedViewer.identityId))
     ) {
       return true;
     }
     if (target.visibility === "limited") return false;
 
     if (
-      viewer.identityId &&
+      resolvedViewer.identityId &&
       targetIdentityId &&
-      (await this.hasBusinessContact(targetIdentityId, viewer.identityId))
+      (await this.hasBusinessContact(targetIdentityId, resolvedViewer.identityId))
     ) {
       return true;
     }
-    if (await this.hasIntroductionRelationship(target.userId, viewer.userId)) return true;
-    const resolvedViewer = await this.resolveViewerIdentity(viewer);
+    if (await this.hasIntroductionRelationship(target.userId, resolvedViewer)) return true;
     if (await this.hasMerchantRelationship(target, resolvedViewer)) return true;
     return this.hasTechnicianRelationship(target.userId, resolvedViewer);
   }
@@ -144,16 +146,21 @@ export class CustomerProfileVisibilityRepository {
 
   private async hasIntroductionRelationship(
     targetUserId: number,
-    viewerUserId: number
+    viewer: CustomerProfileViewer
   ): Promise<boolean> {
+    const identityType = viewer.identityType ?? "";
+    const direction = AFFILIATE_VIEWER_IDENTITY_TYPES.has(identityType)
+      ? { claimantUserId: viewer.userId, customerUserId: targetUserId }
+      : CUSTOMER_VIEWER_IDENTITY_TYPES.has(identityType)
+        ? { claimantUserId: targetUserId, customerUserId: viewer.userId }
+        : null;
+    if (!direction) return false;
+
     const attribution = await this.client.affiliateAttribution.findFirst({
       where: {
         deletedAt: null,
         status: { in: [...ACTIVE_ATTRIBUTION_STATUSES] },
-        OR: [
-          { claimantUserId: viewerUserId, customerUserId: targetUserId },
-          { claimantUserId: targetUserId, customerUserId: viewerUserId }
-        ]
+        ...direction
       },
       select: { id: true }
     });
@@ -165,7 +172,7 @@ export class CustomerProfileVisibilityRepository {
     viewer: CustomerProfileViewer
   ): Promise<boolean> {
     if (
-      !MERCHANT_IDENTITY_TYPES.includes(viewer.identityType ?? "") ||
+      !FORMAL_MERCHANT_IDENTITY_TYPES.has(viewer.identityType ?? "") ||
       viewer.identityScopeType !== "shop" ||
       !viewer.identityScopeId
     ) {

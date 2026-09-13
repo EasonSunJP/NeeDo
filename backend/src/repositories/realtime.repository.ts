@@ -37,6 +37,10 @@ import {
   persistImContactCardInTransaction
 } from "./im-contact-card-send.transaction";
 import { CustomerProfileVisibilityRepository } from "./customer-profile-visibility.repository";
+import {
+  FORMAL_DIRECT_SHOP_MERCHANT_IDENTITY_TYPES,
+  FORMAL_MERCHANT_IDENTITY_TYPES
+} from "../services/merchant-shop-scope";
 
 const PUBLISHED_STATUS = "published";
 const PERSONAL_IDENTITY_TYPES = ["customer", "user", "u", "technician", "scout"];
@@ -3266,13 +3270,6 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
           })
         : null;
-    const resolvedTargetIdentityId =
-      targetIdentityId ??
-      contextContact?.contactIdentityId ??
-      this.findCanonicalParticipantIdentity(user.identities)?.id;
-    if (!resolvedTargetIdentityId) {
-      return null;
-    }
     const customerProfileAllowed = user.customerProfile
       ? await this.customerProfileVisibility.canView(
           {
@@ -3284,6 +3281,18 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           { userId: viewerUserId, identityId: viewerIdentityId }
         )
       : false;
+    const directoryTargetIdentityId = this.findDirectoryTargetIdentity(
+      user,
+      customerProfileAllowed
+    )?.id;
+    const resolvedTargetIdentityId =
+      targetIdentityId ??
+      (customerProfileAllowed ? contextContact?.contactIdentityId : directoryTargetIdentityId) ??
+      directoryTargetIdentityId ??
+      contextContact?.contactIdentityId;
+    if (!resolvedTargetIdentityId) {
+      return null;
+    }
     const identityCard = await this.buildDirectoryIdentityCard(
       user,
       resolvedTargetIdentityId,
@@ -3291,7 +3300,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     );
     const directoryParticipant = this.mapParticipant({
       ...user,
-      username: identityCard.displayName
+      username: identityCard.displayName,
+      avatarUrl: identityCard.entityType === "account" ? null : user.avatarUrl
     });
     if (viewerUserId === targetUserId && viewerIdentityId === resolvedTargetIdentityId) {
       return {
@@ -5912,6 +5922,30 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     );
   }
 
+  private findDirectoryTargetIdentity(
+    user: DirectoryProfileUserRecord,
+    customerProfileAllowed: boolean
+  ): DirectoryProfileUserRecord["identities"][number] | undefined {
+    if (customerProfileAllowed) {
+      return this.findCanonicalParticipantIdentity(user.identities);
+    }
+    if (
+      user.technicianProfile?.deletedAt === null &&
+      user.technicianProfile.status === PUBLISHED_STATUS &&
+      user.technicianProfile.visibility === "public"
+    ) {
+      const technicianIdentity = user.identities.find((identity) => identity.type === "technician");
+      if (technicianIdentity) return technicianIdentity;
+    }
+    const shopIdentity = user.identities.find(
+      (identity) =>
+        FORMAL_DIRECT_SHOP_MERCHANT_IDENTITY_TYPES.has(identity.type) &&
+        identity.scopeType === "shop" &&
+        identity.scopeId !== null
+    );
+    return shopIdentity ?? this.findCanonicalParticipantIdentity(user.identities);
+  }
+
   private async buildDirectoryIdentityCard(
     user: DirectoryProfileUserRecord,
     targetIdentityId: number,
@@ -5925,22 +5959,20 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         )
       ) ??
       user.identities[0];
-    const profileBackedIdentityTypes = [
+    const profileBackedIdentityTypes = new Set([
       "customer",
       "user",
       "u",
       "technician",
-      "merchant",
-      "merchant_owner",
-      "merchant_staff"
-    ];
+      ...FORMAL_MERCHANT_IDENTITY_TYPES
+    ]);
     const fallback: DirectoryIdentityCardPayload = {
       entityType: "account",
       profileId: null,
       displayName:
-        identity && !profileBackedIdentityTypes.includes(identity.type)
+        identity && !profileBackedIdentityTypes.has(identity.type)
           ? identity.displayName?.trim() || user.username
-          : user.username,
+          : user.needoId,
       identityLabel: identity?.type ?? null,
       verified: false,
       creditValue: null,
@@ -6019,7 +6051,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
     if (
       identity &&
-      ["merchant", "merchant_owner", "merchant_staff"].includes(identity.type) &&
+      FORMAL_DIRECT_SHOP_MERCHANT_IDENTITY_TYPES.has(identity.type) &&
       identity.scopeType === "shop" &&
       identity.scopeId !== null
     ) {

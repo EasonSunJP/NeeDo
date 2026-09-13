@@ -723,6 +723,8 @@ describe("RealtimeRepository friend request lifecycle", () => {
   it("does not expose private customer profile fields in a directory identity card", async () => {
     const privateTarget = {
       ...target,
+      username: "Mia",
+      avatarUrl: "/private-customer-avatar.png",
       identities: [
         {
           type: "customer",
@@ -768,7 +770,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
       identityCard: {
         entityType: "account",
         profileId: null,
-        displayName: target.username,
+        displayName: target.needoId,
         creditValue: null,
         creditReviewCount: 0,
         gender: null,
@@ -777,6 +779,10 @@ describe("RealtimeRepository friend request lifecycle", () => {
         languages: [],
         city: null,
         bio: null
+      },
+      user: {
+        username: target.needoId,
+        avatarUrl: null
       }
     });
   });
@@ -912,11 +918,20 @@ describe("RealtimeRepository friend request lifecycle", () => {
       ...target,
       identities: [
         {
+          id: targetIdentityId,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 73,
+          displayName: "private customer",
+          isDefault: true
+        },
+        {
+          id: targetIdentityId + 1,
           type: "technician",
           scopeType: "technician_profile",
           scopeId: 88,
           displayName: "Mia 技师",
-          isDefault: true
+          isDefault: false
         }
       ],
       customerProfile: {
@@ -949,7 +964,13 @@ describe("RealtimeRepository friend request lifecycle", () => {
     const client = {
       $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
       user: { findFirst: jest.fn().mockResolvedValue(technicianTarget) },
-      contact: { findFirst: jest.fn().mockResolvedValue({ id: 92 }) },
+      contact: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 92,
+          contactIdentityId: targetIdentityId,
+          blockedAt: null
+        })
+      },
       friendRequest: { findFirst: jest.fn() },
       technicianProfile: { findFirst: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaClient;
@@ -960,7 +981,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
         requester.id,
         requesterIdentityId,
         target.id,
-        targetIdentityId
+        null
       )
     ).resolves.toMatchObject({
       identityCard: {
@@ -1370,11 +1391,20 @@ describe("RealtimeRepository friend request lifecycle", () => {
       ...target,
       identities: [
         {
+          id: targetIdentityId,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 73,
+          displayName: "private customer",
+          isDefault: true
+        },
+        {
+          id: targetIdentityId + 1,
           type: "merchant_owner",
           scopeType: "shop",
           scopeId: 55,
           displayName: "NeeDo 银座店",
-          isDefault: true
+          isDefault: false
         }
       ],
       customerProfile: {
@@ -1403,7 +1433,13 @@ describe("RealtimeRepository friend request lifecycle", () => {
           }
         })
       },
-      contact: { findFirst: jest.fn().mockResolvedValue({ id: 93 }) },
+      contact: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 93,
+          contactIdentityId: targetIdentityId,
+          blockedAt: null
+        })
+      },
       friendRequest: { findFirst: jest.fn() }
     } as unknown as PrismaClient;
 
@@ -1413,7 +1449,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
         requester.id,
         requesterIdentityId,
         target.id,
-        targetIdentityId
+        null
       )
     ).resolves.toMatchObject({
       identityCard: {

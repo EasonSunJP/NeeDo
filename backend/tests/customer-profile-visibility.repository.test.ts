@@ -88,7 +88,7 @@ describe("CustomerProfileVisibilityRepository", () => {
     });
   });
 
-  it("allows an active introducer attribution in both directions only for network visibility", async () => {
+  it("allows an active introducer attribution only in the selected identity direction", async () => {
     const client = createClient();
     client.affiliateAttribution.findFirst.mockResolvedValue({ id: 71 });
     const repository = new CustomerProfileVisibilityRepository(client as unknown as PrismaClient);
@@ -98,10 +98,8 @@ describe("CustomerProfileVisibilityRepository", () => {
       where: {
         deletedAt: null,
         status: { in: ["ATTRIBUTED", "QUALIFIED", "SETTLED"] },
-        OR: [
-          { claimantUserId: viewer.userId, customerUserId: target.userId },
-          { claimantUserId: target.userId, customerUserId: viewer.userId }
-        ]
+        claimantUserId: target.userId,
+        customerUserId: viewer.userId
       },
       select: { id: true }
     });
@@ -109,6 +107,35 @@ describe("CustomerProfileVisibilityRepository", () => {
     await expect(repository.canView({ ...target, visibility: "limited" }, viewer)).resolves.toBe(
       false
     );
+
+    client.affiliateAttribution.findFirst.mockClear();
+    await expect(repository.canView(target, { ...viewer, identityType: "scout" })).resolves.toBe(
+      true
+    );
+    expect(client.affiliateAttribution.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          claimantUserId: viewer.userId,
+          customerUserId: target.userId
+        })
+      })
+    );
+  });
+
+  it("does not inherit an affiliate relationship while a non-affiliate identity is selected", async () => {
+    const client = createClient();
+    client.affiliateAttribution.findFirst.mockResolvedValue({ id: 71 });
+    const repository = new CustomerProfileVisibilityRepository(client as unknown as PrismaClient);
+
+    await expect(
+      repository.canView(target, {
+        ...viewer,
+        identityType: "technician",
+        identityScopeType: "technician_profile",
+        identityScopeId: 134
+      })
+    ).resolves.toBe(false);
+    expect(client.affiliateAttribution.findFirst).not.toHaveBeenCalled();
   });
 
   it("allows an active non-friend business contact only for network visibility", async () => {
@@ -180,6 +207,21 @@ describe("CustomerProfileVisibilityRepository", () => {
       },
       select: { id: true }
     });
+  });
+
+  it("recognizes a selected shop for a formal merchant organization identity", async () => {
+    const client = createClient();
+    client.shopCustomerMembership.findFirst.mockResolvedValue({ id: 81 });
+    const repository = new CustomerProfileVisibilityRepository(client as unknown as PrismaClient);
+
+    await expect(
+      repository.canView(target, {
+        ...viewer,
+        identityType: "merchant_organization",
+        identityScopeType: "shop",
+        identityScopeId: 21
+      })
+    ).resolves.toBe(true);
   });
 
   it("denies unrelated merchant identities without falling back to another identity on the account", async () => {

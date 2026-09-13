@@ -836,6 +836,15 @@ describe("CoreReadRepository customer profile visibility", () => {
       },
       viewer
     );
+    expect(client.customerProfile.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: customer.id,
+          deletedAt: null,
+          user: { is: { isActive: true, deletedAt: null } }
+        })
+      })
+    );
   });
 
   it("maps only the customer identity payload when relationship access is allowed", async () => {
