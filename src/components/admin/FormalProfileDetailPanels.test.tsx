@@ -77,6 +77,8 @@ const technicianDetail: BackofficeTechnicianDetailPayload = {
   serviceArea: "港区, 渋谷区",
   employmentType: "full_time",
   employmentStartedAt: "2026-07-01T00:00:00.000Z",
+  rating: 4.82,
+  reviewCount: 12,
   status: "published",
   verifiedAt: "2026-08-01T02:00:00.000Z",
   createdAt: "2026-07-01T01:00:00.000Z",

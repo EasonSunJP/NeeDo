@@ -243,7 +243,9 @@ describe("BackofficeRepository profile details", () => {
         isActive: true
       },
       statistics: { bookingCount: 3, completedCount: 2, completedRevenueJpy: 18000 },
-      reviewSummary: { ratingAverage: 4.8, reviewCount: 12 },
+      rating: 4.82,
+      reviewCount: 12,
+      reviewSummary: { ratingAverage: 4.82, reviewCount: 12 },
       unavailableMetrics: ["acceptanceRate", "lateness", "shiftPreferences"]
     });
   });
@@ -521,7 +523,7 @@ describe("BackofficeRepository profile details", () => {
     expect(detail).toMatchObject({ servicesLimit: 50, servicesTruncated: true });
   });
 
-  it("returns null formal sections without inventing compensation, reviews, or schedule", async () => {
+  it("applies the platform rating prior without inventing reviews, compensation, or schedule", async () => {
     const { client } = createClient(false);
     const repository = new BackofficeRepository(client as PrismaClient);
 
@@ -529,7 +531,14 @@ describe("BackofficeRepository profile details", () => {
 
     expect(detail).toMatchObject({
       compensationProfile: null,
-      reviewSummary: null,
+      rating: 5,
+      reviewCount: 0,
+      reviewSummary: {
+        ratingAverage: 5,
+        reviewCount: 0,
+        latestReviewAt: null,
+        highlights: []
+      },
       upcomingSchedule: []
     });
   });

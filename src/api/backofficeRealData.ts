@@ -442,6 +442,8 @@ export interface BackofficeTechnicianPayload {
   serviceArea: string | null;
   employmentType: "independent" | "full_time" | "temporary";
   employmentStartedAt: string | null;
+  rating: number;
+  reviewCount: number;
   status: string;
   verifiedAt: string | null;
   createdAt: string;
@@ -2089,7 +2091,7 @@ export function mapBackofficeTechnician(row: BackofficeTechnicianPayload): Techn
     role: "therapist",
     status: mapWorkStatusToLegacy(row.workStatus),
     workStatus: row.workStatus ?? "unsynced",
-    rating: 0,
+    rating: row.rating,
     orderCount: 0,
     income: 0,
     skills: [],
@@ -2101,7 +2103,7 @@ export function mapBackofficeTechnician(row: BackofficeTechnicianPayload): Techn
       : [],
     acceptRate: 0,
     cancelRate: 0,
-    reviewCount: 0,
+    reviewCount: row.reviewCount,
     languages: ["日本語"],
     avatar: row.avatarUrl ?? "/images/generated/profiles/profile-12.jpg",
     accountUsername: row.email,

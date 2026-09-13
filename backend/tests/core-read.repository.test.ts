@@ -455,7 +455,51 @@ describe("CoreReadRepository multi-entity search", () => {
           shareCount: 0,
           completedOrderCount: 0,
           acceptanceRatePercent: 100,
+          reviewSummary: {
+            ratingAverage: "5.00",
+            reviewCount: 0,
+            latestReviewAt: null,
+            highlights: []
+          },
           primaryService: null
+        }
+      ]
+    });
+  });
+
+  it("blends the platform five-star prior into a technician's first formal review", async () => {
+    const fixture = createRepositoryFixture();
+    fixture.technicianFindMany.mockResolvedValueOnce([
+      {
+        ...publishedTechnicianWithoutServices,
+        reviewSummary: {
+          ratingAverage: {
+            toString: () => "4.00",
+            toFixed: (places = 0) => Number(4).toFixed(places)
+          },
+          reviewCount: 1,
+          latestReviewAt: now,
+          highlights: [],
+          deletedAt: null
+        }
+      }
+    ]);
+
+    await expect(
+      fixture.repository.searchTechnicians({
+        entityType: "technician",
+        keywords: [],
+        categoryIds: [],
+        page: 1,
+        pageSize: 20
+      })
+    ).resolves.toMatchObject({
+      list: [
+        {
+          reviewSummary: {
+            ratingAverage: "4.50",
+            reviewCount: 1
+          }
         }
       ]
     });
@@ -653,8 +697,8 @@ describe("CoreReadRepository multi-entity search", () => {
       baseLatitude: { toString: () => "35.6762000" },
       baseLongitude: { toString: () => "139.6503000" },
       reviewSummary: {
-        ratingAverage: { toString: () => "4.80" },
-        reviewCount: 132,
+        ratingAverage: { toString: () => "4.00" },
+        reviewCount: 1,
         deletedAt: null
       },
       performanceSummary: { completedOrderCount: 120, deletedAt: null },
@@ -690,9 +734,9 @@ describe("CoreReadRepository multi-entity search", () => {
           { latitude: 35.6762, longitude: 139.6503 },
           { latitude: 35.68, longitude: 139.66 }
         ],
-        ratingAverage: "4.80",
+        ratingAverage: "4.50",
         completedOrderCount: 120,
-        reviewCount: 132,
+        reviewCount: 1,
         registeredAt: new Date("2025-01-01T00:00:00.000Z")
       }
     ]);

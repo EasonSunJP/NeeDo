@@ -1,5 +1,6 @@
 import { accountLogPagination } from "../domain/account-user-log";
 import { projectOrderPayment } from "../domain/order-payment-projection";
+import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 import { buildManagedUserTierWhere } from "./managed-user-tier-filter";
 import { projectWorkStatuses } from './work-status.repository';
 import {
@@ -513,6 +514,7 @@ type TechnicianRecord = Prisma.TechnicianProfileGetPayload<{
         name: true;
       };
     };
+    reviewSummary: true;
   };
 }>;
 
@@ -1317,7 +1319,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         completedRevenueJpy: this.toNumber(completedRevenue._sum.priceAmount),
         ...this.scheduleMinutes(monthSlots, now, monthStart, monthEnd)
       },
-      reviewSummary: this.mapDetailReviewSummary(profile.reviewSummary),
+      reviewSummary: this.mapTechnicianReviewSummary(profile.reviewSummary),
       services,
       servicesLimit: PROFILE_DETAIL_SERVICE_LIMIT,
       servicesTruncated,
@@ -3139,7 +3141,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         select: {
           name: true
         }
-      }
+      },
+      reviewSummary: { where: { deletedAt: null } }
     } satisfies Prisma.TechnicianProfileInclude;
   }
 
@@ -3524,6 +3527,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       );
     }
 
+    const reviewSummary = this.mapTechnicianReviewSummary(technician.reviewSummary);
+
     return {
       id: technician.id,
       userId: technician.userId,
@@ -3537,6 +3542,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       serviceArea: technician.serviceArea,
       employmentType: employmentTypeFromDb(technician.employmentType),
       employmentStartedAt: technician.employmentStartedAt?.toISOString() ?? null,
+      rating: reviewSummary.ratingAverage,
+      reviewCount: reviewSummary.reviewCount,
       status: technician.status,
       verifiedAt: technician.verifiedAt?.toISOString() ?? null,
       createdAt: technician.createdAt.toISOString()
@@ -3660,6 +3667,28 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       reviewCount: summary.reviewCount,
       latestReviewAt: summary.latestReviewAt?.toISOString() ?? null,
       highlights: this.stringArray(summary.highlights)
+    };
+  }
+
+  private mapTechnicianReviewSummary(
+    summary: {
+      ratingAverage: DecimalLike;
+      reviewCount: number;
+      latestReviewAt: Date | null;
+      highlights: unknown;
+    } | null | undefined
+  ) {
+    const reviewCount = summary?.reviewCount ?? 0;
+    const effectiveRating = calculateTechnicianPlatformRating(
+      summary ? this.toNumber(summary.ratingAverage) : 0,
+      reviewCount
+    );
+
+    return {
+      ratingAverage: Number(effectiveRating.toFixed(2)),
+      reviewCount,
+      latestReviewAt: summary?.latestReviewAt?.toISOString() ?? null,
+      highlights: summary ? this.stringArray(summary.highlights) : []
     };
   }
 

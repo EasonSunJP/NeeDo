@@ -33,7 +33,8 @@ describe("merchant technician list identity data", () => {
               ]
             },
             mediaAssets: [{ url: "/images/generated/profiles/technician-only.jpg" }],
-            shop: { name: "Tokyo Relax Shibuya" }
+            shop: { name: "Tokyo Relax Shibuya" },
+            reviewSummary: null
           }
         ]),
         count: jest.fn(async () => 1)
@@ -58,7 +59,9 @@ describe("merchant technician list identity data", () => {
         needoId: "s0000000041",
         avatarUrl: "/images/generated/profiles/technician-only.jpg",
         employmentType: "full_time",
-        employmentStartedAt: "2026-08-25T00:00:00.000Z"
+        employmentStartedAt: "2026-08-25T00:00:00.000Z",
+        rating: 5,
+        reviewCount: 0
       })
     ]);
     expect(client.technicianProfile.findMany).toHaveBeenCalledWith(

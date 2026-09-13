@@ -12,6 +12,7 @@ import type {
 } from "@prisma/client";
 import { ContentLocale } from "@prisma/client";
 import type { ContentLocaleCode } from "../constants/content-locales";
+import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 import { shopPresentationContentSchema } from "../validators/shop-presentation.validator";
 import { prisma } from "../prisma/client";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
@@ -766,10 +767,12 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
           this.toCoordinates(shop.latitude, shop.longitude)
         )
       ].filter((location): location is Coordinates => location !== null),
-      ratingAverage:
+      ratingAverage: calculateTechnicianPlatformRating(
         technician.reviewSummary?.deletedAt === null
-          ? technician.reviewSummary.ratingAverage.toString()
-          : null,
+          ? Number(technician.reviewSummary.ratingAverage)
+          : 0,
+        technician.reviewSummary?.deletedAt === null ? technician.reviewSummary.reviewCount : 0
+      ).toFixed(2),
       completedOrderCount:
         technician.performanceSummary?.deletedAt === null
           ? technician.performanceSummary.completedOrderCount
@@ -1740,7 +1743,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       city: technician.city,
       avatarUrl:
         this.findMediaUrl(technician.mediaAssets, "avatar") ?? technician.user.avatarBootstrapUrl,
-      reviewSummary: this.mapReviewSummary(technician.reviewSummary),
+      reviewSummary: this.mapTechnicianReviewSummary(technician.reviewSummary),
       age: technician.age,
       favoriteCount: technician._count.entityFavorites,
       shareCount: technician._count.entityShareEvents,
@@ -1890,6 +1893,17 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       reviewCount: summary.reviewCount,
       latestReviewAt: summary.latestReviewAt,
       highlights: this.normalizeHighlights(summary.highlights)
+    };
+  }
+
+  private mapTechnicianReviewSummary(summary: ReviewSummary | null): ReviewSummaryPayload {
+    const reviewSummary = this.mapReviewSummary(summary);
+    return {
+      ...reviewSummary,
+      ratingAverage: calculateTechnicianPlatformRating(
+        Number(reviewSummary.ratingAverage),
+        reviewSummary.reviewCount
+      ).toFixed(2)
     };
   }
 

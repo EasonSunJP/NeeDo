@@ -4,6 +4,7 @@ import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination"
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import { ShopVisibilityRepository, type ShopVisibilityViewer } from "./shop-visibility.repository";
 import type { ShopVisibilityRepositoryPort } from "../services/shop-visibility.service";
+import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 
 export type EntityTargetType = "shop" | "technician" | "service" | "technician_service";
 
@@ -416,7 +417,7 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
               bio: true,
               languages: true,
               reviewSummary: {
-                select: { ratingAverage: true, deletedAt: true }
+                select: { ratingAverage: true, reviewCount: true, deletedAt: true }
               },
               performanceSummary: {
                 select: { completedOrderCount: true, deletedAt: true }
@@ -507,8 +508,11 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
             languages: this.stringArray(row.technicianProfile.languages),
             rating:
               row.technicianProfile.reviewSummary?.deletedAt === null
-                ? Number(row.technicianProfile.reviewSummary.ratingAverage)
-                : 0,
+                ? calculateTechnicianPlatformRating(
+                    Number(row.technicianProfile.reviewSummary.ratingAverage),
+                    row.technicianProfile.reviewSummary.reviewCount
+                  )
+                : calculateTechnicianPlatformRating(0, 0),
             completedOrderCount:
               row.technicianProfile.performanceSummary?.deletedAt === null
                 ? row.technicianProfile.performanceSummary.completedOrderCount

@@ -3,6 +3,7 @@ import {
   backofficeRealDataApi,
   formatBackofficeOrderPaymentSummary,
   mapBackofficeOrder,
+  mapBackofficeTechnician,
   type BackofficeOrderPayload,
   type BackofficeTechnicianRankingPayload,
   type CsvExportPayload,
@@ -13,6 +14,33 @@ import { optimizeImageUpload } from "../lib/image-upload";
 
 vi.mock("./httpClient", () => ({ httpClient: { request: vi.fn() } }));
 vi.mock("../lib/image-upload", () => ({ optimizeImageUpload: vi.fn() }));
+
+describe("backoffice technician mapping", () => {
+  it("preserves the effective rating and actual review count returned by the API", () => {
+    const technician = mapBackofficeTechnician({
+      workStatus: "on_duty",
+      id: 31,
+      userId: 41,
+      needoId: "s0000000041",
+      displayName: "佐藤 美咲",
+      email: "technician@example.com",
+      avatarUrl: null,
+      shopId: 16,
+      shopName: "Tokyo Relax Shibuya",
+      city: "Tokyo",
+      serviceArea: "Shibuya",
+      employmentType: "full_time",
+      employmentStartedAt: "2026-08-25T00:00:00.000Z",
+      status: "published",
+      verifiedAt: "2026-08-25T00:00:00.000Z",
+      createdAt: "2026-08-25T00:00:00.000Z",
+      rating: 4.5,
+      reviewCount: 1
+    });
+
+    expect(technician).toMatchObject({ rating: 4.5, reviewCount: 1 });
+  });
+});
 
 describe("backofficeRealDataApi master data writes", () => {
   beforeEach(() => vi.clearAllMocks());

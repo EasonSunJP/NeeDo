@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 import { prisma } from "../prisma/client";
 import type { TechnicianServiceBookingContextPayload } from "../types/technician-service-booking-context.types";
 
@@ -171,7 +172,7 @@ export class TechnicianServiceBookingContextRepository {
     ]);
     const shopImageUrls = this.mediaUrls(record.shop.mediaAssets);
     const shopRating = this.rating(record.shop.reviewSummary);
-    const technicianRating = this.rating(record.technicianProfile.reviewSummary);
+    const technicianRating = this.technicianRating(record.technicianProfile.reviewSummary);
     const performance =
       record.technicianProfile.performanceSummary?.deletedAt === null
         ? record.technicianProfile.performanceSummary
@@ -260,6 +261,17 @@ export class TechnicianServiceBookingContextRepository {
     return !summary || summary.deletedAt !== null || summary.reviewCount <= 0
       ? { ratingAverage: null, reviewCount: 0 }
       : { ratingAverage: summary.ratingAverage.toString(), reviewCount: summary.reviewCount };
+  }
+
+  private technicianRating(
+    summary: { ratingAverage: Prisma.Decimal; reviewCount: number; deletedAt: Date | null } | null
+  ) {
+    const reviewCount = summary?.deletedAt === null ? summary.reviewCount : 0;
+    const reviewAverage = summary?.deletedAt === null ? Number(summary.ratingAverage) : 0;
+    return {
+      ratingAverage: calculateTechnicianPlatformRating(reviewAverage, reviewCount).toFixed(2),
+      reviewCount
+    };
   }
 
   private mediaUrls(media: Array<{ url: string }>) {

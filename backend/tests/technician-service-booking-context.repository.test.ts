@@ -71,6 +71,24 @@ const record = () => ({
 });
 
 describe("TechnicianServiceBookingContextRepository", () => {
+  it.each([
+    [null, "5.00", 0],
+    [{ ratingAverage: { toString: () => "4.00" }, reviewCount: 1, deletedAt: null }, "4.50", 1]
+  ] as const)(
+    "projects the platform rating prior for a technician review summary",
+    async (reviewSummary, ratingAverage, reviewCount) => {
+      const technicianService = record();
+      technicianService.technicianProfile.reviewSummary = reviewSummary as never;
+      const repository = new TechnicianServiceBookingContextRepository({
+        technicianService: { findFirst: jest.fn(async () => technicianService) }
+      } as unknown as PrismaClient);
+
+      await expect(repository.findContext(701, now)).resolves.toMatchObject({
+        technicianCard: { ratingAverage, reviewCount }
+      });
+    }
+  );
+
   it("returns only the public, currently affiliated technician-service checkout context", async () => {
     const findFirst = jest.fn(async () => record());
     const repository = new TechnicianServiceBookingContextRepository({
@@ -124,7 +142,7 @@ describe("TechnicianServiceBookingContextRepository", () => {
         yearsExperience: 9,
         completedOrderCount: 64,
         acceptanceRatePercent: 96,
-        ratingAverage: "4.70",
+        ratingAverage: "4.71",
         reviewCount: 27,
         serviceAreas: ["港区", "渋谷区"],
         languages: ["ja", "zh-CN"],

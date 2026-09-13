@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { serializeContactCardSnapshotV2, type ImContactCardV2 } from "../domain/im-contact-card";
 import { imMessageInclude, persistImMessageInTransaction } from "./im-message-send.transaction";
 import { loadTechnicianReviewTagSummary } from "./technician-review-tag-summary.repository";
+import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 
 const contactCardMembershipVersionSelect = {
   publicId: true,
@@ -99,7 +100,9 @@ export async function persistImContactCardInTransaction(
           bio: true,
           languages: true,
           deletedAt: true,
-          reviewSummary: { select: { ratingAverage: true } },
+          reviewSummary: {
+            select: { ratingAverage: true, reviewCount: true, deletedAt: true }
+          },
           performanceSummary: { select: { completedOrderCount: true, deletedAt: true } },
           _count: {
             select: {
@@ -227,7 +230,14 @@ export async function persistImContactCardInTransaction(
           : [],
     rating:
       entityKind === "technician"
-        ? Number(technicianProfile?.reviewSummary?.ratingAverage ?? 0)
+        ? calculateTechnicianPlatformRating(
+            technicianProfile?.reviewSummary?.deletedAt === null
+              ? Number(technicianProfile.reviewSummary.ratingAverage)
+              : 0,
+            technicianProfile?.reviewSummary?.deletedAt === null
+              ? technicianProfile.reviewSummary.reviewCount
+              : 0
+          )
         : null,
     completedOrderCount:
       entityKind === "technician" && technicianProfile?.performanceSummary?.deletedAt === null

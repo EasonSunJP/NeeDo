@@ -22,6 +22,7 @@ import { assertCompleteServiceOrder } from "../services/technician-service-polic
 import { AppError } from "../utils/app-error";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
+import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 
 type DecimalLike = {
   toFixed: (decimalPlaces?: number) => string;
@@ -996,19 +997,25 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
   }
 
   private mapTechnician(technician: TechnicianRecord): BookingNavigationTechnicianPayload {
+    const reviewSummary =
+      technician.reviewSummary?.deletedAt === null ? technician.reviewSummary : null;
+    const reviewCount = reviewSummary?.reviewCount ?? 0;
+    const ratingAverage = calculateTechnicianPlatformRating(
+      reviewSummary ? Number(reviewSummary.ratingAverage) : 0,
+      reviewCount
+    ).toFixed(2);
+
     return {
       id: technician.id,
       displayName: technician.displayName,
       city: technician.city,
       avatarUrl: technician.mediaAssets.find((asset) => asset.usageType === "avatar")?.url ?? null,
-      reviewSummary: technician.reviewSummary
-        ? {
-            ratingAverage: this.formatDecimal(technician.reviewSummary.ratingAverage, 2),
-            reviewCount: technician.reviewSummary.reviewCount,
-            latestReviewAt: technician.reviewSummary.latestReviewAt?.toISOString() ?? null,
-            highlights: this.stringArrayFromJson(technician.reviewSummary.highlights)
-          }
-        : null
+      reviewSummary: {
+        ratingAverage,
+        reviewCount,
+        latestReviewAt: reviewSummary?.latestReviewAt?.toISOString() ?? null,
+        highlights: reviewSummary ? this.stringArrayFromJson(reviewSummary.highlights) : []
+      }
     };
   }
 

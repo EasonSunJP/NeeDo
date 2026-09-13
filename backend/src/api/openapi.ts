@@ -7994,6 +7994,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "serviceArea",
           "employmentType",
           "employmentStartedAt",
+          "rating",
+          "reviewCount",
           "status",
           "verifiedAt",
           "createdAt",
@@ -8027,6 +8029,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             enum: ["independent", "full_time", "temporary"]
           },
           employmentStartedAt: { type: ["string", "null"], format: "date-time" },
+          rating: { type: "number", minimum: 0, maximum: 5 },
+          reviewCount: { type: "integer", minimum: 0 },
           status: { type: "string" },
           verifiedAt: { type: ["string", "null"], format: "date-time" },
           createdAt: { type: "string", format: "date-time" },

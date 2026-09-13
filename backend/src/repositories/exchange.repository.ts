@@ -15,6 +15,7 @@ import {
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { ContentLocaleCode } from "../constants/content-locales";
 import { prisma } from "../prisma/client";
+import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 import type {
   ExchangeActorLookup,
   ExchangeActorRecord,
@@ -1549,7 +1550,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     isBookable: boolean
   ): ExchangeIntelligencePublisherCardPayload {
     const profile = service.technicianProfile;
-    const rating = this.publicRating(profile.reviewSummary);
+    const rating = this.technicianPublicRating(profile.reviewSummary);
     const summary =
       profile.performanceSummary?.deletedAt === null ? profile.performanceSummary : null;
     const acceptanceRatePercent =
@@ -1680,6 +1681,20 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     return {
       ratingAverage: summary.ratingAverage.toString(),
       reviewCount: summary.reviewCount
+    };
+  }
+
+  private technicianPublicRating(
+    summary: { ratingAverage: Prisma.Decimal; reviewCount: number; deletedAt: Date | null } | null
+  ): { ratingAverage: string; reviewCount: number } {
+    const review = summary?.deletedAt === null ? summary : null;
+    const reviewCount = review?.reviewCount ?? 0;
+    return {
+      ratingAverage: calculateTechnicianPlatformRating(
+        review ? Number(review.ratingAverage) : 0,
+        reviewCount
+      ).toFixed(2),
+      reviewCount
     };
   }
 

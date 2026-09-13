@@ -141,6 +141,8 @@ const formalTechnicians = testTechnicians.map((technician, index) => ({
   serviceArea: "港区",
   employmentType: index === 0 ? "full_time" as const : "temporary" as const,
   employmentStartedAt: "2026-01-01T00:00:00.000Z",
+  rating: technician.rating,
+  reviewCount: technician.reviewCount,
   status: "published",
   verifiedAt: "2026-01-01T00:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z"

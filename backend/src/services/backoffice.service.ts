@@ -592,6 +592,8 @@ export interface BackofficeTechnicianPayload {
   serviceArea: string | null;
   employmentType: "independent" | "full_time" | "temporary";
   employmentStartedAt: string | null;
+  rating: number;
+  reviewCount: number;
   status: string;
   verifiedAt: string | null;
   createdAt: string;

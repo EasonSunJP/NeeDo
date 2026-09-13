@@ -14,6 +14,7 @@ import {
 import type { PrismaClient } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
+import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 import {
   compareMessageReactionCategories,
   getMessageReactionCategory
@@ -6036,7 +6037,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         displayName: profile.displayName,
         identityLabel: profile.employmentType,
         verified: profile.verifiedAt !== null,
-        creditValue: review?.ratingAverage.toString() ?? null,
+        creditValue: calculateTechnicianPlatformRating(
+          review ? Number(review.ratingAverage) : 0,
+          review?.reviewCount ?? 0
+        ).toFixed(2),
         creditReviewCount: review?.reviewCount ?? 0,
         gender: null,
         age: profile.age ?? null,
@@ -6684,7 +6688,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           select: { url: true },
           take: 1
         },
-        reviewSummary: { select: { ratingAverage: true } },
+        reviewSummary: {
+          select: { ratingAverage: true, reviewCount: true, deletedAt: true }
+        },
         performanceSummary: { select: { completedOrderCount: true } },
         _count: {
           select: {
@@ -6703,7 +6709,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           imageUrl: technician.mediaAssets[0]?.url ?? null,
           description: technician.bio,
           languages: this.jsonStringArray(technician.languages),
-          rating: Number(technician.reviewSummary?.ratingAverage ?? 0),
+          rating: calculateTechnicianPlatformRating(
+            technician.reviewSummary?.deletedAt === null
+              ? Number(technician.reviewSummary.ratingAverage)
+              : 0,
+            technician.reviewSummary?.deletedAt === null
+              ? technician.reviewSummary.reviewCount
+              : 0
+          ),
           completedOrderCount: technician.performanceSummary?.completedOrderCount ?? 0,
           favoriteCount: technician._count.entityFavorites,
           shareCount: technician._count.entityShareEvents + 1,

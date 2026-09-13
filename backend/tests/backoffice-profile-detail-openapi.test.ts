@@ -74,6 +74,15 @@ describe("formal profile detail OpenAPI contract", () => {
     expect(schema.properties.servicesTruncated).toEqual({ type: "boolean" });
   });
 
+  it("documents the shared effective technician rating on backoffice detail", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    const schema = response.body.components.schemas.BackofficeTechnicianDetail;
+
+    expect(schema.required).toEqual(expect.arrayContaining(["rating", "reviewCount"]));
+    expect(schema.properties.rating).toEqual({ type: "number", minimum: 0, maximum: 5 });
+    expect(schema.properties.reviewCount).toEqual({ type: "integer", minimum: 0 });
+  });
+
   it("documents persisted technician employment on detail and update contracts", async () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
     const detail = response.body.components.schemas.BackofficeTechnicianDetail;

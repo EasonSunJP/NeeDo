@@ -313,7 +313,7 @@ describe("Exchange Intelligence booking projection", () => {
           yearsExperience: 9,
           completedOrderCount: 64,
           acceptanceRatePercent: 96,
-          ratingAverage: "4.70",
+          ratingAverage: "4.71",
           reviewCount: 27,
           serviceAreas: ["港区", "渋谷区"],
           languages: ["ja", "zh-CN"],
