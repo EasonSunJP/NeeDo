@@ -751,3 +751,16 @@ FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev LIVE_DASHBOARD_CHECK_ROLLBACK
 - 特定商取引法表示：`paid-service`、`membership-purchase`、`footer`。
 
 目录范围参考日本官方规则边界：个人信息的利用目的和第三方提供同意应具体、清晰；在线收费服务需要容易识别的销售条件及取消条件；符合前払式支払手段定义的价值还可能需要单独法定表示。运营主体、地址、代表者、价格、支付方式、eKYC 受托方、保存期限、退款和 NDP 法律性质等事实必须在启用前由 NeeDo 法务与运营确认。参考：[个人信息保护委员会通则指南](https://www.ppc.go.jp/personalinfo/legal/guidelines_tsusoku/)、[消费者厅通信销售规则](https://www.no-trouble.caa.go.jp/what/mailorder/rule.html)、[金融厅前払式支払手段资料](https://www.fsa.go.jp/common/about/pamphlet/shin-kessai.pdf)。
+
+## 运营退款争议审核入口（2026-09-13）
+
+`/admin/finance?module=refund-review` 现在进入正式退款争议审核工作区；为兼容已经发出的旧运营链接，`module=refunds` 解析为同一工作区。没有 `module` 查询参数时，`FinancePage` 继续显示原财务结算总览，两个模块不再同时发起请求或混用数据。
+
+退款工作区只消费既有正式合同：
+
+- `GET /api/v1/backoffice/refund-disputes`，要求 `backoffice:order-refund-dispute:read`，按 `open|resolved`、关键字和服务端分页读取已正式投诉的退款争议。
+- `POST /api/v1/backoffice/refund-disputes/:disputeId/resolve`，要求 `backoffice:order-refund-dispute:resolve`，提交争议自身的 `expectedVersion`、唯一幂等键、公开裁定理由和可选内部备注。
+
+页面按当前会话权限显示只读或可裁定状态，写操作需要二次点击确认。最终授权、身份范围、状态机、乐观版本、幂等、Affiliate 已结算奖励不撤回约束及审计仍全部由现有后端事务执行。页面不调用普通财务结算列表来推断退款案件，也不扩大直接支付退款接口的适用范围。
+
+本微步骤没有新增 API、schema 或 migration，没有修改退款、支付、账本、RBAC 或审计后端契约，也没有新增 mock/fake/placeholder 数据。
