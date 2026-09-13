@@ -92,6 +92,22 @@ describe("AuthRepository formal login identifiers", () => {
     expect(JSON.stringify(query)).toContain("publicIdentifier");
     expect(JSON.stringify(query)).toContain("customerProfile");
     expect(JSON.stringify(query)).toContain("loginAllowed");
+    expect(query).toMatchObject({
+      include: {
+        technicianProfile: {
+          select: {
+            technicianShopAffiliations: {
+              where: {
+                activeKey: { not: null },
+                workStatus: "ACTIVE",
+                endsAt: null,
+                deletedAt: null
+              }
+            }
+          }
+        }
+      }
+    });
     expect(result).toMatchObject({
       needoId: "u1234567890",
       loginIdentityId: 71

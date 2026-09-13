@@ -55,6 +55,12 @@ describe("master data pages", () => {
     );
   });
 
+  it("labels the legacy shop field as display-only and points operators to formal approval", () => {
+    const techniciansPageSource = read("./TechniciansPage.tsx");
+    expect(techniciansPageSource).toContain("主展示店铺（不建立合作关系）");
+    expect(techniciansPageSource).toContain("正式合作绑定需由目标店铺在技师申请审核中批准");
+  });
+
   it("renders a complete formal technician ranking for module=ranking", () => {
     const pageSource = read("./TechniciansPage.tsx");
     const rankingSource = read(

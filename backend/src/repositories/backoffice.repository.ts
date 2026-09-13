@@ -1722,6 +1722,26 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         where: { id: input.shopId, deletedAt: null }
       });
       if (!shop) return null;
+      const affiliation = await this.client.technicianShopAffiliation.findFirst({
+        where: {
+          technicianProfileId: existing.id,
+          shopId: input.shopId,
+          activeKey: { not: null },
+          workStatus: "ACTIVE",
+          startsAt: { lte: new Date() },
+          endsAt: null,
+          deletedAt: null,
+          shop: { status: "published", deletedAt: null }
+        },
+        select: { id: true }
+      });
+      if (!affiliation) {
+        throw new AppError({
+          code: ERROR_CODES.SAAS_BILLING_CONFLICT,
+          message: "error.technician.primary_shop_requires_affiliation",
+          statusCode: 409
+        });
+      }
     }
     const data = {
       ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
@@ -1761,6 +1781,26 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       if (shopId) {
         const shop = await transaction.shop.findFirst({ where: { id: shopId, deletedAt: null } });
         if (!shop) return null;
+        const affiliation = await transaction.technicianShopAffiliation.findFirst({
+          where: {
+            technicianProfileId: existing.id,
+            shopId,
+            activeKey: { not: null },
+            workStatus: "ACTIVE",
+            startsAt: { lte: input.approvedAt },
+            endsAt: null,
+            deletedAt: null,
+            shop: { status: "published", deletedAt: null }
+          },
+          select: { id: true }
+        });
+        if (!affiliation) {
+          throw new AppError({
+            code: ERROR_CODES.SAAS_BILLING_CONFLICT,
+            message: "error.technician.primary_shop_requires_affiliation",
+            statusCode: 409
+          });
+        }
       }
       const technician = await transaction.technicianProfile.update({
         where: { id: existing.id },

@@ -99,7 +99,7 @@ describe("TechnicianApplicationReviewService", () => {
     ).rejects.toMatchObject({ message: "error.identity_application.not_found", statusCode: 404 });
   });
 
-  it("requires an exact optimistic version and returns an already closed review idempotently", async () => {
+  it("requires an exact optimistic version and reconciles an already approved review idempotently", async () => {
     const repository = createRepository();
     const service = new TechnicianApplicationReviewService(repository, createContacts(), applicationEkycPolicy());
 
@@ -117,6 +117,14 @@ describe("TechnicianApplicationReviewService", () => {
     });
 
     repository.findForShop.mockResolvedValueOnce(reviewRecord({ status: "approved", version: 3 }));
+    repository.approveInTransaction.mockImplementationOnce(async (input) => ({
+      applicationId: input.applicationId,
+      status: "approved",
+      version: input.expectedVersion,
+      technicianProfileId: 51,
+      identityId: 61,
+      reviewedAt: input.reviewedAt
+    }));
     await expect(
       service.approve({
         applicationId: 11,
@@ -126,7 +134,15 @@ describe("TechnicianApplicationReviewService", () => {
         now
       })
     ).resolves.toMatchObject({ applicationId: 11, status: "approved", version: 3 });
-    expect(repository.approveInTransaction).not.toHaveBeenCalled();
+    expect(repository.approveInTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        applicationId: 11,
+        applicantUserId: 7,
+        targetShopId: 21,
+        reviewerUserId: 30,
+        expectedVersion: 3
+      })
+    );
   });
 
   it("rejects with a required reason and starts the 30-day purge clock", async () => {
