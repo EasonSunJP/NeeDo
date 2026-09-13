@@ -77,6 +77,7 @@ import {
 } from "./audit-log.repository";
 import type {
   BackofficeCustomerUpdateBody,
+  BackofficeFinanceRepositoryQuery,
   BackofficeListQuery,
   BackofficeManagedUserListQuery,
   BackofficeManagedUserDetailQuery,
@@ -845,7 +846,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   public async listFinanceSettlements(
-    input: BackofficeScope & BackofficeListQuery
+    input: BackofficeScope & BackofficeFinanceRepositoryQuery
   ): Promise<PaginatedResponse<BackofficeFinanceSettlementPayload>> {
     const pagination = toPrismaPagination(input);
     const where = this.financeWhere(input, input);
@@ -868,7 +869,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   public async exportFinanceSettlements(
-    input: BackofficeScope & BackofficeListQuery
+    input: BackofficeScope & BackofficeFinanceRepositoryQuery
   ): Promise<BackofficeCsvExportPayload> {
     const where: Prisma.OrderFinancialWhereInput = {
       ...this.financeWhere(input, input),
@@ -2761,15 +2762,24 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   private financeWhere(
     scope: BackofficeScope,
-    input: BackofficeListQuery
+    input: BackofficeFinanceRepositoryQuery
   ): Prisma.OrderFinancialWhereInput {
+    const numericKeyword = input.keyword && /^#?\d+$/.test(input.keyword)
+      ? Number(input.keyword.replace(/^#/, ""))
+      : null;
+    const settlementId = numericKeyword !== null && Number.isSafeInteger(numericKeyword) && numericKeyword > 0
+      ? numericKeyword
+      : null;
+
     return {
       deletedAt: null,
       ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}),
       ...(input.status ? { settlementStatus: input.status } : {}),
+      ...(input.city ? { bookingOrder: { shop: { city: input.city } } } : {}),
       ...(input.keyword
         ? {
             OR: [
+              ...(settlementId === null ? [] : [{ id: settlementId }, { bookingOrderId: settlementId }]),
               { paymentChannel: { contains: input.keyword } },
               { bookingOrder: { orderNo: { contains: input.keyword } } },
               { bookingOrder: { shop: { name: { contains: input.keyword } } } },

@@ -975,6 +975,8 @@ type ListQuery = {
   keyword?: string;
   shopId?: number;
   categoryId?: number;
+  city?: string;
+  period?: "week" | "month";
 };
 
 const scopePrefix = (scope: BackofficeScope) =>

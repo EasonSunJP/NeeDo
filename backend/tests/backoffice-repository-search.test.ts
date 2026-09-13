@@ -67,6 +67,32 @@ describe("BackofficeRepository keyword filters", () => {
     );
   });
 
+  it("filters finance rows by persisted city and numeric settlement identifiers", async () => {
+    const client = { orderFinancial: modelClient() };
+    const repository = new BackofficeRepository(client as never);
+
+    await repository.listFinanceSettlements({
+      scope: "platform",
+      keyword: "51",
+      city: "東京都",
+      page: 1,
+      pageSize: 20
+    } as never);
+
+    expect(client.orderFinancial.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          bookingOrder: expect.objectContaining({ shop: { city: "東京都" } }),
+          OR: expect.arrayContaining([
+            { id: 51 },
+            { bookingOrderId: 51 },
+            { bookingOrder: { orderNo: { contains: "51" } } }
+          ])
+        })
+      })
+    );
+  });
+
   it.each([
     ["PENDING", "pending"],
     ["CONFIRMED", "confirmed"],

@@ -7,6 +7,8 @@ import type {
   BackofficeCustomerMembershipGrantBody,
   BackofficeCustomerUpdateBody,
   BackofficeDashboardQuery,
+  BackofficeFinanceListQuery,
+  BackofficeFinanceRepositoryQuery,
   BackofficeListQuery,
   BackofficeManagedUserListQuery,
   BackofficeManagedUserDetailQuery,
@@ -904,10 +906,10 @@ export interface BackofficeRepositoryPort {
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeScheduleSlotPayload>>;
   listFinanceSettlements: (
-    input: BackofficeScope & BackofficeListQuery
+    input: BackofficeScope & BackofficeFinanceRepositoryQuery
   ) => Promise<PaginatedResponse<BackofficeFinanceSettlementPayload>>;
   exportFinanceSettlements: (
-    input: BackofficeScope & BackofficeListQuery
+    input: BackofficeScope & BackofficeFinanceRepositoryQuery
   ) => Promise<BackofficeCsvExportPayload>;
   summarizeNdpByCurrency: (input: {
     fromInclusive: Date;
@@ -1649,14 +1651,33 @@ export class BackofficeService {
     return this.repository.listSchedule({ ...input, ...scope });
   }
 
+  private resolveFinancePeriod(
+    input: BackofficeFinanceListQuery
+  ): Omit<BackofficeFinanceListQuery, "period"> {
+    const { period, ...query } = input;
+    if (!period) {
+      return query;
+    }
+
+    const window = resolveDashboardWindow({ period }, this.now());
+    return {
+      ...query,
+      from: window.fromInclusive,
+      to: new Date(window.toExclusive.getTime() - 1)
+    };
+  }
+
   public async listPlatformFinance(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
-    input: BackofficeListQuery
+    input: BackofficeFinanceListQuery
   ): Promise<PaginatedResponse<BackofficeFinanceSettlementPayload>> {
     await this.record(actor, context, "backoffice.finance.list", "finance_reconciliation");
 
-    return this.repository.listFinanceSettlements({ ...input, scope: "platform" });
+    return this.repository.listFinanceSettlements({
+      ...this.resolveFinancePeriod(input),
+      scope: "platform"
+    });
   }
 
   public async getPlatformNdpSummary(
@@ -1744,11 +1765,14 @@ export class BackofficeService {
   public async exportPlatformFinance(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
-    input: BackofficeListQuery
+    input: BackofficeFinanceListQuery
   ): Promise<BackofficeCsvExportPayload> {
     await this.record(actor, context, "backoffice.finance.export", "finance_settlement_export");
 
-    return this.repository.exportFinanceSettlements({ ...input, scope: "platform" });
+    return this.repository.exportFinanceSettlements({
+      ...this.resolveFinancePeriod(input),
+      scope: "platform"
+    });
   }
 
   public async exportMerchantFinance(

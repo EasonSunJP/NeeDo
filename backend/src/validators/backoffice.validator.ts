@@ -45,6 +45,28 @@ export const backofficeListQuerySchema = z.object({
   categoryId: z.coerce.number().int().positive().optional()
 });
 
+export const FINANCE_SETTLEMENT_STATUSES = [
+  "pending",
+  "holding",
+  "ready_for_payroll",
+  "payroll_approved",
+  "settled",
+  "refunded",
+  "cancelled",
+  "compensated"
+] as const;
+
+export const backofficeFinanceListQuerySchema = backofficeListQuerySchema
+  .extend({
+    status: z.enum(FINANCE_SETTLEMENT_STATUSES).optional(),
+    period: z.enum(["week", "month"]).optional(),
+    city: z.string().trim().min(1).max(100).optional()
+  })
+  .strict()
+  .refine((value) => !value.period || (!value.from && !value.to), {
+    message: "Finance period cannot be combined with explicit date boundaries"
+  });
+
 export const backofficeManagedUserListQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
@@ -446,6 +468,9 @@ export const backofficeServiceUpdateBodySchema = z
   .refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 export type BackofficeListQuery = z.infer<typeof backofficeListQuerySchema>;
+export type BackofficeFinanceListQuery = z.infer<typeof backofficeFinanceListQuerySchema>;
+export type BackofficeFinanceRepositoryQuery = BackofficeListQuery &
+  Pick<BackofficeFinanceListQuery, "city">;
 export type BackofficeNdpSummaryQuery = z.infer<typeof backofficeNdpSummaryQuerySchema>;
 export type BackofficeDashboardQuery = z.infer<typeof backofficeDashboardQuerySchema>;
 export type MerchantDashboardQuery = z.infer<typeof merchantDashboardQuerySchema>;

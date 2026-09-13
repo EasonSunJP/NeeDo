@@ -18,6 +18,7 @@ import { PRISMA_INT_MAX } from "../constants/database";
 import { MAX_MEMBERSHIP_ANALYTICS_PAGE } from "../domain/membership-analytics";
 import { ERROR_CODES } from "../constants/error-codes";
 import { MAX_ANALYTICS_RANKING_PAGE } from "../domain/analytics-ranking";
+import { FINANCE_SETTLEMENT_STATUSES } from "../validators/backoffice.validator";
 
 type OpenApiDocument = Record<string, unknown>;
 const safeIntegerMaximum = PRISMA_INT_MAX;
@@ -24395,6 +24396,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Backoffice"],
         summary: "Paginated real finance reconciliation rows for operations admin",
         security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: FINANCE_SETTLEMENT_STATUSES
+            }
+          },
+          { name: "period", in: "query", schema: { type: "string", enum: ["week", "month"] } },
+          { name: "city", in: "query", schema: { type: "string", minLength: 1, maxLength: 100 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
         responses: {
           "200": { description: "Paginated backoffice finance settlements" }
         }
@@ -24442,6 +24458,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Backoffice"],
         summary: "Export operations finance settlements as CSV content",
         security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: FINANCE_SETTLEMENT_STATUSES
+            }
+          },
+          { name: "period", in: "query", schema: { type: "string", enum: ["week", "month"] } },
+          { name: "city", in: "query", schema: { type: "string", minLength: 1, maxLength: 100 } }
+        ],
         responses: {
           "200": { description: "CSV export payload" }
         }
