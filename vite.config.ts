@@ -278,6 +278,14 @@ export function resolveNeedoManualChunk(id: string): string | undefined {
     return "field-jobs-i18n";
   }
 
+  if (normalizedId.endsWith("/src/features/auth/i18n.ts")) {
+    return "auth-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/platform-reviews/i18n.ts")) {
+    return "platform-reviews-i18n";
+  }
+
   if (normalizedId.endsWith("/src/features/technician-schedule/automation-i18n.ts")) {
     return "technician-automation-i18n";
   }

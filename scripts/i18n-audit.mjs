@@ -61,6 +61,14 @@ const calendarParticipantTranslationsPath = path.join(
   workspaceRoot,
   "src/features/scheduling/calendar-participant-i18n.ts",
 );
+const authTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/auth/i18n.ts",
+);
+const platformReviewTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/platform-reviews/i18n.ts",
+);
 const sourceDirectories = [
   path.join(workspaceRoot, "src"),
   path.join(workspaceRoot, "scripts"),
@@ -76,6 +84,8 @@ const excludedFilePatterns = [
   /src\/features\/travel-fare\/i18n\.ts$/u,
   /src\/features\/technician-schedule\/automation-i18n\.ts$/u,
   /src\/features\/scheduling\/calendar-participant-i18n\.ts$/u,
+  /src\/features\/auth\/i18n\.ts$/u,
+  /src\/features\/platform-reviews\/i18n\.ts$/u,
 ];
 
 function normalizeText(value) {
@@ -176,6 +186,8 @@ let platformUserManagementTranslationsPromise;
 let travelFareTranslationsPromise;
 let technicianAutomationTranslationsPromise;
 let calendarParticipantTranslationsPromise;
+let authTranslationsPromise;
+let platformReviewTranslationsPromise;
 
 async function loadEkycTranslations() {
   ekycTranslationsPromise ??= (async () => {
@@ -410,6 +422,32 @@ async function loadCalendarParticipantTranslations() {
   return calendarParticipantTranslationsPromise;
 }
 
+async function loadAuthTranslations() {
+  authTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(authTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.authTrustGatewayTranslations ?? {};
+  })();
+  return authTranslationsPromise;
+}
+
+async function loadPlatformReviewTranslations() {
+  platformReviewTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(platformReviewTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.platformReviewTranslations ?? {};
+  })();
+  return platformReviewTranslationsPromise;
+}
+
 async function loadTranslationsFromSource(sourceCode) {
   const { translations: ekycTranslations, chineseErrors: ekycChineseErrors } =
     await loadEkycTranslations();
@@ -425,6 +463,8 @@ async function loadTranslationsFromSource(sourceCode) {
   const travelFareTranslations = await loadTravelFareTranslations();
   const technicianAutomationTranslations = await loadTechnicianAutomationTranslations();
   const calendarParticipantTranslations = await loadCalendarParticipantTranslations();
+  const authTranslations = await loadAuthTranslations();
+  const platformReviewTranslations = await loadPlatformReviewTranslations();
   const standaloneSource = sourceCode.replace(
     /import\s+\{\s*ekycTranslations\s*,\s*ekycChineseErrors\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const ekycTranslations = ${JSON.stringify(ekycTranslations)};\nconst ekycChineseErrors = ${JSON.stringify(ekycChineseErrors)};`,
@@ -455,6 +495,15 @@ async function loadTranslationsFromSource(sourceCode) {
   ).replace(
     /import\s+\{\s*technicianAutomationTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const technicianAutomationTranslations = ${JSON.stringify(technicianAutomationTranslations)};`,
+  ).replace(
+    /import\s+\{\s*authTrustGatewayTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const authTrustGatewayTranslations = ${JSON.stringify(authTranslations)};`,
+  ).replace(
+    /export\s+\{\s*authTrustGatewayTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    "",
+  ).replace(
+    /import\s+\{\s*platformReviewTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const platformReviewTranslations = ${JSON.stringify(platformReviewTranslations)};`,
   );
   const tempFile = path.join(
     workspaceRoot,
