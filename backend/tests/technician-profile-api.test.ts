@@ -410,6 +410,7 @@ describe("technician profile current-identity API", () => {
     );
     expect(fixture.profileUpdatedNotificationPort.notifyProfileUpdated).toHaveBeenCalledWith({
       identityId: 109,
+      includePersonalIdentities: true,
       userId: 9
     });
   });
