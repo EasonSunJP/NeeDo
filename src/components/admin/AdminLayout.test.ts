@@ -38,6 +38,7 @@ describe("AdminLayout navigation", () => {
       '{ label: "订单设置", to: "/admin/settings/system?tab=basic", icon: "设", permission: "backoffice:system-settings:read" }'
     );
     expect(source).not.toContain('/admin/orders?module=settings');
+    expect(source).not.toContain('/admin/finance?module=refunds');
     expect(routeMatches(
       { label: "订单设置", to: "/admin/settings/system?tab=basic", icon: "设" },
       "/admin/settings/system",
