@@ -643,6 +643,7 @@ describe("BookingRepository order list scope", () => {
       shop: {
         deletedAt: null,
         status: "published",
+        visibility: "public",
         entitySuspensions: {
           none: { activeKey: { not: null }, status: "active", deletedAt: null }
         }

@@ -182,6 +182,27 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> => {
 };
 
 describe("PricingModeService", () => {
+  it("hides booking navigation for a shop outside the selected identity relationship", async () => {
+    const repository = createRepository();
+    const visibility = { canView: jest.fn(async () => false) };
+    const service = new PricingModeService(
+      repository,
+      { record: jest.fn() },
+      visibility as never
+    );
+
+    await expect(
+      service.getBookingNavigation(1, { page: 1, pageSize: 20 }, {
+        userId: 42,
+        identityId: 10,
+        identityType: "customer",
+        identityScopeType: "customer_profile",
+        identityScopeId: 11
+      })
+    ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND, statusCode: 404 });
+    expect(repository.findShopPricingMode).not.toHaveBeenCalled();
+  });
+
   it("updates a merchant scoped shop pricing mode and records an audit log", async () => {
     const repository = createRepository();
     const auditLogService = { record: jest.fn(async () => undefined) };
@@ -451,7 +472,8 @@ describe("PricingModeService", () => {
     expect(repository.listPublicTechnicianProfileServices).toHaveBeenCalledWith({
       technicianId: 3,
       page: 1,
-      pageSize: 20
+      pageSize: 20,
+      shopVisibilityWhere: { visibility: "public" }
     });
   });
 

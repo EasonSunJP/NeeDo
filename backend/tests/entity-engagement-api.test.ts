@@ -354,13 +354,27 @@ describe("entity favorites API", () => {
       1,
       42,
       { targetType: "shop", publicId: "shop0000000001" },
-      true
+      true,
+      {
+        userId: 42,
+        identityId: 10,
+        identityType: "customer",
+        identityScopeType: "user",
+        identityScopeId: 42
+      }
     );
     expect(fixture.entityEngagementRepository.listFavorites).toHaveBeenCalledWith({
       userId: 42,
       page: 2,
       pageSize: 5,
-      targetType: "shop"
+      targetType: "shop",
+      viewer: {
+        userId: 42,
+        identityId: 10,
+        identityType: "customer",
+        identityScopeType: "user",
+        identityScopeId: 42
+      }
     });
   });
 

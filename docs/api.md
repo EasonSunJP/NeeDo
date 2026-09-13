@@ -127,13 +127,13 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 | Method | Path | Purpose | Auth |
 |---|---|---|---|
 | `GET` | `/api/v1/categories` | Paginated public category list | Public |
-| `GET` | `/api/v1/services` | Paginated public service cards | Public |
-| `GET` | `/api/v1/services/:id` | Public service detail | Public |
-| `GET` | `/api/v1/services/:id/reviews` | Paginated reviews for completed orders of a public service | Public |
-| `GET` | `/api/v1/home/recommendations` | Home recommendation rows | Public |
-| `GET` | `/api/v1/search` | Typed shop, technician, or service search | Public |
-| `GET` | `/api/v1/shops/:id` | Public shop detail | Public |
-| `GET` | `/api/v1/technicians/:id` | Public technician detail | Public |
+| `GET` | `/api/v1/services` | Paginated visibility-filtered service cards | Optional bearer |
+| `GET` | `/api/v1/services/:id` | Visibility-filtered service detail | Optional bearer |
+| `GET` | `/api/v1/services/:id/reviews` | Paginated reviews for a visible completed-order service | Optional bearer |
+| `GET` | `/api/v1/home/recommendations` | Visibility-filtered home recommendation rows | Optional bearer |
+| `GET` | `/api/v1/search` | Typed visibility-filtered shop, technician, or service search | Optional bearer |
+| `GET` | `/api/v1/shops/:id` | Visibility-filtered shop detail | Optional bearer |
+| `GET` | `/api/v1/technicians/:id` | Public technician detail with hidden shop relations omitted | Optional bearer |
 | `GET` | `/api/v1/profiles/customers/:id` | Customer profile filtered by its saved visibility policy | Optional bearer |
 
 For public technician navigation, `:id` is canonically the lowercase NeeDoID
@@ -221,7 +221,18 @@ Keywords, category IDs, and their two groups use OR semantics: a published recor
 
 The response keeps the shared success envelope and returns exactly one typed paginated page selected by `entityType`: `ShopCard`, `TechnicianCard`, or `ServiceCard`. Published status, active formal public identifiers, and `deletedAt IS NULL` remain mandatory. A shop or technician may be searchable without a published service; search visibility does not imply that the entity is currently bookable, and the client must not fabricate price, service, or availability data.
 
-When `entityType=technician` and a complete origin pair is present, candidate distance uses the nearest valid location among the technician's private personal service base and active, published affiliated shops. The backend starts at 3 km and expands exactly 1 km at a time until at least three eligible technicians are available or every eligible located technician is included. It then sorts the complete final-radius set by comprehensive rating, completed-order count, review count, account registration time, and stable profile ID before applying pagination. `distanceKm`, `nearbyRank`, and `resolvedRadiusKm` are optional `TechnicianCard` fields and are absent when no origin was supplied.
+Shop discovery uses the persisted `Shop.visibility` source of truth before pagination and totals. Anonymous reads receive only `public`; the owner can always read its shop; `limited` additionally permits reciprocal active friends; `network` additionally permits active formal customer, booking, technician-affiliation, merchant-membership, business-contact, or introducer relationships for the selected identity. `privateAll` is owner-only. A denied direct read returns the existing not-found envelope, and related service, favorite/share, booking-navigation, availability, and booking-create boundaries apply the same policy. Public customer and technician profile authorities remain independent, but hidden shop data and shop-owned services are omitted from technician projections.
+
+The merchant visibility command is scoped to the signed active shop identity and writes the shop row plus its audit record in one database transaction:
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/merchant-admin/shops/:shopId/visibility` | Read persisted shop visibility | `merchant-admin:shop:read` |
+| `PUT` | `/api/v1/merchant-admin/shops/:shopId/visibility` | Set `public`, `privateAll`, `limited`, or `network` | `merchant-admin:shop:write` |
+
+Authorization-bearing visibility-aware GET responses are `private, no-store`. Anonymous visibility-aware responses use `public, no-cache` with `Vary: Authorization`, so stored responses must be revalidated before reuse and public-to-private revocation takes effect immediately.
+
+When `entityType=technician` and a complete origin pair is present, candidate distance uses the nearest valid location among the technician's private personal service base and active, published, viewer-visible affiliated shops. The backend starts at 3 km and expands exactly 1 km at a time until at least three eligible technicians are available or every eligible located technician is included. It then sorts the complete final-radius set by comprehensive rating, completed-order count, review count, account registration time, and stable profile ID before applying pagination. `distanceKm`, `nearbyRank`, and `resolvedRadiusKm` are optional `TechnicianCard` fields and are absent when no origin was supplied.
 
 Personal service-base coordinates are self-only profile data. Public search and public technician-card/detail responses never return `baseLatitude`, `baseLongitude`, `serviceBase`, or affiliated-shop coordinates through the technician object.
 

@@ -1012,7 +1012,8 @@ export type OrderTransitionGuardedResult =
 export interface BookingRepositoryPort {
   findActiveCustomerUserIdByIdentityId?: (identityId: number) => Promise<number | null>;
   listAvailableSlots: (
-    input: AvailabilityListInput
+    input: AvailabilityListInput,
+    shopVisibilityWhere?: Record<string, unknown>
   ) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
   listAvailabilityWindows?: (
     input: AvailabilityWindowListInput
@@ -1339,7 +1340,8 @@ export class BookingRepository implements BookingRepositoryPort {
   }
 
   public async listAvailableSlots(
-    input: AvailabilityListInput
+    input: AvailabilityListInput,
+    shopVisibilityWhere: Record<string, unknown> = { visibility: "public" }
   ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
     const pagination = toPrismaPagination(input);
     const currentLocationShopIds = await this.listShopsWithCurrentVerifiedServiceLocations(input);
@@ -1397,6 +1399,7 @@ export class BookingRepository implements BookingRepositoryPort {
       shop: {
         deletedAt: null,
         status: "published",
+        ...(shopVisibilityWhere as Prisma.ShopWhereInput),
         entitySuspensions: {
           none: { activeKey: { not: null }, status: "active", deletedAt: null }
         }

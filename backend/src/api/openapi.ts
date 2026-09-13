@@ -3288,6 +3288,31 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ...exchangeOperationsOpenApiSchemas,
       ...shopMembershipCardPlanOpenApiSchemas,
       ...orderRefundOpenApiSchemas,
+      ShopVisibility: {
+        type: "string",
+        enum: ["public", "privateAll", "limited", "network"],
+        description:
+          "Public is anonymous-visible; privateAll is owner-only; limited allows reciprocal friends; network also allows formal business relationships."
+      },
+      ShopVisibilityPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: ["shopId", "visibility", "updatedAt", "updatedBy"],
+        properties: {
+          shopId: { type: "integer", minimum: 1 },
+          visibility: { $ref: "#/components/schemas/ShopVisibility" },
+          updatedAt: { type: ["string", "null"], format: "date-time" },
+          updatedBy: { type: ["integer", "null"], minimum: 1 }
+        }
+      },
+      ShopVisibilityUpdateInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["visibility"],
+        properties: {
+          visibility: { $ref: "#/components/schemas/ShopVisibility" }
+        }
+      },
       ShopTravelFareBand: {
         type: "object",
         additionalProperties: false,
@@ -21356,7 +21381,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/services`]: {
       get: {
         tags: ["Core Read"],
-        summary: "Paginated public service list",
+        summary: "Paginated visibility-scoped service list",
+        security: [{}, { bearerAuth: [] }],
         parameters: [
           { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
           { name: "categoryId", in: "query", schema: { type: "integer", minimum: 1 } },
@@ -21411,7 +21437,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/services/{id}`]: {
       get: {
         tags: ["Core Read"],
-        summary: "Public service detail",
+        summary: "Visibility-scoped service detail",
+        security: [{}, { bearerAuth: [] }],
         parameters: [
           {
             name: "id",
@@ -21451,7 +21478,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/services/{id}/reviews`]: {
       get: {
         tags: ["Core Read"],
-        summary: "Public reviews for a published service",
+        summary: "Reviews for a visible published service",
+        security: [{}, { bearerAuth: [] }],
         parameters: [
           {
             name: "id",
@@ -21494,6 +21522,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Core Read"],
         summary: "Home recommendation rows",
+        security: [{}, { bearerAuth: [] }],
         parameters: [
           { name: "city", in: "query", schema: { type: "string", maxLength: 100 } },
           { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 20 } }
@@ -21522,6 +21551,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Core Read"],
         summary: "Typed public shop, technician, or service search",
+        security: [{}, { bearerAuth: [] }],
         description:
           "Repeated keywords and categoryIds use OR semantics. Shop and technician names use substring matching. Omitting entityType preserves the legacy service result page. When a technician origin pair is supplied, ranking starts at 3 km and expands exactly 1 km until three eligible technicians are found or all eligible candidates are exhausted; precise technician coordinates are never returned.",
         parameters: [
@@ -21894,7 +21924,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/shops/{id}`]: {
       get: {
         tags: ["Core Read"],
-        summary: "Public shop detail",
+        summary: "Visibility-scoped shop detail",
+        security: [{}, { bearerAuth: [] }],
         parameters: [
           {
             name: "id",
@@ -21912,6 +21943,52 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Shop detail" },
           "404": { description: "Shop not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shops/{shopId}/visibility`]: {
+      get: {
+        tags: ["Merchant Admin"],
+        summary: "Read the persisted shop visibility policy",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:shop:read",
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Persisted shop visibility policy", {
+            $ref: "#/components/schemas/ShopVisibilityPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.identity.forbidden or error.forbidden"),
+          "404": jsonErrorResponse("error.shop.not_found")
+        }
+      },
+      put: {
+        tags: ["Merchant Admin"],
+        summary: "Atomically update the shop visibility policy with an audit record",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:shop:write",
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ShopVisibilityUpdateInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated shop visibility policy", {
+            $ref: "#/components/schemas/ShopVisibilityPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.identity.forbidden or error.forbidden"),
+          "404": jsonErrorResponse("error.shop.not_found")
         }
       }
     },
@@ -21962,6 +22039,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Pricing Mode"],
         summary: "Resolve shop booking entry by pricing mode",
+        security: [{}, { bearerAuth: [] }],
         parameters: [
           { name: "shopId", in: "path", required: true, schema: { type: "integer" } },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
@@ -21975,7 +22053,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/shops/{shopId}/technicians/{technicianId}/services`]: {
       get: {
         tags: ["Pricing Mode"],
-        summary: "Public technician service list for a shop",
+        summary: "Visibility-scoped technician service list for a shop",
+        security: [{}, { bearerAuth: [] }],
         parameters: [
           { name: "shopId", in: "path", required: true, schema: { type: "integer" } },
           { name: "technicianId", in: "path", required: true, schema: { type: "integer" } },
@@ -21990,7 +22069,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/technicians/{technicianId}/services`]: {
       get: {
         tags: ["Pricing Mode"],
-        summary: "Public service portfolio for a technician profile",
+        summary: "Visibility-scoped service portfolio for a technician profile",
+        security: [{}, { bearerAuth: [] }],
         description:
           "Lists active, bookable, approved technician-owned services backed by an active exact shop affiliation. This public profile projection is independent from the shop pricing mode; merchant-priced booking navigation continues to hide technician-priced checkout entries.",
         parameters: [
@@ -22271,6 +22351,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Core Read"],
         summary: "Public technician detail",
+        security: [{}, { bearerAuth: [] }],
         parameters: [
           {
             name: "id",
@@ -22522,6 +22603,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Booking"],
         summary: "Paginated available schedule slots",
+        security: [{}, { bearerAuth: [] }],
         description:
           "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. The from/to window must not exceed 93 days. By default, results are limited to published, unsuspended shops and bookable slots with remaining capacity.",
         parameters: [

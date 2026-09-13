@@ -534,7 +534,6 @@ export function mapCoreCustomerToCustomer(customer: CustomerProfileViewSource): 
 function searchEntity<TItem>(entityType: "service" | "shop" | "technician", query: CoreSearchListQuery) {
   const searchSessionId = getSearchSessionId();
   return httpClient.request<PaginatedCoreReadData<TItem>>("/search", {
-    auth: false,
     ...(searchSessionId ? { headers: { "X-Search-Session": searchSessionId } } : {}),
     query: { ...query, entityType }
   });
@@ -557,7 +556,7 @@ export const coreReadApi = {
   },
 
   listServices(query: CoreServiceListQuery = {}) {
-    return httpClient.request<PaginatedCoreReadData<CoreServiceCard>>("/services", { auth: false, query });
+    return httpClient.request<PaginatedCoreReadData<CoreServiceCard>>("/services", { query });
   },
 
   searchServices(query: CoreSearchListQuery = {}) {
@@ -579,11 +578,11 @@ export const coreReadApi = {
   getHomeRecommendations(
     query: { city?: string; limit?: number; latitude?: number; longitude?: number } = {},
   ) {
-    return httpClient.request<CoreHomeRecommendations>("/home/recommendations", { auth: false, query });
+    return httpClient.request<CoreHomeRecommendations>("/home/recommendations", { query });
   },
 
   getServiceDetail(id: number | string) {
-    return httpClient.request<CoreServiceDetail>(`/services/${id}`, { auth: false });
+    return httpClient.request<CoreServiceDetail>(`/services/${id}`);
   },
 
   listServiceReviews(
@@ -592,12 +591,12 @@ export const coreReadApi = {
   ) {
     return httpClient.request<PaginatedCoreReadData<CoreServiceReview>>(
       `/services/${id}/reviews`,
-      { auth: false, query }
+      { query }
     );
   },
 
   getShopDetail(id: number | string, query: { locale?: "ja" | "en" | "ko" | "zh-CN" | "zh-TW" } = {}) {
-    return httpClient.request<CoreShopDetail>(`/shops/${id}`, { auth: false, query });
+    return httpClient.request<CoreShopDetail>(`/shops/${id}`, { query });
   },
 
   getTechnicianDetail(
@@ -605,7 +604,6 @@ export const coreReadApi = {
     query: { latitude?: number; longitude?: number } = {},
   ) {
     return httpClient.request<CoreTechnicianDetail>(`/technicians/${id}`, {
-      auth: false,
       query,
     });
   },

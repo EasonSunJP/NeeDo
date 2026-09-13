@@ -35,6 +35,7 @@ import {
   technicianManualBookingIdempotencySchema
 } from "../validators/booking.validator";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
+import type { AuthenticatedAccessContext } from "../services/auth.service";
 
 export class BookingController {
   public constructor(
@@ -74,7 +75,8 @@ export class BookingController {
         .json(
           successResponse(
             await this.bookingService.listAvailableSlots(
-              availabilityListQuerySchema.parse(request.query)
+              availabilityListQuerySchema.parse(request.query),
+              this.shopVisibilityViewer(response)
             )
           )
         );
@@ -82,6 +84,19 @@ export class BookingController {
       next(error);
     }
   };
+
+  private shopVisibilityViewer(response: Response) {
+    const auth = response.locals.auth as AuthenticatedAccessContext | undefined;
+    if (!auth) return undefined;
+    const selectedShopId = auth.selectedMerchantShopId ?? auth.merchantPreviewShopId;
+    return {
+      userId: auth.userId,
+      identityId: auth.currentIdentityId,
+      identityType: auth.currentIdentityType,
+      identityScopeType: selectedShopId ? "shop" : auth.currentIdentityScopeType,
+      identityScopeId: selectedShopId ?? auth.currentIdentityScopeId
+    };
+  }
 
   public listAvailabilityWindows = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
     try {

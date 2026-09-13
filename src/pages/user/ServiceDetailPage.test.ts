@@ -23,7 +23,7 @@ describe("ServiceDetailPage formal service routes", () => {
 
     expect(id).toBe(17);
     await coreReadApi.getServiceDetail(id!);
-    expect(httpClient.request).toHaveBeenCalledWith("/services/17", { auth: false });
+    expect(httpClient.request).toHaveBeenCalledWith("/services/17");
   });
 
   it("preserves a valid service UUID instead of coercing it to NaN", async () => {
@@ -32,7 +32,7 @@ describe("ServiceDetailPage formal service routes", () => {
 
     expect(id).toBe(uuid);
     await coreReadApi.getServiceDetail(id!);
-    expect(httpClient.request).toHaveBeenCalledWith(`/services/${uuid}`, { auth: false });
+    expect(httpClient.request).toHaveBeenCalledWith(`/services/${uuid}`);
     expect(httpClient.request).not.toHaveBeenCalledWith("/services/NaN", expect.anything());
   });
 

@@ -3,7 +3,10 @@ import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { PricingModeController } from "../controllers/pricing-mode.controller";
 import { TechnicianServiceCoverController } from "../controllers/technician-service-cover.controller";
-import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
+import {
+  createAuthenticateMiddleware,
+  createOptionalAuthenticateMiddleware
+} from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import {
   createContentImageBodyErrorHandler,
@@ -13,6 +16,7 @@ import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { ContentMediaRepository } from "../repositories/content-media.repository";
 import { PricingModeRepository } from "../repositories/pricing-mode.repository";
+import { ShopVisibilityRepository } from "../repositories/shop-visibility.repository";
 import { AuditLogService } from "../services/audit-log.service";
 import { PricingModeService } from "../services/pricing-mode.service";
 import { ContentMediaFileStorage } from "../services/content-media.storage";
@@ -45,12 +49,17 @@ export const createPricingModeRoutes = (
   const router = Router();
   const authService = createAuthServiceForRoutes(config, dependencies);
   const authenticate = createAuthenticateMiddleware(authService);
+  const optionalAuthenticate = createOptionalAuthenticateMiddleware(authService);
   const authorize = createAuthorizeMiddleware;
   const auditLogService = new AuditLogService(
     dependencies.auditLogRepository ?? new AuditLogRepository()
   );
   const repository = dependencies.pricingModeRepository ?? new PricingModeRepository();
-  const service = new PricingModeService(repository, auditLogService);
+  const service = new PricingModeService(
+    repository,
+    auditLogService,
+    dependencies.shopVisibilityRepository ?? new ShopVisibilityRepository()
+  );
   const controller = new PricingModeController(service);
   const contentStorage =
     dependencies.contentMediaStorage ??
@@ -164,11 +173,13 @@ export const createPricingModeRoutes = (
   );
   router.get(
     "/shops/:shopId/booking-navigation",
+    optionalAuthenticate,
     validateRequest({ params: shopIdParamSchema, query: bookingNavigationQuerySchema }),
     controller.getBookingNavigation
   );
   router.get(
     "/shops/:shopId/technicians/:technicianId/services",
+    optionalAuthenticate,
     validateRequest({
       params: publicTechnicianServicesParamSchema,
       query: bookingNavigationQuerySchema
@@ -177,6 +188,7 @@ export const createPricingModeRoutes = (
   );
   router.get(
     "/technicians/:technicianId/services",
+    optionalAuthenticate,
     validateRequest({
       params: publicTechnicianProfileServicesParamSchema,
       query: bookingNavigationQuerySchema
