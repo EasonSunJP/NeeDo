@@ -381,7 +381,7 @@ describe("UserCenterPage inline profile editing", () => {
     await click(privacySwitch!);
     expect(container.querySelector('[data-testid="privacy-mode-confirm-dialog"]')).not.toBeNull();
 
-    await click(findButton("确定"));
+    await click(findButton("开启"));
 
     await waitFor(() => expect(testState.updateMine).toHaveBeenCalledWith({ visibility: "privateAll" }));
     await waitFor(() => expect(container.textContent).toContain("对所有人不可见"));
@@ -419,7 +419,7 @@ describe("UserCenterPage inline profile editing", () => {
 
     const privacySwitch = container.querySelector<HTMLButtonElement>('button[aria-label="开启隐私模式"][role="switch"]');
     await click(privacySwitch!);
-    await click(findButton("确定"));
+    await click(findButton("开启"));
 
     await waitFor(() => expect(container.textContent).toContain("隐私模式保存失败，请重试"));
     expect(container.textContent).toContain("公开可见");
