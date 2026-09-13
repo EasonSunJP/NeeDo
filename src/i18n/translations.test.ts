@@ -7,6 +7,15 @@ import type { Language } from "./translations";
 import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes authoritative server pagination summaries in every supported UI language", () => {
+    const source = "服务器共 20476 条，第 1 / 1024 页";
+
+    expect(translateText(source, "zh")).toBe(source);
+    expect(translateText(source, "zh-Hant")).toBe("伺服器共 20,476 筆，第 1 / 1,024 頁");
+    expect(translateText(source, "ja")).toBe("サーバー全 20,476 件、1 / 1,024 ページ");
+    expect(translateText(source, "en")).toBe("20,476 server records, page 1 of 1,024");
+    expect(translateText(source, "ko")).toBe("서버 전체 20,476건 · 1 / 1,024페이지");
+  });
   it("keeps employee schedule booking states and accessibility labels as complete localized phrases", () => {
     const expected = {
       "待确认预约": { zh: "待确认预约", "zh-Hant": "待確認預約", ja: "確認待ちの予約", en: "Booking awaiting confirmation", ko: "확인 대기 예약" },

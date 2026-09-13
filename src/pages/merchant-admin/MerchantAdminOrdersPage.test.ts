@@ -12,6 +12,11 @@ describe("MerchantAdminOrdersPage formal workflow", () => {
     expect(source).not.toContain("去调度中心");
   });
 
+  it("marks the formal server page so DataTable cannot expose current-page-only controls", () => {
+    expect(source).toContain('paginationMode="server"');
+    expect(source).not.toContain('footerPlacement="inline"');
+  });
+
   it("uses the formal order state machine and manual-payment endpoints", () => {
     expect(source).toContain("await bookingApi.confirmOrder(");
     expect(source).toContain("selectedOrder.id,");

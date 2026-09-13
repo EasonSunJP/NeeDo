@@ -14,6 +14,11 @@ describe("DataCenterPage production data boundary", () => {
     expect(source).toContain('backofficeRealDataApi.financeSettlements("backoffice"');
   });
 
+  it("marks formal server pages so DataTable cannot paginate, filter, or sort only the current page", () => {
+    expect(source).toContain('paginationMode="server"');
+    expect(source).not.toContain('footerPlacement="inline"');
+  });
+
   it("does not mix legacy entity overlays or central mock datasets into production tables", () => {
     expect(source).not.toContain("../../data/mock");
     expect(source).not.toContain("useEntityStore");

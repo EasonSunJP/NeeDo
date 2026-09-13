@@ -362,7 +362,7 @@ function DataCenterTablePage() {
             ) : null}
             {loadStatus === "success" && rows.length > 0 ? (
               <div className="mt-4">
-                <DataTable<DataCenterRow> columns={columns} footerPlacement="inline" pageSize={pageSize} rows={rows} showFooterActions={false} />
+                <DataTable<DataCenterRow> columns={columns} paginationMode="server" rows={rows} />
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper px-4 py-3">
                   <span className="text-sm font-bold text-ink/55">服务器共 {total} 条，第 {page} / {totalPages} 页</span>
                   <div className="flex gap-2">

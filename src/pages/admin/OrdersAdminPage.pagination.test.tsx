@@ -123,6 +123,7 @@ describe("OrdersAdminPage server pagination", () => {
     expect(buttons("上一页")).toHaveLength(1);
     expect(buttons("下一页")).toHaveLength(1);
     expect(buttons("下一页")[0]?.disabled).toBe(false);
+    expect(container.querySelector('[aria-label="订单编号 排序与筛选"]')).toBeNull();
   });
 
   it("loads successive server pages and uses the response page size for the page count", async () => {

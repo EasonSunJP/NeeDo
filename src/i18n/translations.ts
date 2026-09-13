@@ -15087,6 +15087,38 @@ function translateDynamicFastestMinutesLabel(core: string, language: Language): 
   return null;
 }
 
+function translateDynamicServerPaginationLabel(core: string, language: Language): string | null {
+  const match = core.match(/^服务器共\s*(\d+)\s*条，第\s*(\d+)\s*\/\s*(\d+)\s*页$/u);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, totalValue, pageValue, pagesValue] = match;
+  const locale = language === "zh-Hant" ? "zh-TW" : language;
+  const total = Number(totalValue).toLocaleString(locale);
+  const page = Number(pageValue).toLocaleString(locale);
+  const pages = Number(pagesValue).toLocaleString(locale);
+
+  if (language === "zh-Hant") {
+    return `伺服器共 ${total} 筆，第 ${page} / ${pages} 頁`;
+  }
+
+  if (language === "ja") {
+    return `サーバー全 ${total} 件、${page} / ${pages} ページ`;
+  }
+
+  if (language === "en") {
+    return `${total} server records, page ${page} of ${pages}`;
+  }
+
+  if (language === "ko") {
+    return `서버 전체 ${total}건 · ${page} / ${pages}페이지`;
+  }
+
+  return null;
+}
+
 function translateDynamicCountLabel(core: string, language: Language): string | null {
   const match = core.match(/^(\d[\d,]*)(?:\/(\d[\d,]*))?\s*(天|单|件|人|格|个|条|张|家|套|项|类|笔|次|位|名)$/);
 
@@ -15963,6 +15995,12 @@ export function translateText(source: string, language: Language): string {
 
   if (dynamicDateLabel) {
     return `${leading}${cleanupRuntimeTranslation(dynamicDateLabel, language)}${trailing}`;
+  }
+
+  const dynamicServerPaginationLabel = translateDynamicServerPaginationLabel(core, language);
+
+  if (dynamicServerPaginationLabel) {
+    return `${leading}${cleanupRuntimeTranslation(dynamicServerPaginationLabel, language)}${trailing}`;
   }
 
   const dynamicCountLabel: string | null = translateDynamicCountLabel(core, language);
