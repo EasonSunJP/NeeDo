@@ -23,6 +23,7 @@ export interface TechnicianShopAffiliationBackfillSnapshot {
   shopActive: boolean;
   technicianPublicIds: string[];
   hasBusinessEvidence: boolean;
+  hasApprovedApplicationEvidence: boolean;
   hasMerchantIdentityAtShop: boolean;
   currentAffiliations: TechnicianShopAffiliationBackfillCurrentAffiliation[];
 }
@@ -113,7 +114,9 @@ const intendedRelationship = (
 ): TechnicianShopAffiliationBackfillRelationshipType | null => {
   if (technician.employmentType === "FULL_TIME") return "EXCLUSIVE";
   if (technician.employmentType === "TEMPORARY") return "PARTNER";
-  return technician.hasBusinessEvidence ? "PARTNER" : null;
+  return technician.hasBusinessEvidence || technician.hasApprovedApplicationEvidence
+    ? "PARTNER"
+    : null;
 };
 
 const issue = (
@@ -150,6 +153,7 @@ export const planTechnicianShopAffiliationBackfill = (
     if (
       technician.employmentType === "INDEPENDENT" &&
       !technician.hasBusinessEvidence &&
+      !technician.hasApprovedApplicationEvidence &&
       technician.profileStatus === "private" &&
       technician.hasMerchantIdentityAtShop
     ) {
@@ -330,6 +334,18 @@ export class PrismaTechnicianShopAffiliationBackfillRuntime implements Technicia
                     select: { publicId: true, kind: true, status: true, deletedAt: true }
                   }
                 }
+              },
+              identityApplications: {
+                where: {
+                  type: "technician",
+                  status: "approved",
+                  deletedAt: null
+                },
+                select: {
+                  technicianDetail: {
+                    select: { targetShopId: true, deletedAt: true }
+                  }
+                }
               }
             }
           },
@@ -420,6 +436,13 @@ export class PrismaTechnicianShopAffiliationBackfillRuntime implements Technicia
               : [],
           hasBusinessEvidence:
             profile.shopId !== null && evidence.has(evidenceKey(profile.id, profile.shopId)),
+          hasApprovedApplicationEvidence:
+            profile.shopId !== null &&
+            profile.user.identityApplications.some(
+              (application) =>
+                application.technicianDetail?.deletedAt === null &&
+                application.technicianDetail.targetShopId === profile.shopId
+            ),
           hasMerchantIdentityAtShop:
             profile.shopId !== null &&
             profile.user.identities.some(

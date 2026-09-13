@@ -23,6 +23,7 @@ const snapshot = (
   shopActive: true,
   technicianPublicIds: ["s0000000047"],
   hasBusinessEvidence: true,
+  hasApprovedApplicationEvidence: false,
   hasMerchantIdentityAtShop: false,
   currentAffiliations: [],
   ...overrides
@@ -97,6 +98,27 @@ describe("technician shop affiliation backfill planner", () => {
         technicianProfileId: 47,
         code: "INDEPENDENT_RELATION_UNVERIFIED"
       }
+    ]);
+  });
+
+  it("accepts an approved target-shop application as repair evidence for an independent profile", () => {
+    const plan = planTechnicianShopAffiliationBackfill(
+      batch([
+        snapshot({
+          employmentType: "INDEPENDENT",
+          hasBusinessEvidence: false,
+          hasApprovedApplicationEvidence: true
+        } as unknown as Partial<TechnicianShopAffiliationBackfillSnapshot>)
+      ])
+    );
+
+    expect(plan.issues).toEqual([]);
+    expect(plan.operations).toEqual([
+      expect.objectContaining({
+        technicianProfileId: 47,
+        shopId: 16,
+        relationshipType: "PARTNER"
+      })
     ]);
   });
 

@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
 import { buildIdentityActivationTransactionInput } from "../services/identity-activation.service";
@@ -119,7 +119,7 @@ export class TechnicianApplicationReviewRepository implements TechnicianApplicat
     input: ApproveTechnicianApplicationRepositoryInput
   ): Promise<TechnicianApprovalResult> {
     return this.client.$transaction(async (transaction) => {
-      await this.closeForReview(transaction, input, "approved", null);
+      const approval = await this.closeForApproval(transaction, input);
       const existingProfile = await transaction.technicianProfile.findUnique({
         where: { userId: input.applicantUserId },
         select: { id: true }
@@ -142,39 +142,77 @@ export class TechnicianApplicationReviewRepository implements TechnicianApplicat
             },
             select: { id: true }
           });
-      const currentAffiliation = await transaction.technicianShopAffiliation.findFirst({
-        where: { technicianProfileId: profile.id, shopId: input.targetShopId },
-        orderBy: { id: "desc" },
-        select: { id: true }
-      });
       const activeKey = `technician:${profile.id}:shop:${input.targetShopId}`;
-      const affiliation = currentAffiliation
-        ? await transaction.technicianShopAffiliation.update({
-            where: { id: currentAffiliation.id },
-            data: {
-              relationshipType: "PARTNER",
-              workStatus: "ACTIVE",
-              startsAt: input.reviewedAt,
-              endsAt: null,
-              activeKey,
-              updatedById: input.reviewerUserId,
-              deletedAt: null
-            },
-            select: { id: true }
-          })
-        : await transaction.technicianShopAffiliation.create({
-            data: {
+      const canonicalAffiliation = await transaction.technicianShopAffiliation.findUnique({
+        where: { activeKey },
+        select: { id: true, activeKey: true, workStatus: true, endsAt: true, deletedAt: true }
+      });
+      const activeLegacyAffiliation = canonicalAffiliation
+        ? null
+        : await transaction.technicianShopAffiliation.findFirst({
+            where: {
               technicianProfileId: profile.id,
               shopId: input.targetShopId,
-              relationshipType: "PARTNER",
               workStatus: "ACTIVE",
-              startsAt: input.reviewedAt,
-              activeKey,
-              createdById: input.reviewerUserId,
-              updatedById: input.reviewerUserId
+              endsAt: null,
+              deletedAt: null
             },
-            select: { id: true }
+            orderBy: { id: "desc" },
+            select: { id: true, activeKey: true, workStatus: true, endsAt: true, deletedAt: true }
           });
+      const currentAffiliation =
+        canonicalAffiliation ??
+        activeLegacyAffiliation ??
+        (await transaction.technicianShopAffiliation.findFirst({
+          where: { technicianProfileId: profile.id, shopId: input.targetShopId },
+          orderBy: { id: "desc" },
+          select: { id: true, activeKey: true, workStatus: true, endsAt: true, deletedAt: true }
+        }));
+      const affiliation = currentAffiliation
+        ? currentAffiliation.workStatus === "ACTIVE" &&
+          currentAffiliation.activeKey === activeKey &&
+          currentAffiliation.endsAt === null &&
+          currentAffiliation.deletedAt === null
+          ? currentAffiliation
+          : await transaction.technicianShopAffiliation.update({
+              where: { id: currentAffiliation.id },
+              data: {
+                relationshipType: "PARTNER",
+                workStatus: "ACTIVE",
+                startsAt: input.reviewedAt,
+                endsAt: null,
+                activeKey,
+                updatedById: input.reviewerUserId,
+                deletedAt: null
+              },
+              select: { id: true }
+            })
+        : await transaction.technicianShopAffiliation
+            .create({
+              data: {
+                technicianProfileId: profile.id,
+                shopId: input.targetShopId,
+                relationshipType: "PARTNER",
+                workStatus: "ACTIVE",
+                startsAt: input.reviewedAt,
+                activeKey,
+                createdById: input.reviewerUserId,
+                updatedById: input.reviewerUserId
+              },
+              select: { id: true }
+            })
+            .catch(async (error: unknown) => {
+              if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+                throw error;
+              }
+              const concurrentAffiliation =
+                await transaction.technicianShopAffiliation.findUnique({
+                  where: { activeKey },
+                  select: { id: true }
+                });
+              if (!concurrentAffiliation) throw error;
+              return concurrentAffiliation;
+            });
       const currentIdentity = existingProfile
         ? await transaction.userIdentity.findFirst({
             where: {
@@ -213,7 +251,9 @@ export class TechnicianApplicationReviewRepository implements TechnicianApplicat
       await transaction.auditLog.create({
         data: {
           actorId: input.reviewerUserId,
-          action: "identity_application.technician.approved",
+          action: approval.replayed
+            ? "identity_application.technician.approval_reconciled"
+            : "identity_application.technician.approved",
           targetType: "IdentityApplication",
           targetId: input.applicationId,
           ip: null,
@@ -226,7 +266,7 @@ export class TechnicianApplicationReviewRepository implements TechnicianApplicat
             additionalShop: existingProfile !== null,
             ekycPolicy: input.ekycPolicy,
             identityId: identity.identityId,
-            version: input.expectedVersion + 1
+            version: approval.version
           },
           createdAt: input.reviewedAt
         }
@@ -235,11 +275,56 @@ export class TechnicianApplicationReviewRepository implements TechnicianApplicat
       return {
         applicationId: input.applicationId,
         status: "approved",
-        version: input.expectedVersion + 1,
+        version: approval.version,
         technicianProfileId: profile.id,
         identityId: identity.identityId,
         reviewedAt: input.reviewedAt
       };
+    });
+  }
+
+  private async closeForApproval(
+    transaction: Prisma.TransactionClient,
+    input: ApproveTechnicianApplicationRepositoryInput
+  ): Promise<{ replayed: boolean; version: number }> {
+    const updated = await transaction.identityApplication.updateMany({
+      where: {
+        id: input.applicationId,
+        userId: input.applicantUserId,
+        version: input.expectedVersion,
+        status: { in: ["submitted", "under_review"] },
+        deletedAt: null,
+        technicianDetail: { targetShopId: input.targetShopId }
+      },
+      data: {
+        status: "approved",
+        activeKey: null,
+        version: { increment: 1 },
+        reviewedAt: input.reviewedAt,
+        reviewerUserId: input.reviewerUserId,
+        rejectionReason: null,
+        closedAt: input.reviewedAt,
+        purgeAt: input.purgeAt
+      }
+    });
+    if (updated.count === 1) {
+      return { replayed: false, version: input.expectedVersion + 1 };
+    }
+    const approved = await transaction.identityApplication.findFirst({
+      where: {
+        id: input.applicationId,
+        userId: input.applicantUserId,
+        status: "approved",
+        deletedAt: null,
+        technicianDetail: { targetShopId: input.targetShopId }
+      },
+      select: { status: true, version: true }
+    });
+    if (approved) return { replayed: true, version: approved.version };
+    throw new AppError({
+      code: ERROR_CODES.SAAS_BILLING_CONFLICT,
+      message: "error.identity_application.version_conflict",
+      statusCode: 409
     });
   }
 
