@@ -10,10 +10,10 @@
 
 本地验证：
 
-- 定向回归：5 个测试文件、57 项测试通过。
-- 完整前端回归：528 个测试文件中 526 个通过，3,525 项测试中 3,521 项通过；4 项既有失败与变更前基线一致，分别为技师排班 3 项和店铺详情旧参数断言 1 项，本微步骤未修改这些无关模块。
+- 合并后定向回归：3 个直接相关测试文件、31 项测试通过。
+- 合并后完整前端回归：581 个测试文件、3,921 项测试全部通过。
 - TypeScript：`npm run lint` 退出码 0。
-- 正式构建：普通 `npm run build` 被本地 `.env.production` 中的开发兼容键安全门禁拒绝；未读取或修改其值。隔离该配置的 `npm run build -- --mode formal` 退出码 0。
+- 正式构建：`npm run build -- --mode formal` 退出码 0。
 - 音频完整性：附件、`public/audio/new-message.mp3` 与 `dist/audio/new-message.mp3` 的 SHA-256 均为 `79341fefadd10fced294914946f829f1f86a6b7a009027376336975d67f6360f`。
 - 本微步骤没有新增 API、数据表或 migration。
 
