@@ -6777,6 +6777,23 @@ export function ImConversationRoomPage({
         ref={conversationUnderlayRef}
         style={{ maxWidth: "min(880px, 100%)" }}
       >
+        <div aria-hidden="true" className="im-conversation-wallpaper pointer-events-none absolute inset-0 overflow-hidden">
+          <img
+            alt=""
+            aria-hidden="true"
+            className={cn("absolute inset-0 h-full w-full object-cover", isNight ? "opacity-[0.96]" : "opacity-[0.48]")}
+            src={chatBgUrl}
+            style={{ filter: wallpaperFilter }}
+          />
+          <div className={cn("absolute inset-0", isNight ? "bg-black/10" : "bg-white/8")} />
+          <div
+            className="absolute inset-0"
+            style={{
+              background: wallpaperOverlay
+            }}
+          />
+        </div>
+
         <ImTopBar
           actions={
             <ImHeaderAction label="更多" onClick={() => navigate(config.routes.conversationInfo(conversationId))}>
@@ -6803,23 +6820,6 @@ export function ImConversationRoomPage({
           className="im-conversation-layout--viewport-docked relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none pt-[calc(env(safe-area-inset-top)+70px)]"
           data-im-conversation-layout="true"
         >
-          <div aria-hidden="true" className="im-conversation-wallpaper pointer-events-none absolute inset-0 overflow-hidden">
-            <img
-              alt=""
-              aria-hidden="true"
-              className={cn("absolute inset-0 h-full w-full object-cover", isNight ? "opacity-[0.96]" : "opacity-[0.48]")}
-              src={chatBgUrl}
-              style={{ filter: wallpaperFilter }}
-            />
-            <div className={cn("absolute inset-0", isNight ? "bg-black/10" : "bg-white/8")} />
-            <div
-              className="absolute inset-0"
-              style={{
-                background: wallpaperOverlay
-              }}
-            />
-          </div>
-
           {blocked ? (
             <div className="relative z-10 border-b border-[color:color-mix(in_srgb,var(--client-accent)_22%,transparent)] bg-[color:color-mix(in_srgb,var(--client-accent)_12%,var(--client-bg)_88%)] px-4 py-3 text-sm text-[color:var(--client-accent)]">你已将对方加入黑名单，无法继续发起新消息。</div>
           ) : null}

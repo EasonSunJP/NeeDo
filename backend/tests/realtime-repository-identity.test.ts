@@ -191,6 +191,9 @@ describe("RealtimeRepository formal identity payloads", () => {
     });
 
     expect(result.list[0]?.username).toBe("Eason");
+    const searchWhere = (client.user.findMany as jest.Mock).mock.calls[0]?.[0]?.where;
+    expect(searchWhere).toEqual(expect.objectContaining({ id: { not: 137 } }));
+    expect(searchWhere).not.toHaveProperty("NOT");
     expect(client.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -215,6 +218,104 @@ describe("RealtimeRepository formal identity payloads", () => {
         })
       })
     );
+  });
+
+  it("uses current profile names in friend-request bootstrap users", async () => {
+    const createdAt = new Date("2026-09-08T00:00:00.000Z");
+    const expiresAt = new Date("2026-10-08T00:00:00.000Z");
+    const participant = (id: number, displayName: string) => ({
+      id,
+      needoId: `u${String(id).padStart(10, "0")}`,
+      username: `old-${id}`,
+      avatarUrl: null,
+      customerProfile: { displayName, deletedAt: null },
+      technicianProfile: null,
+    });
+    const identity = (id: number) => ({
+      id,
+      type: "customer",
+      displayName: `old-identity-${id}`,
+      merchantIdentityProfile: null,
+    });
+    const client = {
+      $queryRaw: jest.fn(async () => [{ dbNow: createdAt }]),
+      friendRequest: {
+        findMany: jest.fn(async () => [{
+          id: 71,
+          requesterUserId: 137,
+          requesterIdentityId: 1370,
+          targetUserId: 237,
+          targetIdentityId: 2370,
+          requester: participant(137, "Viewer"),
+          requesterIdentity: identity(1370),
+          target: participant(237, "CutGirl"),
+          targetIdentity: identity(2370),
+          status: "PENDING",
+          message: null,
+          respondedAt: null,
+          expiresAt,
+          expiredAt: null,
+          createdAt,
+          updatedAt: createdAt,
+          deletedAt: null,
+        }]),
+        count: jest.fn(async () => 1),
+      },
+    } as unknown as PrismaClient;
+
+    const result = await new RealtimeRepository(client).listFriendRequests(1370, {
+      direction: "all", page: 1, pageSize: 20,
+    });
+
+    expect(result.list[0]?.target.username).toBe("CutGirl");
+    expect(client.friendRequest.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      include: expect.objectContaining({
+        target: { select: expect.objectContaining({ customerProfile: expect.any(Object) }) },
+        targetIdentity: { select: expect.objectContaining({ type: true }) },
+      }),
+    }));
+  });
+
+  it("matches a complete NeeDo ID exactly instead of treating partial IDs as fuzzy names", async () => {
+    const client = {
+      user: {
+        findMany: jest.fn(async () => []),
+        count: jest.fn(async () => 0)
+      }
+    } as unknown as PrismaClient;
+
+    await new RealtimeRepository(client).searchDirectory(137, {
+      ownerIdentityId: 1370,
+      query: "needo0000000002",
+      page: 1,
+      pageSize: 20
+    });
+
+    const findMany = client.user.findMany as jest.Mock;
+    const serializedWhere = JSON.stringify(findMany.mock.calls[0]?.[0]?.where);
+    expect(serializedWhere).toContain('"needoId":{"equals":"needo0000000002"}');
+    expect(serializedWhere).not.toContain('"needoId":{"contains":"needo0000000002"}');
+  });
+
+  it("keeps profile names on contains-based fuzzy matching", async () => {
+    const client = {
+      user: {
+        findMany: jest.fn(async () => []),
+        count: jest.fn(async () => 0)
+      }
+    } as unknown as PrismaClient;
+
+    await new RealtimeRepository(client).searchDirectory(137, {
+      ownerIdentityId: 1370,
+      query: "ason",
+      page: 1,
+      pageSize: 20
+    });
+
+    const findMany = client.user.findMany as jest.Mock;
+    const serializedWhere = JSON.stringify(findMany.mock.calls[0]?.[0]?.where);
+    expect(serializedWhere).toContain('"displayName":{"contains":"ason"}');
+    expect(serializedWhere).not.toContain('"needoId":{"contains":"ason"}');
   });
 
   it("does not use a private customer identity to bypass a published technician identity", async () => {

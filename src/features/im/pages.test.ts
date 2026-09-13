@@ -368,7 +368,7 @@ describe("IM pages", () => {
     expect(componentSource).toContain("im-conversation-wallpaper pointer-events-none absolute inset-0");
   });
 
-  it("keeps the message viewport behind both glass bars while preserving terminal insets", () => {
+  it("keeps messages below the fixed header while preserving the composer inset", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
     const componentSource = pagesSource.slice(componentStart, componentEnd);
@@ -382,6 +382,24 @@ describe("IM pages", () => {
     expect(componentSource).toContain("listWasNearBottomRef.current");
     expect(componentSource).toContain('list.addEventListener("load", keepTerminalMessageAboveComposer, true)');
     expect(componentSource).toContain('list.addEventListener("loadedmetadata", keepTerminalMessageAboveComposer, true)');
+    expect(stylesSource).toMatch(
+      /\.im-conversation-layout--viewport-docked \.im-conversation-scroll--glass-underlay\s*\{[^}]*margin-top:\s*0;[^}]*padding-top:\s*12px;[^}]*scroll-padding-top:\s*12px;/s,
+    );
+    expect(stylesSource).toMatch(
+      /html\[data-needo-display-mode="standalone"\][^{]*\.im-conversation-room-shell\[data-im-conversation-voice-underlay="true"\]\s*\{[^}]*--im-conversation-room-overscan:\s*96px;[^}]*height:\s*calc\([^;]*\+ var\(--im-conversation-room-overscan\)\);[^}]*bottom:\s*calc\([^;]*- var\(--im-conversation-room-overscan\)\);/s,
+    );
+    expect(stylesSource).toMatch(
+      /html\[data-needo-display-mode="standalone"\][^{]*\.im-conversation-composer-dock\s*\{[^}]*bottom:\s*var\(--im-conversation-room-overscan\);/s,
+    );
+    expect(stylesSource).toMatch(
+      /html\[data-needo-display-mode="standalone"\][^{]*\.im-conversation-layout--viewport-docked\s*\{[^}]*margin-bottom:\s*var\(--im-conversation-room-overscan\);/s,
+    );
+    const liveRoomSource = componentSource.slice(
+      componentSource.indexOf('data-im-conversation-voice-underlay="true"'),
+    );
+    expect(liveRoomSource.indexOf("im-conversation-wallpaper")).toBeLessThan(
+      liveRoomSource.indexOf("<ImTopBar"),
+    );
   });
 
   it("shows one return-to-latest control when the terminal message position is outside the viewport", () => {

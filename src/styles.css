@@ -8311,6 +8311,20 @@ html.im-conversation-scroll-lock #root {
   overflow: hidden;
 }
 
+html[data-needo-display-mode="standalone"] .im-conversation-room-shell[data-im-conversation-voice-underlay="true"] {
+  --im-conversation-room-overscan: 96px;
+  height: calc(var(--im-conversation-room-height, 100dvh) + var(--im-conversation-room-overscan));
+  bottom: calc(var(--im-visual-viewport-bottom, 0px) - var(--im-conversation-room-overscan));
+}
+
+html[data-needo-display-mode="standalone"] .im-conversation-room-shell[data-im-conversation-voice-underlay="true"] .im-conversation-layout--viewport-docked {
+  margin-bottom: var(--im-conversation-room-overscan);
+}
+
+html[data-needo-display-mode="standalone"] .im-conversation-room-shell[data-im-conversation-voice-underlay="true"] .im-conversation-composer-dock {
+  bottom: var(--im-conversation-room-overscan);
+}
+
 .im-conversation-wallpaper {
   touch-action: none;
   user-select: none;
@@ -8335,7 +8349,10 @@ html.im-conversation-scroll-lock #root {
 }
 
 .im-conversation-layout--viewport-docked .im-conversation-scroll--glass-underlay {
+  margin-top: 0;
   margin-bottom: 0;
+  padding-top: 12px;
+  scroll-padding-top: 12px;
 }
 
 .im-conversation-composer-dock {

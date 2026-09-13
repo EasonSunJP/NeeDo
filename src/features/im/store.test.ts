@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ImApi } from "./contract";
 import type { Conversation, ConversationMessage, DirectoryProfile, ImStoreUpdate } from "./model";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import storeSource from "./store.ts?raw";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -790,7 +791,59 @@ describe("chat-record store facade", () => {
 });
 
 describe("formal profile realtime refresh", () => {
-  it("ignores an older directory response that finishes after a newer rename response", async () => {
+  it("reuses one directory profile response across repeated information-card openings", async () => {
+    mocked.session = {
+      activePublicId: "u0000987657",
+      avatarUrl: null,
+      id: 987657,
+      primaryPublicId: "u0000987657",
+      username: "profile-cache-viewer",
+    };
+    const profile = {
+      user: {
+        accountId: "u0000000201",
+        avatar: "",
+        id: "201",
+        nickname: "CutGirl",
+        profileKind: "person" as const,
+        searchableFields: ["CutGirl"],
+        sortKey: "C",
+        status: "active" as const,
+        tags: [],
+        userIdLabel: "u0000000201",
+      },
+      relationship: "friend" as const,
+      identityCard: {
+        entityType: "user" as const,
+        displayName: "CutGirl",
+        verified: false,
+        creditReviewCount: 0,
+        languages: [],
+      },
+    };
+    const getDirectoryProfile = vi.fn().mockResolvedValue(profile);
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "987657",
+        config: {},
+        users: [],
+        contacts: [],
+        organizationContacts: [],
+        friendRequests: [],
+        conversations: [],
+        members: [],
+      }),
+      getDirectoryProfile,
+    };
+
+    await renderStore();
+    await expect(store!.getDirectoryProfile("201")).resolves.toEqual(profile);
+    await expect(store!.getDirectoryProfile("201")).resolves.toEqual(profile);
+
+    expect(getDirectoryProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it("deduplicates concurrent information-card profile reads", async () => {
     mocked.session = {
       activePublicId: "u0000987656",
       avatarUrl: null,
@@ -803,10 +856,10 @@ describe("formal profile realtime refresh", () => {
       avatar: "",
       id: "201",
       nickname: "Original",
-      profileKind: "user" as const,
+      profileKind: "person" as const,
       searchableFields: ["Original"],
       sortKey: "O",
-      status: "online" as const,
+      status: "active" as const,
       tags: [],
       userIdLabel: "NeeDo ID: u0000000201",
     };
@@ -821,16 +874,8 @@ describe("formal profile realtime refresh", () => {
         languages: [],
       },
     };
-    const newProfile = {
-      ...oldProfile,
-      user: { ...baseUser, nickname: "Latest rename" },
-      identityCard: { ...oldProfile.identityCard, displayName: "Latest rename" },
-    };
-    const olderResponse = deferred<typeof oldProfile>();
-    const newerResponse = deferred<typeof newProfile>();
-    const getDirectoryProfile = vi.fn()
-      .mockImplementationOnce(() => olderResponse.promise)
-      .mockImplementationOnce(() => newerResponse.promise);
+    const response = deferred<typeof oldProfile>();
+    const getDirectoryProfile = vi.fn(() => response.promise);
     mocked.api = {
       bootstrap: vi.fn().mockResolvedValue({
         currentUserId: "987656",
@@ -846,26 +891,85 @@ describe("formal profile realtime refresh", () => {
     };
 
     await renderStore();
-    const olderRequest = store!.getDirectoryProfile("201");
+    const firstRequest = store!.getDirectoryProfile("201");
     await vi.waitFor(() => expect(getDirectoryProfile).toHaveBeenCalledTimes(1));
-    const newerRequest = store!.getDirectoryProfile("201");
-    await vi.waitFor(() => expect(getDirectoryProfile).toHaveBeenCalledTimes(2));
+    const secondRequest = store!.getDirectoryProfile("201");
+    expect(getDirectoryProfile).toHaveBeenCalledTimes(1);
 
-    let newerResult: DirectoryProfile | undefined;
+    let firstResult: DirectoryProfile | undefined;
+    let secondResult: DirectoryProfile | undefined;
     await act(async () => {
-      newerResponse.resolve(newProfile);
-      newerResult = await newerRequest;
+      response.resolve(oldProfile);
+      [firstResult, secondResult] = await Promise.all([firstRequest, secondRequest]);
     });
-    expect(newerResult?.user.nickname).toBe("Latest rename");
+    expect(firstResult?.user.nickname).toBe("First rename");
+    expect(secondResult?.user.nickname).toBe("First rename");
+    expect(store?.usersById["201"]?.nickname).toBe("First rename");
+  });
 
-    let olderResult: DirectoryProfile | undefined;
+  it("keeps a forced profile event newer than an older information-card request", async () => {
+    mocked.session = {
+      activePublicId: "u0000987659",
+      avatarUrl: null,
+      id: 987659,
+      primaryPublicId: "u0000987659",
+      username: "profile-race-viewer",
+    };
+    const user = (nickname: string) => ({
+      accountId: "u0000000201",
+      avatar: "",
+      id: "201",
+      nickname,
+      profileKind: "person" as const,
+      searchableFields: [nickname],
+      sortKey: nickname,
+      status: "active" as const,
+      tags: [],
+      userIdLabel: "u0000000201",
+    });
+    const profile = (nickname: string): DirectoryProfile => ({
+      user: user(nickname),
+      relationship: "friend",
+      identityCard: {
+        entityType: "user",
+        displayName: nickname,
+        verified: false,
+        creditReviewCount: 0,
+        languages: [],
+      },
+    });
+    const oldResponse = deferred<DirectoryProfile>();
+    const newResponse = deferred<DirectoryProfile>();
+    const getDirectoryProfile = vi.fn()
+      .mockImplementationOnce(() => oldResponse.promise)
+      .mockImplementationOnce(() => newResponse.promise);
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "987659",
+        config: {},
+        users: [user("Old name")],
+        contacts: [],
+        organizationContacts: [],
+        friendRequests: [],
+        conversations: [],
+        members: [],
+      }),
+      getDirectoryProfile,
+    };
+
+    await renderStore();
+    const cardRequest = store!.getDirectoryProfile("201");
+    await vi.waitFor(() => expect(getDirectoryProfile).toHaveBeenCalledTimes(1));
     await act(async () => {
-      olderResponse.resolve(oldProfile);
-      olderResult = await olderRequest;
+      mocked.subscriptionListener?.({ type: "profile.updated", userId: "201" });
+      await vi.waitFor(() => expect(getDirectoryProfile).toHaveBeenCalledTimes(2));
+      newResponse.resolve(profile("CutGirl"));
+      await vi.waitFor(() => expect(store?.usersById["201"]?.nickname).toBe("CutGirl"));
+      oldResponse.resolve(profile("Old name"));
     });
 
-    expect(olderResult?.user.nickname).toBe("Latest rename");
-    expect(store?.usersById["201"]?.nickname).toBe("Latest rename");
+    await expect(cardRequest).resolves.toMatchObject({ user: { nickname: "CutGirl" } });
+    expect(store?.usersById["201"]?.nickname).toBe("CutGirl");
   });
 
   it("uses the directory profile as the final name source when a bootstrap snapshot is stale", async () => {
@@ -881,10 +985,10 @@ describe("formal profile realtime refresh", () => {
       avatar: "",
       id: "201",
       nickname: "LifeDance 管理员 2",
-      profileKind: "user" as const,
+      profileKind: "person" as const,
       searchableFields: ["LifeDance 管理员 2"],
       sortKey: "L",
-      status: "online" as const,
+      status: "active" as const,
       tags: [],
       userIdLabel: "NeeDo ID: u0000000201",
     };
@@ -929,17 +1033,229 @@ describe("formal profile realtime refresh", () => {
       await vi.waitFor(() => expect(store?.usersById["201"]?.nickname).toBe("CutGirl"));
     });
 
-    expect(bootstrap).toHaveBeenCalledTimes(2);
+    expect(bootstrap).toHaveBeenCalledTimes(1);
     expect(store?.usersById["201"]?.nickname).toBe("CutGirl");
     expect(getConversationDisplayName(store!, store!.conversations[0]!)).toBe("CutGirl");
+    await vi.waitFor(async () => {
+      const cachedState = await persistentResourceCache.read<{
+        users: Array<{ id: string; nickname: string }>;
+      }>("account:987655", "im:state:user");
+      expect(cachedState?.users).toContainEqual(
+        expect.objectContaining({ id: "201", nickname: "CutGirl" }),
+      );
+    });
+
+    await expect(store!.getDirectoryProfile("201")).resolves.toMatchObject({
+      user: { nickname: "CutGirl" },
+    });
+    expect(getDirectoryProfile).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       mocked.subscriptionListener?.({ type: "refresh" });
-      await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(3));
+      await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(2));
     });
 
     expect(store?.usersById["201"]?.nickname).toBe("CutGirl");
     expect(getConversationDisplayName(store!, store!.conversations[0]!)).toBe("CutGirl");
+  });
+
+  it("invalidates a cached information card when a relationship event arrives", async () => {
+    mocked.session = {
+      activePublicId: "u0000987661",
+      avatarUrl: null,
+      id: 987661,
+      primaryPublicId: "u0000987661",
+      username: "relationship-cache-viewer",
+    };
+    const profile = (relationship: DirectoryProfile["relationship"]): DirectoryProfile => ({
+      user: {
+        accountId: "u0000000201", avatar: "", id: "201", nickname: "CutGirl",
+        profileKind: "person", searchableFields: ["CutGirl"], sortKey: "C",
+        status: "active", tags: [], userIdLabel: "u0000000201",
+      },
+      relationship,
+      identityCard: {
+        entityType: "user", displayName: "CutGirl", verified: false,
+        creditReviewCount: 0, languages: [],
+      },
+    });
+    const getDirectoryProfile = vi.fn()
+      .mockResolvedValueOnce(profile("friend"))
+      .mockResolvedValueOnce(profile("none"));
+    const bootstrap = vi.fn().mockResolvedValue({
+      currentUserId: "987661", config: {}, users: [profile("friend").user], contacts: [],
+      organizationContacts: [], friendRequests: [], conversations: [], members: [],
+    });
+    mocked.api = { bootstrap, getDirectoryProfile };
+
+    await renderStore();
+    await expect(store!.getDirectoryProfile("201")).resolves.toMatchObject({ relationship: "friend" });
+    await act(async () => {
+      mocked.subscriptionListener?.({ type: "refresh", invalidateDirectoryProfiles: true });
+      await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(2));
+    });
+    await expect(store!.getDirectoryProfile("201")).resolves.toMatchObject({ relationship: "none" });
+    expect(getDirectoryProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it("catches up names after an SSE reconnect without opening the information card", async () => {
+    mocked.session = {
+      activePublicId: "u0000987658",
+      avatarUrl: null,
+      id: 987658,
+      primaryPublicId: "u0000987658",
+      username: "profile-reconnect-viewer",
+    };
+    const oldUser = {
+      accountId: "u0000000201",
+      avatar: "",
+      id: "201",
+      nickname: "Old name",
+      profileKind: "person" as const,
+      searchableFields: ["Old name"],
+      sortKey: "O",
+      status: "active" as const,
+      tags: [],
+      userIdLabel: "u0000000201",
+    };
+    const updatedUser = {
+      ...oldUser,
+      nickname: "CutGirl",
+      searchableFields: ["CutGirl"],
+      sortKey: "C",
+    };
+    const directoryProfile = (profileUser: typeof oldUser): DirectoryProfile => ({
+      user: profileUser,
+      relationship: "friend",
+      identityCard: {
+        entityType: "user",
+        displayName: profileUser.nickname,
+        verified: false,
+        creditReviewCount: 0,
+        languages: [],
+      },
+    });
+    const getDirectoryProfile = vi
+      .fn()
+      .mockResolvedValueOnce(directoryProfile(oldUser))
+      .mockResolvedValueOnce(directoryProfile(updatedUser));
+    const bootstrap = vi
+      .fn()
+      .mockResolvedValueOnce({
+        currentUserId: "987658",
+        config: {},
+        users: [oldUser],
+        contacts: [],
+        organizationContacts: [],
+        friendRequests: [],
+        conversations: [conversation({ contactUserId: "201", memberIds: ["987658", "201"] })],
+        members: [],
+      })
+      .mockResolvedValueOnce({
+        currentUserId: "987658",
+        config: {},
+        users: [updatedUser],
+        contacts: [],
+        organizationContacts: [],
+        friendRequests: [],
+        conversations: [conversation({ contactUserId: "201", memberIds: ["987658", "201"] })],
+        members: [],
+      });
+    mocked.api = { bootstrap, getDirectoryProfile };
+
+    await renderStore();
+    await act(async () => {
+      await store?.getDirectoryProfile("201");
+    });
+    expect(store?.usersById["201"]?.nickname).toBe("Old name");
+
+    await act(async () => {
+      mocked.subscriptionListener?.({ type: "reconnected" });
+      await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(getDirectoryProfile).toHaveBeenCalledTimes(2));
+    });
+
+    expect(store?.usersById["201"]?.nickname).toBe("CutGirl");
+    expect(getConversationDisplayName(store!, store!.conversations[0]!)).toBe("CutGirl");
+  });
+
+  it("does not let a pre-reconnect profile request overwrite the catch-up snapshot", async () => {
+    mocked.session = {
+      activePublicId: "u0000987660",
+      avatarUrl: null,
+      id: 987660,
+      primaryPublicId: "u0000987660",
+      username: "profile-reconnect-race-viewer",
+    };
+    const user = (nickname: string) => ({
+      accountId: "u0000000201",
+      avatar: "",
+      id: "201",
+      nickname,
+      profileKind: "person" as const,
+      searchableFields: [nickname],
+      sortKey: nickname,
+      status: "active" as const,
+      tags: [],
+      userIdLabel: "u0000000201",
+    });
+    const staleProfile = deferred<DirectoryProfile>();
+    const freshProfile = deferred<DirectoryProfile>();
+    const reconnectBootstrap = deferred<{
+      currentUserId: string;
+      config: Record<string, never>;
+      users: ReturnType<typeof user>[];
+      contacts: never[];
+      organizationContacts: never[];
+      friendRequests: never[];
+      conversations: never[];
+      members: never[];
+    }>();
+    const bootstrap = vi
+      .fn()
+      .mockResolvedValueOnce({
+        currentUserId: "987660", config: {}, users: [user("Old name")], contacts: [],
+        organizationContacts: [], friendRequests: [], conversations: [], members: [],
+      })
+      .mockImplementationOnce(() => reconnectBootstrap.promise);
+    const getDirectoryProfile = vi.fn()
+      .mockImplementationOnce(() => staleProfile.promise)
+      .mockImplementationOnce(() => freshProfile.promise);
+    mocked.api = {
+      bootstrap,
+      getDirectoryProfile,
+    };
+
+    await renderStore();
+    const pendingProfile = store!.getDirectoryProfile("201");
+    await vi.waitFor(() => expect(getDirectoryProfile).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      mocked.subscriptionListener?.({ type: "reconnected" });
+      await vi.waitFor(() => expect(getDirectoryProfile).toHaveBeenCalledTimes(2));
+      staleProfile.resolve({
+        user: user("Old name"),
+        relationship: "friend",
+        identityCard: {
+          entityType: "user", displayName: "Old name", verified: false,
+          creditReviewCount: 0, languages: [],
+        },
+      });
+      reconnectBootstrap.resolve({
+        currentUserId: "987660", config: {}, users: [user("CutGirl")], contacts: [],
+        organizationContacts: [], friendRequests: [], conversations: [], members: [],
+      });
+      freshProfile.resolve({
+        user: user("CutGirl"),
+        relationship: "friend",
+        identityCard: {
+          entityType: "user", displayName: "CutGirl", verified: false,
+          creditReviewCount: 0, languages: [],
+        },
+      });
+      await pendingProfile;
+    });
+
+    expect(store?.usersById["201"]?.nickname).toBe("CutGirl");
   });
 
   it("replaces cached conversation and directory names after a profile event", async () => {
