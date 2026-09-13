@@ -641,8 +641,9 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
         </div>
         {post.type === "demand" ? (
           <button
+            aria-controls={post.viewer.canClaim ? "exchange-claim-panel" : undefined}
             className="min-h-12 min-w-[170px] rounded-full bg-[color:var(--client-primary)] px-6 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
-            data-action="matching-inbox"
+            data-action={post.viewer.canClaim ? "claim-panel-locator" : "matching-inbox"}
             disabled={!active || !demandActionTarget}
             onClick={revealDemandAction}
             type="button"
@@ -650,7 +651,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
             {active && post.viewer.canViewClaims
               ? t(post.demand?.matchMode === "quick" ? "quickMatchingStatus" : "matchingSelectProviders")
               : active && post.viewer.canClaim
-                ? t("claimSubmit")
+                ? t("claimViewOptions")
                 : active && post.viewer.claimUnavailableReason === "self_published"
                   ? t("claimSelfPublished")
                 : t(post.status === "matched" ? "matchingCompleted" : "claimStatusMatchingClosed")}

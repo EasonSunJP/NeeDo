@@ -21,6 +21,7 @@ const mockI18n = vi.hoisted(() => ({ language: "zh" as "zh" | "zh-Hant" | "ja" |
 const receivedClaimsMock = vi.hoisted(() => ({
   onEffectiveBudgetChange: undefined as undefined | ((budgetMaxJpy: number) => void)
 }));
+const claimPanelMock = vi.hoisted(() => ({ scrollIntoView: vi.fn() }));
 
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: mockI18n.language }) }));
 vi.mock("../../lib/share", () => ({ shareContent: vi.fn() }));
@@ -41,7 +42,16 @@ vi.mock("./ExchangeInteractions", () => ({
   )
 }));
 vi.mock("./ExchangeClaimPanel", () => ({
-  ExchangeClaimPanel: ({ post }: { post: ExchangePost }) => <div data-post-id={post.id} data-testid="formal-claim-panel" />
+  ExchangeClaimPanel: ({ post }: { post: ExchangePost }) => (
+    <div data-post-id={post.id} data-testid="formal-claim-panel">
+      <div
+        data-testid="exchange-claim-panel"
+        ref={(element) => {
+          if (element) element.scrollIntoView = claimPanelMock.scrollIntoView;
+        }}
+      />
+    </div>
+  )
 }));
 vi.mock("./ExchangeReceivedClaims", () => ({
   ExchangeReceivedClaims: ({
@@ -573,6 +583,23 @@ describe("ExchangePostDetailPage", () => {
     await waitFor(() => expect(document.body.querySelector('[data-testid="formal-claim-panel"]')).not.toBeNull());
 
     expect(document.body.querySelector('[data-testid="formal-received-claims"]')).toBeNull();
+  });
+
+  it("keeps the bottom provider action as an explicit claim-panel locator", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      viewer: { liked: false, canWithdraw: false, canClaim: true, canViewClaims: false },
+      demand: { ...demandPost.demand!, matchMode: "selective" }
+    });
+    await renderDetail("/technician/needo/posts/41", "technician");
+    await waitFor(() => expect(document.body.querySelector('[data-testid="exchange-claim-panel"]')).not.toBeNull());
+
+    const locator = document.body.querySelector<HTMLButtonElement>('[data-action="claim-panel-locator"]')!;
+    expect(locator.disabled).toBe(false);
+    expect(locator.textContent).toBe("查看抢单选项");
+    expect(locator.getAttribute("aria-controls")).toBe("exchange-claim-panel");
+    await act(async () => locator.click());
+    expect(claimPanelMock.scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
   });
 
   it.each([

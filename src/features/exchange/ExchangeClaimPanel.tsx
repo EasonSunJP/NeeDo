@@ -284,7 +284,7 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
   }
 
   return (
-    <section className={panelClassName} data-testid="exchange-claim-panel">
+    <section className={panelClassName} data-testid="exchange-claim-panel" id="exchange-claim-panel">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="font-mono text-[10px] font-black tracking-[0.24em] text-[color:var(--client-primary)]">NEEDO CLAIM</p>

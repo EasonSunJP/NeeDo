@@ -148,6 +148,46 @@ describe("ExchangeClaimPanel", () => {
     expect(document.body.textContent).toContain("留言（可选）");
   });
 
+  it("disables the real submit action when no fulfillable claim option exists", async () => {
+    vi.mocked(listExchangeClaimOptions).mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20
+    });
+    await act(async () => root.render(<ExchangeClaimPanel language="zh" post={post} />));
+    await waitFor(() => expect(document.body.textContent).toContain("指定时间内暂无可履约的技师与服务项目"));
+
+    const submit = document.body.querySelector<HTMLButtonElement>('[data-action="submit-claim"]')!;
+    expect(submit.disabled).toBe(true);
+    await act(async () => submit.click());
+    expect(createExchangeClaim).not.toHaveBeenCalled();
+  });
+
+  it("keeps the real submit action available for a selected option and legal quote", async () => {
+    vi.mocked(createExchangeClaim).mockResolvedValue(activeClaim);
+    await act(async () => root.render(<ExchangeClaimPanel language="zh" post={post} />));
+    await waitFor(() => expect(document.body.textContent).toContain("GINZA Calm Body Lab"));
+
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-option-id="91"]')!.click());
+    await act(async () => {
+      changeInput(
+        document.body.querySelector<HTMLInputElement>('input[name="claimQuoteAmountJpy"]')!,
+        "15000"
+      );
+    });
+
+    const submit = document.body.querySelector<HTMLButtonElement>('[data-action="submit-claim"]')!;
+    expect(submit.disabled).toBe(false);
+    await act(async () => submit.click());
+    await waitFor(() => expect(document.body.textContent).toContain("抢单已提交"));
+    expect(createExchangeClaim).toHaveBeenCalledWith(
+      "41",
+      { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: null },
+      "exchange-claim-ui-0001"
+    );
+  });
+
   it("submits only the chosen server option and keeps inputs after a server error", async () => {
     vi.mocked(createExchangeClaim)
       .mockRejectedValueOnce(new Error("error.exchange.claim_time_conflict"))
