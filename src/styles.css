@@ -8341,12 +8341,17 @@ html.im-conversation-scroll-lock #root {
 .im-conversation-composer-dock {
   position: fixed;
   z-index: 30;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   right: var(--im-visual-viewport-right, 0px);
   bottom: var(--im-visual-viewport-bottom, 0px);
   left: var(--im-visual-viewport-left, 0px);
   width: var(--im-visual-viewport-width, auto);
   max-width: min(880px, 100%);
+  max-height: var(--im-visual-viewport-height, 100dvh);
   margin-inline: auto;
+  overflow: hidden;
 }
 
 .im-pinned-message-container {
