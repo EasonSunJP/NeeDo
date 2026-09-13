@@ -274,6 +274,10 @@ export function resolveNeedoManualChunk(id: string): string | undefined {
     return "order-performance-i18n";
   }
 
+  if (normalizedId.endsWith("/src/features/field-jobs/i18n.ts")) {
+    return "field-jobs-i18n";
+  }
+
   if (normalizedId.endsWith("/src/features/technician-schedule/automation-i18n.ts")) {
     return "technician-automation-i18n";
   }

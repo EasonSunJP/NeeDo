@@ -21,7 +21,6 @@ import { AdminDispatchPage } from "./pages/admin/AdminDispatchPage";
 import { AdminSupportPage } from "./pages/admin/AdminSupportPage";
 import { AvatarBadgesPage } from "./pages/admin/AvatarBadgesPage";
 import { CitySettingsPage } from "./pages/admin/CitySettingsPage";
-import { FieldJobsPage } from "./pages/admin/FieldJobsPage";
 import { FinancePage } from "./pages/admin/FinancePage";
 import { FloorplanPage } from "./pages/admin/FloorplanPage";
 import { InventoryPage } from "./pages/admin/InventoryPage";
@@ -240,6 +239,7 @@ const MerchantBackofficeApplicationReviewPage = lazy(() => import("./features/id
 const OperationsShopApplicationReviewPage = lazy(() => import("./features/identity-applications/BackofficeReviewPages").then((module) => ({ default: module.OperationsShopApplicationReviewPage })));
 const OperationTimelinePage = lazy(() => import("./pages/admin/OperationTimelinePage").then((module) => ({ default: module.OperationTimelinePage })));
 const OrdersAdminPage = lazy(() => import("./pages/admin/OrdersAdminPage").then((module) => ({ default: module.OrdersAdminPage })));
+const FieldJobsPage = lazy(() => import("./pages/admin/FieldJobsPage").then((module) => ({ default: module.FieldJobsPage })));
 const CarouselPage = lazy(() => import("./pages/admin/CarouselPage").then((module) => ({ default: module.CarouselPage })));
 
 type SplashPortal = "user" | "business" | "businessAdmin" | "merchant" | "technician" | "admin" | "merchantAdmin";
@@ -1553,7 +1553,7 @@ export default function App() {
               <Route path="/admin/orders/demands" element={protectPermission("admin", "backoffice:exchange:read", <NeedoDemandAdminPage />)} />
               <Route path="/admin/orders/info" element={protectPermission("admin", "backoffice:exchange:read", <NeedoInfoAdminPage />)} />
               <Route path="/admin/dispatch" element={protect("admin", <AdminDispatchPage />)} />
-              <Route path="/admin/field-jobs" element={protect("admin", <FieldJobsPage />)} />
+              <Route path="/admin/field-jobs" element={protect("admin", <Suspense fallback={null}><FieldJobsPage /></Suspense>)} />
               <Route path="/admin/crm" element={protect("admin", <LegacyUserManagementRedirect source="crm" />)} />
               <Route path="/admin/users" element={protectPermission("admin", "backoffice:users:read", <LegacyUserManagementRedirect source="users"><Suspense fallback={null}><PlatformUserListPage /></Suspense></LegacyUserManagementRedirect>)} />
               <Route path="/admin/user-groups" element={protectPermission("admin", "backoffice:user-group:read", <Suspense fallback={null}><UserGroupsPage /></Suspense>)} />

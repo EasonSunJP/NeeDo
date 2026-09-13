@@ -138,6 +138,11 @@ export const TRAVEL_FARE_PERMISSIONS = {
   estimateCreate: "booking:travel-estimate:create"
 } as const;
 
+export const FIELD_JOB_PERMISSIONS = {
+  read: "backoffice:field-jobs:read",
+  addressRead: "backoffice:field-jobs:address:read"
+} as const;
+
 export const PLATFORM_SETTINGS_PERMISSIONS = {
   read: "backoffice:system-settings:read",
   write: "backoffice:system-settings:write",
@@ -1041,6 +1046,20 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "backoffice",
     "分页读取运营后台真实订单"
+  ),
+  createPermission(
+    FIELD_JOB_PERMISSIONS.read,
+    "运营上门工单读取",
+    "api",
+    "backoffice",
+    "分页读取由正式上门订单投影的运营工单"
+  ),
+  createPermission(
+    FIELD_JOB_PERMISSIONS.addressRead,
+    "运营上门地址读取",
+    "api",
+    "backoffice",
+    "读取正式上门工单的完整履约地址"
   ),
   createPermission(
     "backoffice:schedule:list",
@@ -2430,6 +2449,8 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:order-acceptance-pause:write",
   "backoffice:order-performance:write",
   "backoffice:orders:list",
+  FIELD_JOB_PERMISSIONS.read,
+  FIELD_JOB_PERMISSIONS.addressRead,
   "backoffice:schedule:list",
   "backoffice:finance:list",
   "backoffice:finance:export",

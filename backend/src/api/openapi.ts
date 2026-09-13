@@ -9,6 +9,7 @@ import {
   exchangeOperationsOpenApiPaths,
   exchangeOperationsOpenApiSchemas
 } from "./exchange-operations.openapi";
+import { fieldJobOpenApiPaths, fieldJobOpenApiSchemas } from "./field-job.openapi";
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "../config/env";
@@ -3285,6 +3286,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     schemas: {
+      ...fieldJobOpenApiSchemas,
       ...exchangeOperationsOpenApiSchemas,
       ...shopMembershipCardPlanOpenApiSchemas,
       ...orderRefundOpenApiSchemas,
@@ -17358,6 +17360,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    ...fieldJobOpenApiPaths(config.API_PREFIX),
     ...releasePublicationOpenApiPaths(config.API_PREFIX),
     ...operationsMemberOpenApiPaths(config.API_PREFIX),
     ...ekycApplicationOpenApiPaths(config.API_PREFIX),

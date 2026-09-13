@@ -117,6 +117,7 @@ import type { RouteEstimateRepositoryPort } from "./services/route-estimate.serv
 import type { RouteDistanceProvider } from "./services/route-distance.provider";
 import type { RouteProviderHealthStorePort } from "./services/route-provider-health";
 import type { TravelOperationsRepositoryPort } from "./services/travel-operations.service";
+import type { FieldJobRepositoryPort } from "./services/field-job.service";
 import type { OrderAcceptancePauseRepositoryPort } from "./services/order-acceptance-pause.service";
 import type { NdpExchangeRateService } from "./services/ndp-exchange-rate.service";
 import type { OrderPerformanceRepositoryPort } from "./repositories/order-performance.repository";
@@ -228,6 +229,7 @@ import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.rout
 import { createShopTravelFarePolicyRoutes } from "./routes/shop-travel-fare-policy.routes";
 import { createRouteEstimateRoutes } from "./routes/route-estimate.routes";
 import { createTravelOperationsRoutes } from "./routes/travel-operations.routes";
+import { createFieldJobRoutes } from "./routes/field-job.routes";
 import { createPlatformMembershipRoutes } from "./routes/platform-membership.routes";
 import { createPlatformSettingsRoutes } from "./routes/platform-settings.routes";
 import { createBackofficeUserGroupRoutes } from "./routes/backoffice-user-group.routes";
@@ -414,6 +416,7 @@ export interface AppDependencies {
   routeDistanceProvider?: RouteDistanceProvider;
   routeProviderHealthStore?: RouteProviderHealthStorePort;
   travelOperationsRepository?: TravelOperationsRepositoryPort;
+  fieldJobRepository?: FieldJobRepositoryPort;
   orderAcceptancePauseRepository?: OrderAcceptancePauseRepositoryPort;
   orderPerformanceRepository?: OrderPerformanceRepositoryPort;
   orderRefundCaseRepository?: OrderRefundCaseRepositoryPort;
@@ -799,6 +802,7 @@ export const createApp = (
   mount("merchant-admin", createShopTravelFarePolicyRoutes(config, resolvedDependencies));
   mount("shared", createRouteEstimateRoutes(config, resolvedDependencies));
   mount("backoffice", createTravelOperationsRoutes(config, resolvedDependencies));
+  mount("backoffice", createFieldJobRoutes(config, resolvedDependencies));
   mount("backoffice", createPlatformMembershipRoutes(config, resolvedDependencies));
   mount("backoffice", createUserExperienceRoutes(config, resolvedDependencies));
   mount("backoffice", createBackofficeUserGroupRoutes(config, resolvedDependencies));
