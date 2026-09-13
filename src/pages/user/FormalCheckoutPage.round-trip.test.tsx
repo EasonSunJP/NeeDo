@@ -868,6 +868,40 @@ describe("formal checkout technician-card round trip", () => {
     await waitFor(() => expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe("/origin"));
   });
 
+  it("shows the dedicated verified-address error without mislabeling it as a stale time slot", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technicianDetail);
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
+      list: slots,
+      total: slots.length,
+      page: 1,
+      page_size: 100
+    });
+    vi.spyOn(bookingApi, "createBooking").mockRejectedValue(
+      new ApiClientError("error.booking.service_location_unresolved", 409, 41044)
+    );
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=08%3A00&mode=store"]}>
+            <Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+
+    await waitFor(() => expect(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')?.textContent).toContain("08:00"));
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确定预约"))!;
+    await click(confirm);
+
+    await waitFor(() => expect(container.textContent).toContain("店铺正式地址尚未完成核验"));
+    expect(container.textContent).not.toContain("所选预约时段已失效");
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')?.textContent).toContain("—");
+  });
+
   it("loads the selected Haruka slot technician card instead of the service-default Misaki card", async () => {
     vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
     vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);

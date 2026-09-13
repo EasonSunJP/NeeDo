@@ -54,12 +54,25 @@ describe("LifeDance shop service-location repair", () => {
               verifiedAt: new Date("2026-09-09T00:00:00.000Z"),
               verifiedById: 7,
               deletedAt: null,
-              admin1Region: { id: 1300, officialCode: "13", deletedAt: null },
+              admin1Region: {
+                id: 1300,
+                countryCode: "JP",
+                officialCode: "13",
+                sourceVersion: "N03-20260101",
+                level: "ADMIN1",
+                parentId: 1,
+                deletedAt: null,
+                locales: [{ name: "東京都" }]
+              },
               admin2Region: {
                 id: 13103,
+                countryCode: "JP",
                 officialCode: "13103",
+                sourceVersion: "N03-20260101",
+                level: "ADMIN2",
                 parentId: 1300,
-                deletedAt: null
+                deletedAt: null,
+                locales: [{ name: "港区" }]
               }
             }
           }

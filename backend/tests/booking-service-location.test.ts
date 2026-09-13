@@ -1,5 +1,6 @@
 import { BookingRepository } from "../src/repositories/booking.repository";
 import { BookingService } from "../src/services/booking.service";
+import { ERROR_CODES } from "../src/constants/error-codes";
 import { hashRouteAddress, shopAddressToJapaneseRouteAddress } from "../src/services/route-estimate.service";
 
 const fulfillmentAddress = { countryCode: "JP" as const, postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" };
@@ -347,6 +348,7 @@ describe("booking service-location snapshots", () => {
         serviceLocation: { source: "SHOP_LOCATION" }
       } as never)
     ).rejects.toMatchObject({
+      code: ERROR_CODES.BOOKING_SERVICE_LOCATION_UNRESOLVED,
       message: "error.booking.service_location_unresolved",
       statusCode: 409
     });
@@ -367,6 +369,7 @@ describe("booking service-location snapshots", () => {
         serviceLocation: { source: "SHOP_LOCATION" }
       } as never)
     ).rejects.toMatchObject({
+      code: ERROR_CODES.BOOKING_SERVICE_LOCATION_UNRESOLVED,
       message: "error.booking.service_location_unresolved",
       statusCode: 409
     });
@@ -387,6 +390,7 @@ describe("booking service-location snapshots", () => {
         serviceLocation: { source: "SHOP_LOCATION" }
       } as never)
     ).rejects.toMatchObject({
+      code: ERROR_CODES.BOOKING_SERVICE_LOCATION_UNRESOLVED,
       message: "error.booking.service_location_unresolved",
       statusCode: 409
     });
