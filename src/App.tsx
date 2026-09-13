@@ -1568,7 +1568,7 @@ export default function App() {
               <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
               <Route path="/admin/finance/membership-reward-fee" element={protectPermission("admin", "page:backoffice-membership-reward-fee", <MembershipRewardFeePage />)} />
               <Route path="/admin/finance/operating-costs" element={protectPermission("admin", "backoffice:operating-cost:read", <Suspense fallback={null}><OperatingCostsPage /></Suspense>)} />
-              <Route path="/admin/reviews" element={protect("admin", <ReviewsPage />)} />
+              <Route path="/admin/reviews" element={protectPermission("admin", "backoffice:users:read", <ReviewsPage />)} />
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
               <Route path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />
               <Route path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />

@@ -11,6 +11,64 @@ const operationsActor = {
 };
 
 describe("BackofficeUserReviewService", () => {
+  it("resolves Tokyo calendar dates before listing the operations review center", async () => {
+    const listOperationsReviews = jest.fn(async () => ({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20 as const
+    }));
+    const service = new BackofficeUserReviewService(
+      {
+        isUserVisibleInMerchantScope: jest.fn(),
+        listReceivedReviews: jest.fn(),
+        listOperationsReviews,
+        getOperationsReview: jest.fn(),
+        createAmendmentWithAudit: jest.fn()
+      },
+      { createInput: jest.fn() } as never
+    );
+
+    await service.listOperationsReviews(operationsActor, {
+      page: 1,
+      page_size: 20,
+      keyword: "QA-20260910-RQ-001",
+      rating: 5,
+      status: "original",
+      targetType: "technician",
+      from: "2026-09-10",
+      to: "2026-09-10"
+    });
+
+    expect(listOperationsReviews).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 20,
+      keyword: "QA-20260910-RQ-001",
+      rating: 5,
+      status: "original",
+      targetType: "technician",
+      from: new Date("2026-09-09T15:00:00.000Z"),
+      to: new Date("2026-09-10T15:00:00.000Z")
+    });
+  });
+
+  it("returns a global review detail and hides missing records", async () => {
+    const getOperationsReview = jest.fn().mockResolvedValueOnce({ reviewId: 77 }).mockResolvedValueOnce(null);
+    const service = new BackofficeUserReviewService(
+      {
+        isUserVisibleInMerchantScope: jest.fn(),
+        listReceivedReviews: jest.fn(),
+        listOperationsReviews: jest.fn(),
+        getOperationsReview,
+        createAmendmentWithAudit: jest.fn()
+      },
+      { createInput: jest.fn() } as never
+    );
+
+    await expect(service.getOperationsReview(operationsActor, 77)).resolves.toEqual({ reviewId: 77 });
+    await expect(service.getOperationsReview(operationsActor, 999)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
   it("uses the selected merchant shop before repository pagination", async () => {
     const listReceivedReviews = jest.fn(async () => ({
       list: [],
@@ -20,6 +78,8 @@ describe("BackofficeUserReviewService", () => {
     }));
     const service = new BackofficeUserReviewService(
       {
+        listOperationsReviews: jest.fn(),
+        getOperationsReview: jest.fn(),
         isUserVisibleInMerchantScope: jest.fn(async () => true),
         listReceivedReviews,
         createAmendmentWithAudit: jest.fn()
@@ -51,6 +111,8 @@ describe("BackofficeUserReviewService", () => {
     const listReceivedReviews = jest.fn();
     const service = new BackofficeUserReviewService(
       {
+        listOperationsReviews: jest.fn(),
+        getOperationsReview: jest.fn(),
         isUserVisibleInMerchantScope: jest.fn(async () => false),
         listReceivedReviews,
         createAmendmentWithAudit: jest.fn()
@@ -86,6 +148,8 @@ describe("BackofficeUserReviewService", () => {
     }));
     const service = new BackofficeUserReviewService(
       {
+        listOperationsReviews: jest.fn(),
+        getOperationsReview: jest.fn(),
         isUserVisibleInMerchantScope: jest.fn(),
         listReceivedReviews: jest.fn(),
         createAmendmentWithAudit
@@ -123,6 +187,8 @@ describe("BackofficeUserReviewService", () => {
   it("maps stale immutable versions to a conflict", async () => {
     const service = new BackofficeUserReviewService(
       {
+        listOperationsReviews: jest.fn(),
+        getOperationsReview: jest.fn(),
         isUserVisibleInMerchantScope: jest.fn(),
         listReceivedReviews: jest.fn(),
         createAmendmentWithAudit: jest.fn(async () => ({ kind: "version_conflict" as const }))

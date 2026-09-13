@@ -482,7 +482,11 @@ export interface AppDependencies {
   backofficeUserReviewRepository?: BackofficeUserReviewRepositoryPort;
   backofficeUserReviewService?: Pick<
     BackofficeUserReviewService,
-    "listForOperations" | "listForMerchant" | "amend"
+    | "listOperationsReviews"
+    | "getOperationsReview"
+    | "listForOperations"
+    | "listForMerchant"
+    | "amend"
   >;
   backofficeUserUsageRepository?: BackofficeUserUsageRepositoryPort;
   backofficeUserUsageService?: Pick<

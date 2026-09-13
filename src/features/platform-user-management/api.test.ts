@@ -162,6 +162,56 @@ describe("platformUserManagementApi", () => {
     );
   });
 
+  it("lists and reads strict formal operations review records", async () => {
+    const review = {
+      reviewId: 77,
+      status: "amended",
+      targetType: "technician",
+      rating: 4,
+      comment: "QA-20260910-RQ-001 技術者サービス評価",
+      tags: ["professional"],
+      createdAt: "2026-09-10T03:00:00.000Z",
+      amendmentVersion: 1,
+      amendmentHistory: [{ version: 1, rating: 4, comment: "Corrected", tags: ["professional"], reason: "Evidence", revisedAt: "2026-09-11T03:00:00.000Z", revisedBy: "Operator" }],
+      order: { id: 88, orderNo: "B-88", serviceName: "ボディケア 60分", startsAt: "2026-09-10T02:00:00.000Z", shopName: "LifeDance", durationMinutes: 60, note: null, paymentMethod: "ndp", paymentStatus: "confirmed", paymentCurrency: "NDP", otherPaymentMethod: null, addOnCount: 0, addOnMinutes: 0 },
+      reviewer: { needoId: "u0000000001", displayName: "Eason", avatarUrl: null },
+      customer: { needoId: "u0000000001", displayName: "Eason" },
+      shop: { id: 79, publicId: "b000000079", name: "LifeDance" },
+      technician: { id: 186, publicId: "s0000000002", displayName: "LifeDance 管理员 2" }
+    };
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce({ list: [review], total: 1, page: 1, page_size: 20 })
+      .mockResolvedValueOnce(review);
+
+    const page = await platformUserManagementApi.listOperationsReviews({
+      page: 1,
+      page_size: 20,
+      keyword: "QA-20260910-RQ-001",
+      rating: 4,
+      status: "amended",
+      targetType: "technician",
+      from: "2026-09-10",
+      to: "2026-09-10"
+    });
+    const detail = await platformUserManagementApi.getOperationsReview(77);
+
+    expect(page.list[0]).toEqual(review);
+    expect(detail.amendmentHistory[0].reason).toBe("Evidence");
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/backoffice/reviews", {
+      query: {
+        page: 1,
+        page_size: 20,
+        keyword: "QA-20260910-RQ-001",
+        rating: 4,
+        status: "amended",
+        targetType: "technician",
+        from: "2026-09-10",
+        to: "2026-09-10"
+      }
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/backoffice/reviews/77");
+  });
+
   it("decodes formal payment and extra-time facts and rejects invented payment states", async () => {
     const review = {
       reviewId: 77, targetType: "customer", rating: 5, comment: null, tags: [],

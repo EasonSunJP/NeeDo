@@ -82,7 +82,7 @@ const navSections: AdminNavSection[] = [
       { label: "订单管理", to: "/admin/orders", icon: "单", children: ["服务订单", "拒单管理", "加钟订单"] },
       { label: "需求中心", to: "/admin/orders/demands", icon: "需", permission: "backoffice:exchange:read", children: ["用户需求", "抢单响应", "匹配记录"] },
       { label: "情报中心", to: "/admin/orders/info", icon: "情", permission: "backoffice:exchange:read", children: ["商户情报", "技师情报", "匹配记录"] },
-      { label: "评价管理", to: "/admin/reviews", icon: "评", children: ["评价列表", "评价标签"] },
+      { label: "评价管理", to: "/admin/reviews", icon: "评", permission: "backoffice:users:read", children: ["评价列表", "评价标签"] },
       { label: "订单设置", to: "/admin/settings/system?tab=basic", icon: "设", permission: "backoffice:system-settings:read" },
       { label: "上门工单", to: "/admin/field-jobs", icon: "工" }
     ]
