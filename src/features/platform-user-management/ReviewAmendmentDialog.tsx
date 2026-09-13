@@ -4,7 +4,14 @@ import { Button } from "../../components/ui/Button";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import { platformUserManagementApi } from "./api";
-import type { ReceivedUserReview } from "./types";
+
+type ReviewAmendmentTarget = {
+  reviewId: number;
+  rating: number;
+  comment: string | null;
+  tags: string[];
+  amendmentVersion: number;
+};
 
 const copy: Record<Language, Record<string, string>> = {
   zh: {
@@ -83,7 +90,7 @@ export function ReviewAmendmentDialog({
   review,
   onSaved,
 }: {
-  review: ReceivedUserReview;
+  review: ReviewAmendmentTarget;
   onSaved: () => void;
 }) {
   const { language } = useOptionalI18n();

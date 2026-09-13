@@ -16,6 +16,10 @@ vi.mock("../../components/admin/ModuleShell", () => ({
   ModuleShell: ({ children, title }: { children: ReactNode; title: string }) => <section><h1>{title}</h1>{children}</section>
 }));
 
+vi.mock("../../auth/AuthProvider", () => ({
+  useAuth: () => ({ hasPermission: () => true })
+}));
+
 const review = {
   reviewId: 77,
   status: "amended" as const,
@@ -35,8 +39,7 @@ const review = {
 
 async function flush() {
   await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
   });
 }
 
@@ -53,16 +56,20 @@ let root: Root;
 
 describe("ReviewsPage formal review management", () => {
   beforeEach(() => {
+    window.localStorage.setItem("needo.language", "zh");
+    window.localStorage.setItem("needo.language.mode", "manual");
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
     vi.spyOn(platformUserManagementApi, "listOperationsReviews").mockResolvedValue({ list: [review], total: 41, page: 1, page_size: 20 });
     vi.spyOn(platformUserManagementApi, "getOperationsReview").mockResolvedValue(review);
+    vi.spyOn(platformUserManagementApi, "amendReview").mockResolvedValue({ reviewId: 77, version: 2 });
   });
 
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+    window.localStorage.clear();
     vi.restoreAllMocks();
   });
 
@@ -109,5 +116,39 @@ describe("ReviewsPage formal review management", () => {
     expect(container.textContent).toContain("LifeDance 管理员 2");
     expect(container.textContent).toContain("证据复核");
     expect(container.textContent).not.toContain("正式评价功能尚未启用");
+  });
+
+  it("appends an immutable amendment for a technician review from the global detail", async () => {
+    await act(async () => root.render(<ReviewsPage />));
+    await flush();
+
+    const details = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("详情"));
+    await act(async () => details?.click());
+    await flush();
+
+    const edit = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "修改评价");
+    expect(
+      edit,
+      `buttons: ${Array.from(container.querySelectorAll("button")).map((button) => button.textContent).join(" | ")}`
+    ).toBeTruthy();
+    await act(async () => edit?.click());
+    const textareas = container.querySelectorAll("textarea");
+    const reason = textareas[textareas.length - 1];
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(reason, "技师服务证据复核");
+      reason.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const save = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "保存修改");
+    await act(async () => save?.click());
+    await flush();
+
+    expect(platformUserManagementApi.amendReview).toHaveBeenCalledWith(77, {
+      rating: 4,
+      comment: "QA-20260910-RQ-001 技術者サービス評価",
+      tags: ["professional"],
+      reason: "技师服务证据复核",
+      expectedVersion: 1
+    });
+    expect(platformUserManagementApi.getOperationsReview).toHaveBeenCalledTimes(2);
   });
 });

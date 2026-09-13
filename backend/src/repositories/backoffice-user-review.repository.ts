@@ -325,13 +325,14 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
           where: {
             id: input.reviewId,
             authorType: "USER",
-            targetType: OrderReviewTargetType.CUSTOMER,
             deletedAt: null,
             bookingOrder: { status: BookingOrderStatus.COMPLETED, deletedAt: null }
           },
           select: {
             id: true,
+            targetType: true,
             customerProfile: { select: { userId: true } },
+            technicianProfile: { select: { userId: true } },
             bookingOrder: { select: { shopId: true } },
             rating: true,
             comment: true,
@@ -357,7 +358,12 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
             }
           }
         });
-        if (!review || !review.customerProfile) return { kind: "not_found" as const };
+        if (!review) return { kind: "not_found" as const };
+        const targetUserId =
+          review.targetType === OrderReviewTargetType.CUSTOMER
+            ? review.customerProfile?.userId
+            : review.technicianProfile?.userId;
+        if (!targetUserId) return { kind: "not_found" as const };
         const current = review.amendments[0] ?? null;
         const currentVersion = current?.version ?? 0;
         if (currentVersion !== input.expectedVersion) {
@@ -384,9 +390,10 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
             targetId: amendment.id,
             metadata: {
               ...this.metadataObject(input.audit.metadata),
-              userId: review.customerProfile.userId,
+              userId: targetUserId,
               shopId: review.bookingOrder.shopId,
               reviewId: review.id,
+              targetType: review.targetType.toLowerCase(),
               version,
               reason: input.reason
             }

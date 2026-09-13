@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiClientError } from "../../api/httpClient";
+import { useAuth } from "../../auth/AuthProvider";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
@@ -7,6 +8,7 @@ import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { FilterBar } from "../../components/ui/FilterBar";
+import { ReviewAmendmentDialog } from "../../features/platform-user-management/ReviewAmendmentDialog";
 import { platformUserManagementApi } from "../../features/platform-user-management/api";
 import type {
   OperationsReview,
@@ -50,7 +52,9 @@ function displayValue(value: string | number | null | undefined) {
 }
 
 export function ReviewsPage() {
+  const { hasPermission } = useAuth();
   const { language } = useOptionalI18n();
+  const canAmend = hasPermission("backoffice:customers:write");
   const [rows, setRows] = useState<OperationsReview[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -159,6 +163,11 @@ export function ReviewsPage() {
     setSelectedReview(null);
     setDetailStatus("idle");
     setDetailError("");
+  };
+
+  const refreshReviewAfterAmendment = () => {
+    setRevision((value) => value + 1);
+    if (selectedReview) void openReview(selectedReview);
   };
 
   return (
@@ -297,7 +306,15 @@ export function ReviewsPage() {
                   <p className="text-xs font-black text-moss">评价 #{selectedReview.reviewId}</p>
                   <h3 className="mt-1 text-xl font-black text-ink">{selectedReview.rating.toFixed(1)} / 5</h3>
                 </div>
-                <Badge tone={statusTone(selectedReview.status)}>{statusLabel(selectedReview.status)}</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  {canAmend && selectedReview.status !== "system" ? (
+                    <ReviewAmendmentDialog
+                      onSaved={refreshReviewAfterAmendment}
+                      review={selectedReview}
+                    />
+                  ) : null}
+                  <Badge tone={statusTone(selectedReview.status)}>{statusLabel(selectedReview.status)}</Badge>
+                </div>
               </div>
               <p className="mt-4 whitespace-pre-wrap text-sm font-semibold leading-7 text-ink/75">{selectedReview.comment ?? "无文字评价"}</p>
               <div className="mt-3 flex flex-wrap gap-2">

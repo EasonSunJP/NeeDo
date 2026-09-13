@@ -25361,7 +25361,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         operationId: "amendBackofficeUserReview",
         tags: ["User Management"],
-        summary: "Append an audited correction to a received user review",
+        summary: "Append an audited correction to a customer or technician review",
         description:
           "Creates an immutable successor snapshot with a required operator reason. Original reviews and prior amendments are never updated or deleted.",
         security: [{ bearerAuth: [] }],
@@ -25382,7 +25382,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "400": { description: "Validation failed" },
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
-          "404": { description: "Completed customer review not found" },
+          "404": {
+            description: "Completed user-authored customer or technician review not found"
+          },
           "409": { description: "Amendment version conflict" }
         }
       }

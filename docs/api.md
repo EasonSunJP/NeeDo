@@ -185,7 +185,7 @@ exposed.
 |---|---|---|---|
 | `GET` | `/api/v1/backoffice/reviews` | Server-paginated formal completed-order reviews | `backoffice:users:read` |
 | `GET` | `/api/v1/backoffice/reviews/:reviewId` | One formal review with related order, user, shop, technician and immutable amendments | `backoffice:users:read` |
-| `POST` | `/api/v1/backoffice/reviews/:reviewId/amendments` | Append an audited immutable amendment for a customer review | `backoffice:customers:write` |
+| `POST` | `/api/v1/backoffice/reviews/:reviewId/amendments` | Append an audited immutable amendment for a user-authored customer or technician review | `backoffice:customers:write` |
 
 The global list has a fixed `page_size=20` and accepts `keyword`, effective
 `rating`, persisted-fact `status` (`original`, `amended`, or `system`),
