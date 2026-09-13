@@ -3931,7 +3931,6 @@ export const translations: TranslationMap = {
   "動画": { "zh-Hant": "動畫", ja: "動画", en: "Video", ko: "동영상" },
   "都道府县": { "zh-Hant": "都道府縣", ja: "都道府県", en: "Prefectures", ko: "현" },
   "独立": { "zh-Hant": "獨立", ja: "独立", en: "Independent", ko: "독립" },
-  "独立技师": { "zh-Hant": "獨立技師", ja: "独立スタッフ", en: "Independent technician", ko: "독립 기사" },
   "独立更衣": { "zh-Hant": "獨立更衣", ja: "独立した更衣室", en: "Independent changing rooms", ko: "개별 탈의실" },
   "独立联盟营销增长平台，管理推广计划、素材、归因、佣金、NDP 与风控。": { "zh-Hant": "獨立聯盟營銷增長平台，管理推廣計劃、素材、歸因、傭金、NDP 與風控。", ja: "独立アフィリエイト増加プラットフォーム、管理紹介キャンペーン／素材／帰属／手数料／関連項目に関する説明です。", en: "Affiliate Marketing Campaign Promotion Manage Platform. / Creative / Attribution / Commission / Other.", ko: "제휴 마케팅 홍보 캠페인 홍보 관리 플랫폼 / 소재 / 속성 / 수수료" },
   "独立收入": { "zh-Hant": "獨立收入", ja: "独立した収入", en: "Independent income", ko: "독립적인 수입" },

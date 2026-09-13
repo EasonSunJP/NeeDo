@@ -197,7 +197,10 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
   const rating = technician ? Number(technician.reviewSummary.ratingAverage || 0) : 0;
-  const shopName = technician?.shop?.name ?? (profile.shopId ? "关联店铺" : "个人技师");
+  const primaryAffiliation =
+    profile.shopAffiliations.find((affiliation) => affiliation.shopId === profile.shopId) ??
+    profile.shopAffiliations[0];
+  const shopName = technician?.shop?.name ?? primaryAffiliation?.name ?? "归属店铺待确认";
   const [tasksPanelTab, setTasksPanelTab] = useState<"schedule" | "orders">("schedule");
   const cacheScope = getAuthenticatedPersistentCacheScope();
   const now = new Date();
@@ -296,7 +299,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate text-xs font-bold text-white/60">{shopName}</p>
-                    <Badge tone="green">{profile.employmentType === "independent" ? "个人技师" : "店铺所属"}</Badge>
+                    <Badge tone="green">店铺所属</Badge>
                   </div>
                   <p className="mt-4 text-xs font-bold text-white/50">{t("本月确认收入")}</p>
                   <p className="mt-1 text-[34px] font-black tracking-[-0.05em]">{completedRevenue === null ? "—" : yen(completedRevenue)}</p>

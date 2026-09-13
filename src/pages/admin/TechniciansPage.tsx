@@ -281,7 +281,7 @@ export function TechniciansPage({ embeddedDetail }: {
                 { key: "applicant", title: "申请人", render: (row) => <button className="font-black text-moss hover:underline" onClick={() => openTechnician(mapBackofficeTechnician(row))} type="button">{row.displayName}</button> },
                 { key: "email", title: "邮箱", render: (row) => row.email },
                 { key: "city", title: "城市", render: (row) => row.city },
-                { key: "type", title: "申请类型", render: (row) => row.shopId ? row.shopName ?? "店铺所属技师" : "个人技师" },
+                { key: "type", title: "申请类型", render: (row) => row.shopId ? row.shopName ?? "店铺所属技师" : "归属店铺待确认" },
                 { key: "submittedAt", title: "创建时间", render: (row) => row.createdAt },
                 { key: "status", title: "状态", render: () => <Badge tone="yellow">待审核</Badge> }
               ]}

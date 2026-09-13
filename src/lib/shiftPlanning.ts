@@ -822,7 +822,7 @@ export function resolveScheduleContext({
   storeId?: string | null;
 }): ScheduleContext {
   const scopedStoreId = storeId ?? technician?.storeId ?? null;
-  const isIndependent = !scopedStoreId || technician?.identityLabel === "个人技师";
+  const isIndependent = !scopedStoreId || technician?.identityLabel === "待归属";
 
   if (!technician || isIndependent) {
     return {

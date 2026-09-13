@@ -71,7 +71,7 @@ Test accounts remain available for local and staging verification, but every por
 | `operator@example.com` | `operator` | Operations admin basic features |
 | `merchant@example.com` | `customer + technician + merchant + scout` | Customer / technician / merchant / affiliate switch acceptance |
 | `affiliate@example.com` | `broker` | Afirieito / NDA admin |
-| `technician@example.com` | `customer + technician + scout` | Customer / technician / affiliate switch acceptance |
+| `technician@example.com` | `customer + technician + scout` | Customer / shop-affiliated technician / affiliate switch acceptance |
 | `customer@example.com` | `customer` | C-side user app; other identities remain application actions |
 
 ## Staging

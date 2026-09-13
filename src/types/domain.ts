@@ -285,7 +285,7 @@ export interface Technician extends Staff {
   gender?: "male" | "female" | "private";
   age?: string;
   height?: string;
-  identityLabel?: "店铺所属技师" | "个人技师";
+  identityLabel?: "店铺所属技师" | "待归属";
   relatedStoreIds?: string[];
   profileTags?: string[];
   canServeForeigners?: boolean;

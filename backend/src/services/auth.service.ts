@@ -59,7 +59,7 @@ export interface MerchantShopAuditOutboxTrigger {
   trigger: () => void;
 }
 
-const TECHNICIAN_SHOP_ONBOARDING_PERMISSIONS = new Set(["identity-application:own", "technician-profile:read"]);
+const TECHNICIAN_IDENTITY_TYPES = new Set(["technician", "service", "s"]);
 
 export interface TokenPairPayload {
   accessToken: string;
@@ -2250,8 +2250,18 @@ export class AuthService {
               ? user.needoId
               : null
       }));
+    const technicianAffiliationIsKnown = user.technicianProfile !== undefined;
+    const technicianHasActiveShop = Boolean(
+      user.technicianProfile?.technicianShopAffiliations.length
+    );
+    const eligibleActiveIdentities = allActiveIdentities.filter(
+      (identity) =>
+        !TECHNICIAN_IDENTITY_TYPES.has(identity.type) ||
+        !technicianAffiliationIsKnown ||
+        technicianHasActiveShop
+    );
     const publicIdentityById = new Map<string, AuthIdentityPayload>();
-    for (const identity of allActiveIdentities) {
+    for (const identity of eligibleActiveIdentities) {
       if (!identity.publicId) {
         continue;
       }
@@ -2261,14 +2271,14 @@ export class AuthService {
         publicIdentityById.set(identity.publicId, identity);
       }
     }
-    const sharedPrimaryPublicId = allActiveIdentities.find(
+    const sharedPrimaryPublicId = eligibleActiveIdentities.find(
       (identity) => identity.publicId !== null
     )?.publicId;
-    const hasCustomerIdentity = allActiveIdentities.some((identity) =>
+    const hasCustomerIdentity = eligibleActiveIdentities.some((identity) =>
       ["customer", "user", "u"].includes(identity.type)
     );
     const sharedPrimaryIdentities = sharedPrimaryPublicId
-      ? allActiveIdentities
+      ? eligibleActiveIdentities
           .filter(
             (identity) =>
               (["customer", "user", "u"].includes(identity.type) ||
@@ -2278,7 +2288,7 @@ export class AuthService {
           .map((identity) => ({ ...identity, publicId: sharedPrimaryPublicId }))
       : [];
     const projectedPublicIdentities = Array.from(publicIdentityById.values());
-    const preservedAuthIdentities = allActiveIdentities.filter((identity) => {
+    const preservedAuthIdentities = eligibleActiveIdentities.filter((identity) => {
       const sourceIdentity = user.identities.find((source) => source.id === identity.id);
       const mustPreserve =
         sourceIdentity?.isDefault || ["platform", "platform_admin"].includes(identity.type);
@@ -2296,7 +2306,7 @@ export class AuthService {
             ...sharedPrimaryIdentities
           ]
         : this.allowLegacyAuthAdaptersForTest
-          ? allActiveIdentities
+          ? eligibleActiveIdentities
           : [];
     const currentIdentity =
       identities.find((identity) => identity.id === currentIdentityId) ??
@@ -2330,8 +2340,7 @@ export class AuthService {
       }
     }
 
-    const technicianRequiresShop = ["technician", "service", "s"].includes(currentIdentity.type) && user.technicianProfile !== undefined && (user.technicianProfile === null || user.technicianProfile.technicianShopAffiliations.length === 0);
-    const permissionCodes = Array.from(permissions.keys()).filter((code) => !technicianRequiresShop || code.startsWith("auth:") || code.startsWith("menu:") || TECHNICIAN_SHOP_ONBOARDING_PERMISSIONS.has(code));
+    const permissionCodes = Array.from(permissions.keys());
 
     return {
       id: user.id,
@@ -2352,7 +2361,7 @@ export class AuthService {
       isTestAccount: user.isTestAccount,
       currentIdentity,
       identities,
-      identityAvailability: this.buildIdentityAvailability(user, allActiveIdentities),
+      identityAvailability: this.buildIdentityAvailability(user, eligibleActiveIdentities),
       roles: Array.from(roles),
       permissions: permissionCodes,
       menus: permissionCodes.filter((code) => permissions.get(code) === "menu")

@@ -90,7 +90,10 @@ describe("formal profile detail OpenAPI contract", () => {
       type: ["string", "null"],
       format: "date-time"
     });
-    expect(update.properties.employmentType).toEqual(detail.properties.employmentType);
+    expect(update.properties.employmentType).toEqual({
+      type: "string",
+      enum: ["full_time", "temporary"]
+    });
     expect(update.properties.employmentStartedAt).toEqual(detail.properties.employmentStartedAt);
   });
 

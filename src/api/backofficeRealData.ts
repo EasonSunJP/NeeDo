@@ -2105,7 +2105,7 @@ export function mapBackofficeTechnician(row: BackofficeTechnicianPayload): Techn
     languages: ["日本語"],
     avatar: row.avatarUrl ?? "/images/generated/profiles/profile-12.jpg",
     accountUsername: row.email,
-    identityLabel: row.shopId ? "店铺所属技师" : "个人技师"
+    identityLabel: row.shopId ? "店铺所属技师" : "待归属"
   };
 }
 

@@ -9410,7 +9410,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           shopId: { type: ["integer", "null"], minimum: 1 },
           employmentType: {
             type: "string",
-            enum: ["independent", "full_time", "temporary"]
+            enum: ["full_time", "temporary"]
           },
           employmentStartedAt: { type: ["string", "null"], format: "date-time" },
           isRecommended: { type: "boolean" }
@@ -11263,7 +11263,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "string",
             enum: ["active", "requires_shop"],
             description:
-              "Derived from current shop affiliations. requires_shop keeps the technician identity accessible but gates normal technician work until another shop approves the partnership."
+              "Derived from current shop affiliations. Formal authenticated technician identities are exposed only while active; requires_shop is retained as a fail-closed compatibility state for inconsistent historical records."
           },
           shopAffiliations: {
             type: "array",

@@ -407,7 +407,7 @@ export const backofficeTechnicianUpdateBodySchema = z
     city: z.string().trim().min(1).max(100).optional(),
     serviceArea: z.string().trim().max(255).nullable().optional(),
     shopId: z.number().int().positive().nullable().optional(),
-    employmentType: z.enum(["independent", "full_time", "temporary"]).optional(),
+    employmentType: z.enum(["full_time", "temporary"]).optional(),
     employmentStartedAt: z.string().datetime().nullable().optional(),
     isRecommended: z.boolean().optional()
   })

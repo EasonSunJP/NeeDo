@@ -39,7 +39,7 @@ export function buildFormalTechnicianInfoCard(detail: CoreTechnicianDetail): {
       avatar: detail.avatarUrl ?? "",
       bio: detail.bio ?? undefined,
       age: detail.age === null ? undefined : String(detail.age),
-      identityLabel: detail.shop ? "店铺所属技师" : "个人技师",
+      identityLabel: detail.shop ? "店铺所属技师" : "待归属",
       profileTags,
       gallery: detail.mediaAssets.map((asset) => asset.url)
     },

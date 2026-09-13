@@ -176,7 +176,7 @@ function DataCenterContent({ data, onOpenModel, onPeriodChange }: {
     <div className="space-y-4" data-testid="technician-formal-data-center">
       <section className={cn(panelClassName, "p-4")}>
         <div className="flex items-center justify-between gap-3">
-          <div><p className="text-xs font-black text-[color:var(--client-muted)]">店铺工作</p><h2 className="mt-1 text-xl font-black">{data.affiliation?.shopName ?? "独立技师"}</h2></div>
+          <div><p className="text-xs font-black text-[color:var(--client-muted)]">店铺工作</p><h2 className="mt-1 text-xl font-black">{data.affiliation?.shopName ?? "归属店铺待确认"}</h2></div>
           <select aria-label="数据中心期间" className="focus-ring h-10 rounded-xl border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-3 text-sm font-black" onChange={(event) => onPeriodChange(event.target.value as TechnicianDataCenterPeriod)} value={data.period}>
             {periodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>

@@ -179,7 +179,7 @@ const generatedContactSignaturePatterns = [
   /%\s*接单/,
   /最近下单/,
   /^(营业中|已打烊)\s*·/,
-  /^(店铺所属技师|个人技师)$/,
+  /^(店铺所属技师|待归属)$/,
 ];
 
 export function getImContactSignatureCaption(user?: Pick<ImUser, "signature">) {

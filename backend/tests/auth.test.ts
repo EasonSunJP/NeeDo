@@ -2292,24 +2292,45 @@ describe("verified email registration and formal password authentication", () =>
       });
   });
 
-  it("keeps shop onboarding access but pauses technician work APIs with zero active shops", async () => {
+  it("does not expose a technician identity with zero active shop affiliations", async () => {
     const fixture = await createAuthFixture();
     fixture.multiPortalUser.technicianProfile = {
       technicianShopAffiliations: []
     };
     const loginResponse = await request(fixture.app).post("/api/v1/auth/login").send({ loginIdentifier: "multi@example.com", password: "Abcd@1234" }).expect(200);
 
-    const switchResponse = await request(fixture.app).post("/api/v1/auth/switch-identity").set("Authorization", `Bearer ${loginResponse.body.data.accessToken}`).send({ refreshToken: loginResponse.body.data.refreshToken, identityId: 51 }).expect(200);
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${loginResponse.body.data.accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.identities).not.toEqual(
+          expect.arrayContaining([expect.objectContaining({ id: 51, type: "technician" })])
+        );
+        expect(response.body.data.identityAvailability).toContainEqual({
+          kind: "technician",
+          state: "available_to_apply",
+          identityId: null,
+          applicationId: null,
+          rejectionReason: null
+        });
+      });
 
-    expect(switchResponse.body.data.me.permissions).toEqual(expect.arrayContaining(["auth:me", "auth:logout", "menu:technician-app", "identity-application:own", "technician-profile:read"]));
-    expect(switchResponse.body.data.me.permissions).not.toEqual(expect.arrayContaining(["technician:services:list", "technician:services:write"]));
+    await request(fixture.app)
+      .post("/api/v1/auth/switch-identity")
+      .set("Authorization", `Bearer ${loginResponse.body.data.accessToken}`)
+      .send({ refreshToken: loginResponse.body.data.refreshToken, identityId: 51 })
+      .expect(404)
+      .expect((response) => {
+        expect(response.body.code).toBe(ERROR_CODES.IDENTITY_NOT_FOUND);
+      });
 
     await request(fixture.app)
       .get("/api/v1/technicians/me/services?page=1&page_size=20")
-      .set("Authorization", `Bearer ${switchResponse.body.data.accessToken}`)
+      .set("Authorization", `Bearer ${loginResponse.body.data.accessToken}`)
       .expect(403)
       .expect((response) => {
-        expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN);
+        expect(response.body.code).toBe(ERROR_CODES.IDENTITY_FORBIDDEN);
       });
   });
 

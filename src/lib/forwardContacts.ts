@@ -110,7 +110,7 @@ export function getForwardContacts(context: MessageCenterContext): ForwardContac
       role: "担当技师",
       avatar: technicians[0].avatar,
       conversationId: getUserConversationId("technician"),
-      group: "个人技师",
+      group: "店铺技师",
       caption: `${technicians[0].skills.slice(0, 2).join("、")} · 接单率 ${technicians[0].acceptRate}%`
     },
     {

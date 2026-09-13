@@ -1351,7 +1351,7 @@ describe("formal IM adapter", () => {
         entityType: "technician",
         profileId: 81,
         displayName: "小林技师",
-        identityLabel: "个人技师",
+        identityLabel: "店铺所属技师",
         verified: true,
         creditValue: "4.80",
         creditReviewCount: 132,

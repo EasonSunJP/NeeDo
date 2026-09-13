@@ -130,23 +130,29 @@ export function useFormalTechnicianScheduleResource(
         })
       : () => undefined;
     const loadFromServer = async () => {
-      const selfProfile = await technicianProfileApi.getMine();
-      const [services, slot] = await Promise.all([
-        loadAllTechnicianServices(),
+      const [selfProfile, slot] = await Promise.all([
+        technicianProfileApi.getMine(),
         slotId === null ? Promise.resolve(null) : schedulingApi.getTechnicianSlot(slotId)
       ]);
+      const affiliation =
+        selfProfile.shopAffiliations.find((item) => item.shopId === slot?.shopId) ??
+        selfProfile.shopAffiliations.find((item) => item.shopId === selfProfile.shopId) ??
+        selfProfile.shopAffiliations[0];
+      if (!affiliation) {
+        throw new Error("error.technician_shop.required");
+      }
+      const services = await loadAllTechnicianServices();
       return {
         profile: {
           avatarUrl: selfProfile.avatarUrl,
           displayName: selfProfile.displayName,
           id: selfProfile.id
         },
-        shopId: selfProfile.shopId,
-        shopName: selfProfile.shopId
-          ? services.find((service) => service.shopId === selfProfile.shopId)?.shop?.name
-            ?? slot?.shopName
-            ?? "关联店铺"
-          : "独立技师",
+        shopId: affiliation.shopId,
+        shopName:
+          services.find((service) => service.shopId === affiliation.shopId)?.shop?.name ??
+          slot?.shopName ??
+          affiliation.name,
         services,
         slot
       };

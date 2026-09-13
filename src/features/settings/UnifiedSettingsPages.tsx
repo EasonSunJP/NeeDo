@@ -2367,34 +2367,18 @@ function TechnicianProfileSettingsPage({
 
           <div className="space-y-2">
             <span className="block text-xs font-black text-[color:var(--client-muted)]">身份显示</span>
-            <div className="grid gap-3 md:grid-cols-2">
-              {(["店铺所属技师", "个人技师"] as const).map((value) => {
-                const active = value === (profile.employmentType === "independent" ? "个人技师" : "店铺所属技师");
-
-                return (
-                  <button
-                    className={cn(
-                      "rounded-[24px] border px-4 py-4 text-left transition",
-                      active
-                        ? "border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
-                        : "border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)]"
-                    )}
-                    key={value}
-                    disabled={!active}
-                    type="button"
-                  >
-                    <div className="flex items-start gap-3">
-                      <SelectionIndicator active={active} />
-                      <div className="min-w-0">
-                        <p className="text-[15px] font-black text-[color:var(--client-text)]">{value}</p>
-                        <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-muted)]">
-                          {value === "店铺所属技师" ? "适合仍以店铺排班和自动派单为主的资料展示。" : "适合更强调个人接单与自由档期的资料展示。"}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="grid gap-3">
+              <div className="rounded-[24px] border border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-4 py-4 text-left">
+                <div className="flex items-start gap-3">
+                  <SelectionIndicator active />
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-black text-[color:var(--client-text)]">店铺所属技师</p>
+                    <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-muted)]">
+                      技师身份必须归属有效店铺；当前共有 {profile.shopAffiliations.length} 家有效合作店铺。
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
