@@ -10755,7 +10755,7 @@ export const translations: TranslationMap = {
   "未启用": { "zh-Hant": "未啟用", ja: "有効になってい…", en: "Not enabled", ko: "비활성화됨" },
   "未启用/过期": { "zh-Hant": "未啟用/過期", ja: "未有効化／期限切れ", en: "Not activated/expired", ko: "활성화되지 않았음/만료됨" },
   "未确定行程": { "zh-Hant": "未確定行程", ja: "旅程は未確定です", en: "Itinerary not confirmed", ko: "일정 미확정" },
-  "未设定": { "zh-Hant": "未設定", ja: "設定されていません", en: "Not set", ko: "설정되지 않음" },
+  "未设定": { "zh-Hant": "未設定", ja: "未設定", en: "Not set", ko: "설정되지 않음" },
   "未设置": { "zh-Hant": "未設定", ja: "未設定", en: "Not set", ko: "설정되지 않음" },
   "未设置手机号": { "zh-Hant": "未設定手機號", ja: "携帯電話番号は設定されていません", en: "No mobile phone number set", ko: "휴대폰 번호가 설정되지 않았습니다." },
   "未收集": { "zh-Hant": "未收集", ja: "未收集", en: "Wei Shou Ji", ko: "Wei Shou Ji" },
