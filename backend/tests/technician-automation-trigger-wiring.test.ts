@@ -29,4 +29,14 @@ describe("technician automation trigger wiring", () => {
 
     expect(source).toContain("suppressQuickMatching: true");
   });
+
+  it("injects request automation into the formal server Exchange runtime", () => {
+    const source = readFileSync(join(process.cwd(), "src/server.ts"), "utf8");
+
+    expect(source).toContain("createExchangeRequestAutomationProcessor(exchangeClaimService)");
+    expect(source).toContain("technicianAutomationProcessor,");
+    expect(source.indexOf("const technicianAutomationProcessor =")).toBeLessThan(
+      source.indexOf("const app = createApp")
+    );
+  });
 });

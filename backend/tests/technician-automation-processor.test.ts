@@ -101,4 +101,47 @@ describe("TechnicianAutomationProcessor", () => {
     expect(confirmBooking).not.toHaveBeenCalled();
     expect(repository.completeDecision).not.toHaveBeenCalled();
   });
+
+  it("records an action failure without reporting execution or sending a notification", async () => {
+    const repository = makeRepository();
+    const applyRequest = jest.fn(async () => {
+      throw new Error("claim transaction rolled back");
+    });
+    const processor = new TechnicianAutomationProcessor(
+      repository,
+      { confirmBooking: jest.fn() },
+      { applyRequest }
+    );
+
+    await processor.processRequest(602);
+
+    expect(repository.completeDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: "action_failed",
+        failedReasons: ["action:claim transaction rolled back"],
+        executedAt: null
+      })
+    );
+    expect(repository.notifyAutomaticAction).not.toHaveBeenCalled();
+  });
+
+  it("keeps a completed request action successful when best-effort notification delivery fails", async () => {
+    const repository = makeRepository();
+    repository.notifyAutomaticAction.mockRejectedValueOnce(new Error("notification unavailable"));
+    const applyRequest = jest.fn(async () => undefined);
+    const processor = new TechnicianAutomationProcessor(
+      repository,
+      { confirmBooking: jest.fn() },
+      { applyRequest }
+    );
+
+    await expect(processor.processRequest(603)).resolves.toBeUndefined();
+
+    expect(repository.completeDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "executed" })
+    );
+    expect(repository.completeDecision).not.toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "action_failed" })
+    );
+  });
 });

@@ -5,7 +5,13 @@ import storeDetailSource from "../user/StoreDetailPage.tsx?raw";
 
 describe("MerchantPortalPage store privacy control", () => {
   it("loads the active store and staff from the formal API before rendering the merchant workspace", () => {
+    const dataGateSource = merchantSource.slice(
+      merchantSource.indexOf("function MerchantPortalDataGate"),
+      merchantSource.indexOf("export function MerchantPortalContent")
+    );
+
     expect(merchantSource).toContain("function MerchantPortalDataGate");
+    expect(dataGateSource).toContain("backofficeRealDataApi.merchantShop()");
     expect(merchantSource).toContain("coreReadApi.getShopDetail(storeApiId)");
     expect(merchantSource).toContain("mapCoreShopToStore(formalStoreQuery.data)");
     expect(merchantSource).toContain("mapCoreTechnicianToTechnician(technician)");
@@ -14,6 +20,9 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("storeServices={formalStoreQuery.data.services}");
     expect(merchantSource).toContain("<MerchantPortalContent");
     expect(merchantSource).toContain("technicians={technicians}");
+    expect(dataGateSource).not.toContain("getMerchantStoreApiId(session?.linkedStoreId)");
+    expect(dataGateSource).toContain("merchantShopQuery.data?.ownerKey === merchantShopOwnerKey");
+    expect(dataGateSource).toContain(".then((page) => ({ ownerKey: merchantShopOwnerKey, page }))");
     expect(merchantSource).not.toContain("stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0]");
   });
 

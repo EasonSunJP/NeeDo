@@ -72,6 +72,7 @@ import { ImServerRetentionWorker } from "./workers/im-server-retention.worker";
 import { MerchantShopAuditOutboxWorker } from "./workers/merchant-shop-audit-outbox.worker";
 import { OrderServiceExpiryWorker } from "./workers/order-service-expiry.worker";
 import { OfficialNoticeWorker } from "./workers/official-notice.worker";
+import { createExchangeRequestAutomationProcessor } from "./routes/exchange.routes";
 
 const realtimeEventGateway = new SseRealtimeEventGateway({
   eventBus: new RedisRealtimeEventBus({
@@ -134,6 +135,8 @@ const exchangeClaimService = new ExchangeClaimService(
   new ExchangeClaimRepository(),
   new ExchangePostRepository()
 );
+const technicianAutomationProcessor =
+  createExchangeRequestAutomationProcessor(exchangeClaimService);
 const authSessionStore = new RedisAuthSessionStore(undefined, {
   onSecurityEvent: (event) => {
     logger.error(event, "Merchant shop switch receipt post-state mismatch");
@@ -198,6 +201,7 @@ const app = createApp(env, {
   liveDashboardEventGateway,
   exchangeService,
   exchangeClaimService,
+  technicianAutomationProcessor,
   exchangeRequestFeeService,
   ledgerService: exchangeLedgerService,
   authRepository,

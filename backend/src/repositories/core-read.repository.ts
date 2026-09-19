@@ -1443,9 +1443,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       deletedAt: null,
       status: PUBLISHED_STATUS,
       publicIdentifier: { is: this.publicIdentifierWhere("SHOP") },
-      ...visibilityWhere,
       ...(input.city ? { city: input.city } : {}),
-      ...(searchBranches.length > 0 ? { OR: searchBranches } : {})
+      ...(searchBranches.length > 0
+        ? { AND: [visibilityWhere, { OR: searchBranches }] }
+        : visibilityWhere)
     };
   }
 

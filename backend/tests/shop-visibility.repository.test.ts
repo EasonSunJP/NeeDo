@@ -32,11 +32,11 @@ describe("ShopVisibilityRepository", () => {
     const repository = new ShopVisibilityRepository(createClient() as unknown as PrismaClient);
 
     await expect(repository.buildVisibilityWhere()).resolves.toEqual({ visibility: "public" });
-    await expect(repository.buildVisibilityWhere(viewer)).resolves.toEqual(
+    const selectedIdentityWhere = await repository.buildVisibilityWhere(viewer);
+    expect(selectedIdentityWhere).toEqual(
       expect.objectContaining({
         OR: expect.arrayContaining([
           { visibility: "public" },
-          { ownerUserId: viewer.userId },
           expect.objectContaining({
             visibility: "network",
             OR: expect.arrayContaining([
@@ -56,6 +56,10 @@ describe("ShopVisibilityRepository", () => {
         ])
       })
     );
+    expect(selectedIdentityWhere.OR).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ ownerUserId: viewer.userId })])
+    );
+    expect(JSON.stringify(selectedIdentityWhere)).not.toContain("agentShopReferrals");
   });
 
   it("allows public shops anonymously and privateAll only to the owner", async () => {
@@ -69,16 +73,41 @@ describe("ShopVisibilityRepository", () => {
     await expect(repository.canView(shop.id, viewer)).resolves.toBe(false);
 
     client.shop.findFirst.mockResolvedValueOnce({ ...shop, visibility: "privateAll" });
-    await expect(repository.canView(shop.id, { ...viewer, userId: shop.ownerUserId })).resolves.toBe(
-      true
-    );
+    await expect(
+      repository.canView(shop.id, {
+        ...viewer,
+        userId: shop.ownerUserId,
+        identityType: "merchant_owner",
+        identityScopeType: "shop",
+        identityScopeId: shop.id
+      })
+    ).resolves.toBe(true);
     expect(client.shop.findFirst).toHaveBeenLastCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           id: shop.id,
           status: "published",
           deletedAt: null,
-          OR: expect.arrayContaining([{ ownerUserId: shop.ownerUserId }])
+          OR: expect.arrayContaining([{ ownerUserId: shop.ownerUserId, id: shop.id }])
+        })
+      })
+    );
+  });
+
+  it("does not borrow shop ownership from another identity on the same account", async () => {
+    const client = createClient();
+    client.shop.findFirst.mockResolvedValue(null);
+    const repository = new ShopVisibilityRepository(client as unknown as PrismaClient);
+
+    await expect(
+      repository.canView(shop.id, { ...viewer, userId: shop.ownerUserId })
+    ).resolves.toBe(false);
+    expect(client.shop.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.not.arrayContaining([
+            expect.objectContaining({ ownerUserId: shop.ownerUserId })
+          ])
         })
       })
     );
@@ -114,6 +143,55 @@ describe("ShopVisibilityRepository", () => {
           ])
         })
       })
+    );
+  });
+
+  it("keeps one-way business contacts out of limited and allows them only for network", async () => {
+    const client = createClient();
+    client.userIdentity.findMany
+      .mockResolvedValueOnce([{ scopeId: 21 }])
+      .mockResolvedValueOnce([{ scopeId: 22 }]);
+    const repository = new ShopVisibilityRepository(client as unknown as PrismaClient);
+
+    const where = await repository.buildVisibilityWhere(viewer);
+
+    expect(where.OR).toEqual(
+      expect.arrayContaining([
+        { visibility: { in: ["limited", "network"] }, id: { in: [21] } },
+        expect.objectContaining({
+          visibility: "network",
+          OR: expect.arrayContaining([{ id: { in: [22] } }])
+        })
+      ])
+    );
+    expect(where.OR).not.toEqual(
+      expect.arrayContaining([
+        { visibility: { in: ["limited", "network"] }, id: { in: [22] } }
+      ])
+    );
+  });
+
+  it("uses introducer relationships only for the selected scout identity", async () => {
+    const repository = new ShopVisibilityRepository(createClient() as unknown as PrismaClient);
+
+    const customerWhere = await repository.buildVisibilityWhere(viewer);
+    const scoutWhere = await repository.buildVisibilityWhere({
+      ...viewer,
+      identityType: "scout",
+      identityScopeType: "global",
+      identityScopeId: null
+    });
+
+    expect(JSON.stringify(customerWhere)).not.toContain("agentShopReferrals");
+    expect(scoutWhere.OR).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          visibility: "network",
+          OR: expect.arrayContaining([
+            expect.objectContaining({ agentShopReferrals: expect.any(Object) })
+          ])
+        })
+      ])
     );
   });
 

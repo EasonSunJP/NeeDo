@@ -2112,9 +2112,12 @@ export function getCycleFeedbackMatrix(cycleId: string, dateKey: string): Dispat
   });
 }
 
-export function createDispatchCycleDraft(storeId: string) {
+export function createDispatchCycleDraft(storeId: string, targetTechnicianIds?: string[]) {
   hydrate();
   const cycle = createBaseCycle(storeId);
+  if (targetTechnicianIds?.length) {
+    cycle.targetTechnicianIds = [...new Set(targetTechnicianIds)];
+  }
   updateCycle(cycle);
   logAudit({
     operatorId: storeId,

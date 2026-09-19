@@ -94,7 +94,8 @@ function CycleWorkflowPanel({
   operatorId,
   scheduleStickyTop,
   storeId,
-  surface
+  surface,
+  technicians
 }: {
   cycle: DispatchCycle;
   onDelete: (cycle: DispatchCycle) => void;
@@ -104,6 +105,7 @@ function CycleWorkflowPanel({
   scheduleStickyTop?: string;
   storeId: string;
   surface: "desktop" | "mobile";
+  technicians: Technician[];
 }) {
   const isMobileSurface = surface === "mobile";
   const secondaryButtonClass = isMobileSurface ? "bg-white/80" : undefined;
@@ -129,7 +131,15 @@ function CycleWorkflowPanel({
         <StepModeSelection cycle={cycle} onCycleChange={() => undefined} onMessage={onMessage} surface={surface} />
       ) : null}
       {cycle.currentStep === 2 ? (
-        <StepCreateCycle cycle={cycle} onCycleChange={() => undefined} onMessage={onMessage} operatorId={operatorId} storeId={storeId} surface={surface} />
+        <StepCreateCycle
+          cycle={cycle}
+          onCycleChange={() => undefined}
+          onMessage={onMessage}
+          operatorId={operatorId}
+          storeId={storeId}
+          surface={surface}
+          technicians={technicians}
+        />
       ) : null}
       {cycle.currentStep === 4 ? (
         <StepFinalConfirmation
@@ -193,7 +203,7 @@ export function AutomationWizard({
       return;
     }
 
-    const cycle = createDispatchCycleDraft(storeId);
+    const cycle = createDispatchCycleDraft(storeId, technicians.map((technician) => technician.id));
     setBuilderCycleId(cycle.id);
     setView("builder");
     setMessage(`${cycle.name} 已创建。`);
@@ -271,6 +281,7 @@ export function AutomationWizard({
               scheduleStickyTop={scheduleStickyTop}
               storeId={storeId}
               surface={surface}
+              technicians={technicians}
             />
             {builderViewCycle.currentStep === 3 ? (
               <div className={cn("rounded-[24px] border p-4", isMobileSurface ? "border-line bg-white/90 shadow-panel" : "merchant-dispatch-surface")}>

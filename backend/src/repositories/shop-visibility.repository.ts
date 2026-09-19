@@ -8,7 +8,8 @@ import type {
 } from "../services/shop-visibility.service";
 import {
   FORMAL_DIRECT_SHOP_MERCHANT_IDENTITY_TYPES,
-  FORMAL_MERCHANT_ACCOUNT_IDENTITY_TYPES
+  FORMAL_MERCHANT_ACCOUNT_IDENTITY_TYPES,
+  FORMAL_MERCHANT_IDENTITY_TYPES
 } from "../services/merchant-shop-scope";
 
 export const SHOP_VISIBILITIES = ["public", "privateAll", "limited", "network"] as const;
@@ -47,6 +48,12 @@ export class ShopVisibilityRepository implements ShopVisibilityRepositoryPort {
         ])
       : [[], []];
     const networkRelationships: Record<string, unknown>[] = [];
+    const ownerRelationships =
+      FORMAL_MERCHANT_IDENTITY_TYPES.has(resolvedViewer.identityType ?? "") &&
+      resolvedViewer.identityScopeType === "shop" &&
+      resolvedViewer.identityScopeId
+        ? [{ ownerUserId: resolvedViewer.userId, id: resolvedViewer.identityScopeId }]
+        : [];
 
     if (
       CUSTOMER_IDENTITY_TYPES.has(resolvedViewer.identityType ?? "") &&
@@ -137,7 +144,7 @@ export class ShopVisibilityRepository implements ShopVisibilityRepositoryPort {
     return {
       OR: [
         { visibility: "public" },
-        { ownerUserId: resolvedViewer.userId },
+        ...ownerRelationships,
         ...(friendShopIds.length > 0
           ? [{ visibility: { in: ["limited", "network"] }, id: { in: friendShopIds } }]
           : []),
