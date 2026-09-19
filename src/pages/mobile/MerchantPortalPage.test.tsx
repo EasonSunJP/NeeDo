@@ -246,6 +246,8 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain('data-testid="merchant-store-pricing-mode-control"');
     expect(merchantSource).toContain('"切换为技师定价"');
     expect(merchantSource).toContain("storePricingRatioMenuOpen");
+    expect(merchantSource).toContain("const storeApiIdRef = useRef(storeApiId)");
+    expect(merchantSource).toContain("storeApiIdRef.current = storeApiId");
     expect(merchantSource).toContain("updateStorePricingRatioMenuOpen");
     expect(merchantSource).toContain("updateStorePrivacyMenuOpen");
     expect(merchantSource).toContain("technicianPricingRatioPercent");
