@@ -51,6 +51,48 @@ describe("core read shop visibility", () => {
     expect(policy.buildVisibilityWhere).toHaveBeenCalledWith(viewer);
   });
 
+  it("keeps visibility and keyword predicates when searching shops", async () => {
+    const shopFindMany = jest.fn(async () => []);
+    const shopCount = jest.fn(async () => 0);
+    const policy = {
+      buildVisibilityWhere: jest.fn(async () => visibilityWhere)
+    };
+    const repository = new CoreReadRepository(
+      { shop: { findMany: shopFindMany, count: shopCount } } as never,
+      undefined,
+      policy as never
+    );
+
+    await repository.searchShops(
+      {
+        entityType: "shop",
+        keyword: "StagingTest",
+        keywords: [],
+        categoryIds: [],
+        page: 1,
+        pageSize: 20
+      },
+      viewer
+    );
+
+    const expectedWhere = expect.objectContaining({
+      AND: expect.arrayContaining([
+        visibilityWhere,
+        {
+          OR: expect.arrayContaining([
+            { name: { contains: "StagingTest" } },
+            { city: { contains: "StagingTest" } },
+            { address: { contains: "StagingTest" } }
+          ])
+        }
+      ])
+    });
+    expect(shopFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expectedWhere })
+    );
+    expect(shopCount).toHaveBeenCalledWith({ where: expectedWhere });
+  });
+
   it("passes the authenticated selected identity through list and detail services", async () => {
     const repository = {
       listServices: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
