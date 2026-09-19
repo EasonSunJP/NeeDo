@@ -21,6 +21,7 @@ export interface ShopVisibilityViewer {
   identityType?: string;
   identityScopeType?: string | null;
   identityScopeId?: number | null;
+  selectedShopId?: number;
 }
 
 interface ShopVisibilityTarget {
@@ -48,11 +49,13 @@ export class ShopVisibilityRepository implements ShopVisibilityRepositoryPort {
         ])
       : [[], []];
     const networkRelationships: Record<string, unknown>[] = [];
+    const ownerShopId = resolvedViewer.identityScopeType === "shop"
+      ? resolvedViewer.identityScopeId
+      : resolvedViewer.selectedShopId;
     const ownerRelationships =
       FORMAL_MERCHANT_IDENTITY_TYPES.has(resolvedViewer.identityType ?? "") &&
-      resolvedViewer.identityScopeType === "shop" &&
-      resolvedViewer.identityScopeId
-        ? [{ ownerUserId: resolvedViewer.userId, id: resolvedViewer.identityScopeId }]
+      ownerShopId
+        ? [{ ownerUserId: resolvedViewer.userId, id: ownerShopId }]
         : [];
 
     if (

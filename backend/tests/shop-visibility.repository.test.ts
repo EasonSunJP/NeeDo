@@ -28,6 +28,22 @@ const createClient = () => ({
 });
 
 describe("ShopVisibilityRepository", () => {
+  it("keeps selected shop ownership separate from the merchant account relationship scope", async () => {
+    const repository = new ShopVisibilityRepository(createClient() as unknown as PrismaClient);
+    const accountViewer = {
+      ...viewer, identityType: "merchant_organization", identityScopeType: "merchant_account",
+      identityScopeId: 30, selectedShopId: shop.id
+    };
+    const where = await repository.buildVisibilityWhere(accountViewer);
+    expect(where.OR).toEqual(expect.arrayContaining([
+      { ownerUserId: viewer.userId, id: shop.id },
+      expect.objectContaining({ visibility: "network", OR: expect.arrayContaining([
+        expect.objectContaining({ merchantMemberships: {
+          some: expect.objectContaining({ merchantAccountId: 30 })
+        } })
+      ]) })
+    ]));
+  });
   it("builds a closed anonymous filter and selected-identity relationship filter", async () => {
     const repository = new ShopVisibilityRepository(createClient() as unknown as PrismaClient);
 
@@ -59,6 +75,8 @@ describe("ShopVisibilityRepository", () => {
     expect(selectedIdentityWhere.OR).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ ownerUserId: viewer.userId })])
     );
+    expect((await repository.buildVisibilityWhere({ ...viewer, selectedShopId: shop.id })).OR)
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ ownerUserId: viewer.userId })]));
     expect(JSON.stringify(selectedIdentityWhere)).not.toContain("agentShopReferrals");
   });
 

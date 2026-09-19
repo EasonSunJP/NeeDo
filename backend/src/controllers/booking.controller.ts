@@ -1,3 +1,4 @@
+import { toShopVisibilityViewer } from "../services/shop-visibility.service";
 import type { NextFunction, Request, Response } from "express";
 import type { BookingService } from "../services/booking.service";
 import type { SchedulePreloadService } from "../services/schedule-preload.service";
@@ -88,14 +89,7 @@ export class BookingController {
   private shopVisibilityViewer(response: Response) {
     const auth = response.locals.auth as AuthenticatedAccessContext | undefined;
     if (!auth) return undefined;
-    const selectedShopId = auth.selectedMerchantShopId ?? auth.merchantPreviewShopId;
-    return {
-      userId: auth.userId,
-      identityId: auth.currentIdentityId,
-      identityType: auth.currentIdentityType,
-      identityScopeType: selectedShopId ? "shop" : auth.currentIdentityScopeType,
-      identityScopeId: selectedShopId ?? auth.currentIdentityScopeId
-    };
+    return toShopVisibilityViewer(auth);
   }
 
   public listAvailabilityWindows = async (request: Request, response: Response, next: NextFunction): Promise<void> => {

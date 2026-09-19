@@ -8,6 +8,21 @@ import { AppError } from "../utils/app-error";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import { assertMerchantShopId } from "./merchant-shop-scope";
 
+export const toShopVisibilityViewer = (actor: Pick<AuthenticatedAccessContext,
+  "userId" | "currentIdentityId" | "currentIdentityType" | "currentIdentityScopeType" |
+  "currentIdentityScopeId" | "selectedMerchantShopId" | "merchantPreviewShopId"
+>): ShopVisibilityViewer => {
+  const selectedShopId = actor.selectedMerchantShopId ?? actor.merchantPreviewShopId;
+  return {
+    userId: actor.userId,
+    identityId: actor.currentIdentityId,
+    identityType: actor.currentIdentityType,
+    identityScopeType: actor.currentIdentityScopeType,
+    identityScopeId: actor.currentIdentityScopeId,
+    ...(selectedShopId !== undefined ? { selectedShopId } : {})
+  };
+};
+
 export interface ShopVisibilityPayload {
   shopId: number;
   visibility: ShopVisibility;

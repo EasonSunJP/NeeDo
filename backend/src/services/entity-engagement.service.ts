@@ -1,3 +1,4 @@
+import { toShopVisibilityViewer } from "./shop-visibility.service";
 import { createHash } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
@@ -163,13 +164,6 @@ export class EntityEngagementService {
   }
 
   private visibilityViewer(auth: AuthenticatedAccessContext): ShopVisibilityViewer {
-    const selectedShopId = auth.selectedMerchantShopId ?? auth.merchantPreviewShopId;
-    return {
-      userId: auth.userId,
-      identityId: auth.currentIdentityId,
-      identityType: auth.currentIdentityType,
-      identityScopeType: selectedShopId ? "shop" : auth.currentIdentityScopeType,
-      identityScopeId: selectedShopId ?? auth.currentIdentityScopeId
-    };
+    return toShopVisibilityViewer(auth);
   }
 }

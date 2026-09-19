@@ -1,3 +1,4 @@
+import { toShopVisibilityViewer } from "../services/shop-visibility.service";
 import type { NextFunction, Request, Response } from "express";
 import type { PricingModeService } from "../services/pricing-mode.service";
 import { successResponse } from "../utils/api-response";
@@ -335,13 +336,6 @@ export class PricingModeController {
   private shopVisibilityViewer(response: Response) {
     const auth = response.locals.auth as AuthenticatedAccessContext | undefined;
     if (!auth) return undefined;
-    const selectedShopId = auth.selectedMerchantShopId ?? auth.merchantPreviewShopId;
-    return {
-      userId: auth.userId,
-      identityId: auth.currentIdentityId,
-      identityType: auth.currentIdentityType,
-      identityScopeType: selectedShopId ? "shop" : auth.currentIdentityScopeType,
-      identityScopeId: selectedShopId ?? auth.currentIdentityScopeId
-    };
+    return toShopVisibilityViewer(auth);
   }
 }
