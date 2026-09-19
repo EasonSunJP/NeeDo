@@ -14,6 +14,8 @@ import type {
 } from "../services/technician-automation.service";
 import type { TechnicianAutomationKindValue } from "../validators/technician-automation.validator";
 import { technicianAutomationRulesSchema } from "../validators/technician-automation.validator";
+import { evaluateTechnicianAutomationRules } from "../domain/technician-automation-rules";
+import { ExchangeClaimRepository } from "./exchange-claim.repository";
 import type {
   TechnicianAutomationCandidate,
   TechnicianAutomationProcessorRepositoryPort,
@@ -317,7 +319,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       include: { demand: true }
     });
     if (!post?.demand) return [];
-    const slots = await this.client.scheduleSlot.findMany({
+    const slotQuery = {
       where: {
         technicianProfileId: { not: null },
         startsAt: { gte: post.serviceStartAt },
@@ -325,9 +327,10 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         status: "AVAILABLE",
         deletedAt: null,
         OR: [
-          { service: { is: { status: "published", deletedAt: null } } },
-          { technicianService: { is: { isActive: true, isBookable: true, reviewStatus: "APPROVED", deletedAt: null } } }
+          { serviceId: { not: null }, technicianServiceId: null, shop: { is: { pricingMode: "MERCHANT" } }, service: { is: { status: "published", deletedAt: null } } },
+          { serviceId: null, technicianServiceId: { not: null }, shop: { is: { pricingMode: "TECHNICIAN" } }, technicianService: { is: { isActive: true, isBookable: true, reviewStatus: "APPROVED", deletedAt: null } } }
         ],
+        shop: { is: { status: "published", deletedAt: null, entitySuspensions: { none: { status: "ACTIVE", activeKey: { not: null }, deletedAt: null } } } },
         technicianProfile: {
           is: {
             status: "published",
@@ -337,8 +340,9 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
             technicianShopAffiliations: {
               some: {
                 workStatus: "ACTIVE",
+                activeKey: { not: null },
                 startsAt: { lte: now },
-                endsAt: null,
+                OR: [{ endsAt: null }, { endsAt: { gt: now } }],
                 deletedAt: null,
                 shop: { is: { deletedAt: null } }
               }
@@ -350,8 +354,8 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       },
       include: {
         availability: true,
-        service: { select: { id: true } },
-        technicianService: { select: { id: true } },
+        service: { select: { id: true, shopId: true } },
+        technicianService: { select: { id: true, shopId: true, technicianId: true } },
         technicianProfile: {
           include: {
             user: { select: { id: true } },
@@ -359,8 +363,9 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
             technicianShopAffiliations: {
               where: {
                 workStatus: "ACTIVE",
+                activeKey: { not: null },
                 startsAt: { lte: now },
-                endsAt: null,
+                OR: [{ endsAt: null }, { endsAt: { gt: now } }],
                 deletedAt: null,
                 shop: { is: { deletedAt: null } }
               },
@@ -372,7 +377,17 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       },
       orderBy: [{ startsAt: "asc" }, { id: "asc" }],
       take: 200
-    });
+    } satisfies Prisma.ScheduleSlotFindManyArgs;
+    const slots = await this.client.scheduleSlot.findMany(slotQuery);
+    let page = slots;
+    while (page.length === slotQuery.take) {
+      page = await this.client.scheduleSlot.findMany({
+        ...slotQuery,
+        cursor: { id: page[page.length - 1].id },
+        skip: 1
+      });
+      slots.push(...page);
+    }
     if (slots.length === 0) return [];
     const candidateAvailability = await this.client.availability.findMany({
       where: {
@@ -386,7 +401,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       },
       select: { id: true, technicianProfileId: true, startsAt: true, endsAt: true }
     });
-    const firstSlotByTechnician = new Map<number, (typeof slots)[number]>();
+    const eligibleSlots: typeof slots = [];
     for (const slot of slots) {
       const hasActiveShopAffiliation = slot.technicianProfile?.technicianShopAffiliations.some(
         (affiliation) => affiliation.shopId === slot.shopId
@@ -396,11 +411,14 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         window.startsAt <= slot.startsAt &&
         window.endsAt >= slot.endsAt
       );
-      if (slot.technicianProfileId && hasActiveShopAffiliation && hasAvailability && !firstSlotByTechnician.has(slot.technicianProfileId)) {
-        firstSlotByTechnician.set(slot.technicianProfileId, slot);
+      const serviceBelongsToSlot = slot.service
+        ? slot.service.shopId === slot.shopId
+        : slot.technicianService?.shopId === slot.shopId && slot.technicianService?.technicianId === slot.technicianProfileId;
+      if (slot.technicianProfileId && hasActiveShopAffiliation && hasAvailability && serviceBelongsToSlot && slot.bookedCount < slot.capacity) {
+        eligibleSlots.push(slot);
       }
     }
-    const technicianIds = [...firstSlotByTechnician.keys()];
+    const technicianIds = [...new Set(eligibleSlots.map((slot) => slot.technicianProfileId!))];
     if (technicianIds.length === 0) return [];
     const identities = await this.client.userIdentity.findMany({
       where: { type: "technician", scopeType: "technician_profile", scopeId: { in: technicianIds }, isActive: true, deletedAt: null },
@@ -417,25 +435,40 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       select: { ownerIdentityId: true, contactIdentityId: true }
     });
     const contactByOwner = new Map(contacts.map((contact) => [contact.ownerIdentityId, contact.contactIdentityId]));
-    const results: TechnicianRequestAutomationCandidate[] = [];
-    for (const [technicianProfileId, slot] of firstSlotByTechnician) {
+    const resultByTechnician = new Map<number, TechnicianRequestAutomationCandidate>();
+    const matchedTechnicians = new Set<number>();
+    const completedByTechnician = new Map<number, Promise<number>>();
+    const conflictsByWindow = new Map<string, Promise<boolean>>();
+    const claimRepository = new ExchangeClaimRepository(this.client);
+    for (const slot of eligibleSlots) {
+      const technicianProfileId = slot.technicianProfileId!;
+      if (matchedTechnicians.has(technicianProfileId)) continue;
       const identity = identityByTechnician.get(technicianProfileId);
       const setting = slot.technicianProfile?.automationSettings[0];
       if (!identity?.publicIdentifier || !setting || !slot.technicianProfile) continue;
       const rules = technicianAutomationRulesSchema.parse(setting.rules);
       const bufferStart = new Date(slot.startsAt.getTime() - rules.bufferMinutes * 60_000);
       const bufferEnd = new Date(slot.endsAt.getTime() + rules.bufferMinutes * 60_000);
-      const [bufferedBooking, completedWithTechnician] = await Promise.all([
-        this.client.bookingOrder.count({
-          where: { technicianProfileId, status: { in: ["CONFIRMED", "IN_SERVICE"] }, startsAt: { lt: bufferEnd }, endsAt: { gt: bufferStart }, deletedAt: null }
-        }),
-        this.client.bookingOrder.count({
+      if (!completedByTechnician.has(technicianProfileId)) {
+        completedByTechnician.set(technicianProfileId, this.client.bookingOrder.count({
           where: { technicianProfileId, customerUserId: post.authorUserId, status: "COMPLETED", deletedAt: null }
-        })
+        }));
+      }
+      const windowKey = `${technicianProfileId}:${bufferStart.getTime()}:${bufferEnd.getTime()}`;
+      if (!conflictsByWindow.has(windowKey)) {
+        conflictsByWindow.set(windowKey, Promise.all([
+          claimRepository.hasConflictingBooking(technicianProfileId, bufferStart, bufferEnd),
+          claimRepository.hasOverlappingActiveClaim(technicianProfileId, bufferStart, bufferEnd),
+          claimRepository.hasOverlappingMatchParticipant(technicianProfileId, bufferStart, bufferEnd)
+        ]).then((conflicts) => conflicts.some(Boolean)));
+      }
+      const [hasBufferedConflict, completedWithTechnician] = await Promise.all([
+        conflictsByWindow.get(windowKey)!,
+        completedByTechnician.get(technicianProfileId)!
       ]);
       const contactIdentityId = contactByOwner.get(identity.id) ?? null;
       const serviceId = slot.technicianService?.id ?? slot.service?.id ?? 0;
-      results.push({
+      const candidate: TechnicianRequestAutomationCandidate = {
         settingId: setting.id,
         technicianProfileId,
         technicianUserId: slot.technicianProfile.userId,
@@ -451,7 +484,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           startsAt: slot.startsAt,
           endsAt: slot.endsAt,
           actualScheduleAvailable: true,
-          hasBufferedConflict: bufferedBooking > 0,
+          hasBufferedConflict,
           hardBlockReasons: [],
           areaCode: post.areaLabel,
           distanceKm: null,
@@ -472,17 +505,29 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           technicianOnline: this.isOnline(slot.technicianProfile.workState?.status ?? null),
           tagsMatch: null
         }
-      });
+      };
+      // Select only after evaluation; an earlier unrelated service must not consume
+      // the one decision key for this Request and technician.
+      const matched = evaluateTechnicianAutomationRules("request", rules, candidate.context).matched;
+      if (matched || !resultByTechnician.has(technicianProfileId)) resultByTechnician.set(technicianProfileId, candidate);
+      if (matched) matchedTechnicians.add(technicianProfileId);
     }
-    return results;
+    return [...resultByTechnician.values()];
   }
 
   public async reserveDecision(input: Parameters<TechnicianAutomationProcessorRepositoryPort["reserveDecision"]>[0]): Promise<boolean> {
     const existing = await this.client.technicianAutomationDecisionLog.findUnique({
       where: { idempotencyKey: input.idempotencyKey },
-      select: { id: true }
+      select: { id: true, outcome: true }
     });
-    if (existing) return false;
+    if (existing) {
+      if (input.kind !== "request" || existing.outcome !== "ACTION_FAILED") return false;
+      const retry = await this.client.technicianAutomationDecisionLog.updateMany({
+        where: { id: existing.id, outcome: "ACTION_FAILED" },
+        data: { outcome: "MATCHED", ruleVersion: input.ruleVersion }
+      });
+      return retry.count === 1;
+    }
     try {
       await this.client.technicianAutomationDecisionLog.create({
         data: {

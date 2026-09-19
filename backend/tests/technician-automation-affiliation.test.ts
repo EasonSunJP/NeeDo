@@ -133,7 +133,10 @@ describe("technician automation shop-affiliation gates", () => {
           is: expect.objectContaining({
             workState: { is: { status: "on_duty", deletedAt: null } },
             technicianShopAffiliations: {
-              some: expect.objectContaining({ workStatus: "ACTIVE", endsAt: null, deletedAt: null })
+              some: expect.objectContaining({
+                workStatus: "ACTIVE", activeKey: { not: null }, deletedAt: null,
+                OR: [{ endsAt: null }, { endsAt: { gt: expect.any(Date) } }]
+              })
             }
           })
         }
