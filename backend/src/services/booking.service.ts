@@ -71,7 +71,7 @@ import type { UserPolicyEnforcementService } from "./user-policy-enforcement.ser
 import type { PlatformPaymentMethod } from "../domain/platform-settings";
 import type { LiveDashboardEventPublisher } from "./live-dashboard-event.gateway";
 import { LiveDashboardOrderChangePublisher } from "./live-dashboard-order-change.publisher";
-import type { ShopVisibilityRepositoryPort } from "./shop-visibility.service";
+import { toShopVisibilityViewer, type ShopVisibilityRepositoryPort } from "./shop-visibility.service";
 import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
 import { readCompensationBasisVersion } from "./compensation-basis";
 
@@ -229,13 +229,7 @@ export class BookingService {
     if (
       this.shopVisibility &&
       (shopId === null ||
-        !(await this.shopVisibility.canView(shopId, {
-          userId: actor.userId,
-          identityId: actor.currentIdentityId,
-          identityType: actor.currentIdentityType,
-          identityScopeType: actor.currentIdentityScopeType,
-          identityScopeId: actor.currentIdentityScopeId
-        })))
+        !(await this.shopVisibility.canView(shopId, toShopVisibilityViewer(actor))))
     ) {
       throw new AppError({
         code: ERROR_CODES.NOT_FOUND,

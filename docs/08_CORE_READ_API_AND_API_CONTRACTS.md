@@ -68,6 +68,8 @@
 - 技师和顾客的个人资料可见性保持独立，但技师详情及距离计算不得泄露无权查看的关联店铺或店铺服务。
 - 带 bearer 的可见性读响应使用 `private, no-store`；匿名可见性读使用 `public, no-cache` 并以 `Vary: Authorization` 隔离变体，每次复用前必须向源站重新验证，确保公开转私密立即生效。
 - 商户通过 `GET/PUT /api/v1/merchant-admin/shops/:shopId/visibility` 读写当前店铺；写入必须同时通过店铺身份范围、RBAC、Zod 和同事务审计。
+- 店铺展示页的隐私开关必须读写上述店铺接口；信息卡的 `MerchantIdentityProfile.visibility`、顾客和技师个人资料隐私各自独立，不可作为店铺可见性的替代来源，也不自动互相同步。
+- 商户账户身份的关系判定保留原始 `merchant_account` / `merchant` 作用域；当前所选店铺只单独用于店主判定，不覆盖原始身份范围。搜索、详情、预约导航、可用时段与收藏/分享使用同一身份投影。
 
 ---
 
