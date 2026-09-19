@@ -45,7 +45,7 @@ describe("ShopPresentationRepository", () => {
   it("updates one locale with a version check and transaction audit", async () => {
     const transaction = {
       service: { count: jest.fn(async () => 1) },
-      mediaAsset: { count: jest.fn(async () => 1) },
+      mediaAsset: { findMany: jest.fn(async () => [{ checksumSha256: imageId }]) },
       shopPresentationLocale: {
         findUnique: jest.fn(async () => ({ id: 9, lockVersion: 2, deletedAt: null })),
         update: jest.fn(async () => ({ id: 9, lockVersion: 3, updatedAt: now }))
@@ -69,12 +69,52 @@ describe("ShopPresentationRepository", () => {
     expect(result.lockVersion).toBe(3);
   });
 
+  it("accepts a referenced checksum when multiple active shop media rows share it", async () => {
+    const transaction = {
+      service: { count: jest.fn(async () => 1) },
+      mediaAsset: {
+        findMany: jest.fn(async () => [
+          { checksumSha256: imageId },
+          { checksumSha256: imageId }
+        ])
+      },
+      shopPresentationLocale: {
+        findUnique: jest.fn(async () => ({ id: 9, lockVersion: 2, deletedAt: null })),
+        update: jest.fn(async () => ({ id: 9, lockVersion: 3, updatedAt: now }))
+      },
+      auditLog: { create: jest.fn(async () => ({})) }
+    };
+    const client = { $transaction: jest.fn(async (operation: (value: typeof transaction) => unknown) => operation(transaction)) };
+
+    await expect(new ShopPresentationRepository(client as never).updateLocale({
+      shopId: 16,
+      locale: "ja",
+      expectedLockVersion: 2,
+      content,
+      actorUserId: 7,
+      actorIdentityId: 70,
+      context: { ip: "127.0.0.1", userAgent: "jest" },
+      updatedAt: now
+    })).resolves.toMatchObject({ lockVersion: 3 });
+
+    expect(transaction.mediaAsset.findMany).toHaveBeenCalledWith({
+      where: {
+        checksumSha256: { in: [imageId] },
+        shopId: 16,
+        isActive: true,
+        deletedAt: null
+      },
+      select: { checksumSha256: true }
+    });
+    expect(transaction.shopPresentationLocale.update).toHaveBeenCalledTimes(1);
+  });
+
   it("synchronizes the current content to all five independent locale rows in one transaction", async () => {
     const locales = [ContentLocale.ZH_CN, ContentLocale.ZH_TW, ContentLocale.EN, ContentLocale.JA, ContentLocale.KO];
     const existingRows = locales.map((locale, index) => ({ id: index + 1, locale, lockVersion: index + 1, deletedAt: null }));
     const transaction = {
       service: { count: jest.fn(async () => 1) },
-      mediaAsset: { count: jest.fn(async () => 1) },
+      mediaAsset: { findMany: jest.fn(async () => [{ checksumSha256: imageId }]) },
       shopPresentationLocale: {
         findMany: jest.fn(async () => existingRows),
         update: jest.fn(async ({ where }: { where: { id: number } }) => ({
@@ -113,7 +153,7 @@ describe("ShopPresentationRepository", () => {
   it("checks every locale version before writing any synchronized row", async () => {
     const transaction = {
       service: { count: jest.fn(async () => 1) },
-      mediaAsset: { count: jest.fn(async () => 1) },
+      mediaAsset: { findMany: jest.fn(async () => [{ checksumSha256: imageId }]) },
       shopPresentationLocale: {
         findMany: jest.fn(async () => [
           { id: 1, locale: ContentLocale.ZH_CN, lockVersion: 7, deletedAt: null }
