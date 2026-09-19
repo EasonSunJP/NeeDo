@@ -46,6 +46,14 @@ Development runtime: current development worktree, frontend 5192 → backend 321
 
 ## Integration boundary
 
-Local main and 5180 verification must follow the committed branch merge. The task final report records their actual result separately from the branch evidence above. No push, PR, deployment, SSH, staging, production, or remote database operations are part of this batch.
+Implementation commit `e08a3907` was merged into local main as `7183bf9f`, preserving the separately merged shop-privacy changes. Final integrated verification passed: 13 suites / 134 tests (including all 23 real MySQL cases), backend lint/build/full typecheck and frontend lint/build. Full backend typecheck needed `NODE_OPTIONS=--max-old-space-size=8192` after the default heap limit was reached.
+
+After the merge, process inspection confirmed frontend 5180 and APIs 3000/3001/3002 all run from the local main worktree `staging-release-cc999f09`. The backend watchers restarted on the merge. The unchanged frontend proxy points to loopback 3000; database `needo_dev` at loopback 3307 and Redis at loopback 6379 were verified before fixture writes. Health and readiness passed.
+
+A fresh, separately marked fixture (`request-final-2b42-1789860337180`) used real login, API settings/slots, and the formal TEST_NDP calibration ledger. HTTP through 5180 produced Request 124 / claim 175 / slot 300941 at JPY 8,800. Publication replay remained one post/claim; unauthenticated claim reads returned 401. Before customer action, matching remained open with no order and one automatic notification.
+
+The authenticated 5180 browser showed the claim awaiting selection, then explicitly selected the provider and confirmed booking. Order 56640 (`ND202609192328361891`) appeared in the real order-detail page as pending. Customer and technician API reads agreed on the order and amount. Persistence showed exactly one order, one booked capacity, no temporary reservation, and no service financial row. Browser error/warning logs were empty. Three unused test accounts from fixture preparation were retired with audit evidence; the successful sample is retained.
+
+No push, PR, deployment, SSH, staging, production, or remote database operations were performed.
 
 Existing limits: Request processing is publication-triggered and notifications remain best effort. This change adds no polling scheduler or notification-delivery retry. A failed business action may retry when the existing publication event is replayed; it does not schedule its own retry.
