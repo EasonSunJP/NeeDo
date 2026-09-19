@@ -83,12 +83,17 @@ describe("StoreDetailPage compact metrics", () => {
   });
 
   it("keeps the transport select aligned with the compact metric font", () => {
+    const transportEstimateSource = storeDetailSource.slice(
+      storeDetailSource.indexOf("function TransportEstimatePill"),
+      storeDetailSource.indexOf("const businessHourTimeOptions")
+    );
+
     expect(storeDetailSource).toContain("client-transport-estimate-trigger");
     expect(storeDetailSource).toContain("client-transport-estimate-menu");
     expect(storeDetailSource).toContain('role="listbox"');
     expect(storeDetailSource).toContain('role="option"');
     expect(storeDetailSource).toContain("absolute right-0 top-[calc(100%+6px)]");
-    expect(storeDetailSource).not.toContain("<select");
+    expect(transportEstimateSource).not.toContain("<select");
     expect(storeDetailSource).toContain("text-[12px] font-normal text-[color:var(--client-muted)]");
   });
 

@@ -14,14 +14,17 @@ Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, v
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: null }) }));
 const locale = vi.hoisted(() => ({ language: "zh" }));
 const pricingModeMock = vi.hoisted(() => ({ getBookingNavigation: vi.fn() }));
+const backofficeMock = vi.hoisted(() => ({
+  createService: vi.fn(),
+  merchantShopPresentation: vi.fn(),
+  services: vi.fn()
+}));
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => locale, useOptionalI18n: () => locale }));
 vi.mock("../../state/entityStore", () => ({ useEntityStore: () => ({ customers: [], technicians: [] }) }));
 vi.mock("../../features/social/context", () => ({ useSocial: () => ({ getActorForScope: () => null, getProfilePosts: () => [] }) }));
 vi.mock("../../features/pricing-mode/api", () => ({ pricingModeApi: pricingModeMock }));
 vi.mock("../../api/backofficeRealData", () => ({
-  backofficeRealDataApi: {
-    merchantShopPresentation: vi.fn(() => new Promise(() => {}))
-  }
+  backofficeRealDataApi: backofficeMock
 }));
 
 let container: HTMLDivElement;
@@ -30,6 +33,9 @@ beforeEach(async () => {
   await persistentResourceCache.clearScope("public");
   locale.language = "zh";
   pricingModeMock.getBookingNavigation.mockReset().mockResolvedValue(null);
+  backofficeMock.createService.mockReset();
+  backofficeMock.merchantShopPresentation.mockReset().mockReturnValue(new Promise(() => {}));
+  backofficeMock.services.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -190,6 +196,149 @@ it("renders the complete merchant technician roster when more than eight employe
   expect(container.textContent).toContain("正式技师9号");
   expect(container.textContent).toContain("正式技师10号");
   expect(container.textContent?.match(/正式技师(?:一号|\d+号)/g)).toHaveLength(10);
+});
+
+it("uses the complete merchant catalog count and keeps service creation available below twenty", async () => {
+  locale.language = "ja";
+  const catalog = [79, 80, 81].map((id) => ({
+    id,
+    categoryId: 4,
+    categoryName: "マッサージ",
+    shopId: 21,
+    shopName: "正式店铺",
+    technicianProfileId: null,
+    name: `サービス ${id}`,
+    description: "正式サービス",
+    city: "東京都",
+    serviceMode: "store",
+    priceAmount: 8_800,
+    currency: "JPY",
+    durationMinutes: 60,
+    status: "published",
+    isRecommended: false,
+    sortOrder: id,
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-01T00:00:00.000Z"
+  }));
+  const content = {
+    storeName: "正式店铺",
+    description: "正式资料",
+    address: "港区",
+    area: "東京都",
+    rankLabel: "",
+    businessHours: "10:00-20:00",
+    subtitle: "",
+    station: "",
+    distance: "",
+    parking: "",
+    routeGuide: "",
+    paymentMethods: [],
+    equipment: [],
+    carousel: [],
+    serviceMenus: catalog.map((service) => ({
+      serviceId: service.id,
+      name: service.name,
+      description: service.description,
+      audience: "",
+      tags: [],
+      highlights: [],
+      coverMediaAssetPublicId: null
+    }))
+  };
+  backofficeMock.services.mockResolvedValue({ list: catalog, total: 3, page: 1, page_size: 100 });
+  vi.spyOn(coreReadApi, "listCategories").mockResolvedValue({
+    list: [{
+      id: 4,
+      code: "massage",
+      name: "マッサージ",
+      nameJa: "マッサージ",
+      nameEn: "Massage",
+      parentId: null,
+      iconUrl: null,
+      sortOrder: 1,
+      isActive: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    }],
+    total: 1,
+    page: 1,
+    page_size: 100
+  });
+  backofficeMock.createService.mockResolvedValue({
+    ...catalog[0],
+    id: 82,
+    name: "新サービス",
+    description: "新しい正式サービス",
+    sortOrder: 3
+  });
+  backofficeMock.merchantShopPresentation.mockResolvedValue({
+    shopId: 21,
+    locales: Object.fromEntries(["ja", "en", "ko", "zh-CN", "zh-TW"].map((code) => [code, {
+      locale: code,
+      lockVersion: 1,
+      content,
+      updatedAt: "2026-09-01T00:00:00.000Z"
+    }])),
+    media: {},
+    services: catalog.map((service) => ({
+      id: service.id,
+      name: service.name,
+      description: service.description,
+      priceAmount: String(service.priceAmount),
+      currency: service.currency,
+      durationMinutes: service.durationMinutes,
+      coverMediaAssetPublicId: null
+    }))
+  });
+
+  const store = {
+    id: "21", systemId: "shop7507769538", merchantId: "merchant-21", name: "正式店铺",
+    area: "東京都", address: "港区", rating: 0, reviewCount: 0, priceLabel: "予約確認",
+    tags: [], openStatus: "open", nextSlot: "予約可", alwaysBookable: true,
+    cover: "/images/generated/stores/store-cafe-consult.jpg",
+    gallery: ["/images/generated/stores/store-cafe-consult.jpg"], description: "正式资料",
+    rankLabel: "", businessHours: "10:00-20:00", mode: "store", paymentMethods: []
+  } satisfies Store;
+  const serviceCards = catalog.map((service) => ({
+    id: String(service.id), coverUrl: null, name: service.name, priceAmount: service.priceAmount,
+    currency: service.currency, durationMinutes: service.durationMinutes, completedOrderCount: 0,
+    shopPublicId: "shop7507769538", shopAddress: "港区", description: service.description, tags: []
+  }));
+
+  await act(async () => root.render(
+    <MemoryRouter>
+      <StoreDetailExperience embedded formalApiOnly scope="merchant" serviceCardsOverride={serviceCards} store={store} techniciansOverride={[]} />
+    </MemoryRouter>
+  ));
+  await waitForText("サービスを追加 3/20");
+  const addButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("サービスを追加 3/20"));
+  expect(addButton).toBeDefined();
+  expect(addButton?.disabled).toBe(false);
+  expect(container.textContent).not.toContain("サービス上限 20/20");
+
+  await act(async () => addButton!.click());
+  expect(container.textContent).toContain("新しいサービスを作成");
+  const editor = container.querySelector<HTMLElement>('[data-testid="merchant-shop-service-create-editor"]')!;
+  await vi.waitFor(() => expect(editor.querySelectorAll("option")).toHaveLength(2));
+  const [nameInput, priceInput, durationInput] = Array.from(editor.querySelectorAll<HTMLInputElement>("input"));
+  await act(async () => {
+    for (const [input, value] of [[nameInput, "新サービス"], [priceInput, "9800"], [durationInput, "75"]] as const) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
+  const createButton = Array.from(editor.querySelectorAll("button")).find((button) => button.textContent === "作成して追加");
+  await act(async () => createButton!.click());
+  await waitForText("サービスを追加 4/20");
+  expect(backofficeMock.createService).toHaveBeenCalledWith("merchant-admin", expect.objectContaining({
+    categoryId: 4,
+    technicianProfileId: null,
+    name: "新サービス",
+    priceAmount: 9_800,
+    durationMinutes: 75,
+    status: "published"
+  }));
 });
 
 it("builds checkout actions only from an exact future formal slot", async () => {

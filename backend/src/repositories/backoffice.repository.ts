@@ -2003,7 +2003,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         transaction
       );
       const nonDeletedCount = await transaction.service.count({
-        where: { shopId, deletedAt: null }
+        where: {
+          shopId,
+          technicianProfileId: null,
+          status: { not: "archived" },
+          deletedAt: null
+        }
       });
       assertShopServiceQuota(nonDeletedCount + 1);
 
@@ -2596,12 +2601,16 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return {
       deletedAt: null,
       ...(scope.scope === "merchant"
-        ? { shopId: scope.shopId }
+        ? {
+            shopId: scope.shopId,
+            technicianProfileId: null,
+            status: input.status ?? { not: "archived" }
+          }
         : input.shopId
           ? { shopId: input.shopId }
           : {}),
       ...(input.categoryId ? { categoryId: input.categoryId } : {}),
-      ...(input.status ? { status: input.status } : {}),
+      ...(scope.scope !== "merchant" && input.status ? { status: input.status } : {}),
       ...(input.keyword
         ? {
             OR: [
