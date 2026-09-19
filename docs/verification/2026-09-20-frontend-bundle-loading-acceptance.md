@@ -43,7 +43,7 @@ Rollup 4.60.1 treats those tokens as misplaced annotations and removes only the 
 ## Verification
 
 - Focused regression suite: 67 tests passed.
-- Full frontend suite: 585 files / 3,973 tests passed in four resource-isolated shards. The first unsharded run had one unrelated 5-second IM test timeout under full-suite contention; that file then passed independently (27 tests), and every shard passed.
+- Full frontend suite on final local `main`: 585 files / 3,976 tests passed in four resource-isolated shards. Before the latest `main` integration, the first unsharded branch run had one unrelated 5-second IM test timeout under full-suite contention; that file then passed independently (27 tests), and every shard passed.
 - Production bundle audit: 8 HTML entries and 79 assets passed.
 - TypeScript project check: passed.
 - i18n audit and quality report generation: passed; all 15,387 registered entries include all four target languages.
