@@ -15,4 +15,9 @@ describe("single complete social pages", () => {
     expect(routeSource).toContain('import("./pages/SocialProfilePage")');
     expect(routeSource).toContain("SocialAccountProfilePage");
   });
+
+  it("localizes the lazy-route loading fallback", () => {
+    expect(routeSource).toContain('translateText("正在加载…", language)');
+    expect(routeSource).not.toContain(">正在加载动态...</div>");
+  });
 });
