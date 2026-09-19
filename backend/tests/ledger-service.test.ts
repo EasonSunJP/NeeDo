@@ -670,6 +670,81 @@ describe("LedgerService wallet mutations", () => {
     });
   });
 
+  it("projects a confirmed cash checkout as audited offline income with exact add-on basis", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 1_000 });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+    const input = {
+      ...bookingInput({
+        bookingOrderId: 24410,
+        shopId: 10,
+        actorUserId: 2,
+        customerUserId: 3,
+        technicianProfileId: 21
+      }),
+      serviceAmountJpy: 14_850
+    };
+    const receiptConfirmedAt = new Date("2026-09-19T10:16:01.000Z");
+
+    await service.freezeBookingAcceptance(input);
+    await service.settleBookingCompletion({
+      ...input,
+      customerUserId: 3,
+      checkoutPayment: {
+        method: "cash",
+        amountJpy: 14_850,
+        baseServiceAmountJpy: 8_200,
+        extensionAmountJpy: 6_650,
+        evidence: "technician_receipt_confirmation",
+        confirmedById: 2,
+        confirmedAt: receiptConfirmedAt,
+        reason: "cash received"
+      }
+    } as never);
+
+    expect(repository.financials.get(24410)).toMatchObject({
+      serviceAmountJpy: 14_850,
+      baseServiceAmountJpy: 8_200,
+      extensionAmountJpy: 6_650,
+      nominationChargeAmountJpy: 0,
+      wasTechnicianNominated: false,
+      platformCollectedServiceAmountJpy: 0,
+      offlineReportedServiceAmountJpy: 14_850,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      paymentChannel: "offline_cash",
+      serviceIncomeStatus: "confirmed",
+      serviceIncomeReportedById: 2,
+      serviceIncomeReportedAt: receiptConfirmedAt,
+      serviceIncomeConfirmedById: 2,
+      serviceIncomeConfirmedAt: receiptConfirmedAt,
+      serviceIncomeNote: "cash received",
+      bPlatformFeeActualNdp: 500,
+      userRewardNdp: 100,
+      settlementStatus: "settled",
+      timelineEvent: expect.objectContaining({
+        action: "booking_complete_snapshot_settlement",
+        type: "service_income_confirmed",
+        amountJpy: 14_850,
+        actorType: "technician",
+        occurredAt: receiptConfirmedAt.toISOString(),
+        status: "confirmed",
+        metadata: expect.objectContaining({
+          paymentChannel: "offline_cash",
+          paymentEvidence: "technician_receipt_confirmation",
+          baseServiceAmountJpy: 8_200,
+          extensionAmountJpy: 6_650,
+          platformFeeNdp: 500
+        })
+      })
+    });
+  });
+
   it("settles a no-show from the frozen 500 NDP fee without issuing a customer reward", async () => {
     const repository = new InMemoryLedgerRepository();
     repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 1_000 });
@@ -1241,11 +1316,38 @@ describe("LedgerService wallet mutations", () => {
   });
 
   it.each([
-    ["TEST_NDP", { method: "ndp", payableNdp: 14_850 }, "platform_test_ndp", 0, 0],
-    ["cash", { method: "cash" }, "offline_cash", 0, 14_850]
+    ["TEST_NDP", { method: "ndp", payableNdp: 8_200 }, "platform_test_ndp", 0, 0, 8_200, 8_200, 0],
+    [
+      "cash",
+      {
+        method: "cash",
+        amountJpy: 14_850,
+        baseServiceAmountJpy: 8_200,
+        extensionAmountJpy: 6_650,
+        evidence: "technician_receipt_confirmation",
+        confirmedById: 2,
+        confirmedAt: new Date("2026-09-20T02:45:00.000Z"),
+        reason: "cash received"
+      },
+      "offline_cash",
+      0,
+      14_850,
+      14_850,
+      8_200,
+      6_650
+    ]
   ] as const)(
     "persists one auditable compensation projection for %s completion",
-    async (_label, checkoutPayment, paymentChannel, platformCollected, offlineReported) => {
+    async (
+      _label,
+      checkoutPayment,
+      paymentChannel,
+      platformCollected,
+      offlineReported,
+      serviceAmountJpy,
+      baseServiceAmountJpy,
+      extensionAmountJpy
+    ) => {
       const repository = new InMemoryLedgerRepository();
       repository.accountClassifications.set(3, true);
       repository.seedWallet({
@@ -1284,13 +1386,15 @@ describe("LedgerService wallet mutations", () => {
           actorUserId: 2,
           customerUserId: 3
         }),
-        serviceAmountJpy: 14_850,
-        baseServiceAmountJpy: 8_200,
-        extensionAmountJpy: 6_650,
+        serviceAmountJpy,
+        baseServiceAmountJpy,
+        extensionAmountJpy,
         nominationChargeAmountJpy: 0,
         wasTechnicianNominated: false,
         compensationBasisVersion: "shop_default:73" as const,
-        checkoutPayment
+        checkoutPayment,
+        completedAt: now,
+        workedMinutes: paymentChannel === "offline_cash" ? 105 : 60
       };
 
       await service.freezeBookingAcceptance(input);
@@ -1299,8 +1403,8 @@ describe("LedgerService wallet mutations", () => {
       await service.settleBookingCompletion({ ...input, customerUserId: 3 });
 
       expect(repository.financials.get(input.bookingOrderId)).toMatchObject({
-        baseServiceAmountJpy: 8_200,
-        extensionAmountJpy: 6_650,
+        baseServiceAmountJpy,
+        extensionAmountJpy,
         nominationChargeAmountJpy: 0,
         wasTechnicianNominated: false,
         compensationBasisVersion: "shop_default:73",
@@ -1309,11 +1413,26 @@ describe("LedgerService wallet mutations", () => {
         platformCollectedServiceAmountJpy: platformCollected,
         offlineReportedServiceAmountJpy: offlineReported,
         unknownOrUnreportedServiceAmountJpy: 0,
+        serviceIncomeConfirmedById: 2,
+        serviceIncomeConfirmedAt:
+          checkoutPayment.method === "ndp" ? now : checkoutPayment.confirmedAt,
         timelineEvents: expect.arrayContaining([
           expect.objectContaining({
+            type: "service_income_confirmed",
+            amountJpy: serviceAmountJpy,
+            occurredAt:
+              checkoutPayment.method === "ndp"
+                ? now.toISOString()
+                : checkoutPayment.confirmedAt.toISOString()
+          }),
+          expect.objectContaining({
             type: "technician_income_estimated",
-            amountJpy: 14_850,
-            metadata: expect.objectContaining({ shopEstimatedGrossProfitJpy: -500 })
+            amountJpy: serviceAmountJpy,
+            occurredAt: now.toISOString(),
+            metadata: expect.objectContaining({
+              workedMinutes: paymentChannel === "offline_cash" ? 105 : 60,
+              shopEstimatedGrossProfitJpy: -500
+            })
           })
         ])
       });

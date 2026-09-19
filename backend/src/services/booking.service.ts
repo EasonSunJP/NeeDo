@@ -190,7 +190,7 @@ export class BookingService {
     nowOrPolicy?: (() => Date) | Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
     policy?: Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
     platformPaymentPolicy?: PlatformPaymentPolicyPort,
-    private readonly workStatusNotifier?: {notifyTechnician:(id:number)=>Promise<void>},
+    private readonly workStatusNotifier?: { notifyTechnician: (id: number) => Promise<void> },
     private readonly liveDashboardEventPublisher?: LiveDashboardEventPublisher,
     private readonly shopVisibility?: Pick<
       ShopVisibilityRepositoryPort,
@@ -654,18 +654,23 @@ export class BookingService {
       await this.recordScheduleMutation(actor, context, scope, "create", slot);
     }
     try {
-      return await this.createBooking(actor, {
-        expectedPriceAmountJpy: input.expectedPriceAmountJpy,
-        serviceId: input.serviceId,
-        technicianServiceId: input.technicianServiceId,
-        scheduleSlotId: slot.id,
-        fulfillmentMode: "store",
-        paymentMethod: input.paymentMethod,
-        note: input.note
-      }, rawIdempotencyKey, {
-        customerUserId,
-        createdByUserId: actor.userId
-      });
+      return await this.createBooking(
+        actor,
+        {
+          expectedPriceAmountJpy: input.expectedPriceAmountJpy,
+          serviceId: input.serviceId,
+          technicianServiceId: input.technicianServiceId,
+          scheduleSlotId: slot.id,
+          fulfillmentMode: "store",
+          paymentMethod: input.paymentMethod,
+          note: input.note
+        },
+        rawIdempotencyKey,
+        {
+          customerUserId,
+          createdByUserId: actor.userId
+        }
+      );
     } catch (error) {
       await this.repository.deleteScheduleSlot({ ...scope, id: slot.id }).catch(() => undefined);
       throw error;
@@ -738,7 +743,8 @@ export class BookingService {
     });
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
-      if(mutation.order.technicianProfileId)await this.workStatusNotifier?.notifyTechnician(mutation.order.technicianProfileId);
+      if (mutation.order.technicianProfileId)
+        await this.workStatusNotifier?.notifyTechnician(mutation.order.technicianProfileId);
       await this.notifyOrderStatusChangedBestEffort({
         actorUserId: actor.userId,
         orderId: mutation.order.id,
@@ -878,7 +884,8 @@ export class BookingService {
     });
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
-      if(mutation.order.technicianProfileId)await this.workStatusNotifier?.notifyTechnician(mutation.order.technicianProfileId);
+      if (mutation.order.technicianProfileId)
+        await this.workStatusNotifier?.notifyTechnician(mutation.order.technicianProfileId);
       await this.notifyOrderStatusChangedBestEffort({
         actorUserId: actor.userId,
         orderId: mutation.order.id,
@@ -1247,12 +1254,42 @@ export class BookingService {
       context.checkout.discountAmountJpy === 0 &&
       context.checkout.baseAmountJpy + context.checkout.addOnAmountJpy ===
         context.checkout.checkoutAmountJpy;
-    const workedFrom = context.order.serviceSession?.startedAt ?? context.order.startsAt;
-    const workedTo = context.order.serviceSession?.endedAt ?? context.order.endsAt;
-    const workedMinutes = Math.max(
-      0,
-      Math.round((workedTo.getTime() - workedFrom.getTime()) / 60_000)
-    );
+    const workedFrom = context.order.startsAt;
+    const workedTo = context.order.endsAt;
+    const workedMinutes =
+      workedFrom && workedTo
+        ? Math.max(0, Math.round((workedTo.getTime() - workedFrom.getTime()) / 60_000))
+        : undefined;
+    const hasExactServiceComponentBasis =
+      context.checkout.baseAmountJpy + context.checkout.addOnAmountJpy ===
+      context.checkout.checkoutAmountJpy;
+    const checkoutPayment =
+      context.checkout.paymentMethod === "ndp"
+        ? {
+            method: "ndp" as const,
+            payableNdp: context.checkout.payableNdp
+          }
+        : (context.checkout.paymentMethod === "cash" ||
+              context.checkout.paymentMethod === "other") &&
+            (context.checkout.paymentEvidence === "technician_receipt_confirmation" ||
+              context.checkout.paymentEvidence === "operations_receipt_override") &&
+            context.checkout.receiptConfirmedAt &&
+            context.checkout.receiptConfirmationReason
+          ? {
+              method: context.checkout.paymentMethod,
+              amountJpy: context.checkout.checkoutAmountJpy,
+              ...(hasExactServiceComponentBasis
+                ? {
+                    baseServiceAmountJpy: context.checkout.baseAmountJpy,
+                    extensionAmountJpy: context.checkout.addOnAmountJpy
+                  }
+                : {}),
+              evidence: context.checkout.paymentEvidence,
+              confirmedById: actorUserId,
+              confirmedAt: context.checkout.receiptConfirmedAt,
+              reason: context.checkout.receiptConfirmationReason
+            }
+          : undefined;
     await this.ledgerService.settleBookingCompletion(
       {
         bookingOrderId: context.order.id,
@@ -1273,13 +1310,10 @@ export class BookingService {
               nominationChargeAmountJpy: 0,
               wasTechnicianNominated: false,
               compensationBasisVersion,
-              workedMinutes
+              ...(workedMinutes !== undefined ? { workedMinutes } : {})
             }
           : {}),
-        checkoutPayment:
-          context.checkout.paymentMethod === "ndp"
-            ? { method: "ndp" as const, payableNdp: context.checkout.payableNdp }
-            : { method: context.checkout.paymentMethod ?? "other" }
+        ...(checkoutPayment ? { checkoutPayment } : {})
       },
       { transactionClient: context.transactionClient }
     );
@@ -1884,13 +1918,18 @@ export class BookingService {
     if (result.outcome === "ok") return result.window;
     if (result.outcome === "suspended") throw this.suspendedError();
     if (result.outcome === "not_found") {
-      throw new AppError({ code: ERROR_CODES.NOT_FOUND, message: "error.availability.window_not_found", statusCode: 404 });
+      throw new AppError({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.availability.window_not_found",
+        statusCode: 404
+      });
     }
     throw new AppError({
       code: ERROR_CODES.SCHEDULE_CONFLICT,
-      message: result.outcome === "shop_control_conflict"
-        ? "error.availability.shop_control_conflict"
-        : "error.availability.conflict",
+      message:
+        result.outcome === "shop_control_conflict"
+          ? "error.availability.shop_control_conflict"
+          : "error.availability.conflict",
       statusCode: 409
     });
   }

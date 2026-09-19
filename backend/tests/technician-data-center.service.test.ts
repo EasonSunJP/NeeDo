@@ -246,6 +246,53 @@ describe("TechnicianDataCenterService", () => {
     ]);
   });
 
+  it("prefers persisted income and rejects a technician override owned by another technician", async () => {
+    const wrongOwnerRule = { ...rule, technicianProfileId: 999 };
+    const scenario: TechnicianDataCenterSource = {
+      ...source,
+      recognizedIncomeByOrderId: {},
+      compensationRulesByBasis: { "technician_override:81": wrongOwnerRule },
+      periodOrders: [
+        {
+          ...source.periodOrders[1]!,
+          id: 601,
+          shopId: 73,
+          technicianProfileId: 31,
+          financial: {
+            ...source.periodOrders[1]!.financial!,
+            estimatedTechnicianIncomeJpy: 9_000
+          }
+        },
+        {
+          ...source.periodOrders[1]!,
+          id: 602,
+          shopId: 73,
+          technicianProfileId: 31,
+          financial: {
+            ...source.periodOrders[1]!.financial!,
+            estimatedTechnicianIncomeJpy: null
+          }
+        }
+      ],
+      recentOrders: [],
+      upcomingOrderCount: 0,
+      nextOrder: null
+    };
+    const service = new TechnicianDataCenterService(
+      { load: jest.fn(async () => scenario) },
+      { record: jest.fn(async () => undefined) },
+      () => new Date("2026-09-01T03:00:00.000Z")
+    );
+
+    const result = await service.getMine(
+      actor,
+      { ip: "127.0.0.1", userAgent: "jest" },
+      "last7days"
+    );
+
+    expect(result.summary.recognizedIncomeJpy).toBe(9_000);
+  });
+
   it("rejects non-technician identity scope", async () => {
     const service = new TechnicianDataCenterService({ load: jest.fn() }, { record: jest.fn() });
     await expect(

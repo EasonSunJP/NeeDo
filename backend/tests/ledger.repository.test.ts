@@ -2,6 +2,20 @@ import { ERROR_CODES } from "../src/constants/error-codes";
 import { LedgerRepository } from "../src/repositories/ledger.repository";
 
 describe("LedgerRepository wallet creation", () => {
+  it("scopes a snapshotted technician override to both shop and technician", async () => {
+    const findFirst = jest.fn(async () => null);
+    const repository = new LedgerRepository({
+      technicianCompensationProfile: { findFirst }
+    } as never);
+
+    await expect(
+      repository.findCompensationRuleByBasis(12, 42, "technician_override:73")
+    ).resolves.toBeNull();
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: 73, shopId: 12, technicianProfileId: 42 }
+    });
+  });
+
   it("loads formal and Test NDP balances in one owner-scoped query", async () => {
     const now = new Date("2026-08-30T00:00:00.000Z");
     const findMany = jest.fn(async () => [
@@ -170,6 +184,57 @@ describe("LedgerRepository wallet creation", () => {
           expect.objectContaining({ action: "booking_complete_snapshot_settlement" }),
           expect.objectContaining({ type: "technician_income_estimated", amountJpy: 8_800 })
         ])
+      })
+    });
+  });
+
+  it("persists confirmed offline checkout components and receipt audit fields", async () => {
+    const create = jest.fn().mockResolvedValue({ id: 1 });
+    const repository = new LedgerRepository({
+      orderFinancial: { findUnique: jest.fn().mockResolvedValue(null), create }
+    } as never);
+    const confirmedAt = new Date("2026-09-19T10:16:01.000Z");
+
+    await repository.upsertOrderFinancial({
+      bookingOrderId: 24410,
+      orderType: "booking",
+      ndpCurrency: "NDP",
+      customerUserId: 3,
+      shopId: 10,
+      technicianProfileId: 21,
+      serviceAmountJpy: 14_850,
+      baseServiceAmountJpy: 8_200,
+      extensionAmountJpy: 6_650,
+      nominationChargeAmountJpy: 0,
+      wasTechnicianNominated: false,
+      platformCollectedServiceAmountJpy: 0,
+      offlineReportedServiceAmountJpy: 14_850,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      paymentChannel: "offline_cash",
+      serviceIncomeStatus: "confirmed",
+      serviceIncomeReportedById: 2,
+      serviceIncomeReportedAt: confirmedAt,
+      serviceIncomeConfirmedById: 2,
+      serviceIncomeConfirmedAt: confirmedAt,
+      serviceIncomeNote: "cash received"
+    } as never);
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        serviceAmountJpy: 14_850,
+        baseServiceAmountJpy: 8_200,
+        extensionAmountJpy: 6_650,
+        nominationChargeAmountJpy: 0,
+        wasTechnicianNominated: false,
+        offlineReportedServiceAmountJpy: 14_850,
+        unknownOrUnreportedServiceAmountJpy: 0,
+        paymentChannel: "offline_cash",
+        serviceIncomeStatus: "confirmed",
+        serviceIncomeReportedById: 2,
+        serviceIncomeReportedAt: confirmedAt,
+        serviceIncomeConfirmedById: 2,
+        serviceIncomeConfirmedAt: confirmedAt,
+        serviceIncomeNote: "cash received"
       })
     });
   });

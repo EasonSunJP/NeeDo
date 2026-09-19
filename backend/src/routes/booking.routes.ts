@@ -145,7 +145,7 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     dependencies.shopVisibilityRepository ?? new ShopVisibilityRepository()
   );
   const automationProcessor =
-    dependencies.technicianAutomationProcessor ??
+    dependencies.technicianBookingAutomationProcessor ??
     (dependencies.bookingRepository ? undefined : new TechnicianAutomationProcessor(
       new TechnicianAutomationRepository(),
       {

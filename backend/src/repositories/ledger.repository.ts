@@ -1129,6 +1129,21 @@ export class LedgerRepository implements LedgerRepositoryPort {
       ...(input.serviceIncomeStatus !== undefined
         ? { serviceIncomeStatus: input.serviceIncomeStatus }
         : {}),
+      ...(input.serviceIncomeReportedById !== undefined
+        ? { serviceIncomeReportedById: input.serviceIncomeReportedById }
+        : {}),
+      ...(input.serviceIncomeReportedAt !== undefined
+        ? { serviceIncomeReportedAt: input.serviceIncomeReportedAt }
+        : {}),
+      ...(input.serviceIncomeConfirmedById !== undefined
+        ? { serviceIncomeConfirmedById: input.serviceIncomeConfirmedById }
+        : {}),
+      ...(input.serviceIncomeConfirmedAt !== undefined
+        ? { serviceIncomeConfirmedAt: input.serviceIncomeConfirmedAt }
+        : {}),
+      ...(input.serviceIncomeNote !== undefined
+        ? { serviceIncomeNote: input.serviceIncomeNote }
+        : {}),
       ...(input.bPlatformFeeHoldNdp !== undefined
         ? { bPlatformFeeHoldNdp: input.bPlatformFeeHoldNdp }
         : {}),
@@ -1241,6 +1256,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
 
   public async findCompensationRuleByBasis(
     shopId: number,
+    technicianProfileId: number | null,
     basisVersion: `shop_default:${number}` | `technician_override:${number}`
   ): Promise<CompensationRuleSet | null> {
     const [sourceType, rawId] = basisVersion.split(":") as [
@@ -1250,8 +1266,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
     const id = Number(rawId);
     if (!Number.isSafeInteger(id) || id <= 0) return null;
     if (sourceType === "technician_override") {
+      if (technicianProfileId === null) return null;
       const record = await this.client.technicianCompensationProfile.findFirst({
-        where: { id, shopId }
+        where: { id, shopId, technicianProfileId }
       });
       return record
         ? {

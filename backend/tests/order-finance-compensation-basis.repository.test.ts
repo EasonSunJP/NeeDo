@@ -215,6 +215,8 @@ describe("OrderFinanceRepository compensation basis", () => {
       sourceType: "technician_override",
       commissionRatePercent: 30
     });
-    expect(technicianFindFirst).toHaveBeenCalledWith({ where: { id: 71, shopId: 9 } });
+    expect(technicianFindFirst).toHaveBeenCalledWith({
+      where: { id: 71, shopId: 9, technicianProfileId: 3 }
+    });
   });
 });

@@ -20,6 +20,8 @@ type ShopRuleRecord = Prisma.ShopFinanceRuleSetGetPayload<Record<string, never>>
 
 const orderSelect = {
   id: true,
+  shopId: true,
+  technicianProfileId: true,
   orderNo: true,
   status: true,
   paymentStatus: true,
@@ -47,7 +49,8 @@ const orderSelect = {
       nominationChargeAmountJpy: true,
       wasTechnicianNominated: true,
       compensationBasisVersion: true,
-      bPlatformFeeActualNdp: true
+      bPlatformFeeActualNdp: true,
+      moneyTimelineJson: true
     }
   }
 } satisfies Prisma.BookingOrderSelect;
@@ -145,7 +148,7 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
     const allOrderIds = [...new Set([...periodOrders, ...recentOrders].map((order) => order.id))];
     const [recognizedIncomeByOrderId, compensationRulesByBasis, incomeModel] = await Promise.all([
       this.recognizedIncome(technicianProfileId, allOrderIds),
-      this.historicalRules([...periodOrders, ...recentOrders]),
+      this.historicalRules([...periodOrders, ...recentOrders], technicianProfileId),
       shopId ? this.currentIncomeModel(shopId, technicianProfileId) : Promise.resolve(null)
     ]);
 
@@ -199,7 +202,8 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
   }
 
   private async historicalRules(
-    orders: TechnicianDataCenterOrderSource[]
+    orders: TechnicianDataCenterOrderSource[],
+    technicianProfileId: number
   ): Promise<Record<string, CompensationRuleSet>> {
     const technicianIds = new Set<number>();
     const shopIds = new Set<number>();
@@ -214,7 +218,7 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
     const [technicianRules, shopRules] = await Promise.all([
       technicianIds.size > 0
         ? this.client.technicianCompensationProfile.findMany({
-            where: { id: { in: [...technicianIds] } }
+            where: { id: { in: [...technicianIds] }, technicianProfileId }
           })
         : Promise.resolve([]),
       shopIds.size > 0
@@ -293,6 +297,8 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
       orderNo: order.orderNo,
       serviceName: order.serviceNameSnapshot ?? order.service?.name ?? "",
       shopName: order.shop.name,
+      shopId: order.shopId,
+      technicianProfileId: order.technicianProfileId,
       status: normalized === "in_service" ? "inService" : normalized,
       startsAt: order.startsAt.toISOString(),
       endsAt: order.endsAt.toISOString(),
@@ -320,10 +326,26 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
             compensationBasisVersion: checkoutBreakdown
               ? snapshotBasis
               : order.financial.compensationBasisVersion,
-            platformFeeNdp: order.financial.bPlatformFeeActualNdp
+            platformFeeNdp: order.financial.bPlatformFeeActualNdp,
+            estimatedTechnicianIncomeJpy: this.timelineAmount(
+              order.financial.moneyTimelineJson,
+              "technician_income_estimated"
+            )
           }
         : null
     };
+  }
+
+  private timelineAmount(value: unknown, type: string): number | null {
+    if (!Array.isArray(value)) return null;
+    const event = value.find(
+      (item) =>
+        item !== null &&
+        typeof item === "object" &&
+        !Array.isArray(item) &&
+        (item as { type?: unknown }).type === type
+    ) as { amountJpy?: unknown } | undefined;
+    return typeof event?.amountJpy === "number" ? event.amountJpy : null;
   }
 
   private mapTechnicianRule(record: TechnicianRuleRecord): CompensationRuleSet {

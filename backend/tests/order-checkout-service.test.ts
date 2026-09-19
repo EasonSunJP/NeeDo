@@ -38,7 +38,10 @@ describe("formal order checkout service", () => {
         payableNdp: 14_850,
         paymentMethod,
         paymentEvidence:
-          paymentMethod === "ndp" ? "ndp_ledger" : "technician_receipt_confirmation"
+          paymentMethod === "ndp" ? "ndp_ledger" : "technician_receipt_confirmation",
+        receiptConfirmedAt:
+          paymentMethod === "cash" ? new Date("2026-09-20T02:45:00.000Z") : null,
+        receiptConfirmationReason: paymentMethod === "cash" ? "cash received" : null
       };
       const settlementContext = {
         transactionClient: {},
@@ -52,6 +55,10 @@ describe("formal order checkout service", () => {
           customerUserId: 101,
           startsAt: new Date("2026-09-20T01:00:00.000Z"),
           endsAt: new Date("2026-09-20T02:45:00.000Z"),
+          serviceSession: {
+            startedAt: new Date("2026-09-20T01:15:00.000Z"),
+            endedAt: new Date("2026-09-20T02:15:00.000Z")
+          },
           serviceSnapshot: { compensationBasisVersion: "shop_default:73" },
           statusHistory: []
         },
@@ -106,6 +113,7 @@ describe("formal order checkout service", () => {
           nominationChargeAmountJpy: 0,
           wasTechnicianNominated: false,
           compensationBasisVersion: "shop_default:73",
+          workedMinutes: 105,
           checkoutPayment: expect.objectContaining({ method: paymentMethod })
         }),
         { transactionClient: settlementContext.transactionClient }
@@ -114,14 +122,41 @@ describe("formal order checkout service", () => {
   );
 
   it("calculates checkout as base plus accepted add-ons plus travel fare minus discount", () => {
-    expect(calculateOrderCheckoutSnapshot({
-      currency: "JPY", servicePrice: 8_800, travelFareAmountJpy: 500,
-      addOns: [{ id: 1, status: "ACCEPTED", priceAmountJpy: 2_200, currency: "JPY", deletedAt: null }],
-      affiliateAttribution: { originalPriceJpy: 8_800, customerDiscountJpy: 800, finalPriceJpy: 8_000 }
-    }, { ruleId: 1, publicId: "rate-1", version: 1, ndpUnits: 1, jpyUnits: 1, effectiveFrom: new Date("2026-09-05T00:00:00.000Z") })).toMatchObject({
-      baseAmountJpy: 8_800, addOnAmountJpy: 2_200, travelFareAmountJpy: 500,
-      discountAmountJpy: 800, checkoutAmountJpy: 10_700, payableNdp: 10_700,
-      calculation: { formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount", travelFareAmountJpy: 500 }
+    expect(
+      calculateOrderCheckoutSnapshot(
+        {
+          currency: "JPY",
+          servicePrice: 8_800,
+          travelFareAmountJpy: 500,
+          addOns: [
+            { id: 1, status: "ACCEPTED", priceAmountJpy: 2_200, currency: "JPY", deletedAt: null }
+          ],
+          affiliateAttribution: {
+            originalPriceJpy: 8_800,
+            customerDiscountJpy: 800,
+            finalPriceJpy: 8_000
+          }
+        },
+        {
+          ruleId: 1,
+          publicId: "rate-1",
+          version: 1,
+          ndpUnits: 1,
+          jpyUnits: 1,
+          effectiveFrom: new Date("2026-09-05T00:00:00.000Z")
+        }
+      )
+    ).toMatchObject({
+      baseAmountJpy: 8_800,
+      addOnAmountJpy: 2_200,
+      travelFareAmountJpy: 500,
+      discountAmountJpy: 800,
+      checkoutAmountJpy: 10_700,
+      payableNdp: 10_700,
+      calculation: {
+        formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
+        travelFareAmountJpy: 500
+      }
     });
   });
   it("creates and returns the immutable checkout projection for the owning customer", async () => {
@@ -253,6 +288,101 @@ describe("formal order checkout service", () => {
       availablePaymentMethods: ["cash", "ndp"]
     });
     expect(repository.findOrderById).toHaveBeenCalledWith(41);
+  });
+
+  it("forwards confirmed cash receipt evidence and checkout components to finance settlement", async () => {
+    const receiptConfirmedAt = new Date("2026-09-19T10:16:01.000Z");
+    const transactionClient = { kind: "transaction" };
+    const checkout = {
+      id: 4221,
+      orderId: 24410,
+      status: "completed",
+      baseAmountJpy: 8_200,
+      addOnAmountJpy: 6_650,
+      travelFareAmountJpy: 0,
+      discountAmountJpy: 0,
+      checkoutAmountJpy: 14_850,
+      payableNdp: 14_850,
+      rate: {
+        ruleId: 1,
+        publicId: "00000000-0000-4000-8000-000000000001",
+        version: 1,
+        ndpUnits: 1,
+        jpyUnits: 1,
+        effectiveFrom: "2026-09-01T00:00:00.000Z"
+      },
+      calculation: {
+        formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
+        baseAmountJpy: 8_200,
+        acceptedAddOnIds: [6650],
+        addOnAmountJpy: 6_650,
+        travelFareAmountJpy: 0,
+        discountAmountJpy: 0,
+        checkoutAmountJpy: 14_850,
+        rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"
+      },
+      paymentMethod: "cash",
+      paymentSelectedAt: new Date("2026-09-19T10:15:00.000Z"),
+      otherMethod: null,
+      paymentEvidence: "technician_receipt_confirmation",
+      receiptConfirmedAt,
+      receiptConfirmationReason: "cash received",
+      createdAt: new Date("2026-09-19T10:14:00.000Z"),
+      updatedAt: receiptConfirmedAt
+    };
+    const order = {
+      id: 24410,
+      orderNo: "ND202609191916018586",
+      orderType: "booking",
+      shopId: 11,
+      technicianProfileId: 702,
+      serviceId: 91,
+      startsAt: new Date("2026-09-19T08:00:00.000Z"),
+      customerUserId: 101,
+      statusHistory: [{ toStatus: "confirmed", createdAt: new Date("2026-09-19T07:50:00.000Z") }]
+    };
+    const repository = {
+      confirmCheckoutReceipt: jest.fn(async (_input, options) => {
+        await options.settle({ transactionClient, order, checkout });
+        return { outcome: "ok", applied: true, checkout };
+      }),
+      findOrderById: jest.fn(async () => null)
+    };
+    const ledger = { settleBookingCompletion: jest.fn(async () => undefined) };
+    const technician = {
+      ...customer,
+      userId: 202,
+      roles: ["technician"],
+      currentIdentityType: "technician",
+      currentIdentityScopeType: "technician_profile",
+      currentIdentityScopeId: 702
+    };
+    const service = new BookingService(repository as never, ledger as never);
+
+    await service.confirmCheckoutReceipt(
+      technician as never,
+      24410,
+      { reason: "cash received", idempotencyKey: "receipt-order-24410" },
+      { ip: "127.0.0.1", userAgent: "jest" }
+    );
+
+    expect(ledger.settleBookingCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingOrderId: 24410,
+        serviceAmountJpy: 14_850,
+        checkoutPayment: {
+          method: "cash",
+          amountJpy: 14_850,
+          baseServiceAmountJpy: 8_200,
+          extensionAmountJpy: 6_650,
+          evidence: "technician_receipt_confirmation",
+          confirmedById: 202,
+          confirmedAt: receiptConfirmedAt,
+          reason: "cash received"
+        }
+      }),
+      { transactionClient }
+    );
   });
 
   it("still publishes a committed NDP completion when notification lookup finds no order", async () => {
@@ -1030,6 +1160,17 @@ describe("formal checkout repository state", () => {
       })
     );
     expect(settle).toHaveBeenCalledTimes(1);
+    expect(settle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checkout: expect.objectContaining({
+          status: "completed",
+          paymentMethod: "cash",
+          paymentEvidence: "technician_receipt_confirmation",
+          receiptConfirmedAt: expect.any(Date),
+          receiptConfirmationReason: "cash received"
+        })
+      })
+    );
     expect(affiliate).toHaveBeenCalledTimes(1);
     const replay = await h.repository.confirmCheckoutReceipt(
       {

@@ -74,7 +74,11 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
 
     const savedBasisVersion = readCompensationBasisVersion(order.serviceSnapshotJson);
     const activeCompensationRule = savedBasisVersion
-      ? await this.findCompensationRuleByBasis(order.shopId, savedBasisVersion)
+      ? await this.findCompensationRuleByBasis(
+          order.shopId,
+          order.technicianProfileId,
+          savedBasisVersion
+        )
       : await this.findActiveCompensationRule(order.shopId, order.technicianProfileId);
 
     return this.mapOrder(order, activeCompensationRule);
@@ -204,6 +208,7 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
 
   private async findCompensationRuleByBasis(
     shopId: number,
+    technicianProfileId: number | null,
     basisVersion: CompensationBasisVersion
   ): Promise<CompensationRuleSet | null> {
     const [sourceType, rawId] = basisVersion.split(":") as [
@@ -212,8 +217,9 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
     ];
     const id = Number(rawId);
     if (sourceType === "technician_override") {
+      if (technicianProfileId === null) return null;
       const profile = await this.client.technicianCompensationProfile.findFirst({
-        where: { id, shopId }
+        where: { id, shopId, technicianProfileId }
       });
       return profile ? this.mapTechnicianProfile(profile) : null;
     }

@@ -93,6 +93,55 @@ describe("core read shop visibility", () => {
     expect(shopCount).toHaveBeenCalledWith({ where: expectedWhere });
   });
 
+  it("keeps public visibility on numeric and formal-id shop detail lookups", async () => {
+    const shopFindFirst = jest.fn(async () => null);
+    const anonymousWhere = { visibility: "public" };
+    const policy = {
+      buildVisibilityWhere: jest.fn(async (currentViewer?: typeof viewer) =>
+        currentViewer ? visibilityWhere : anonymousWhere
+      )
+    };
+    const repository = new CoreReadRepository(
+      { shop: { findFirst: shopFindFirst } } as never,
+      undefined,
+      policy as never
+    );
+
+    await repository.findShopDetail(11, "ja");
+    await repository.findShopDetail("shop6333731099", "ja", viewer);
+
+    expect(shopFindFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 11,
+          deletedAt: null,
+          status: "published",
+          ...anonymousWhere
+        })
+      })
+    );
+    expect(shopFindFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          publicIdentifier: {
+            is: {
+              publicId: "shop6333731099",
+              status: "ACTIVE",
+              deletedAt: null
+            }
+          },
+          deletedAt: null,
+          status: "published",
+          ...visibilityWhere
+        })
+      })
+    );
+    expect(policy.buildVisibilityWhere).toHaveBeenNthCalledWith(1, undefined);
+    expect(policy.buildVisibilityWhere).toHaveBeenNthCalledWith(2, viewer);
+  });
+
   it("passes the authenticated selected identity through list and detail services", async () => {
     const repository = {
       listServices: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),

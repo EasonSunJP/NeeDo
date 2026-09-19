@@ -52,6 +52,10 @@ import {
   mapCoreShopToStore,
   type CoreShopDetail
 } from "../../features/core-read/api";
+import {
+  merchantProfileApi,
+  type MerchantProfileVisibility
+} from "../../features/core-read/merchantProfileApi";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { DispatchOverviewWorkspace } from "../../features/dispatch-center/components/OverviewWorkspace";
 import { TechnicianApplicationsReviewPage } from "../../features/identity-applications/ReviewPages";
@@ -61,8 +65,7 @@ import { useImStore } from "../../features/im/store";
 import { MerchantPrimaryNavCarousel } from "../../features/merchant-navigation/MerchantPrimaryNavCarousel";
 import {
   pricingModeApi,
-  type ShopPricingMode,
-  type ShopVisibility
+  type ShopPricingMode
 } from "../../features/pricing-mode/api";
 import {
   adjustTechnicianSettlementShare,
@@ -1507,8 +1510,14 @@ function getMerchantStorePrivacyLabel(visibility: MerchantStorePrivacyVisibility
   }
 }
 
-function getMerchantStorePrivacySummary(enabled: boolean, visibility: MerchantStorePrivacyVisibility) {
-  return enabled ? getMerchantStorePrivacyLabel(visibility) : "公开可见";
+function getMerchantStorePrivacySummary(
+  visibility: MerchantProfileVisibility | null,
+  pending: boolean
+) {
+  if (visibility === null) {
+    return pending ? "正在读取隐私设置" : "隐私设置不可用";
+  }
+  return visibility === "public" ? "公开可见" : getMerchantStorePrivacyLabel(visibility);
 }
 
 function MerchantStorePricingModeControl({
@@ -1681,7 +1690,6 @@ function MerchantStorePrivacyInfoButton({ content }: { content: string }) {
 }
 
 function MerchantStorePrivacyControl({
-  enabled,
   menuOpen,
   onEnabledChange,
   onMenuOpenChange,
@@ -1689,15 +1697,15 @@ function MerchantStorePrivacyControl({
   pending,
   visibility
 }: {
-  enabled: boolean;
   menuOpen: boolean;
   onEnabledChange: (enabled: boolean) => void;
   onMenuOpenChange: (open: boolean) => void;
   onVisibilityChange: (visibility: MerchantStorePrivacyVisibility) => void;
   pending: boolean;
-  visibility: MerchantStorePrivacyVisibility;
+  visibility: MerchantProfileVisibility | null;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const enabled = visibility !== null && visibility !== "public";
 
   useEffect(() => {
     if (!menuOpen) {
@@ -1724,19 +1732,19 @@ function MerchantStorePrivacyControl({
           <button
             aria-expanded={enabled ? menuOpen : undefined}
             className="min-w-0 flex-1 text-left disabled:cursor-default"
-            disabled={!enabled}
+            disabled={!enabled || pending}
             onClick={() => onMenuOpenChange(!menuOpen)}
             type="button"
           >
             <span className="block truncate text-[10px] font-black text-[color:var(--client-muted)]">隐私模式</span>
             <strong className="mt-0.5 block truncate text-[11px] font-black text-[color:var(--client-text)]">
-              {getMerchantStorePrivacySummary(enabled, visibility)}
+              {getMerchantStorePrivacySummary(visibility, pending)}
             </strong>
           </button>
           <ToggleSwitch
             ariaLabel="开启店铺隐私模式"
             checked={enabled}
-            disabled={pending}
+            disabled={pending || visibility === null}
             onChange={onEnabledChange}
           />
         </div>
@@ -1906,6 +1914,15 @@ export function MerchantPortalContent({
   const storeApiId = getMerchantStoreApiId(store.id);
   const storeApiIdRef = useRef(storeApiId);
   storeApiIdRef.current = storeApiId;
+  const activeMerchantIdentityId = session?.activeIdentityId ?? null;
+  const merchantPrivacyAuthorityKey = `${session?.id ?? "none"}:${activeMerchantIdentityId ?? "none"}`;
+  const merchantPrivacyScopeKey = `${merchantPrivacyAuthorityKey}:${storeApiId ?? "none"}`;
+  const merchantPrivacyAuthorityKeyRef = useRef(merchantPrivacyAuthorityKey);
+  const merchantPrivacyScopeKeyRef = useRef(merchantPrivacyScopeKey);
+  const merchantPrivacyRequestGenerationRef = useRef(0);
+  const merchantPrivacyPendingSaveAuthoritiesRef = useRef(new Set<string>());
+  merchantPrivacyAuthorityKeyRef.current = merchantPrivacyAuthorityKey;
+  merchantPrivacyScopeKeyRef.current = merchantPrivacyScopeKey;
   const storeTechnicians = useMemo(() => {
     return technicians.filter((tech) => tech.storeId === store.id);
   }, [store.id, technicians]);
@@ -1941,8 +1958,7 @@ export function MerchantPortalContent({
   const [storePricingModeSaving, setStorePricingModeSaving] = useState(false);
   const [storePricingRatioMenuOpen, setStorePricingRatioMenuOpen] = useState(false);
   const [storePricingModeConfirmOpen, setStorePricingModeConfirmOpen] = useState(false);
-  const [storePrivacyEnabled, setStorePrivacyEnabled] = useState(false);
-  const [storePrivacyVisibility, setStorePrivacyVisibility] = useState<MerchantStorePrivacyVisibility>("privateAll");
+  const [storePrivacyVisibility, setStorePrivacyVisibility] = useState<MerchantProfileVisibility | null>(null);
   const [storePrivacySaving, setStorePrivacySaving] = useState(false);
   const [storePrivacyMenuOpen, setStorePrivacyMenuOpen] = useState(false);
   const [storePrivacyConfirmOpen, setStorePrivacyConfirmOpen] = useState(false);
@@ -2182,37 +2198,54 @@ export function MerchantPortalContent({
   }, [storeApiId]);
 
   useEffect(() => {
-    if (!storeApiId) {
-      setStorePrivacyEnabled(false);
+    const requestGeneration = merchantPrivacyRequestGenerationRef.current + 1;
+    merchantPrivacyRequestGenerationRef.current = requestGeneration;
+    setStorePrivacyVisibility(null);
+    setStorePrivacyMenuOpen(false);
+    setStorePrivacyConfirmOpen(false);
+
+    if (activeView !== "me" || activeMeTab !== "service" || !storeApiId || !activeMerchantIdentityId) {
       setStorePrivacySaving(false);
       return;
     }
 
     let mounted = true;
     setStorePrivacySaving(true);
-    pricingModeApi.getShopVisibility(storeApiId)
+    const requestedScopeKey = merchantPrivacyScopeKey;
+    merchantProfileApi.getMine()
       .then((result) => {
-        if (!mounted) return;
-        setStorePrivacyEnabled(result.visibility !== "public");
-        if (result.visibility !== "public") {
-          setStorePrivacyVisibility(result.visibility);
-        }
+        if (
+          !mounted ||
+          merchantPrivacyRequestGenerationRef.current !== requestGeneration ||
+          merchantPrivacyScopeKeyRef.current !== requestedScopeKey ||
+          result.identityId !== activeMerchantIdentityId
+        ) return;
+        setStorePrivacyVisibility(result.visibility);
       })
       .catch(() => {
-        if (mounted) {
+        if (
+          mounted &&
+          merchantPrivacyRequestGenerationRef.current === requestGeneration &&
+          merchantPrivacyScopeKeyRef.current === requestedScopeKey
+        ) {
+          setStorePrivacyVisibility(null);
           setContactLog(t("隐私模式加载失败，请稍后重试。"));
         }
       })
       .finally(() => {
-        if (mounted) {
-          setStorePrivacySaving(false);
+        if (
+          mounted &&
+          merchantPrivacyRequestGenerationRef.current === requestGeneration &&
+          merchantPrivacyScopeKeyRef.current === requestedScopeKey
+        ) {
+          setStorePrivacySaving(merchantPrivacyPendingSaveAuthoritiesRef.current.has(merchantPrivacyAuthorityKey));
         }
       });
 
     return () => {
       mounted = false;
     };
-  }, [storeApiId]);
+  }, [activeMeTab, activeMerchantIdentityId, activeView, merchantPrivacyAuthorityKey, merchantPrivacyScopeKey, storeApiId]);
 
   useEffect(() => {
     if (activeView !== "staff" || !staffIdParam) {
@@ -2677,33 +2710,101 @@ export function MerchantPortalContent({
     }
   }, []);
 
+  const reconcileStorePrivacyVisibility = async (requestedAuthorityKey: string, requestedIdentityId: number) => {
+    if (merchantPrivacyAuthorityKeyRef.current !== requestedAuthorityKey) return;
+
+    const requestedScopeKey = merchantPrivacyScopeKeyRef.current;
+    const requestGeneration = merchantPrivacyRequestGenerationRef.current + 1;
+    merchantPrivacyRequestGenerationRef.current = requestGeneration;
+    setStorePrivacySaving(true);
+
+    try {
+      const result = await merchantProfileApi.getMine();
+      if (
+        merchantPrivacyRequestGenerationRef.current !== requestGeneration ||
+        merchantPrivacyAuthorityKeyRef.current !== requestedAuthorityKey ||
+        merchantPrivacyScopeKeyRef.current !== requestedScopeKey ||
+        result.identityId !== requestedIdentityId
+      ) return;
+      setStorePrivacyVisibility(result.visibility);
+    } catch {
+      if (
+        merchantPrivacyRequestGenerationRef.current === requestGeneration &&
+        merchantPrivacyAuthorityKeyRef.current === requestedAuthorityKey &&
+        merchantPrivacyScopeKeyRef.current === requestedScopeKey
+      ) {
+        setStorePrivacyVisibility(null);
+        setContactLog(t("隐私模式加载失败，请稍后重试。"));
+      }
+    } finally {
+      if (
+        merchantPrivacyRequestGenerationRef.current === requestGeneration &&
+        merchantPrivacyAuthorityKeyRef.current === requestedAuthorityKey &&
+        merchantPrivacyScopeKeyRef.current === requestedScopeKey
+      ) {
+        setStorePrivacySaving(merchantPrivacyPendingSaveAuthoritiesRef.current.has(requestedAuthorityKey));
+      }
+    }
+  };
+
   const saveStorePrivacyVisibility = async (
-    visibility: ShopVisibility,
+    visibility: MerchantProfileVisibility,
     openMenuAfterSave = false
   ) => {
-    if (!storeApiId || storePrivacySaving) {
-      if (!storeApiId) {
+    if (
+      !storeApiId ||
+      !activeMerchantIdentityId ||
+      storePrivacyVisibility === null ||
+      storePrivacySaving ||
+      merchantPrivacyPendingSaveAuthoritiesRef.current.has(merchantPrivacyAuthorityKey)
+    ) {
+      if (!storeApiId || !activeMerchantIdentityId) {
         setContactLog(t("当前店铺资料尚未绑定正式店铺 ID，无法保存隐私模式。"));
       }
       return;
     }
     setStorePrivacySaving(true);
-    const requestedShopId = storeApiId;
+    const previousVisibility = storePrivacyVisibility;
+    const requestedAuthorityKey = merchantPrivacyAuthorityKey;
+    const requestedScopeKey = merchantPrivacyScopeKey;
+    const requestGeneration = merchantPrivacyRequestGenerationRef.current + 1;
+    merchantPrivacyRequestGenerationRef.current = requestGeneration;
+    merchantPrivacyPendingSaveAuthoritiesRef.current.add(requestedAuthorityKey);
     try {
-      const result = await pricingModeApi.updateShopVisibility(requestedShopId, visibility);
-      if (storeApiIdRef.current !== requestedShopId) return;
-      setStorePrivacyEnabled(result.visibility !== "public");
-      if (result.visibility !== "public") {
-        setStorePrivacyVisibility(result.visibility);
+      const result = await merchantProfileApi.updateMine({ visibility });
+      merchantPrivacyPendingSaveAuthoritiesRef.current.delete(requestedAuthorityKey);
+      if (
+        merchantPrivacyRequestGenerationRef.current !== requestGeneration ||
+        merchantPrivacyScopeKeyRef.current !== requestedScopeKey
+      ) {
+        if (merchantPrivacyAuthorityKeyRef.current === requestedAuthorityKey) {
+          void reconcileStorePrivacyVisibility(requestedAuthorityKey, activeMerchantIdentityId);
+        }
+        return;
       }
+      if (result.identityId !== activeMerchantIdentityId) {
+        throw new Error("merchant profile identity mismatch");
+      }
+      setStorePrivacyVisibility(result.visibility);
       setStorePrivacyMenuOpen(openMenuAfterSave && result.visibility !== "public");
       setContactLog(t("店铺隐私模式设置已保存。"));
     } catch {
-      if (storeApiIdRef.current === requestedShopId) {
+      merchantPrivacyPendingSaveAuthoritiesRef.current.delete(requestedAuthorityKey);
+      if (
+        merchantPrivacyRequestGenerationRef.current === requestGeneration &&
+        merchantPrivacyScopeKeyRef.current === requestedScopeKey
+      ) {
+        setStorePrivacyVisibility(previousVisibility);
         setContactLog(t("店铺隐私模式保存失败，请稍后重试。"));
+      } else if (merchantPrivacyAuthorityKeyRef.current === requestedAuthorityKey) {
+        setStorePrivacySaving(false);
       }
     } finally {
-      if (storeApiIdRef.current === requestedShopId) {
+      merchantPrivacyPendingSaveAuthoritiesRef.current.delete(requestedAuthorityKey);
+      if (
+        merchantPrivacyRequestGenerationRef.current === requestGeneration &&
+        merchantPrivacyScopeKeyRef.current === requestedScopeKey
+      ) {
         setStorePrivacySaving(false);
       }
     }
@@ -2722,7 +2823,7 @@ export function MerchantPortalContent({
   const confirmStorePrivacyEnabled = () => {
     setStorePrivacyConfirmOpen(false);
     setStorePricingRatioMenuOpen(false);
-    void saveStorePrivacyVisibility(storePrivacyVisibility, true);
+    void saveStorePrivacyVisibility("privateAll", true);
   };
 
   const updateStorePrivacyVisibility = (visibility: MerchantStorePrivacyVisibility) => {
@@ -2808,7 +2909,6 @@ export function MerchantPortalContent({
   const storePrivacyControl = (
     <>
       <MerchantStorePrivacyControl
-        enabled={storePrivacyEnabled}
         menuOpen={storePrivacyMenuOpen}
         onEnabledChange={updateStorePrivacyEnabled}
         onMenuOpenChange={updateStorePrivacyMenuOpen}

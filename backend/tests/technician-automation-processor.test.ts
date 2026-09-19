@@ -102,6 +102,30 @@ describe("TechnicianAutomationProcessor", () => {
     expect(repository.completeDecision).not.toHaveBeenCalled();
   });
 
+  it("executes only once when concurrent Booking triggers race for the same decision", async () => {
+    const repository = makeRepository();
+    let reserved = false;
+    repository.reserveDecision.mockImplementation(async () => {
+      if (reserved) return false;
+      reserved = true;
+      return true;
+    });
+    const confirmBooking = jest.fn(async () => undefined);
+    const processor = new TechnicianAutomationProcessor(
+      repository,
+      { confirmBooking },
+      { applyRequest: jest.fn() }
+    );
+
+    await Promise.all([processor.processBooking(504), processor.processBooking(504)]);
+
+    expect(confirmBooking).toHaveBeenCalledTimes(1);
+    expect(repository.completeDecision).toHaveBeenCalledTimes(1);
+    expect(repository.completeDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "executed" })
+    );
+  });
+
   it("records an action failure without reporting execution or sending a notification", async () => {
     const repository = makeRepository();
     const applyRequest = jest.fn(async () => {
