@@ -44,6 +44,25 @@ const technicians: Technician[] = [
   }
 ];
 
+const formalTechnicians: Technician[] = Array.from({ length: 26 }, (_, index) => ({
+  acceptRate: 95,
+  avatar: `/formal-technician-${index + 1}.png`,
+  cancelRate: 1,
+  id: `formal-tech-${index + 1}`,
+  income: 0,
+  languages: ["日语"],
+  name: `正式技师${index + 1}`,
+  orderCount: 20,
+  rating: 4.9,
+  reviewCount: 18,
+  role: "therapist",
+  serviceAreas: ["东京"],
+  skills: ["护理"],
+  status: "available",
+  storeId: "store-1",
+  systemId: `s${String(index + 1).padStart(10, "0")}`
+}));
+
 function prepareNextCycle(mode: "TECH_SELF_FINAL" | "STORE_ASSIGN_FINAL") {
   const current = createDispatchCycleDraft("store-1");
   saveDispatchCycleDraft({
@@ -77,6 +96,8 @@ describe("merchant schedule planning home", () => {
     window.localStorage.clear();
     window.localStorage.setItem("needo.language", "zh");
     window.localStorage.setItem("needo.language.mode", "manual");
+    window.scrollTo = vi.fn();
+    HTMLElement.prototype.scrollIntoView = vi.fn();
     resetDispatchCenterStore();
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -89,7 +110,7 @@ describe("merchant schedule planning home", () => {
     vi.restoreAllMocks();
   });
 
-  const renderWizard = async () => {
+  const renderWizard = async (technicianList = technicians) => {
     await act(async () => {
       root.render(
         <MemoryRouter>
@@ -98,7 +119,7 @@ describe("merchant schedule planning home", () => {
               operatorId="store-1"
               storeId="store-1"
               surface="mobile"
-              technicians={technicians}
+              technicians={technicianList}
             />
           </I18nProvider>
         </MemoryRouter>
@@ -173,5 +194,67 @@ describe("merchant schedule planning home", () => {
     await act(async () => button("新建周期")?.click());
     expect(container.textContent).toContain(builder.name);
     expect(button("下一周期")).toBeUndefined();
+  });
+
+  it("uses all formal store technicians as the default targets for a new cycle", async () => {
+    await renderWizard(formalTechnicians);
+
+    await act(async () => button("新建周期")?.click());
+    await act(async () => button("下一步：规则设定")?.click());
+
+    for (let index = 0; index < 8; index += 1) {
+      await act(async () => button("下一步")?.click());
+    }
+
+    expect(container.textContent).toContain("26 人");
+    expect(container.textContent).toContain("正式技师1");
+    expect(container.textContent).toContain("正式技师26");
+  });
+
+  it("recomputes holidays and notification preview after the cycle period changes", async () => {
+    await renderWizard(formalTechnicians);
+
+    await act(async () => button("新建周期")?.click());
+    await act(async () => button("下一步：规则设定")?.click());
+
+    for (let index = 0; index < 9; index += 1) {
+      await act(async () => button("下一步")?.click());
+    }
+
+    await act(async () => button("预览模板")?.click());
+    expect(container.textContent).toContain("2026-04-27");
+
+    for (let index = 0; index < 8; index += 1) {
+      await act(async () => button("上一步")?.click());
+    }
+
+    const periodInputs = [...container.querySelectorAll<HTMLInputElement>('input[type="date"]')];
+    expect(periodInputs).toHaveLength(2);
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      valueSetter?.call(periodInputs[0], "2026-09-21");
+      periodInputs[0].dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      valueSetter?.call(periodInputs[1], "2026-10-20");
+      periodInputs[1].dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    for (let index = 0; index < 3; index += 1) {
+      await act(async () => button("下一步")?.click());
+    }
+
+    expect(container.textContent).toContain("2026-09-21");
+    expect(container.textContent).toContain("2026-09-23");
+    expect(container.textContent).toContain("2026-10-12");
+    expect(container.textContent).not.toContain("2026-04-29");
+
+    for (let index = 0; index < 5; index += 1) {
+      await act(async () => button("下一步")?.click());
+    }
+
+    expect(container.textContent).toContain("2026-09-21 18:00-20:00");
+    expect(container.textContent).not.toContain("2026-04-27 18:00-20:00");
   });
 });

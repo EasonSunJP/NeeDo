@@ -5,6 +5,7 @@ import { Button } from "../../../components/ui/Button";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { cn } from "../../../lib/utils";
 import { useEntityStore } from "../../../state/entityStore";
+import type { Technician } from "../../../types/domain";
 import {
   dispatchLanguageOptions,
   dispatchWeekdayLabels,
@@ -174,7 +175,8 @@ export function StepCreateCycle({
   onMessage,
   operatorId,
   storeId,
-  surface
+  surface,
+  technicians
 }: {
   cycle: DispatchCycle;
   onCycleChange: (cycle: DispatchCycle) => void;
@@ -182,8 +184,9 @@ export function StepCreateCycle({
   operatorId: string;
   storeId: string;
   surface: "desktop" | "mobile";
+  technicians: Technician[];
 }) {
-  const { stores, technicians } = useEntityStore();
+  const { stores } = useEntityStore();
   const currentStore = useMemo(() => stores.find((store) => store.id === storeId) ?? stores[0], [storeId, stores]);
   const storeTechnicians = useMemo(() => technicians.filter((technician) => technician.storeId === storeId), [storeId, technicians]);
   const tempStaffGroup = getDispatchContactGroup(storeId);
@@ -225,6 +228,10 @@ export function StepCreateCycle({
     setNotificationTemplateTitle(activeTemplate?.title ?? "反馈提醒模板");
     setNotificationTemplateBody(activeTemplate?.body ?? cycle.ruleSet.notificationRules.discountTemplate);
   }, [cycle]);
+
+  useEffect(() => {
+    setNotificationPreview("");
+  }, [draft.periodStart]);
 
   const weekdayHolidaySet = new Set(draft.regularHolidayWeekdays);
   const overtimeBlockedWeekdaySet = new Set(draft.ruleSet.overtimeBlockedWeekdays ?? []);
