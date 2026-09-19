@@ -26,6 +26,29 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("user management seed contract", () => {
+  it("uses the shared test-account password hash for core read test users", () => {
+    const seedSource = readFileSync(resolve(__dirname, "../prisma/seed.ts"), "utf8");
+    const seedExecution = seedSource.slice(seedSource.indexOf("export const seedUserManagement"));
+
+    expect(seedExecution).toContain("await seedCoreReadData(tx, testUserPasswordHash");
+    expect(seedExecution).not.toContain("await seedCoreReadData(tx, adminPasswordHash");
+  });
+
+  it("reconciles the legacy global merchant organization identity before core reseeding", () => {
+    const seedSource = readFileSync(resolve(__dirname, "../prisma/seed.ts"), "utf8");
+    const billingSeed = seedSource.slice(
+      seedSource.indexOf("const seedMerchantSaasBillingData"),
+      seedSource.indexOf("const seedCoreReadData")
+    );
+
+    expect(billingSeed).toContain("const legacyMerchantOrganizationIdentity");
+    expect(billingSeed).toContain('scopeType: "global"');
+    expect(billingSeed).toContain('scopeType: "merchant_account"');
+    expect(billingSeed.indexOf("legacyMerchantOrganizationIdentity")).toBeLessThan(
+      billingSeed.indexOf("await upsertSeedIdentity")
+    );
+  });
+
   it("creates an active experience account with every seeded customer foundation", () => {
     const seedSource = readFileSync(resolve(__dirname, "../prisma/seed.ts"), "utf8");
     const foundation = seedSource.slice(
