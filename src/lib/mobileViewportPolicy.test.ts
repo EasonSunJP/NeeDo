@@ -15,7 +15,7 @@ const clientEntryFiles = [
 
 describe("mobile viewport policy", () => {
   it.each(clientEntryFiles)(
-    "%s keeps the initial mobile scale while allowing accessible zoom-in and keyboard resize",
+    "%s keeps the layout viewport stable while the visual viewport follows the keyboard",
     (entryFile) => {
       const source = readFileSync(resolve(process.cwd(), entryFile), "utf8");
       const viewport = source.match(/<meta\s+name="viewport"\s+content="([^"]+)"/u)?.[1];
@@ -24,7 +24,8 @@ describe("mobile viewport policy", () => {
       expect(viewport).toContain("initial-scale=1.0");
       expect(viewport).toContain("minimum-scale=1.0");
       expect(viewport).toContain("viewport-fit=cover");
-      expect(viewport).toContain("interactive-widget=resizes-content");
+      expect(viewport).toContain("interactive-widget=resizes-visual");
+      expect(viewport).not.toContain("interactive-widget=resizes-content");
       expect(viewport).not.toContain("maximum-scale=");
       expect(viewport).not.toContain("user-scalable=no");
     }
