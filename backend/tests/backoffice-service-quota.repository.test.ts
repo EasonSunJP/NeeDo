@@ -1,7 +1,34 @@
-import type { PrismaClient } from "@prisma/client";
 import { BackofficeRepository } from "../src/repositories/backoffice.repository";
 
+jest.mock("../src/prisma/client", () => ({ prisma: {} }));
+
 describe("BackofficeRepository shop service quota", () => {
+  it("lists merchant shop services with the same current-service boundary", async () => {
+    const service = {
+      findMany: jest.fn(async () => []),
+      count: jest.fn(async () => 0)
+    };
+    const repository = new BackofficeRepository({ service } as never);
+
+    await repository.listServices({
+      scope: "merchant",
+      shopId: 9,
+      page: 1,
+      pageSize: 100
+    });
+
+    const currentShopServiceWhere = {
+      deletedAt: null,
+      shopId: 9,
+      technicianProfileId: null,
+      status: { not: "archived" }
+    };
+    expect(service.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: currentShopServiceWhere
+    }));
+    expect(service.count).toHaveBeenCalledWith({ where: currentShopServiceWhere });
+  });
+
   it("serializes creation by shop and rejects a twenty-first active service", async () => {
     const transactionClient = {
       $queryRaw: jest.fn(async () => [{ id: 9 }]),
@@ -15,7 +42,7 @@ describe("BackofficeRepository shop service quota", () => {
     };
     const repository = new BackofficeRepository({
       $transaction: jest.fn((callback: (tx: typeof transactionClient) => unknown) => callback(transactionClient))
-    } as unknown as PrismaClient);
+    } as never);
 
     await expect(repository.createService({
       scope: "merchant",
@@ -37,6 +64,14 @@ describe("BackofficeRepository shop service quota", () => {
     });
 
     expect(transactionClient.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(transactionClient.service.count).toHaveBeenCalledWith({
+      where: {
+        shopId: 9,
+        technicianProfileId: null,
+        status: { not: "archived" },
+        deletedAt: null
+      }
+    });
     expect(transactionClient.service.create).not.toHaveBeenCalled();
   });
 });
