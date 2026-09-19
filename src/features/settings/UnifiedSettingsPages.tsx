@@ -1,5 +1,6 @@
 import { getPortalEntryUrl } from "../../auth/portalEntry";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import "./registerRouteI18n";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { authApi, type GoogleLinkStatus, type VerificationChallengePayload } from "../../api/auth";
 import type { AuthSession, PortalScope } from "../../auth/AuthProvider";

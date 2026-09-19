@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { Component, lazy, Suspense, useEffect, useRef, useState, type ComponentType, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { RouteScrollReset } from "./components/ui/RouteScrollReset";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
@@ -97,43 +97,6 @@ import { UserOrdersPage } from "./pages/user/UserOrdersPage";
 import { UserOrderDetailPage } from "./pages/user/UserOrderDetailPage";
 import { UserSchedulePage } from "./pages/user/UserSchedulePage";
 import { UserTechnicianScheduleDetailPage } from "./pages/user/UserTechnicianScheduleDetailPage";
-import {
-  UserSettingsAccountPage,
-  UserSettingsAboutPage,
-  UserSettingsDeleteAccountPage,
-  UserSettingsHelpPage,
-  UserSettingsLanguagePage,
-  UserSettingsNotificationsPage,
-  UserSettingsNdpGuidePage,
-  UserSettingsPaymentMethodsPage,
-  UserSettingsPage,
-  UserSettingsPortalPage,
-  UserSettingsPrivacyPage,
-  UserSettingsProfileCardBackgroundPage,
-  UserSettingsServiceRangePage,
-  UserSettingsThemePage,
-  UserSettingsTermsPage,
-  UserSettingsVerificationPage
-} from "./pages/user/UserSettingsPages";
-import {
-  UnifiedSettingsAffiliateAgreementPage,
-  UnifiedSettingsAboutPage,
-  UnifiedSettingsAccountPage,
-  UnifiedSettingsDeleteAccountPage,
-  UnifiedSettingsHelpPage,
-  UnifiedSettingsLanguagePage,
-  UnifiedSettingsMerchantAgreementPage,
-  UnifiedSettingsNotificationsPage,
-  UnifiedSettingsPage,
-  UnifiedSettingsPortalPage,
-  UnifiedSettingsPrivacyPage,
-  UnifiedSettingsProfileCardBackgroundPage,
-  UnifiedSettingsProfilePage,
-  UnifiedSettingsServiceRangePage,
-  UnifiedSettingsThemePage,
-  UnifiedSettingsTermsPage,
-  UnifiedSettingsVerificationPage
-} from "./features/settings/UnifiedSettingsPages";
 import { TechnicianApplicationPage } from "./features/identity-applications/TechnicianApplicationPage";
 import { TechnicianShopStayPage } from "./features/technician-shop-stays/TechnicianShopStayPage";
 import { technicianProfileApi } from "./features/core-read/technicianProfileApi";
@@ -213,6 +176,51 @@ import {
   loginBgUrl,
   managementBgUrl
 } from "./assets/runtime/images";
+
+function lazyNamed<TModule, TName extends keyof TModule>(
+  loader: () => Promise<TModule>,
+  name: TName
+) {
+  return lazy(async () => ({
+    default: (await loader())[name] as ComponentType<any>
+  }));
+}
+
+const loadUserSettingsPages = () => import("./pages/user/UserSettingsPages");
+const loadUnifiedSettingsPages = () => import("./features/settings/UnifiedSettingsPages");
+const UserSettingsAccountPage = lazyNamed(loadUserSettingsPages, "UserSettingsAccountPage");
+const UserSettingsAboutPage = lazyNamed(loadUserSettingsPages, "UserSettingsAboutPage");
+const UserSettingsDeleteAccountPage = lazyNamed(loadUserSettingsPages, "UserSettingsDeleteAccountPage");
+const UserSettingsHelpPage = lazyNamed(loadUserSettingsPages, "UserSettingsHelpPage");
+const UserSettingsLanguagePage = lazyNamed(loadUserSettingsPages, "UserSettingsLanguagePage");
+const UserSettingsNotificationsPage = lazyNamed(loadUserSettingsPages, "UserSettingsNotificationsPage");
+const UserSettingsNdpGuidePage = lazyNamed(loadUserSettingsPages, "UserSettingsNdpGuidePage");
+const UserSettingsPaymentMethodsPage = lazyNamed(loadUserSettingsPages, "UserSettingsPaymentMethodsPage");
+const UserSettingsPage = lazyNamed(loadUserSettingsPages, "UserSettingsPage");
+const UserSettingsPortalPage = lazyNamed(loadUserSettingsPages, "UserSettingsPortalPage");
+const UserSettingsPrivacyPage = lazyNamed(loadUserSettingsPages, "UserSettingsPrivacyPage");
+const UserSettingsProfileCardBackgroundPage = lazyNamed(loadUserSettingsPages, "UserSettingsProfileCardBackgroundPage");
+const UserSettingsServiceRangePage = lazyNamed(loadUserSettingsPages, "UserSettingsServiceRangePage");
+const UserSettingsThemePage = lazyNamed(loadUserSettingsPages, "UserSettingsThemePage");
+const UserSettingsTermsPage = lazyNamed(loadUserSettingsPages, "UserSettingsTermsPage");
+const UserSettingsVerificationPage = lazyNamed(loadUserSettingsPages, "UserSettingsVerificationPage");
+const UnifiedSettingsAffiliateAgreementPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsAffiliateAgreementPage");
+const UnifiedSettingsAboutPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsAboutPage");
+const UnifiedSettingsAccountPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsAccountPage");
+const UnifiedSettingsDeleteAccountPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsDeleteAccountPage");
+const UnifiedSettingsHelpPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsHelpPage");
+const UnifiedSettingsLanguagePage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsLanguagePage");
+const UnifiedSettingsMerchantAgreementPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsMerchantAgreementPage");
+const UnifiedSettingsNotificationsPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsNotificationsPage");
+const UnifiedSettingsPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsPage");
+const UnifiedSettingsPortalPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsPortalPage");
+const UnifiedSettingsPrivacyPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsPrivacyPage");
+const UnifiedSettingsProfileCardBackgroundPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsProfileCardBackgroundPage");
+const UnifiedSettingsProfilePage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsProfilePage");
+const UnifiedSettingsServiceRangePage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsServiceRangePage");
+const UnifiedSettingsThemePage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsThemePage");
+const UnifiedSettingsTermsPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsTermsPage");
+const UnifiedSettingsVerificationPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsVerificationPage");
 
 const TechnicianPortalPage = lazy(() => import("./pages/mobile/TechnicianPortalPage").then((module) => ({ default: module.TechnicianPortalPage })));
 const DashboardPage = lazy(() => import("./pages/admin/DashboardPage").then((module) => ({ default: module.DashboardPage })));
@@ -1204,6 +1212,7 @@ export default function App() {
                 <ShareFeedbackViewport />
                 <NeedoPet disabled={Boolean(splashPortal) || reducedPerformance} />
                 <AccountComplianceGate>
+                <Suspense fallback={null}>
                 <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/login/admin" element={<AdminLoginPage portal="admin" />} />
@@ -1587,6 +1596,7 @@ export default function App() {
 
                   <Route path="*" element={<Navigate replace to="/" />} />
                 </Routes>
+                </Suspense>
                 </AccountComplianceGate>
               </SocialProvider>
               </PlatformAvailabilityGate>

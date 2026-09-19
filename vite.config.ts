@@ -297,6 +297,14 @@ export function resolveNeedoManualChunk(id: string): string | undefined {
     return "platform-reviews-i18n";
   }
 
+  if (normalizedId.endsWith("/src/features/settings/route-i18n.ts")) {
+    return "settings-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/social/route-i18n.ts")) {
+    return "social-i18n";
+  }
+
   if (normalizedId.endsWith("/src/features/technician-schedule/automation-i18n.ts")) {
     return "technician-automation-i18n";
   }

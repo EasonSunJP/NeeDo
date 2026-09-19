@@ -133,6 +133,25 @@ describe("portal identity switching boundaries", () => {
   });
 });
 
+describe("route-level loading boundaries", () => {
+  it("keeps settings and legal workspaces out of the initial portal bundle", () => {
+    expect(appSource).not.toContain(
+      'from "./pages/user/UserSettingsPages";'
+    );
+    expect(appSource).not.toContain(
+      'from "./features/settings/UnifiedSettingsPages";'
+    );
+    expect(appSource).toContain(
+      'const loadUserSettingsPages = () => import("./pages/user/UserSettingsPages");'
+    );
+    expect(appSource).toContain(
+      'const loadUnifiedSettingsPages = () => import("./features/settings/UnifiedSettingsPages");'
+    );
+    expect(appSource).toContain("<Suspense fallback={null}>");
+    expect(appSource).toContain("<Routes>");
+  });
+});
+
 describe("user profile settings compatibility route", () => {
   it("redirects the retired duplicate profile editor to the personal center", () => {
     expect(appSource).toContain(

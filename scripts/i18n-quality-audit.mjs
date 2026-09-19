@@ -20,6 +20,8 @@ const technicianAutomationTranslationsPath = path.join(workspaceRoot, "src", "fe
 const calendarParticipantTranslationsPath = path.join(workspaceRoot, "src", "features", "scheduling", "calendar-participant-i18n.ts");
 const authTranslationsPath = path.join(workspaceRoot, "src", "features", "auth", "i18n.ts");
 const platformReviewTranslationsPath = path.join(workspaceRoot, "src", "features", "platform-reviews", "i18n.ts");
+const settingsRouteTranslationsPath = path.join(workspaceRoot, "src", "features", "settings", "route-i18n.ts");
+const socialRouteTranslationsPath = path.join(workspaceRoot, "src", "features", "social", "route-i18n.ts");
 const outputDir = path.join(workspaceRoot, "exports", "i18n");
 const jsonReportPath = path.join(outputDir, "i18n-quality-report.json");
 const markdownReportPath = path.join(outputDir, "i18n-quality-report.md");
@@ -138,6 +140,8 @@ async function loadTranslations() {
   const calendarParticipantSource = await fs.readFile(calendarParticipantTranslationsPath, "utf8");
   const authSource = await fs.readFile(authTranslationsPath, "utf8");
   const platformReviewSource = await fs.readFile(platformReviewTranslationsPath, "utf8");
+  const settingsRouteSource = await fs.readFile(settingsRouteTranslationsPath, "utf8");
+  const socialRouteSource = await fs.readFile(socialRouteTranslationsPath, "utf8");
   const compilerOptions = {
     module: ts.ModuleKind.ES2022,
     target: ts.ScriptTarget.ES2022
@@ -185,6 +189,12 @@ async function loadTranslations() {
     compilerOptions
   }).outputText;
   const transpiledPlatformReviewTranslations = ts.transpileModule(platformReviewSource, {
+    compilerOptions
+  }).outputText;
+  const transpiledSettingsRouteTranslations = ts.transpileModule(settingsRouteSource, {
+    compilerOptions
+  }).outputText;
+  const transpiledSocialRouteTranslations = ts.transpileModule(socialRouteSource, {
     compilerOptions
   }).outputText;
   const tempToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -263,13 +273,15 @@ async function loadTranslations() {
   await fs.writeFile(tempFile, transpiled, "utf8");
 
   try {
-    const [loaded, operationsAnalyticsLoaded, shopAnalyticsLoaded, platformUserManagementLoaded, travelFareLoaded, calendarParticipantLoaded] = await Promise.all([
+    const [loaded, operationsAnalyticsLoaded, shopAnalyticsLoaded, platformUserManagementLoaded, travelFareLoaded, calendarParticipantLoaded, settingsRouteLoaded, socialRouteLoaded] = await Promise.all([
       import(`file://${tempFile}`),
       import(`file://${operationsAnalyticsTempFile}`),
       import(`file://${shopAnalyticsTempFile}`),
       import(`file://${platformUserManagementTempFile}`),
       import(`file://${travelFareTempFile}`),
-      import(`file://${calendarParticipantTempFile}`)
+      import(`file://${calendarParticipantTempFile}`),
+      import(`data:text/javascript;base64,${Buffer.from(transpiledSettingsRouteTranslations, "utf8").toString("base64")}`),
+      import(`data:text/javascript;base64,${Buffer.from(transpiledSocialRouteTranslations, "utf8").toString("base64")}`)
     ]);
     return {
       ...(operationsAnalyticsLoaded.operationsAnalyticsTranslations ?? {}),
@@ -277,6 +289,8 @@ async function loadTranslations() {
       ...(platformUserManagementLoaded.platformUserManagementTranslations ?? {}),
       ...(travelFareLoaded.travelFareTranslations ?? {}),
       ...(calendarParticipantLoaded.calendarParticipantTranslations ?? {}),
+      ...(settingsRouteLoaded.settingsRouteTranslations ?? {}),
+      ...(socialRouteLoaded.socialRouteTranslations ?? {}),
       ...(loaded.translations ?? {})
     };
   } finally {

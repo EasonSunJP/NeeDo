@@ -7,7 +7,7 @@ import { coreReadApi, coreReadIdFromRoute, mapCoreCustomerToCustomer, mapCoreSho
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi } from "../../features/pricing-mode/api";
 import { socialPaths } from "../../features/social/paths";
-import { SocialProfilePage } from "../../features/social/pages/SocialProfilePage";
+import { SocialAccountProfilePage } from "../../features/social/route-pages";
 import { UnifiedSimpleProfileCard } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { TechnicianProfileInfoView, fromCoreTechnicianDetail } from "../../shared/technician-profile";
@@ -32,7 +32,7 @@ export function ProfileDetailPage() {
   const apiId = coreReadIdFromRoute(id);
 
   if (!apiId || (entityType !== "user" && entityType !== "shop")) {
-    return <SocialProfilePage />;
+    return <SocialAccountProfilePage />;
   }
 
   if (entityType === "shop") {
