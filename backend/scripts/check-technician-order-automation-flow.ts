@@ -175,6 +175,11 @@ async function loadFoundation(prisma: PrismaClient) {
   ]);
   assert(customer && technician && pausedTechnician && shop && successService && mismatchService && technicianService,
     "run check:multishop-pricing-settlement first to create the retained foundation");
+  const technicianServiceShopId = technicianService.shopId;
+  assert(
+    technicianServiceShopId !== null && technicianService.shop?.deletedAt === null,
+    "retained technician service is not linked to an active shop"
+  );
   const [customerIdentity, technicianProfile, pausedProfile] = await Promise.all([
     prisma.userIdentity.findFirst({ where: { userId: customer.id, type: "customer", isActive: true, deletedAt: null }, include: { publicIdentifier: true } }),
     prisma.technicianProfile.findUnique({ where: { userId: technician.id } }),
@@ -207,7 +212,8 @@ async function loadFoundation(prisma: PrismaClient) {
     shop,
     successService,
     mismatchService,
-    technicianService
+    technicianService,
+    technicianServiceShopId
   };
 }
 
@@ -532,7 +538,7 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
       customerUserId: fixture.customer.id,
       customerIdentityId: fixture.customerIdentity.id,
       customerPublicId: fixture.customerIdentity.publicIdentifier!.publicId,
-      shopId: fixture.technicianService.shopId,
+      shopId: fixture.technicianServiceShopId,
       technicianProfileId: fixture.technicianProfile.id,
       technicianServiceId: fixture.technicianService.id,
       startsAt: new Date("2099-04-02T05:00:00.000Z")
