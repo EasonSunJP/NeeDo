@@ -1093,6 +1093,18 @@ export class LedgerRepository implements LedgerRepositoryPort {
       shopId: input.shopId,
       technicianProfileId: input.technicianProfileId ?? null,
       serviceAmountJpy: input.serviceAmountJpy,
+      ...(input.baseServiceAmountJpy !== undefined
+        ? { baseServiceAmountJpy: input.baseServiceAmountJpy }
+        : {}),
+      ...(input.extensionAmountJpy !== undefined
+        ? { extensionAmountJpy: input.extensionAmountJpy }
+        : {}),
+      ...(input.nominationChargeAmountJpy !== undefined
+        ? { nominationChargeAmountJpy: input.nominationChargeAmountJpy }
+        : {}),
+      ...(input.wasTechnicianNominated !== undefined
+        ? { wasTechnicianNominated: input.wasTechnicianNominated }
+        : {}),
       ...(input.platformCollectedServiceAmountJpy !== undefined
         ? { platformCollectedServiceAmountJpy: input.platformCollectedServiceAmountJpy }
         : {}),
@@ -1104,6 +1116,21 @@ export class LedgerRepository implements LedgerRepositoryPort {
       ...(input.paymentChannel !== undefined ? { paymentChannel: input.paymentChannel } : {}),
       ...(input.serviceIncomeStatus !== undefined
         ? { serviceIncomeStatus: input.serviceIncomeStatus }
+        : {}),
+      ...(input.serviceIncomeReportedById !== undefined
+        ? { serviceIncomeReportedById: input.serviceIncomeReportedById }
+        : {}),
+      ...(input.serviceIncomeReportedAt !== undefined
+        ? { serviceIncomeReportedAt: input.serviceIncomeReportedAt }
+        : {}),
+      ...(input.serviceIncomeConfirmedById !== undefined
+        ? { serviceIncomeConfirmedById: input.serviceIncomeConfirmedById }
+        : {}),
+      ...(input.serviceIncomeConfirmedAt !== undefined
+        ? { serviceIncomeConfirmedAt: input.serviceIncomeConfirmedAt }
+        : {}),
+      ...(input.serviceIncomeNote !== undefined
+        ? { serviceIncomeNote: input.serviceIncomeNote }
         : {}),
       ...(input.bPlatformFeeHoldNdp !== undefined
         ? { bPlatformFeeHoldNdp: input.bPlatformFeeHoldNdp }

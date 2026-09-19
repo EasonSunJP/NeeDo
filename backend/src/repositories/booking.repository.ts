@@ -1,6 +1,6 @@
-import { recordBookingWorkTransition } from '../domain/work-status-booking';
+import { recordBookingWorkTransition } from "../domain/work-status-booking";
 import { projectOrderPayment } from "../domain/order-payment-projection";
-import { WorkStatusSession } from './work-status.repository';
+import { WorkStatusSession } from "./work-status.repository";
 import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
 import {
   BookingOrderStatus as DatabaseBookingOrderStatus,
@@ -333,11 +333,12 @@ export type AvailabilityWindowPayload = {
   updatedAt: Date;
 };
 
-export type AvailabilityWindowListInput = ScheduleScope & PaginationInput & {
-  from: Date;
-  to: Date;
-  technicianProfileId?: number;
-};
+export type AvailabilityWindowListInput = ScheduleScope &
+  PaginationInput & {
+    from: Date;
+    to: Date;
+    technicianProfileId?: number;
+  };
 
 export type AvailabilityWindowCreateInput = ScheduleScope & {
   technicianProfileId?: number;
@@ -532,7 +533,15 @@ export type OrderTransitionActorContext = {
 
 export type ScheduleMutationResult =
   | { outcome: "ok"; slot: ScheduleSlotPayload; idempotentReplay?: boolean }
-  | { outcome: "not_found" | "conflict" | "in_use" | "duration_mismatch" | "suspended" | "idempotency_conflict" };
+  | {
+      outcome:
+        | "not_found"
+        | "conflict"
+        | "in_use"
+        | "duration_mismatch"
+        | "suspended"
+        | "idempotency_conflict";
+    };
 
 interface OrderTransitionRepositoryBaseInput {
   id: number;
@@ -1410,7 +1419,8 @@ export class BookingRepository implements BookingRepositoryPort {
     }
 
     const scopedInput = { ...input, shopId: resolvedShopId };
-    const currentLocationShopIds = await this.listShopsWithCurrentVerifiedServiceLocations(scopedInput);
+    const currentLocationShopIds =
+      await this.listShopsWithCurrentVerifiedServiceLocations(scopedInput);
     const where: Prisma.ScheduleSlotWhereInput = {
       deletedAt: null,
       AND: [
@@ -1455,9 +1465,7 @@ export class BookingRepository implements BookingRepositoryPort {
             status: "AVAILABLE",
             bookedCount: { lt: this.client.scheduleSlot.fields.capacity }
           }),
-      ...(input.serviceId
-        ? { serviceId: input.serviceId, technicianServiceId: null }
-        : {}),
+      ...(input.serviceId ? { serviceId: input.serviceId, technicianServiceId: null } : {}),
       ...(input.technicianServiceId
         ? { technicianServiceId: input.technicianServiceId, serviceId: null }
         : {}),
@@ -1616,7 +1624,11 @@ export class BookingRepository implements BookingRepositoryPort {
       }),
       this.client.availability.count({ where })
     ]);
-    return buildPaginatedResponse(records.map((record) => this.mapAvailabilityWindow(record)), total, pagination);
+    return buildPaginatedResponse(
+      records.map((record) => this.mapAvailabilityWindow(record)),
+      total,
+      pagination
+    );
   }
 
   public createAvailabilityWindow(
@@ -1864,7 +1876,7 @@ export class BookingRepository implements BookingRepositoryPort {
         }
         if (
           input.createAvailability !== false &&
-          await this.hasScheduleOverlap(
+          (await this.hasScheduleOverlap(
             transaction,
             target.shopId,
             target.technicianProfileId,
@@ -1873,24 +1885,25 @@ export class BookingRepository implements BookingRepositoryPort {
             input.endsAt,
             undefined,
             input.scope === "technician" ? "TECHNICIAN" : "SHOP"
-          )
+          ))
         ) {
           return { outcome: "conflict" };
         }
-        const availability = input.createAvailability === false
-          ? null
-          : await transaction.availability.create({
-              data: {
-                shopId: target.shopId,
-                technicianProfileId: target.technicianProfileId,
-                sourceType: input.scope === "technician" ? "TECHNICIAN" : "SHOP",
-                visibility: input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY",
-                startsAt: input.startsAt,
-                endsAt: input.endsAt,
-                capacity: input.capacity,
-                isActive: true
-              }
-            });
+        const availability =
+          input.createAvailability === false
+            ? null
+            : await transaction.availability.create({
+                data: {
+                  shopId: target.shopId,
+                  technicianProfileId: target.technicianProfileId,
+                  sourceType: input.scope === "technician" ? "TECHNICIAN" : "SHOP",
+                  visibility: input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY",
+                  startsAt: input.startsAt,
+                  endsAt: input.endsAt,
+                  capacity: input.capacity,
+                  isActive: true
+                }
+              });
         const created = await transaction.scheduleSlot.create({
           data: {
             availabilityId: availability?.id ?? null,
@@ -1969,7 +1982,8 @@ export class BookingRepository implements BookingRepositoryPort {
             startsAt,
             endsAt,
             existing.id,
-            existing.availability?.sourceType ?? (input.scope === "technician" ? "TECHNICIAN" : "SHOP")
+            existing.availability?.sourceType ??
+              (input.scope === "technician" ? "TECHNICIAN" : "SHOP")
           ))
         ) {
           return { outcome: "conflict" };
@@ -2242,12 +2256,9 @@ export class BookingRepository implements BookingRepositoryPort {
             const pricingMode = this.pricingModeFromDb(slot.shop.pricingMode);
             if (
               slot.technicianProfileId &&
-              !(await this.hasActiveScheduleAffiliation(
-                tx,
-                slot.shopId,
-                slot.technicianProfileId,
-                { requirePublic: true }
-              ))
+              !(await this.hasActiveScheduleAffiliation(tx, slot.shopId, slot.technicianProfileId, {
+                requirePublic: true
+              }))
             ) {
               return null;
             }
@@ -2297,16 +2308,23 @@ export class BookingRepository implements BookingRepositoryPort {
               if (!input.travelEstimatePublicId || !input.fulfillmentAddress) {
                 throw new BookingTravelEstimateAbort("invalid");
               }
-              normalizedFulfillmentAddress = normalizeJapaneseRouteAddress(input.fulfillmentAddress);
+              normalizedFulfillmentAddress = normalizeJapaneseRouteAddress(
+                input.fulfillmentAddress
+              );
               const canonicalAddress = normalizeJapaneseRouteAddress({
                 ...normalizedFulfillmentAddress,
                 prefecture: serviceLocation.admin1NameJa,
                 city: serviceLocation.admin2NameJa
               });
-              if (normalizedFulfillmentAddress.prefecture !== canonicalAddress.prefecture ||
-                  normalizedFulfillmentAddress.city !== canonicalAddress.city) {
-                throw new AppError({ code: ERROR_CODES.VALIDATION, statusCode: 400,
-                  message: "error.administrative_region.address_mismatch" });
+              if (
+                normalizedFulfillmentAddress.prefecture !== canonicalAddress.prefecture ||
+                normalizedFulfillmentAddress.city !== canonicalAddress.city
+              ) {
+                throw new AppError({
+                  code: ERROR_CODES.VALIDATION,
+                  statusCode: 400,
+                  message: "error.administrative_region.address_mismatch"
+                });
               }
               normalizedFulfillmentAddress = canonicalAddress;
               await tx.$queryRaw`
@@ -2500,30 +2518,29 @@ export class BookingRepository implements BookingRepositoryPort {
                 serviceSnapshotJson: appendCompensationBasis(
                   intelligenceSource
                     ? {
-                      ...serviceSource.snapshot,
-                      usageCount: sourceUsageCount,
-                      name: intelligenceSource.serviceName,
-                      priceAmount: intelligenceSource.campaignPriceJpy.toFixed(2),
-                      durationMinutes: intelligenceSource.durationMinutes,
-                      bookingSource: {
-                        type: "exchange_intelligence",
-                        postId: intelligenceSource.postId,
-                        serviceRef: intelligenceSource.serviceRef,
-                        catalogPriceJpy: intelligenceSource.catalogPriceJpy,
-                        campaignPriceJpy: intelligenceSource.campaignPriceJpy
+                        ...serviceSource.snapshot,
+                        usageCount: sourceUsageCount,
+                        name: intelligenceSource.serviceName,
+                        priceAmount: intelligenceSource.campaignPriceJpy.toFixed(2),
+                        durationMinutes: intelligenceSource.durationMinutes,
+                        bookingSource: {
+                          type: "exchange_intelligence",
+                          postId: intelligenceSource.postId,
+                          serviceRef: intelligenceSource.serviceRef,
+                          catalogPriceJpy: intelligenceSource.catalogPriceJpy,
+                          campaignPriceJpy: intelligenceSource.campaignPriceJpy
+                        }
                       }
-                    }
                     : { ...serviceSource.snapshot, usageCount: sourceUsageCount },
                   compensationBasisVersion
                 ) as Prisma.InputJsonValue,
                 ...(normalizedFulfillmentAddress
                   ? {
-                      fulfillmentAddressSnapshot:
-                        fulfillmentAddressSnapshotFromRouteAddress(
-                          normalizedFulfillmentAddress
-                        ) as unknown as Prisma.InputJsonValue
-                      }
-                    : {}),
+                      fulfillmentAddressSnapshot: fulfillmentAddressSnapshotFromRouteAddress(
+                        normalizedFulfillmentAddress
+                      ) as unknown as Prisma.InputJsonValue
+                    }
+                  : {}),
                 startsAt: slot.startsAt,
                 endsAt: slot.endsAt,
                 paymentMethod: servicePaymentMethodToDb(input.paymentMethod ?? "onsite"),
@@ -2733,16 +2750,18 @@ export class BookingRepository implements BookingRepositoryPort {
     }
   ): string {
     return createHash("sha256")
-      .update(JSON.stringify({
-        serviceId: target.serviceId,
-        technicianServiceId: target.technicianServiceId,
-        shopId: target.shopId,
-        technicianProfileId: target.technicianProfileId,
-        startsAt: input.startsAt.toISOString(),
-        endsAt: input.endsAt.toISOString(),
-        capacity: input.capacity,
-        createAvailability: input.createAvailability !== false
-      }))
+      .update(
+        JSON.stringify({
+          serviceId: target.serviceId,
+          technicianServiceId: target.technicianServiceId,
+          shopId: target.shopId,
+          technicianProfileId: target.technicianProfileId,
+          startsAt: input.startsAt.toISOString(),
+          endsAt: input.endsAt.toISOString(),
+          capacity: input.capacity,
+          createAvailability: input.createAvailability !== false
+        })
+      )
       .digest("hex");
   }
 
@@ -3083,9 +3102,11 @@ export class BookingRepository implements BookingRepositoryPort {
       ...(input.shopId ? { shopId: input.shopId } : {}),
       ...(input.technicianProfileId ? { technicianProfileId: input.technicianProfileId } : {}),
       ...(input.status ? { status: bookingOrderStatusToDb(input.status) } : {}),
-      ...(input.from && input.to ? input.dateMode === "overlaps"
-        ? { startsAt: { lt: input.to }, endsAt: { gt: input.from } }
-        : { startsAt: { gte: input.from, lt: input.to } } : {})
+      ...(input.from && input.to
+        ? input.dateMode === "overlaps"
+          ? { startsAt: { lt: input.to }, endsAt: { gt: input.from } }
+          : { startsAt: { gte: input.from, lt: input.to } }
+        : {})
     };
     const [list, total] = await Promise.all([
       this.client.bookingOrder.findMany({
@@ -3295,7 +3316,14 @@ export class BookingRepository implements BookingRepositoryPort {
         data: { status: DatabaseBookingOrderStatus.IN_SERVICE, updatedAt: now }
       });
       if (updated.count !== 1) throw new FulfillmentTransactionAbort();
-      await recordBookingWorkTransition(new WorkStatusSession(tx), {technicianProfileId:current.technicianProfileId,orderId:current.id,shopId:current.shopId,actorId:input.actorUserId,at:now,started:true});
+      await recordBookingWorkTransition(new WorkStatusSession(tx), {
+        technicianProfileId: current.technicianProfileId,
+        orderId: current.id,
+        shopId: current.shopId,
+        actorId: input.actorUserId,
+        at: now,
+        started: true
+      });
       await tx.orderStatusHistory.create({
         data: {
           bookingOrderId: current.id,
@@ -3435,7 +3463,12 @@ export class BookingRepository implements BookingRepositoryPort {
           if (current.paymentMethod === DatabaseServicePaymentMethod.NDP) {
             const checkout = await tx.orderCheckout.findUnique({
               where: { bookingOrderId: current.id },
-              select: { paymentMethod: true, payableNdp: true, ledgerTransactionId: true, deletedAt: true }
+              select: {
+                paymentMethod: true,
+                payableNdp: true,
+                ledgerTransactionId: true,
+                deletedAt: true
+              }
             });
             if (
               !checkout ||
@@ -3475,7 +3508,9 @@ export class BookingRepository implements BookingRepositoryPort {
         let systemReviewId: number | null = null;
         if (automaticConsequencesEnabled && input.resolution !== "actually_completed") {
           const targetType =
-            input.resolution === "customer_no_show" ? ("customer" as const) : ("technician" as const);
+            input.resolution === "customer_no_show"
+              ? ("customer" as const)
+              : ("technician" as const);
           const target = await this.resolveAndLockSystemReviewTarget(tx, current, targetType);
           if (!target) return { outcome: "invalid_state" } as const;
           const review = await tx.orderReview.create({
@@ -3827,7 +3862,14 @@ export class BookingRepository implements BookingRepositoryPort {
         data: { status: DatabaseBookingOrderStatus.AWAITING_CHECKOUT, updatedAt: now }
       });
       if (updated.count !== 1) throw new FulfillmentTransactionAbort();
-      await recordBookingWorkTransition(new WorkStatusSession(tx), {technicianProfileId:current.technicianProfileId,orderId:current.id,shopId:current.shopId,actorId:input.actorUserId,at:now,started:false});
+      await recordBookingWorkTransition(new WorkStatusSession(tx), {
+        technicianProfileId: current.technicianProfileId,
+        orderId: current.id,
+        shopId: current.shopId,
+        actorId: input.actorUserId,
+        at: now,
+        started: false
+      });
       await tx.orderStatusHistory.create({
         data: {
           bookingOrderId: current.id,
@@ -3953,16 +3995,13 @@ export class BookingRepository implements BookingRepositoryPort {
     transaction: Prisma.TransactionClient,
     current: OrderRecord,
     now: Date
-  ): Promise<
-    | {
-        orderId: number;
-        orderNo: string;
-        serviceName: string;
-        startsAt: Date;
-        endsAt: Date;
-      }
-    | null
-  > {
+  ): Promise<{
+    orderId: number;
+    orderNo: string;
+    serviceName: string;
+    startsAt: Date;
+    endsAt: Date;
+  } | null> {
     if (!(await this.isOverdueAppointmentGateEnabled(transaction))) return null;
 
     const rows = await transaction.$queryRaw<
@@ -4273,7 +4312,6 @@ export class BookingRepository implements BookingRepositoryPort {
       ) {
         return { outcome: "invalid_state" };
       }
-      const before = this.mapCheckout(checkout, current.status);
       const now = new Date();
       await tx.orderCheckout.update({
         where: { id: checkout.id },
@@ -4316,7 +4354,18 @@ export class BookingRepository implements BookingRepositoryPort {
       if (current.technicianProfileId !== null) {
         await recalculateTechnicianSummaryInTransaction(tx, current.technicianProfileId, now);
       }
-      const context = { transactionClient: tx, order: this.mapOrder(current), checkout: before };
+      const next = await tx.orderCheckout.findUnique({ where: { id: checkout.id } });
+      if (!next) throw new CheckoutTransactionAbort("conflict");
+      const completedCheckout = this.mapCheckout(
+        next,
+        DatabaseBookingOrderStatus.COMPLETED,
+        input.evidence
+      );
+      const context = {
+        transactionClient: tx,
+        order: this.mapOrder(current),
+        checkout: completedCheckout
+      };
       await options.settle(context);
       await options.settleAffiliate(context);
       if (input.evidence === "operations_receipt_override") {
@@ -4340,11 +4389,9 @@ export class BookingRepository implements BookingRepositoryPort {
           })
         });
       }
-      const next = await tx.orderCheckout.findUnique({ where: { id: checkout.id } });
-      if (!next) throw new CheckoutTransactionAbort("conflict");
       return {
         outcome: "ok",
-        checkout: this.mapCheckout(next, DatabaseBookingOrderStatus.COMPLETED, input.evidence),
+        checkout: completedCheckout,
         applied: true
       };
     });
@@ -4942,7 +4989,9 @@ export class BookingRepository implements BookingRepositoryPort {
         input.shopId,
         input.technicianProfileId
       );
-      return eligible ? { shopId: input.shopId, technicianProfileId: input.technicianProfileId } : null;
+      return eligible
+        ? { shopId: input.shopId, technicianProfileId: input.technicianProfileId }
+        : null;
     }
     const profile = await transaction.technicianProfile.findFirst({
       where: { id: input.technicianProfileId, status: "published", deletedAt: null },
@@ -6027,7 +6076,10 @@ export class BookingRepository implements BookingRepositoryPort {
       });
     }
     const serviceName =
-      order.serviceNameSnapshot ?? order.service?.name ?? order.technicianService?.name ?? "Service";
+      order.serviceNameSnapshot ??
+      order.service?.name ??
+      order.technicianService?.name ??
+      "Service";
     await transaction.notification.create({
       data: {
         recipientUserId,
@@ -6525,11 +6577,12 @@ export class BookingRepository implements BookingRepositoryPort {
       priceAmount: this.formatDecimal(priceAmount, 2),
       currency,
       durationMinutes,
-      availabilitySourceType: slot.availability?.sourceType === "SHOP"
-        ? "shop"
-        : slot.availability?.sourceType === "TECHNICIAN"
-          ? "technician"
-          : null
+      availabilitySourceType:
+        slot.availability?.sourceType === "SHOP"
+          ? "shop"
+          : slot.availability?.sourceType === "TECHNICIAN"
+            ? "technician"
+            : null
     };
   }
 
@@ -6622,9 +6675,7 @@ export class BookingRepository implements BookingRepositoryPort {
       otherMethodLabel: payment.otherMethodLabel,
       checkoutPaymentAmountNdp: payment.checkoutPaymentAmountNdp,
       ndpCurrency:
-        payment.ndpCurrency !== null
-          ? LedgerCurrencyService.fromStored(payment.ndpCurrency)
-          : null,
+        payment.ndpCurrency !== null ? LedgerCurrencyService.fromStored(payment.ndpCurrency) : null,
       paymentConfirmedById: order.paymentConfirmedById,
       paymentConfirmedAt: order.paymentConfirmedAt,
       paymentReference: order.paymentReference,
@@ -6778,21 +6829,23 @@ export class BookingRepository implements BookingRepositoryPort {
       technician.deletedAt === null &&
       technician.user.isActive &&
       technician.user.deletedAt === null &&
-      technician.user.identities.some((identity) =>
-        identity.isActive &&
-        identity.deletedAt === null &&
-        ["technician", "service", "s"].includes(identity.type) &&
-        identity.publicIdentifier?.kind === "S" &&
-        identity.publicIdentifier.status === "ACTIVE" &&
-        identity.publicIdentifier.deletedAt === null
+      technician.user.identities.some(
+        (identity) =>
+          identity.isActive &&
+          identity.deletedAt === null &&
+          ["technician", "service", "s"].includes(identity.type) &&
+          identity.publicIdentifier?.kind === "S" &&
+          identity.publicIdentifier.status === "ACTIVE" &&
+          identity.publicIdentifier.deletedAt === null
       ) &&
-      technician.technicianShopAffiliations.some((affiliation) =>
-        affiliation.shopId === order.shopId &&
-        affiliation.workStatus === "ACTIVE" &&
-        affiliation.activeKey !== null &&
-        affiliation.deletedAt === null &&
-        affiliation.startsAt.getTime() <= now &&
-        (affiliation.endsAt === null || affiliation.endsAt.getTime() > now)
+      technician.technicianShopAffiliations.some(
+        (affiliation) =>
+          affiliation.shopId === order.shopId &&
+          affiliation.workStatus === "ACTIVE" &&
+          affiliation.activeKey !== null &&
+          affiliation.deletedAt === null &&
+          affiliation.startsAt.getTime() <= now &&
+          (affiliation.endsAt === null || affiliation.endsAt.getTime() > now)
       )
     ) {
       return {
