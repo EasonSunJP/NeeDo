@@ -4,15 +4,17 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { backofficeRealDataApi } from "../../api/backofficeRealData";
+import { coreReadApi, type CoreShopDetail } from "../../features/core-read/api";
 import { pricingModeApi } from "../../features/pricing-mode/api";
 import { merchantManualEmployeeStorageKey, merchantStaffRoleLabelStorageKey } from "../../lib/merchantStaffRoles";
 import type { Store, Technician } from "../../types/domain";
-import { MerchantPortalContent } from "./MerchantPortalPage";
+import { MerchantPortalContent, MerchantPortalPage } from "./MerchantPortalPage";
 import merchantSource from "./MerchantPortalPage.tsx?raw";
 
 const source = merchantSource;
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: vi.fn() });
 
 const merchantEmploymentTestState = vi.hoisted(() => ({
   session: {
@@ -47,6 +49,10 @@ vi.mock("../../features/im/store", () => ({
   useImStore: () => merchantEmploymentTestState.imStore
 }));
 
+vi.mock("../../features/social/context", () => ({
+  useSocial: () => ({ getActorForScope: () => null, getProfilePosts: () => [] })
+}));
+
 vi.mock("../../components/mobile/MobileShell", () => ({
   MobileShell: ({ children }: { children: React.ReactNode }) => createElement("main", null, children)
 }));
@@ -63,6 +69,11 @@ vi.mock("../../components/client-ui/AppScaffold", async () => {
 vi.mock("../../theme/ClientThemeProvider", () => ({
   getClientThemeClassName: () => "",
   useClientTheme: () => ({ isNight: false, theme: "jade-light" })
+}));
+
+vi.mock("../../i18n/I18nProvider", () => ({
+  useI18n: () => ({ language: "zh" }),
+  useOptionalI18n: () => ({ language: "zh" })
 }));
 
 const testStore: Store = {
@@ -195,6 +206,22 @@ async function renderStaffPage() {
   await renderPortalPage("/merchant/staff");
 }
 
+async function renderDataGate(initialEntry: string) {
+  await act(async () => {
+    root.render(
+      createElement(
+        MemoryRouter,
+        { initialEntries: [initialEntry] },
+        createElement(
+          Routes,
+          null,
+          createElement(Route, { path: "/merchant/:view", element: createElement(MerchantPortalPage) })
+        )
+      )
+    );
+  });
+}
+
 describe("MerchantPortal formal employment data", () => {
   it("joins persisted technician employment types from the protected merchant API", () => {
     expect(source).toContain("loadEveryMerchantTechnicianPage");
@@ -237,7 +264,9 @@ describe("MerchantPortal formal employment data", () => {
       ]));
       window.localStorage.setItem(merchantStaffRoleLabelStorageKey, JSON.stringify({}));
       vi.spyOn(backofficeRealDataApi, "technicians").mockResolvedValue({ list: formalTechnicians, total: formalTechnicians.length, page: 1, page_size: 100 });
+      vi.spyOn(backofficeRealDataApi, "merchantShopPresentation").mockReturnValue(new Promise(() => {}));
       vi.spyOn(pricingModeApi, "getShopPricingMode").mockResolvedValue({ shopId: 1, pricingMode: "merchant", technicianPricingRatePercent: 100, updatedAt: null, updatedBy: null });
+      vi.spyOn(pricingModeApi, "getShopVisibility").mockResolvedValue({ shopId: 1, visibility: "public", updatedAt: null, updatedBy: null });
       container = document.createElement("div");
       document.body.append(container);
       root = createRoot(container);
@@ -385,6 +414,100 @@ describe("MerchantPortal formal employment data", () => {
       expect(container.textContent).toContain("乙");
       expect(container.textContent).not.toContain("甲");
       expect(container.textContent).not.toContain("总务一");
+    });
+
+    it("renders the persisted technician pricing mode and settlement split", async () => {
+      vi.mocked(pricingModeApi.getShopPricingMode).mockResolvedValue({
+        shopId: 1,
+        pricingMode: "technician",
+        technicianPricingRatePercent: 70,
+        updatedAt: "2026-09-20T00:00:00.000Z",
+        updatedBy: 9
+      });
+
+      await renderPortalPage("/merchant/me?meTab=service");
+
+      await vi.waitFor(() => {
+        expect(container.textContent).toContain("技师定价（店铺 30%：70% 技师）");
+      });
+      const pricingSwitch = container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="切换为店铺定价"]');
+      expect(pricingSwitch?.getAttribute("aria-checked")).toBe("true");
+    });
+
+    it("resolves the selected JWT shop before loading pricing mode", async () => {
+      vi.spyOn(backofficeRealDataApi, "merchantShop").mockResolvedValue({
+        list: [{ id: 11 }],
+        total: 1,
+        page: 1,
+        page_size: 20
+      } as never);
+      const shop = {
+        id: 11,
+        publicId: "shop0000000011",
+        name: "正式十一号店",
+        city: "東京都",
+        address: "港区",
+        coverUrl: null,
+        description: "正式店铺",
+        phone: null,
+        latitude: null,
+        longitude: null,
+        reviewSummary: { ratingAverage: "0", reviewCount: 0, latestReviewAt: null, highlights: [] },
+        completedOrderCount: 0,
+        favoriteCount: 0,
+        shareCount: 0,
+        serviceCategories: [],
+        businessKeywords: [],
+        mediaAssets: [],
+        services: [],
+        technicians: [],
+        createdAt: "2026-09-20T00:00:00.000Z",
+        updatedAt: "2026-09-20T00:00:00.000Z"
+      } satisfies CoreShopDetail;
+      vi.spyOn(coreReadApi, "getShopDetail").mockResolvedValue(shop);
+      vi.mocked(pricingModeApi.getShopPricingMode).mockResolvedValue({
+        shopId: 11,
+        pricingMode: "technician",
+        technicianPricingRatePercent: 70,
+        updatedAt: "2026-09-20T00:00:00.000Z",
+        updatedBy: 9
+      });
+      const updatePricingMode = vi.spyOn(pricingModeApi, "updateShopPricingMode").mockResolvedValue({
+        shopId: 11,
+        pricingMode: "merchant",
+        technicianPricingRatePercent: 70,
+        updatedAt: "2026-09-20T00:01:00.000Z",
+        updatedBy: 9
+      });
+
+      await renderDataGate("/merchant/me?meTab=service");
+
+      await vi.waitFor(() => {
+        expect(container.textContent).toContain("正式十一号店");
+        expect(container.textContent).toContain("技师定价（店铺 30%：70% 技师）");
+      });
+      expect(coreReadApi.getShopDetail).toHaveBeenCalledWith(11);
+      expect(pricingModeApi.getShopPricingMode).toHaveBeenCalledWith(11);
+      expect(coreReadApi.getShopDetail).not.toHaveBeenCalledWith(1);
+
+      const pricingSwitch = container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="切换为店铺定价"]');
+      expect(pricingSwitch?.getAttribute("aria-checked")).toBe("true");
+      await act(async () => pricingSwitch?.click());
+      await vi.waitFor(() => expect(container.textContent).toContain("店铺定价"));
+      expect(updatePricingMode).toHaveBeenCalledWith(11, "merchant", 70);
+      expect(container.querySelector<HTMLButtonElement>('[role="switch"]')?.getAttribute("aria-checked")).toBe("false");
+    });
+
+    it("does not misreport store pricing when the formal pricing-mode request fails", async () => {
+      vi.mocked(pricingModeApi.getShopPricingMode).mockRejectedValue(new Error("error.identity.forbidden"));
+
+      await renderPortalPage("/merchant/me?meTab=service");
+
+      await vi.waitFor(() => {
+        expect(container.textContent).toContain("定价模式读取失败");
+      });
+      expect(container.textContent).not.toContain("店铺定价");
+      expect(container.querySelector<HTMLButtonElement>('[role="switch"]')?.disabled).toBe(true);
     });
   });
 });
