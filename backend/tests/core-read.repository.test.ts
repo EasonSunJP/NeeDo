@@ -200,7 +200,9 @@ describe("shop detail affiliated technician roster", () => {
   });
 });
 
-function createRepositoryFixture() {
+function createRepositoryFixture(shopVisibility?: {
+  buildVisibilityWhere: (viewer?: unknown) => Promise<Record<string, unknown>>;
+}) {
   const shopFindMany = jest.fn(async () => [publishedShopWithoutServices]);
   const shopCount = jest.fn(async () => 1);
   const technicianFindMany = jest.fn(
@@ -209,11 +211,15 @@ function createRepositoryFixture() {
   const technicianCount = jest.fn(async () => 1);
   const serviceFindMany = jest.fn(async () => []);
   const serviceCount = jest.fn(async () => 0);
-  const repository = new CoreReadRepository({
-    shop: { findMany: shopFindMany, count: shopCount },
-    technicianProfile: { findMany: technicianFindMany, count: technicianCount },
-    service: { findMany: serviceFindMany, count: serviceCount }
-  } as never);
+  const repository = new CoreReadRepository(
+    {
+      shop: { findMany: shopFindMany, count: shopCount },
+      technicianProfile: { findMany: technicianFindMany, count: technicianCount },
+      service: { findMany: serviceFindMany, count: serviceCount }
+    } as never,
+    undefined,
+    shopVisibility as never
+  );
 
   return {
     repository,
@@ -282,7 +288,7 @@ describe("CoreReadRepository multi-entity search", () => {
           },
           AND: expect.arrayContaining([
             { visibility: "public" },
-            {
+            expect.objectContaining({
               OR: expect.arrayContaining([
                 { name: { contains: "LifeDance Wellness 渋谷" } },
                 {
@@ -296,7 +302,7 @@ describe("CoreReadRepository multi-entity search", () => {
                   }
                 }
               ])
-            }
+            })
           ])
         }),
         include: expect.objectContaining({
@@ -310,6 +316,49 @@ describe("CoreReadRepository multi-entity search", () => {
         }),
         skip: 0,
         take: 20
+      })
+    );
+  });
+
+  it("requires both selected-identity visibility and keyword matches in shop search", async () => {
+    const viewer = {
+      userId: 900,
+      identityId: 901,
+      identityType: "customer",
+      identityScopeType: "customer_profile",
+      identityScopeId: 902
+    };
+    const visibilityWhere = {
+      OR: [
+        { visibility: "public" },
+        { visibility: { in: ["limited", "network"] }, id: { in: [21] } }
+      ]
+    };
+    const buildVisibilityWhere = jest.fn(async () => visibilityWhere);
+    const fixture = createRepositoryFixture({ buildVisibilityWhere });
+
+    await fixture.repository.searchShops(
+      {
+        entityType: "shop",
+        keywords: ["StagingTest"],
+        categoryIds: [],
+        page: 1,
+        pageSize: 20
+      },
+      viewer
+    );
+
+    expect(buildVisibilityWhere).toHaveBeenCalledWith(viewer);
+    expect(fixture.shopFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            visibilityWhere,
+            expect.objectContaining({
+              OR: expect.arrayContaining([{ name: { contains: "StagingTest" } }])
+            })
+          ])
+        })
       })
     );
   });
