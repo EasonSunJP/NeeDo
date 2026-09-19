@@ -2172,6 +2172,45 @@ describe("formal IM quick reactions", () => {
 });
 
 describe("conversation deletion", () => {
+  it("removes the conversation and its local history without removing the contact", async () => {
+    mocked.session = { ...mocked.session, id: 91003 };
+    const contact = {
+      id: "31",
+      ownerUserId: "91003",
+      targetUserId: "201",
+      relationStatus: "active" as const,
+      source: "friend_request",
+      isBlocked: false,
+      isStarred: false,
+      tags: [],
+      createdAt: sentAt,
+      updatedAt: sentAt,
+    };
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "91003",
+        config: {},
+        users: [],
+        contacts: [contact],
+        friendRequests: [],
+        conversations: [conversation({ contactUserId: "201" })],
+        members: [],
+      }),
+      deleteConversation: vi.fn().mockResolvedValue({
+        conversation: conversation({ contactUserId: "201", isDeleted: true }),
+      }),
+    };
+
+    await renderStore();
+    await act(async () => {
+      await store?.deleteConversation("91");
+    });
+
+    expect(store?.conversations).toEqual([]);
+    expect(store?.messagesByConversation["91"] ?? []).toEqual([]);
+    expect(store?.contacts).toEqual([contact]);
+  });
+
   it.each(["single", "group"] as const)("purges %s history and drafts even when an old page arrives later", async (type) => {
     mocked.session = { ...mocked.session, id: type === "single" ? 91001 : 91002 };
     let resolvePage!: (value: unknown) => void;
