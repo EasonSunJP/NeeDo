@@ -3099,7 +3099,16 @@ function DayTimeline({
       const headerRect = header.getBoundingClientRect();
       const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
       const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-      const topFixedLayerBottom = Array.from(document.querySelectorAll<HTMLElement>(".fixed")).reduce((bottom, element) => {
+      const headerScope = root.closest<HTMLElement>(".client-mobile-fullscreen-page")
+        ?? root.closest<HTMLElement>(".client-shell")
+        ?? document;
+      const floatingHeaderBottom = Array.from(headerScope.querySelectorAll<HTMLElement>(".client-floating-header-host")).reduce((bottom, element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.bottom >= 48 && rect.top < viewportHeight * 0.45 && rect.bottom <= viewportHeight * 0.45
+          ? Math.max(bottom, rect.bottom)
+          : bottom;
+      }, 0);
+      const topFixedLayerBottom = floatingHeaderBottom || Array.from(document.querySelectorAll<HTMLElement>(".fixed")).reduce((bottom, element) => {
         if (element.hasAttribute("data-calendar-floating-lane-rail")) {
           return bottom;
         }
