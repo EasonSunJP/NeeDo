@@ -280,17 +280,22 @@ describe("CoreReadRepository multi-entity search", () => {
           publicIdentifier: {
             is: expect.objectContaining({ kind: "SHOP", status: "ACTIVE", deletedAt: null })
           },
-          OR: expect.arrayContaining([
-            { name: { contains: "LifeDance Wellness 渋谷" } },
+          AND: expect.arrayContaining([
+            { visibility: "public" },
             {
-              serviceCategorySelections: {
-                some: expect.objectContaining({ deletedAt: null })
-              }
-            },
-            {
-              businessKeywordSelections: {
-                some: expect.objectContaining({ deletedAt: null })
-              }
+              OR: expect.arrayContaining([
+                { name: { contains: "LifeDance Wellness 渋谷" } },
+                {
+                  serviceCategorySelections: {
+                    some: expect.objectContaining({ deletedAt: null })
+                  }
+                },
+                {
+                  businessKeywordSelections: {
+                    some: expect.objectContaining({ deletedAt: null })
+                  }
+                }
+              ])
             }
           ])
         }),
