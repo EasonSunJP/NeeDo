@@ -8,39 +8,19 @@ export function useDocumentScrollLock(active: boolean, className = "im-conversat
 
     const root = document.documentElement;
     const body = document.body;
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
-    const previousBodyStyle = {
-      left: body.style.left,
-      overflow: body.style.overflow,
-      position: body.style.position,
-      right: body.style.right,
-      top: body.style.top,
-      width: body.style.width
-    };
+    const previousBodyOverflow = body.style.overflow;
     const previousRootOverflow = root.style.overflow;
 
     root.classList.add(className);
     body.classList.add(className);
     root.style.overflow = "hidden";
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.left = `-${scrollX}px`;
-    body.style.right = "0";
-    body.style.width = "100%";
     body.style.overflow = "hidden";
 
     return () => {
       root.classList.remove(className);
       body.classList.remove(className);
       root.style.overflow = previousRootOverflow;
-      body.style.position = previousBodyStyle.position;
-      body.style.top = previousBodyStyle.top;
-      body.style.left = previousBodyStyle.left;
-      body.style.right = previousBodyStyle.right;
-      body.style.width = previousBodyStyle.width;
-      body.style.overflow = previousBodyStyle.overflow;
-      window.scrollTo(scrollX, scrollY);
+      body.style.overflow = previousBodyOverflow;
     };
   }, [active, className]);
 }

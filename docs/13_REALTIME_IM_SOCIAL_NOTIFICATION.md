@@ -542,6 +542,14 @@
 - 新增回归先在旧结构上失败，再在外层 dock 结构上通过；IM 与视口相关 43 个文件、541 项及前端全量 581 个文件、3,928 项通过，TypeScript lint 与正式 build 通过。
 - 本节不修改 `VisualViewport` 阈值、safe-area 数值、IM API、数据库、migration 或消息数据。iPhone 镜像用于否定旧方案并确定工作/失效布局差异；由于本批次禁止远程部署，新代码仍须发布后在已安装 PWA 上完成最终验收。
 
+## 6.37 PWA 聊天根滚动锁与底部裁剪修复（2026-09-20，本地）
+
+- iPhone 镜像再次确认：无键盘进入会话后，聊天壁纸与输入区共同在屏幕底部上方约 45px 处结束；此前的 96px 房间 overscan 仍无法越过同一水平裁剪线。因此问题不是 `VisualViewport` 高度不足，也不是输入框自身的 safe-area padding，而是整个聊天树被更外层包含块裁剪。
+- 会话使用的 `useDocumentScrollLock` 会把 `body` 改成 `position: fixed`。WebKit 237961 已记录 `display-mode: standalone`、`viewport-fit=cover` 与 fixed `html/body` 组合会产生无法由 `bottom: 0`、`100vh` 或 `-webkit-fill-available` 填补的底部空白；房间、壁纸和 composer 都是该 fixed body 的后代，因此历次修改房间高度、底边和 overscan 只能在已被裁短的包含块内移动。
+- 文档滚动锁改为只锁定 `html/body` 的 overflow，不再修改 `body` 的 position、top、left、right 或 width，也不再在卸载时强制恢复滚动坐标。聊天消息仍由独立滚动容器承载，页面级 overscroll 继续被现有 class 阻止。
+- 所有 Web/PWA 入口将虚拟键盘策略统一为 `interactive-widget=resizes-visual`：布局视口保持全屏，键盘只改变 visual viewport，现有键盘态测量不再与 Android 的 layout viewport 收缩叠加。iOS 当前公开 WebKit 忽略该指令时仍沿用相同的默认 visual viewport 行为。
+- 删除无效的 96px 固定 overscan 及其 layout/composer 反向补偿，避免继续用设备像素补丁掩盖祖先裁剪。新增回归锁定 overflow-only scroll lock 和八个正式入口的 viewport 策略；不涉及 IM API、消息数据、数据库、migration、缓存或实时事件。
+
 ---
 
 ## 7. 给 Codex 的命令
