@@ -52,6 +52,6 @@ describe("client performance profile", () => {
     expect(stylesSource).toContain("backdrop-filter: none !important");
     expect(stylesSource).toContain("animation-duration: 0.01ms !important");
     expect(stylesSource).toContain("will-change: auto !important");
-    expect(stylesSource).toContain('html[data-needo-performance-profile="reduced"] .client-shell :where(.border, .border-x, .border-y, .border-t, .border-r, .border-b, .border-l)');
+    expect(stylesSource).toContain('html[data-needo-performance-profile="reduced"] .client-shell :where([class~="border"], [class~="border-x"], [class~="border-y"], [class~="border-t"], [class~="border-r"], [class~="border-b"], [class~="border-l"])');
   });
 });

@@ -73,7 +73,7 @@ body {
    surfaces coherent while newer engines continue to use the richer colors. */
 @supports not (color: color-mix(in srgb, black, white)) {
   @layer base {
-    .client-shell :where(.border, .border-x, .border-y, .border-t, .border-r, .border-b, .border-l) {
+    .client-shell :where([class~="border"], [class~="border-x"], [class~="border-y"], [class~="border-t"], [class~="border-r"], [class~="border-b"], [class~="border-l"]) {
       border-color: var(--client-line);
     }
   }
@@ -97,7 +97,7 @@ html[data-needo-performance-profile="reduced"] .client-shell .client-glass-page-
   background-image: none !important;
 }
 
-html[data-needo-performance-profile="reduced"] .client-shell :where(.border, .border-x, .border-y, .border-t, .border-r, .border-b, .border-l) {
+html[data-needo-performance-profile="reduced"] .client-shell :where([class~="border"], [class~="border-x"], [class~="border-y"], [class~="border-t"], [class~="border-r"], [class~="border-b"], [class~="border-l"]) {
   border-color: var(--client-line) !important;
 }
 
