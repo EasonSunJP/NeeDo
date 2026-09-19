@@ -2582,7 +2582,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         type: ConversationType.DIRECT,
         deletedAt: null,
         participants: {
-          some: { identityId, hiddenAt: null, deletedAt: null }
+          some: { identityId, deletedAt: null }
         }
       },
       select: {
