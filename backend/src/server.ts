@@ -135,7 +135,7 @@ const exchangeClaimService = new ExchangeClaimService(
   new ExchangeClaimRepository(),
   new ExchangePostRepository()
 );
-const technicianAutomationProcessor =
+const technicianRequestAutomationProcessor =
   createExchangeRequestAutomationProcessor(exchangeClaimService);
 const authSessionStore = new RedisAuthSessionStore(undefined, {
   onSecurityEvent: (event) => {
@@ -201,7 +201,7 @@ const app = createApp(env, {
   liveDashboardEventGateway,
   exchangeService,
   exchangeClaimService,
-  technicianAutomationProcessor,
+  technicianRequestAutomationProcessor,
   exchangeRequestFeeService,
   ledgerService: exchangeLedgerService,
   authRepository,

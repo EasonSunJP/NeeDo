@@ -137,7 +137,7 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
     dependencies.exchangeClaimService ??
     new ExchangeClaimService(new ExchangeClaimRepository(), actorRepository);
   const automationProcessor =
-    dependencies.technicianAutomationProcessor ??
+    dependencies.technicianRequestAutomationProcessor ??
     (dependencies.exchangeService
       ? undefined
       : createExchangeRequestAutomationProcessor(claimService));

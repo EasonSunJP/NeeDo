@@ -1,7 +1,7 @@
 import { hash } from "bcryptjs";
 import express from "express";
 import request from "supertest";
-import { createApp } from "../src/app";
+import { createApp, type AppDependencies } from "../src/app";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { errorMiddleware } from "../src/middlewares/error.middleware";
 import { AppError } from "../src/utils/app-error";
@@ -128,7 +128,9 @@ const makePermission = (code: string, index: number) => ({
   deletedAt: null
 });
 
-const createFixture = async () => {
+const createFixture = async (
+  technicianBookingAutomationProcessor?: AppDependencies["technicianBookingAutomationProcessor"]
+) => {
   const passwordHash = await hash("Abcd@1234", 12);
   const permissions = [
     "auth:me",
@@ -431,6 +433,7 @@ const createFixture = async () => {
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     bookingRepository,
+    technicianBookingAutomationProcessor,
     shopVisibilityRepository: {
       buildVisibilityWhere: jest.fn(async () => ({ visibility: "public" })),
       canView: jest.fn(async () => true),
@@ -452,6 +455,31 @@ const createFixture = async () => {
 };
 
 describe("Step 10 Booking / Schedule / Order state machine API", () => {
+  it("runs Booking automation after the committed Booking is returned", async () => {
+    const processBooking = jest.fn(async () => undefined);
+    const fixture = await createFixture(
+      { processBooking } as unknown as AppDependencies["technicianBookingAutomationProcessor"]
+    );
+    const token = await fixture.login();
+
+    await request(fixture.app)
+      .post("/api/v1/bookings")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+      .expect(201);
+
+    expect(fixture.bookingRepository.createBooking).toHaveBeenCalledTimes(1);
+    expect(processBooking).toHaveBeenCalledWith(1);
+    expect(fixture.bookingRepository.createBooking.mock.invocationCallOrder[0]).toBeLessThan(
+      processBooking.mock.invocationCallOrder[0]
+    );
+  });
+
   it("validates the strict insufficient-balance confirmation contract", () => {
     const previewVersion = `sha256:${"0".repeat(64)}`;
 

@@ -344,7 +344,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
               }
             },
             automationSettings: { some: { kind: DatabaseTechnicianAutomationKind.REQUEST, enabled: true, deletedAt: null } },
-            workState: { is: { status: "ON_DUTY", deletedAt: null } }
+            workState: { is: { status: "on_duty", deletedAt: null } }
           }
         }
       },
@@ -590,6 +590,6 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
 
   private isOnline(status: string | null): boolean | null {
     if (!status || status === "unsynced") return null;
-    return ["available", "idle", "working", "online"].includes(status);
+    return ["on_duty", "available", "idle", "working", "online"].includes(status);
   }
 }

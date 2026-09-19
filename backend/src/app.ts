@@ -436,7 +436,8 @@ export interface AppDependencies {
   technicianAutomationService?: TechnicianAutomationService;
   calendarEventRepository?: CalendarEventRepositoryPort;
   calendarEventService?: CalendarEventService;
-  technicianAutomationProcessor?: TechnicianAutomationProcessor;
+  technicianBookingAutomationProcessor?: TechnicianAutomationProcessor;
+  technicianRequestAutomationProcessor?: TechnicianAutomationProcessor;
   ledgerRepository?: LedgerRepositoryPort;
   ekycApplicationRepository?: EkycApplicationRepositoryPort;
   ekycApplicationService?: EkycApplicationService;
