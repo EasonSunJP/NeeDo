@@ -7,6 +7,7 @@ describe("social account profile paths", () => {
     expect(socialPaths.accountProfile("user", 237)).toBe("/moments/users/237");
     expect(socialPaths.accountProfile("merchant", 237)).toBe("/merchant/moments/users/237");
     expect(socialPaths.accountProfile("technician", 237)).toBe("/technician/moments/users/237");
+    expect(socialPaths.accountProfile("user", 237, 1237)).toBe("/moments/users/237?identityId=1237");
   });
 
   it("limits compose URLs to author, edit, and quote workflows", () => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppTopBar, PageScaffold, PrimaryButton, SurfacePanel } from "../../../components/client-ui/AppScaffold";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { coreReadApi, coreReadIdFromRoute, mapCoreShopToStore, mapCoreTechnicianToTechnician, type CoreMediaAsset, type CoreServiceCard, type CoreTechnicianDetail } from "../../core-read/api";
@@ -586,12 +586,15 @@ export function SocialProfilePage() {
 
 export function SocialAccountProfilePage() {
   const { userId: userIdParam } = useParams();
+  const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const scope = getSocialScopeFromPathname(location.pathname);
   const { ensureAccountProfile, getActorForScope } = useSocial();
   const actorKey = getActorForScope(scope);
   const userId = Number(userIdParam);
+  const identityId = Number(searchParams.get("identityId"));
+  const requestedIdentityId = Number.isSafeInteger(identityId) && identityId > 0 ? identityId : undefined;
   const [loadState, setLoadState] = useState<"error" | "loading" | "ready">("loading");
   const [profile, setProfile] = useState<SocialProfile>();
 
@@ -604,7 +607,7 @@ export function SocialAccountProfilePage() {
 
     let cancelled = false;
     setLoadState("loading");
-    void ensureAccountProfile(userId)
+    void ensureAccountProfile(userId, requestedIdentityId)
       .then((nextProfile) => {
         if (cancelled) return;
         setProfile(nextProfile);
@@ -620,7 +623,7 @@ export function SocialAccountProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [ensureAccountProfile, userId]);
+  }, [ensureAccountProfile, requestedIdentityId, userId]);
 
   const closeProfile = () => {
     if (canNavigateBackFromProfile(location.key)) {
@@ -644,7 +647,7 @@ export function SocialAccountProfilePage() {
     return <SocialProfileUnavailable scope={scope} title="好友动态" />;
   }
 
-  return <SocialProfileScene actorKey={actorKey} onClose={closeProfile} profile={profile} resetKey={`account:${userId}`} scope={scope} />;
+  return <SocialProfileScene actorKey={actorKey} onClose={closeProfile} profile={profile} resetKey={`account:${userId}:${requestedIdentityId ?? "canonical"}`} scope={scope} />;
 }
 
 export function SocialSelfProfilePage() {

@@ -11,6 +11,7 @@ const formalPost: RealtimeSocialPost = {
   authorUserId: 22,
   author: {
     userId: 22,
+    identityId: 222,
     username: "Mika Technician",
     displayName: "美香",
     avatarUrl: "/images/generated/profiles/ai-profile-01.jpg",
@@ -47,7 +48,7 @@ describe("formal social adapter", () => {
 
     expect(mapFormalSocialPost(pinned).isPinned).toBe(true);
     expect(mapFormalSocialProfiles([pinned])).toEqual({
-      "technician:22": expect.objectContaining({ pinnedPostId: "81" })
+      "technician:22": expect.objectContaining({ identityId: 222, pinnedPostId: "81" })
     });
   });
 

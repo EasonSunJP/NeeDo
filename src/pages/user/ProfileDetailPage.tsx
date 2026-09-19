@@ -116,15 +116,28 @@ function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
   }
 
   const model = fromCoreTechnicianDetail(detail, servicesQuery.data?.list ?? []);
+  const socialAccountUserId = detail.socialAccountUserId;
+  const socialIdentityId = detail.socialIdentityId;
+  const socialAccountPath =
+    typeof socialAccountUserId === "number" &&
+    Number.isSafeInteger(socialAccountUserId) &&
+    socialAccountUserId > 0 &&
+    typeof socialIdentityId === "number" &&
+    Number.isSafeInteger(socialIdentityId) &&
+    socialIdentityId > 0
+    ? socialPaths.accountProfile(scope, socialAccountUserId, socialIdentityId)
+    : null;
 
   return (
     <MobileShell showBottomNav={false}>
       <main className="client-app-gutter w-full space-y-4 pb-10 pt-4">
         <MobileFullscreenHeader onBack={handleBack} onClose={handleClose} title="详细信息卡" />
         <TechnicianProfileInfoView model={model} />
-        <Link className="block text-center text-sm font-bold text-[color:var(--client-primary)]" to={socialPaths.accountProfile(scope, detail.id)}>
-          查看技师动态
-        </Link>
+        {socialAccountPath ? (
+          <Link className="block text-center text-sm font-bold text-[color:var(--client-primary)]" to={socialAccountPath}>
+            查看技师动态
+          </Link>
+        ) : null}
       </main>
     </MobileShell>
   );

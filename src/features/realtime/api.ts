@@ -231,6 +231,7 @@ export type RealtimeSocialPost = {
     avatarUrl: string | null;
     displayName: string;
     entityType: "user" | "technician" | "shop";
+    identityId: number;
     joinedAt: string;
     userId: number;
     username: string;
@@ -559,7 +560,7 @@ export const realtimeApi = {
     return httpClient.request<RealtimeFriendRequest>(`/im/friend-requests/${id}/reject`, { method: "POST" });
   },
   listSocialPosts(
-    query: PageQuery & { authorUserId?: number; replyToPostId?: number; bookmarked?: boolean } = {},
+    query: PageQuery & { authorUserId?: number; authorIdentityId?: number; replyToPostId?: number; bookmarked?: boolean } = {},
     options: { signal?: AbortSignal } = {}
   ) {
     return httpClient.request<PaginatedRealtimeData<RealtimeSocialPost>>("/social/posts", {
@@ -567,8 +568,10 @@ export const realtimeApi = {
       signal: options.signal
     });
   },
-  getSocialActivityStatus(userId: number) {
-    return httpClient.request<RealtimeSocialActivityStatus>(`/social/users/${userId}/activity-status`);
+  getSocialActivityStatus(userId: number, identityId?: number) {
+    return httpClient.request<RealtimeSocialActivityStatus>(`/social/users/${userId}/activity-status`, {
+      query: identityId ? { identityId } : undefined
+    });
   },
   getSocialPost(id: number, options: { signal?: AbortSignal } = {}) {
     return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`, { signal: options.signal });
@@ -607,11 +610,17 @@ export const realtimeApi = {
       method: "POST"
     });
   },
-  follow(targetUserId: number) {
-    return httpClient.request<{ id: number }>("/social/follows", { body: { targetUserId }, method: "POST" });
+  follow(targetUserId: number, targetIdentityId?: number) {
+    return httpClient.request<{ id: number }>("/social/follows", {
+      body: { targetUserId, ...(targetIdentityId ? { targetIdentityId } : {}) },
+      method: "POST"
+    });
   },
-  unfollow(targetUserId: number) {
-    return httpClient.request<{ deleted: boolean }>(`/social/follows/${targetUserId}`, { method: "DELETE" });
+  unfollow(targetUserId: number, identityId?: number) {
+    return httpClient.request<{ deleted: boolean }>(`/social/follows/${targetUserId}`, {
+      method: "DELETE",
+      query: identityId ? { identityId } : undefined
+    });
   },
   listNotifications(query: PageQuery & { unreadOnly?: boolean } = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeNotification>>("/notifications", { query });

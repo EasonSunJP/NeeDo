@@ -43,7 +43,7 @@ const technicianDetail = {
   createdAt: "2026-09-03T00:00:00.000Z", displayName: "正式技师", favoriteCount: 0, gender: "female" as const,
   heightCm: 165, id: 186, languages: ["日本語"], mediaAssets: [], primaryService: null, publicId: "s0000000186",
   reviewSummary: { highlights: [], latestReviewAt: null, ratingAverage: "4.8", reviewCount: 12 }, reviewTagSummary: { custom: [], special: [] },
-  serviceArea: "东京", services: [], shareCount: 0,
+  serviceArea: "东京", services: [], shareCount: 0, socialAccountUserId: 741, socialIdentityId: 1741,
   shop: { address: "东京", businessKeywords: [], city: "东京", coverUrl: null, favoriteCount: 0, id: 217, name: "正式店铺", publicId: "shop0000000217", reviewSummary: { highlights: [], latestReviewAt: null, ratingAverage: "4.8", reviewCount: 12 }, serviceCategories: [], shareCount: 0 },
   updatedAt: "2026-09-03T00:00:00.000Z", yearsExperience: 6
 };
@@ -117,7 +117,7 @@ describe("ProfileDetailPage formal technician rendering", () => {
     });
 
     await vi.waitFor(() => {
-      expect(container.querySelector('a[href="/merchant/moments/users/186"]')).not.toBeNull();
+      expect(container.querySelector('a[href="/merchant/moments/users/741?identityId=1741"]')).not.toBeNull();
     });
   });
 

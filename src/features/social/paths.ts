@@ -73,8 +73,9 @@ export const socialPaths = {
   media(scope: SocialPortalScope, postId: string, mediaId: string, index: number) {
     return `${scopePrefix(scope)}/moments/posts/${postId}/media/${mediaId}?index=${index}`;
   },
-  accountProfile(scope: SocialPortalScope, userId: number | string) {
-    return `${scopePrefix(scope)}/moments/users/${encodeURIComponent(String(userId))}`;
+  accountProfile(scope: SocialPortalScope, userId: number | string, identityId?: number) {
+    const path = `${scopePrefix(scope)}/moments/users/${encodeURIComponent(String(userId))}`;
+    return identityId ? `${path}?identityId=${encodeURIComponent(String(identityId))}` : path;
   },
   profile(scope: SocialPortalScope, ref: SocialProfileRef | string) {
     const nextRef = typeof ref === "string" ? profileKeyToRef(ref) : ref;

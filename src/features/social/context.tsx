@@ -93,7 +93,7 @@ type SocialContextValue = {
   shareSocialPostToFriends: (postId: string, actorKey: string, targetUserIds: number[]) => Promise<number[]>;
   markNotificationsRead: (recipientKey: string) => void;
   refreshFeeds: () => void;
-  ensureAccountProfile: (userId: number) => Promise<SocialProfile | undefined>;
+  ensureAccountProfile: (userId: number, identityId?: number) => Promise<SocialProfile | undefined>;
   ensurePostThread: (postId: string) => Promise<boolean>;
   releasePostThread: (postId: string) => void;
 };
@@ -546,8 +546,8 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
   currentFormalSessionKeyRef.current = formalSessionKey;
   const [stateScopeKey, setStateScopeKey] = useState(formalSessionKey);
 
-  const ensureAccountProfile = useCallback((userId: number) => {
-    const requestKey = `${formalSessionKey}:${userId}`;
+  const ensureAccountProfile = useCallback((userId: number, identityId?: number) => {
+    const requestKey = `${formalSessionKey}:${userId}:${identityId ?? "canonical"}`;
     const pendingRequest = accountProfileRequestsRef.current.get(requestKey);
     if (pendingRequest) {
       return pendingRequest;
@@ -561,8 +561,13 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     request = (async () => {
       try {
         const [activityStatus, postPage] = await Promise.all([
-          realtimeApi.getSocialActivityStatus(userId),
-          realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: userId })
+          realtimeApi.getSocialActivityStatus(userId, identityId),
+          realtimeApi.listSocialPosts({
+            page: 1,
+            pageSize: 100,
+            authorUserId: userId,
+            ...(identityId ? { authorIdentityId: identityId } : {})
+          })
         ]);
         if (!shouldCommitFormalSocialRequest(
           formalSessionKey,
@@ -1245,7 +1250,9 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         const target = profiles[targetKey];
         if (!target) return;
         const currentlyFollowing = (state.follows[actorKey] ?? []).includes(targetKey);
-        void (currentlyFollowing ? realtimeApi.unfollow(Number(target.id)) : realtimeApi.follow(Number(target.id)))
+        void (currentlyFollowing
+          ? realtimeApi.unfollow(Number(target.id), target.identityId)
+          : realtimeApi.follow(Number(target.id), target.identityId))
           .then(() => loadFormalSocial())
           .catch(handleFormalSocialLoadError);
       },

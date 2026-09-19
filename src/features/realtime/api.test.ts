@@ -254,11 +254,34 @@ describe("formal realtime API", () => {
       }
     }));
 
-    await realtimeApi.getSocialActivityStatus(237);
+    await realtimeApi.getSocialActivityStatus(237, 1237);
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/social/users/237/activity-status",
+      "/api/v1/social/users/237/activity-status?identityId=1237",
       expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("preserves the selected identity when following and unfollowing a profile", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ id: 91 }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: true }));
+
+    await realtimeApi.follow(237, 1237);
+    await realtimeApi.unfollow(237, 1237);
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/social/follows",
+      expect.objectContaining({
+        body: JSON.stringify({ targetUserId: 237, targetIdentityId: 1237 }),
+        method: "POST"
+      })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/social/follows/237?identityId=1237",
+      expect.objectContaining({ method: "DELETE" })
     );
   });
 

@@ -149,6 +149,8 @@ export type CoreShopDetail = CoreShopCard & {
 };
 
 export type CoreTechnicianDetail = CoreTechnicianCard & {
+  socialAccountUserId?: number;
+  socialIdentityId?: number;
   shop: CoreShopCard | null;
   bio: string | null;
   serviceArea: string | null;

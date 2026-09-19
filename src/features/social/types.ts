@@ -41,6 +41,7 @@ export interface SocialProfileRef {
 
 export interface SocialProfile {
   id: string;
+  identityId?: number;
   entityType: SocialEntityType;
   displayName: string;
   handle: string;

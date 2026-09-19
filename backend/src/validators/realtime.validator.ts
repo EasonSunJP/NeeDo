@@ -60,6 +60,10 @@ export const followTargetParamSchema = z.object({
   targetUserId: z.coerce.number().int().positive()
 });
 
+export const followDeleteQuerySchema = z.object({
+  identityId: z.coerce.number().int().positive().optional()
+});
+
 export const conversationListQuerySchema = z.object({
   ...paginationQuerySchema
 });
@@ -199,8 +203,13 @@ export const friendRequestCreateBodySchema = z.object({
 export const socialPostListQuerySchema = z.object({
   ...paginationQuerySchema,
   authorUserId: z.coerce.number().int().positive().optional(),
+  authorIdentityId: z.coerce.number().int().positive().optional(),
   replyToPostId: z.coerce.number().int().positive().optional(),
   bookmarked: booleanQuerySchema.optional()
+});
+
+export const socialActivityStatusQuerySchema = z.object({
+  identityId: z.coerce.number().int().positive().optional()
 });
 
 export const socialPostShareBodySchema = z
@@ -286,7 +295,8 @@ export const socialPostCreateBodySchema = z
 export const socialPostUpdateBodySchema = socialPostCreateBodySchema;
 
 export const followCreateBodySchema = z.object({
-  targetUserId: z.coerce.number().int().positive()
+  targetUserId: z.coerce.number().int().positive(),
+  targetIdentityId: z.coerce.number().int().positive().optional()
 });
 
 export const notificationListQuerySchema = z.object({
