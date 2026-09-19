@@ -138,20 +138,38 @@ describe("LedgerRepository wallet creation", () => {
       customerUserId: 3,
       shopId: 10,
       serviceAmountJpy: 8_800,
+      baseServiceAmountJpy: 8_200,
+      extensionAmountJpy: 600,
+      nominationChargeAmountJpy: 0,
+      wasTechnicianNominated: false,
+      compensationBasisVersion: "shop_default:73",
       platformCollectedServiceAmountJpy: 0,
       unknownOrUnreportedServiceAmountJpy: 0,
       paymentChannel: "platform_test_ndp",
-      serviceIncomeStatus: "confirmed"
+      serviceIncomeStatus: "confirmed",
+      timelineEvents: [
+        { action: "booking_complete_snapshot_settlement" },
+        { type: "technician_income_estimated", amountJpy: 8_800 }
+      ]
     } as never);
 
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         bookingOrderId: 72,
         ndpCurrency: "TEST_NDP",
+        baseServiceAmountJpy: 8_200,
+        extensionAmountJpy: 600,
+        nominationChargeAmountJpy: 0,
+        wasTechnicianNominated: false,
+        compensationBasisVersion: "shop_default:73",
         platformCollectedServiceAmountJpy: 0,
         unknownOrUnreportedServiceAmountJpy: 0,
         paymentChannel: "platform_test_ndp",
-        serviceIncomeStatus: "confirmed"
+        serviceIncomeStatus: "confirmed",
+        moneyTimelineJson: expect.arrayContaining([
+          expect.objectContaining({ action: "booking_complete_snapshot_settlement" }),
+          expect.objectContaining({ type: "technician_income_estimated", amountJpy: 8_800 })
+        ])
       })
     });
   });

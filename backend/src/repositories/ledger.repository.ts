@@ -34,6 +34,12 @@ import type { FeeType } from "../services/fee-calculation.service";
 import { LedgerCurrencyService, type LedgerCurrency } from "../services/ledger-currency.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse } from "../utils/pagination";
+import type {
+  CompensationAdjustmentRule,
+  CompensationNdpBearer,
+  CompensationRuleSet,
+  CompensationWageMode
+} from "../services/compensation-engine.service";
 
 type LedgerPrismaClient = PrismaClient | Prisma.TransactionClient;
 
@@ -1085,7 +1091,10 @@ export class LedgerRepository implements LedgerRepositoryPort {
       existing?.appliedFeeRuleIdsJson,
       input.appliedFeeRuleIds
     );
-    const timeline = this.appendTimeline(existing?.moneyTimelineJson, input.timelineEvent);
+    const timeline = this.appendTimeline(
+      existing?.moneyTimelineJson,
+      input.timelineEvents ?? (input.timelineEvent ? [input.timelineEvent] : [])
+    );
     const baseData = {
       orderType: input.orderType,
       ndpCurrency: input.ndpCurrency,
@@ -1093,6 +1102,21 @@ export class LedgerRepository implements LedgerRepositoryPort {
       shopId: input.shopId,
       technicianProfileId: input.technicianProfileId ?? null,
       serviceAmountJpy: input.serviceAmountJpy,
+      ...(input.baseServiceAmountJpy !== undefined
+        ? { baseServiceAmountJpy: input.baseServiceAmountJpy }
+        : {}),
+      ...(input.extensionAmountJpy !== undefined
+        ? { extensionAmountJpy: input.extensionAmountJpy }
+        : {}),
+      ...(input.nominationChargeAmountJpy !== undefined
+        ? { nominationChargeAmountJpy: input.nominationChargeAmountJpy }
+        : {}),
+      ...(input.wasTechnicianNominated !== undefined
+        ? { wasTechnicianNominated: input.wasTechnicianNominated }
+        : {}),
+      ...(input.compensationBasisVersion !== undefined
+        ? { compensationBasisVersion: input.compensationBasisVersion }
+        : {}),
       ...(input.platformCollectedServiceAmountJpy !== undefined
         ? { platformCollectedServiceAmountJpy: input.platformCollectedServiceAmountJpy }
         : {}),
@@ -1213,6 +1237,68 @@ export class LedgerRepository implements LedgerRepositoryPort {
         ...baseData
       }
     });
+  }
+
+  public async findCompensationRuleByBasis(
+    shopId: number,
+    basisVersion: `shop_default:${number}` | `technician_override:${number}`
+  ): Promise<CompensationRuleSet | null> {
+    const [sourceType, rawId] = basisVersion.split(":") as [
+      "shop_default" | "technician_override",
+      string
+    ];
+    const id = Number(rawId);
+    if (!Number.isSafeInteger(id) || id <= 0) return null;
+    if (sourceType === "technician_override") {
+      const record = await this.client.technicianCompensationProfile.findFirst({
+        where: { id, shopId }
+      });
+      return record
+        ? {
+            id: record.id,
+            sourceType,
+            shopId: record.shopId,
+            technicianProfileId: record.technicianProfileId,
+            name: record.name,
+            wageMode: this.compensationWageMode(record.wageMode),
+            baseSalaryJpy: record.baseSalaryJpy,
+            hourlyRateJpy: record.hourlyRateJpy,
+            dailyRateJpy: record.dailyRateJpy,
+            fixedOrderPayJpy: record.fixedOrderPayJpy,
+            commissionRatePercent: record.commissionRateBps / 100,
+            extensionCommissionRatePercent: record.extensionCommissionRateBps / 100,
+            nominationFeeJpy: record.nominationFeeJpy,
+            guaranteedMinimumJpy: record.guaranteedMinimumJpy,
+            ndpFeeBearer: this.compensationNdpBearer(record.ndpFeeBearer),
+            technicianNdpSharePercent: record.technicianNdpShareBps / 100,
+            bonusRules: this.compensationAdjustmentRules(record.bonusRulesJson),
+            deductionRules: this.compensationAdjustmentRules(record.deductionRulesJson)
+          }
+        : null;
+    }
+    const record = await this.client.shopFinanceRuleSet.findFirst({ where: { id, shopId } });
+    return record
+      ? {
+          id: record.id,
+          sourceType,
+          shopId: record.shopId,
+          technicianProfileId: null,
+          name: record.name,
+          wageMode: this.compensationWageMode(record.wageMode),
+          baseSalaryJpy: record.baseSalaryJpy,
+          hourlyRateJpy: record.hourlyRateJpy,
+          dailyRateJpy: record.dailyRateJpy,
+          fixedOrderPayJpy: record.fixedOrderPayJpy,
+          commissionRatePercent: record.commissionRateBps / 100,
+          extensionCommissionRatePercent: record.extensionCommissionRateBps / 100,
+          nominationFeeJpy: record.nominationFeeJpy,
+          guaranteedMinimumJpy: record.guaranteedMinimumJpy,
+          ndpFeeBearer: this.compensationNdpBearer(record.ndpFeeBearer),
+          technicianNdpSharePercent: record.technicianNdpShareBps / 100,
+          bonusRules: this.compensationAdjustmentRules(record.bonusRulesJson),
+          deductionRules: this.compensationAdjustmentRules(record.deductionRulesJson)
+        }
+      : null;
   }
 
   public async findWallet(input: WalletLookupInput): Promise<WalletPayload | null> {
@@ -1597,20 +1683,62 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return [...values];
   }
 
-  private appendTimeline(existing: unknown, event: unknown): unknown[] {
+  private appendTimeline(existing: unknown, events: unknown[]): unknown[] {
     const timeline = Array.isArray(existing) ? existing : [];
-
-    if (!event) {
-      return timeline;
-    }
-
     return [
       ...timeline,
-      {
+      ...events.filter(Boolean).map((event) => ({
         ...(typeof event === "object" && event !== null ? event : { event }),
         recordedAt: new Date().toISOString()
-      }
+      }))
     ];
+  }
+
+  private compensationWageMode(value: string): CompensationWageMode {
+    return value === "fixed_per_order" || value === "base_plus_commission" || value === "hourly"
+      ? value
+      : "commission";
+  }
+
+  private compensationNdpBearer(value: string): CompensationNdpBearer {
+    return value === "technician" || value === "split" ? value : "shop";
+  }
+
+  private compensationAdjustmentRules(value: Prisma.JsonValue | null): CompensationAdjustmentRule[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+      const record = item as Record<string, Prisma.JsonValue>;
+      if (
+        typeof record.id !== "string" ||
+        typeof record.name !== "string" ||
+        typeof record.triggerType !== "string" ||
+        typeof record.threshold !== "number" ||
+        typeof record.amountJpy !== "number" ||
+        typeof record.active !== "boolean"
+      )
+        return [];
+      if (
+        ![
+          "monthly_order_count",
+          "monthly_service_gmv",
+          "rating_average",
+          "late_cancellation_count",
+          "rating_average_below"
+        ].includes(record.triggerType)
+      )
+        return [];
+      return [
+        {
+          id: record.id,
+          name: record.name,
+          triggerType: record.triggerType as CompensationAdjustmentRule["triggerType"],
+          threshold: record.threshold,
+          amountJpy: record.amountJpy,
+          active: record.active
+        }
+      ];
+    });
   }
 
   private ownerTypeToDb(ownerType: WalletOwnerType) {

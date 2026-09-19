@@ -26,11 +26,13 @@ export interface TechnicianDataCenterResolvedPeriod {
 
 export interface TechnicianDataCenterFinancialSource {
   serviceIncomeStatus: string;
+  serviceAmountJpy: number;
   baseServiceAmountJpy: number | null;
   extensionAmountJpy: number | null;
   nominationChargeAmountJpy: number | null;
   wasTechnicianNominated: boolean | null;
   compensationBasisVersion: string | null;
+  platformFeeNdp: number;
 }
 
 export interface TechnicianDataCenterOrderSource {
@@ -411,7 +413,7 @@ export class TechnicianDataCenterService {
       extensionAmountJpy: financial.extensionAmountJpy,
       nominationChargeAmountJpy: financial.nominationChargeAmountJpy,
       nominated: financial.wasTechnicianNominated === true,
-      platformFeeNdp: 0,
+      platformFeeNdp: financial.platformFeeNdp,
       workedMinutes: this.workedMinutes(order)
     }).technicianNetIncomeJpy;
   }

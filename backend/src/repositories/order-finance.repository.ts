@@ -41,6 +41,11 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
     checkout: {
       select: {
         payableNdp: true;
+        baseAmountJpy: true;
+        addOnAmountJpy: true;
+        travelFareAmountJpy: true;
+        discountAmountJpy: true;
+        checkoutAmountJpy: true;
       };
     };
   };
@@ -234,7 +239,12 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
       financial: true,
       checkout: {
         select: {
-          payableNdp: true
+          payableNdp: true,
+          baseAmountJpy: true,
+          addOnAmountJpy: true,
+          travelFareAmountJpy: true,
+          discountAmountJpy: true,
+          checkoutAmountJpy: true
         }
       }
     } satisfies Prisma.BookingOrderInclude;
@@ -259,7 +269,9 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
       checkoutPaymentAmountNdp: order.checkout?.payableNdp ?? null,
       startsAt: order.startsAt.toISOString(),
       endsAt: order.endsAt.toISOString(),
-      financial: order.financial ? this.mapFinancial(order.financial) : null,
+      financial: order.financial
+        ? this.mapFinancial(order.financial, order.serviceSnapshotJson, order.checkout)
+        : null,
       activeCompensationRule,
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString()
@@ -267,17 +279,42 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
   }
 
   private mapFinancial(
-    record: Prisma.OrderFinancialGetPayload<Record<string, never>>
+    record: Prisma.OrderFinancialGetPayload<Record<string, never>>,
+    serviceSnapshot: Prisma.JsonValue,
+    checkout: OrderRecord["checkout"]
   ): OrderFinancialRecordPayload {
+    const persistedBreakdown =
+      record.baseServiceAmountJpy !== null &&
+      record.extensionAmountJpy !== null &&
+      record.nominationChargeAmountJpy !== null &&
+      record.wasTechnicianNominated !== null &&
+      record.compensationBasisVersion !== null &&
+      record.baseServiceAmountJpy +
+        record.extensionAmountJpy +
+        record.nominationChargeAmountJpy ===
+        record.serviceAmountJpy;
+    const snapshotBasis = readCompensationBasisVersion(serviceSnapshot);
+    const checkoutBreakdown =
+      !persistedBreakdown &&
+      snapshotBasis !== null &&
+      checkout !== null &&
+      checkout.travelFareAmountJpy === 0 &&
+      checkout.discountAmountJpy === 0 &&
+      checkout.checkoutAmountJpy === record.serviceAmountJpy &&
+      checkout.baseAmountJpy + checkout.addOnAmountJpy === checkout.checkoutAmountJpy;
     return {
       id: record.id,
       ndpCurrency: LedgerCurrencyService.fromStored(record.ndpCurrency),
       serviceAmountJpy: record.serviceAmountJpy,
-      baseServiceAmountJpy: record.baseServiceAmountJpy,
-      extensionAmountJpy: record.extensionAmountJpy,
-      nominationChargeAmountJpy: record.nominationChargeAmountJpy,
-      wasTechnicianNominated: record.wasTechnicianNominated,
-      compensationBasisVersion: record.compensationBasisVersion,
+      baseServiceAmountJpy: checkoutBreakdown
+        ? checkout!.baseAmountJpy
+        : record.baseServiceAmountJpy,
+      extensionAmountJpy: checkoutBreakdown ? checkout!.addOnAmountJpy : record.extensionAmountJpy,
+      nominationChargeAmountJpy: checkoutBreakdown ? 0 : record.nominationChargeAmountJpy,
+      wasTechnicianNominated: checkoutBreakdown ? false : record.wasTechnicianNominated,
+      compensationBasisVersion: checkoutBreakdown
+        ? snapshotBasis
+        : record.compensationBasisVersion,
       platformCollectedServiceAmountJpy: record.platformCollectedServiceAmountJpy,
       offlineReportedServiceAmountJpy: record.offlineReportedServiceAmountJpy,
       unknownOrUnreportedServiceAmountJpy: record.unknownOrUnreportedServiceAmountJpy,

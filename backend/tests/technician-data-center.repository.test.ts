@@ -28,18 +28,29 @@ describe("TechnicianDataCenterRepository", () => {
       id: 501,
       orderNo: "BK-501",
       status: "COMPLETED",
+      paymentStatus: "CONFIRMED",
       startsAt: new Date("2026-08-31T01:00:00.000Z"),
       endsAt: new Date("2026-08-31T02:00:00.000Z"),
       serviceNameSnapshot: "肩颈护理",
+      serviceSnapshotJson: { compensationBasisVersion: "shop_default:73" },
       service: { name: "旧名称" },
       shop: { name: "GINZA Calm Body Lab" },
+      checkout: {
+        baseAmountJpy: 8_200,
+        addOnAmountJpy: 6_650,
+        travelFareAmountJpy: 0,
+        discountAmountJpy: 0,
+        checkoutAmountJpy: 14_850
+      },
       financial: {
-        serviceIncomeStatus: "confirmed",
-        baseServiceAmountJpy: 10_000,
-        extensionAmountJpy: 0,
-        nominationChargeAmountJpy: 0,
-        wasTechnicianNominated: false,
-        compensationBasisVersion: "technician_override:81"
+        serviceIncomeStatus: "unreported",
+        serviceAmountJpy: 14_850,
+        baseServiceAmountJpy: null,
+        extensionAmountJpy: null,
+        nominationChargeAmountJpy: null,
+        wasTechnicianNominated: null,
+        compensationBasisVersion: null,
+        bPlatformFeeActualNdp: 500
       }
     };
     const bookingOrder = {
@@ -94,7 +105,26 @@ describe("TechnicianDataCenterRepository", () => {
     };
     const shopFinanceRuleSet = {
       findFirst: jest.fn(async () => null),
-      findMany: jest.fn(async () => [])
+      findMany: jest.fn(async () => [
+        {
+          id: 73,
+          shopId: 73,
+          name: "店铺默认 100/100",
+          wageMode: "commission",
+          baseSalaryJpy: 0,
+          hourlyRateJpy: 0,
+          dailyRateJpy: 0,
+          fixedOrderPayJpy: 0,
+          commissionRateBps: 10_000,
+          extensionCommissionRateBps: 10_000,
+          nominationFeeJpy: 0,
+          guaranteedMinimumJpy: 0,
+          ndpFeeBearer: "shop",
+          technicianNdpShareBps: 0,
+          bonusRulesJson: [],
+          deductionRulesJson: []
+        }
+      ])
     };
     const payslipLine = {
       findMany: jest.fn(async () => [
@@ -130,7 +160,22 @@ describe("TechnicianDataCenterRepository", () => {
         nominationFeeJpy: 1_000
       },
       recognizedIncomeByOrderId: { 501: 5_000 },
-      recentOrders: [{ id: 501, serviceName: "肩颈护理", status: "completed" }]
+      recentOrders: [
+        {
+          id: 501,
+          serviceName: "肩颈护理",
+          status: "completed",
+          financial: {
+            serviceIncomeStatus: "confirmed",
+            baseServiceAmountJpy: 8_200,
+            extensionAmountJpy: 6_650,
+            nominationChargeAmountJpy: 0,
+            wasTechnicianNominated: false,
+            compensationBasisVersion: "shop_default:73",
+            platformFeeNdp: 500
+          }
+        }
+      ]
     });
     expect(technicianProfile.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -141,6 +186,7 @@ describe("TechnicianDataCenterRepository", () => {
       where: {
         technicianProfileId: 31,
         status: "COMPLETED",
+        paymentStatus: "CONFIRMED",
         deletedAt: null
       }
     });

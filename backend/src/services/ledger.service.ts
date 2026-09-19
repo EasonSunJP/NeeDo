@@ -21,6 +21,10 @@ import type {
   NdpConsumptionExperienceSource,
   NdpExperienceReversalSource
 } from "../domain/user-experience";
+import {
+  CompensationEngine,
+  type CompensationRuleSet
+} from "./compensation-engine.service";
 
 export type { LedgerCurrency } from "./ledger-currency.service";
 
@@ -271,10 +275,15 @@ export interface OrderFinancialUpsertInput {
   shopId: number;
   technicianProfileId?: number | null;
   serviceAmountJpy: number;
+  baseServiceAmountJpy?: number;
+  extensionAmountJpy?: number;
+  nominationChargeAmountJpy?: number;
+  wasTechnicianNominated?: boolean;
+  compensationBasisVersion?: `shop_default:${number}` | `technician_override:${number}`;
   platformCollectedServiceAmountJpy?: number;
   offlineReportedServiceAmountJpy?: number;
   unknownOrUnreportedServiceAmountJpy?: number;
-  paymentChannel?: "platform_online" | "platform_test_ndp";
+  paymentChannel?: "platform_online" | "platform_test_ndp" | "offline_cash" | "other";
   serviceIncomeStatus?: "confirmed";
   bPlatformFeeHoldNdp?: number;
   bPlatformFeeActualNdp?: number;
@@ -307,6 +316,7 @@ export interface OrderFinancialUpsertInput {
   completedOrderOrdinalInPeriod?: number | null;
   appliedFeeRuleIds?: string[];
   timelineEvent?: unknown;
+  timelineEvents?: unknown[];
   settlementStatus?: OrderFinancialSettlementStatus;
 }
 
@@ -550,6 +560,10 @@ export interface LedgerRepositoryPort {
     metadata?: unknown;
   }) => Promise<WalletHoldPayload>;
   upsertOrderFinancial?: (input: OrderFinancialUpsertInput) => Promise<void>;
+  findCompensationRuleByBasis?: (
+    shopId: number,
+    basisVersion: `shop_default:${number}` | `technician_override:${number}`
+  ) => Promise<CompensationRuleSet | null>;
   findWallet?: (input: WalletLookupInput) => Promise<WalletPayload | null>;
   findWallets?: (input: {
     ownerType: WalletOwnerType;
@@ -577,15 +591,25 @@ export interface BookingLedgerSettlementInput {
   technicianProfileId?: number | null;
   serviceId?: number | null;
   serviceAmountJpy: number;
+  baseServiceAmountJpy?: number;
+  extensionAmountJpy?: number;
+  nominationChargeAmountJpy?: number;
+  wasTechnicianNominated?: boolean;
+  compensationBasisVersion?: `shop_default:${number}` | `technician_override:${number}`;
+  workedMinutes?: number;
   scheduledStartAt: Date;
   acceptedAt?: Date;
   completedAt?: Date;
   customerUserId?: number;
   actorUserId: number | null;
-  checkoutPayment?: {
-    method: "ndp";
-    payableNdp: number;
-  };
+  checkoutPayment?:
+    | {
+        method: "ndp";
+        payableNdp: number;
+      }
+    | {
+        method: "cash" | "other";
+      };
   suppressCustomerReward?: boolean;
   insufficientBalanceConfirmation?: {
     confirmed: true;
@@ -3430,14 +3454,14 @@ export class LedgerService
     };
   }
 
-  private upsertOrderFinancial(
+  private async upsertOrderFinancial(
     repository: LedgerRepositoryPort,
     input: BookingLedgerSettlementInput,
     override: Partial<OrderFinancialUpsertInput>,
     ndpCurrency: LedgerCurrency
   ): Promise<void> {
-    const checkoutIncome =
-      input.checkoutPayment?.method === "ndp"
+    const checkoutIncome = input.checkoutPayment
+      ? input.checkoutPayment.method === "ndp"
         ? {
             platformCollectedServiceAmountJpy: ndpCurrency === "NDP" ? input.serviceAmountJpy : 0,
             offlineReportedServiceAmountJpy: 0,
@@ -3448,8 +3472,72 @@ export class LedgerService
                 : ("platform_online" as const),
             serviceIncomeStatus: "confirmed" as const
           }
-        : {};
-    return repository.upsertOrderFinancial!({
+        : {
+            platformCollectedServiceAmountJpy: 0,
+            offlineReportedServiceAmountJpy: input.serviceAmountJpy,
+            unknownOrUnreportedServiceAmountJpy: 0,
+            paymentChannel:
+              input.checkoutPayment.method === "cash"
+                ? ("offline_cash" as const)
+                : ("other" as const),
+            serviceIncomeStatus: "confirmed" as const
+          }
+      : {};
+    const hasCompleteCompensationSnapshot =
+      input.baseServiceAmountJpy !== undefined &&
+      input.extensionAmountJpy !== undefined &&
+      input.nominationChargeAmountJpy !== undefined &&
+      input.wasTechnicianNominated !== undefined &&
+      input.compensationBasisVersion !== undefined &&
+      input.baseServiceAmountJpy +
+        input.extensionAmountJpy +
+        input.nominationChargeAmountJpy ===
+        input.serviceAmountJpy;
+    const compensationSnapshot = hasCompleteCompensationSnapshot
+      ? {
+          baseServiceAmountJpy: input.baseServiceAmountJpy,
+          extensionAmountJpy: input.extensionAmountJpy,
+          nominationChargeAmountJpy: input.nominationChargeAmountJpy,
+          wasTechnicianNominated: input.wasTechnicianNominated,
+          compensationBasisVersion: input.compensationBasisVersion
+        }
+      : {};
+    let projectionEvent: unknown = null;
+    if (
+      hasCompleteCompensationSnapshot &&
+      input.checkoutPayment !== undefined &&
+      override.settlementStatus === "settled"
+    ) {
+      const rule = await repository.findCompensationRuleByBasis?.(
+        input.shopId,
+        input.compensationBasisVersion!
+      );
+      if (!rule) throw this.repositoryUnavailableError();
+      const preview = new CompensationEngine().calculate(rule, {
+        baseServiceAmountJpy: input.baseServiceAmountJpy,
+        extensionAmountJpy: input.extensionAmountJpy,
+        nominationChargeAmountJpy: input.nominationChargeAmountJpy,
+        nominated: input.wasTechnicianNominated,
+        platformFeeNdp: Math.max(
+          override.bPlatformFeeActualNdp ?? 0,
+          override.bPlatformFeeHoldNdp ?? 0
+        ),
+        workedMinutes: input.workedMinutes
+      });
+      projectionEvent = {
+        type: "technician_income_estimated",
+        label: "技师收入预估",
+        amountJpy: preview.technicianNetIncomeJpy,
+        actorType: "system",
+        status: "estimated",
+        metadata: {
+          shopEstimatedGrossProfitJpy: preview.shopEstimatedGrossProfitJpy,
+          compensationBasisVersion: input.compensationBasisVersion,
+          compensationRuleExplanation: preview.explanation
+        }
+      };
+    }
+    await repository.upsertOrderFinancial!({
       bookingOrderId: input.bookingOrderId,
       orderType: input.orderType,
       ndpCurrency,
@@ -3459,6 +3547,15 @@ export class LedgerService
       serviceAmountJpy: input.serviceAmountJpy,
       unknownOrUnreportedServiceAmountJpy: input.serviceAmountJpy,
       ...checkoutIncome,
+      ...compensationSnapshot,
+      ...(projectionEvent
+        ? {
+            timelineEvents: [
+              ...(override.timelineEvent ? [override.timelineEvent] : []),
+              projectionEvent
+            ]
+          }
+        : {}),
       ...override
     });
   }

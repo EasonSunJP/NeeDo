@@ -23,6 +23,13 @@ import { AppError, createInternalError } from "../utils/app-error";
 import { assertShopServiceQuota } from "../services/shop-service-policy";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { LedgerCurrencyService } from "../services/ledger-currency.service";
+import {
+  CompensationEngine,
+  type CompensationAdjustmentRule,
+  type CompensationPreviewPayload,
+  type CompensationRuleSet
+} from "../services/compensation-engine.service";
+import { readCompensationBasisVersion } from "../services/compensation-basis";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
 import type {
   DashboardAggregateFacts,
@@ -468,6 +475,11 @@ type FinanceSettlementRecord = Prisma.OrderFinancialGetPayload<{
         orderNo: true;
         shopId: true;
         technicianProfileId: true;
+        status: true;
+        paymentStatus: true;
+        serviceSnapshotJson: true;
+        startsAt: true;
+        endsAt: true;
         technicianProfile: {
           select: {
             displayName: true;
@@ -481,6 +493,11 @@ type FinanceSettlementRecord = Prisma.OrderFinancialGetPayload<{
         checkout: {
           select: {
             payableNdp: true;
+            baseAmountJpy: true;
+            addOnAmountJpy: true;
+            travelFareAmountJpy: true;
+            discountAmountJpy: true;
+            checkoutAmountJpy: true;
           };
         };
       };
@@ -862,9 +879,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       }),
       this.client.orderFinancial.count({ where })
     ]);
+    const projections = await this.financeCompensationProjections(list);
 
     return buildPaginatedResponse(
-      list.map((settlement) => this.mapFinanceSettlement(settlement)),
+      list.map((settlement) =>
+        this.mapFinanceSettlement(settlement, projections.get(settlement.id))
+      ),
       total,
       input
     );
@@ -883,6 +903,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       take: 1000,
       orderBy: [{ createdAt: "asc" }, { id: "asc" }]
     });
+    const projections = await this.financeCompensationProjections(rows);
     const header = [
       "id",
       "orderType",
@@ -914,8 +935,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     ];
     const content = [
       header.join(","),
-      ...rows.map((row) =>
-        [
+      ...rows.map((row) => {
+        const projection = projections.get(row.id);
+        return [
           row.id,
           this.orderType(row.orderType),
           row.bookingOrder.orderNo,
@@ -939,12 +961,13 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           row.releasedNdp,
           row.penaltyNdp,
           row.compensationToUserNdp,
-          this.timelineAmount(row.moneyTimelineJson, "technician_income_estimated"),
-          this.shopEstimatedGrossProfit(row),
+          projection?.technicianNetIncomeJpy ??
+            this.timelineAmount(row.moneyTimelineJson, "technician_income_estimated"),
+          this.shopEstimatedGrossProfit(row, projection),
           this.moneyTimelineStatus(row.serviceIncomeStatus),
           row.createdAt.toISOString()
-        ].join(",")
-      )
+        ].join(",");
+      })
     ].join("\n");
 
     return {
@@ -3103,6 +3126,11 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           orderNo: true,
           shopId: true,
           technicianProfileId: true,
+          status: true,
+          paymentStatus: true,
+          serviceSnapshotJson: true,
+          startsAt: true,
+          endsAt: true,
           technicianProfile: {
             select: {
               displayName: true
@@ -3115,7 +3143,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           },
           checkout: {
             select: {
-              payableNdp: true
+              payableNdp: true,
+              baseAmountJpy: true,
+              addOnAmountJpy: true,
+              travelFareAmountJpy: true,
+              discountAmountJpy: true,
+              checkoutAmountJpy: true
             }
           }
         }
@@ -3478,7 +3511,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   private mapFinanceSettlement(
-    settlement: FinanceSettlementRecord
+    settlement: FinanceSettlementRecord,
+    projection?: CompensationPreviewPayload
   ): BackofficeFinanceSettlementPayload {
     const pendingHoldNdp = this.pendingHoldNdp(settlement);
 
@@ -3513,11 +3547,10 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       releasedNdp: settlement.releasedNdp,
       penaltyNdp: settlement.penaltyNdp,
       compensationToUserNdp: settlement.compensationToUserNdp,
-      technicianEstimatedIncomeJpy: this.timelineAmount(
-        settlement.moneyTimelineJson,
-        "technician_income_estimated"
-      ),
-      shopEstimatedGrossProfitJpy: this.shopEstimatedGrossProfit(settlement),
+      technicianEstimatedIncomeJpy:
+        projection?.technicianNetIncomeJpy ??
+        this.timelineAmount(settlement.moneyTimelineJson, "technician_income_estimated"),
+      shopEstimatedGrossProfitJpy: this.shopEstimatedGrossProfit(settlement, projection),
       appliedFeeRuleIds: this.stringArray(settlement.appliedFeeRuleIdsJson),
       moneyTimeline: this.timelineArray(settlement.moneyTimelineJson),
       moneyTimelineStatus: this.moneyTimelineStatus(settlement.serviceIncomeStatus),
@@ -4013,7 +4046,242 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return typeof event?.amountJpy === "number" ? event.amountJpy : 0;
   }
 
-  private shopEstimatedGrossProfit(settlement: FinanceSettlementRecord): number {
+  private async financeCompensationProjections(
+    settlements: FinanceSettlementRecord[]
+  ): Promise<Map<number, CompensationPreviewPayload>> {
+    const candidates = settlements.flatMap((settlement) => {
+      const alreadyProjected = this.timelineArray(settlement.moneyTimelineJson).some(
+        (item) =>
+          item !== null &&
+          typeof item === "object" &&
+          !Array.isArray(item) &&
+          (item as { type?: unknown }).type === "technician_income_estimated"
+      );
+      if (
+        alreadyProjected ||
+        String(settlement.bookingOrder.status) !== "COMPLETED" ||
+        String(settlement.bookingOrder.paymentStatus) !== "CONFIRMED"
+      ) {
+        return [];
+      }
+
+      const persistedBasis = readCompensationBasisVersion({
+        compensationBasisVersion: settlement.compensationBasisVersion
+      });
+      const snapshotBasis = readCompensationBasisVersion(
+        settlement.bookingOrder.serviceSnapshotJson
+      );
+      const persistedBreakdown =
+        persistedBasis !== null &&
+        settlement.baseServiceAmountJpy !== null &&
+        settlement.extensionAmountJpy !== null &&
+        settlement.nominationChargeAmountJpy !== null &&
+        settlement.wasTechnicianNominated !== null &&
+        settlement.baseServiceAmountJpy +
+          settlement.extensionAmountJpy +
+          settlement.nominationChargeAmountJpy ===
+          settlement.serviceAmountJpy;
+      const checkout = settlement.bookingOrder.checkout;
+      const checkoutBreakdown =
+        !persistedBreakdown &&
+        snapshotBasis !== null &&
+        checkout !== null &&
+        checkout.travelFareAmountJpy === 0 &&
+        checkout.discountAmountJpy === 0 &&
+        checkout.checkoutAmountJpy === settlement.serviceAmountJpy &&
+        checkout.baseAmountJpy + checkout.addOnAmountJpy === checkout.checkoutAmountJpy;
+      const basisVersion = persistedBreakdown ? persistedBasis : snapshotBasis;
+      if (!persistedBreakdown && !checkoutBreakdown) return [];
+      if (!basisVersion) return [];
+
+      return [
+        {
+          settlement,
+          basisVersion,
+          baseServiceAmountJpy: persistedBreakdown
+            ? settlement.baseServiceAmountJpy!
+            : checkout!.baseAmountJpy,
+          extensionAmountJpy: persistedBreakdown
+            ? settlement.extensionAmountJpy!
+            : checkout!.addOnAmountJpy,
+          nominationChargeAmountJpy: persistedBreakdown
+            ? settlement.nominationChargeAmountJpy!
+            : 0,
+          nominated: persistedBreakdown ? settlement.wasTechnicianNominated === true : false
+        }
+      ];
+    });
+    if (candidates.length === 0) return new Map();
+
+    const shopIds = [...new Set(candidates.map(({ settlement }) => settlement.shopId))];
+    const technicianRuleIds = candidates.flatMap(({ basisVersion }) =>
+      basisVersion.startsWith("technician_override:")
+        ? [Number(basisVersion.split(":")[1])]
+        : []
+    );
+    const shopRuleIds = candidates.flatMap(({ basisVersion }) =>
+      basisVersion.startsWith("shop_default:") ? [Number(basisVersion.split(":")[1])] : []
+    );
+    const [technicianRules, shopRules] = await Promise.all([
+      technicianRuleIds.length > 0
+        ? this.client.technicianCompensationProfile.findMany({
+            where: {
+              id: { in: [...new Set(technicianRuleIds)] },
+              shopId: { in: shopIds }
+            }
+          })
+        : Promise.resolve([]),
+      shopRuleIds.length > 0
+        ? this.client.shopFinanceRuleSet.findMany({
+            where: {
+              id: { in: [...new Set(shopRuleIds)] },
+              shopId: { in: shopIds }
+            }
+          })
+        : Promise.resolve([])
+    ]);
+    const rules = new Map<string, CompensationRuleSet>();
+    for (const rule of technicianRules) {
+      rules.set(
+        `technician_override:${rule.id}:${rule.shopId}`,
+        this.historicalCompensationRule(
+          rule,
+          "technician_override",
+          rule.technicianProfileId
+        )
+      );
+    }
+    for (const rule of shopRules) {
+      rules.set(
+        `shop_default:${rule.id}:${rule.shopId}`,
+        this.historicalCompensationRule(rule, "shop_default", null)
+      );
+    }
+
+    const compensationEngine = new CompensationEngine();
+    return new Map(
+      candidates.flatMap((candidate) => {
+        const rule = rules.get(
+          `${candidate.basisVersion}:${candidate.settlement.shopId}`
+        );
+        if (!rule) return [];
+        if (
+          rule.sourceType === "technician_override" &&
+          rule.technicianProfileId !== candidate.settlement.technicianProfileId
+        ) {
+          return [];
+        }
+        const workedMinutes = Math.max(
+          0,
+          Math.round(
+            (candidate.settlement.bookingOrder.endsAt.getTime() -
+              candidate.settlement.bookingOrder.startsAt.getTime()) /
+              60_000
+          )
+        );
+        return [
+          [
+            candidate.settlement.id,
+            compensationEngine.calculate(rule, {
+              baseServiceAmountJpy: candidate.baseServiceAmountJpy,
+              extensionAmountJpy: candidate.extensionAmountJpy,
+              nominationChargeAmountJpy: candidate.nominationChargeAmountJpy,
+              nominated: candidate.nominated,
+              platformFeeNdp: candidate.settlement.bPlatformFeeActualNdp,
+              workedMinutes
+            })
+          ] as const
+        ];
+      })
+    );
+  }
+
+  private historicalCompensationRule(
+    record: {
+      id: number;
+      shopId: number;
+      name: string;
+      wageMode: string;
+      baseSalaryJpy: number;
+      hourlyRateJpy: number;
+      dailyRateJpy: number;
+      fixedOrderPayJpy: number;
+      commissionRateBps: number;
+      extensionCommissionRateBps: number;
+      nominationFeeJpy: number;
+      guaranteedMinimumJpy: number;
+      ndpFeeBearer: string;
+      technicianNdpShareBps: number;
+      bonusRulesJson: Prisma.JsonValue | null;
+      deductionRulesJson: Prisma.JsonValue | null;
+    },
+    sourceType: CompensationRuleSet["sourceType"],
+    technicianProfileId: number | null
+  ): CompensationRuleSet {
+    return {
+      id: record.id,
+      sourceType,
+      shopId: record.shopId,
+      technicianProfileId,
+      name: record.name,
+      wageMode:
+        record.wageMode === "fixed_per_order" ||
+        record.wageMode === "base_plus_commission" ||
+        record.wageMode === "hourly"
+          ? record.wageMode
+          : "commission",
+      baseSalaryJpy: record.baseSalaryJpy,
+      hourlyRateJpy: record.hourlyRateJpy,
+      dailyRateJpy: record.dailyRateJpy,
+      fixedOrderPayJpy: record.fixedOrderPayJpy,
+      commissionRatePercent: record.commissionRateBps / 100,
+      extensionCommissionRatePercent: record.extensionCommissionRateBps / 100,
+      nominationFeeJpy: record.nominationFeeJpy,
+      guaranteedMinimumJpy: record.guaranteedMinimumJpy,
+      ndpFeeBearer:
+        record.ndpFeeBearer === "technician" || record.ndpFeeBearer === "split"
+          ? record.ndpFeeBearer
+          : "shop",
+      technicianNdpSharePercent: record.technicianNdpShareBps / 100,
+      bonusRules: this.compensationAdjustmentRules(record.bonusRulesJson),
+      deductionRules: this.compensationAdjustmentRules(record.deductionRulesJson)
+    };
+  }
+
+  private compensationAdjustmentRules(value: Prisma.JsonValue | null): CompensationAdjustmentRule[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+      const record = item as Record<string, Prisma.JsonValue>;
+      if (
+        typeof record.id !== "string" ||
+        typeof record.name !== "string" ||
+        typeof record.triggerType !== "string" ||
+        typeof record.threshold !== "number" ||
+        typeof record.amountJpy !== "number"
+      ) {
+        return [];
+      }
+      return [
+        {
+          id: record.id,
+          name: record.name,
+          triggerType: record.triggerType as CompensationAdjustmentRule["triggerType"],
+          threshold: record.threshold,
+          amountJpy: record.amountJpy,
+          active: record.active !== false
+        }
+      ];
+    });
+  }
+
+  private shopEstimatedGrossProfit(
+    settlement: FinanceSettlementRecord,
+    projection?: CompensationPreviewPayload
+  ): number {
+    if (projection) {
+      return projection.shopEstimatedGrossProfitJpy;
+    }
     const event = this.timelineArray(settlement.moneyTimelineJson).find((item) => {
       if (!item || typeof item !== "object") {
         return false;

@@ -20,6 +20,99 @@ const customer = {
 };
 
 describe("formal order checkout service", () => {
+  it.each([
+    ["TEST_NDP", "ndp"],
+    ["cash", "cash"]
+  ] as const)(
+    "settles %s checkout with the immutable base, extension, and compensation snapshots",
+    async (_label, paymentMethod) => {
+      const completedCheckout = {
+        id: 9,
+        orderId: 41,
+        status: "completed",
+        baseAmountJpy: 8_200,
+        addOnAmountJpy: 6_650,
+        travelFareAmountJpy: 0,
+        discountAmountJpy: 0,
+        checkoutAmountJpy: 14_850,
+        payableNdp: 14_850,
+        paymentMethod,
+        paymentEvidence:
+          paymentMethod === "ndp" ? "ndp_ledger" : "technician_receipt_confirmation"
+      };
+      const settlementContext = {
+        transactionClient: {},
+        order: {
+          id: 41,
+          orderNo: "ND41",
+          orderType: "booking",
+          shopId: 12,
+          technicianProfileId: 42,
+          serviceId: 8,
+          customerUserId: 101,
+          startsAt: new Date("2026-09-20T01:00:00.000Z"),
+          endsAt: new Date("2026-09-20T02:45:00.000Z"),
+          serviceSnapshot: { compensationBasisVersion: "shop_default:73" },
+          statusHistory: []
+        },
+        checkout: completedCheckout
+      };
+      const repository = {
+        payCheckoutWithNdp: jest.fn(async (_input, options) => {
+          await options.settle(settlementContext);
+          return { outcome: "ok", applied: true, checkout: completedCheckout };
+        }),
+        confirmCheckoutReceipt: jest.fn(async (_input, options) => {
+          await options.settle(settlementContext);
+          return { outcome: "ok", applied: true, checkout: completedCheckout };
+        }),
+        findOrderById: jest.fn(async () => null)
+      };
+      const ledger = {
+        debitCheckoutPayment: jest.fn(async () => ({ transactionId: 91 })),
+        settleBookingCompletion: jest.fn(async () => undefined)
+      };
+      const service = new BookingService(repository as never, ledger as never);
+      const context = { ip: "127.0.0.1", userAgent: "jest" };
+
+      if (paymentMethod === "ndp") {
+        await service.payCheckoutWithNdp(
+          customer,
+          41,
+          { idempotencyKey: "projection-ndp" },
+          context
+        );
+      } else {
+        await service.confirmCheckoutReceipt(
+          {
+            ...customer,
+            userId: 202,
+            currentIdentityType: "technician",
+            currentIdentityScopeType: "technician_profile",
+            currentIdentityScopeId: 42
+          } as never,
+          41,
+          { reason: "cash received", idempotencyKey: "projection-cash" },
+          context
+        );
+      }
+
+      expect(ledger.settleBookingCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bookingOrderId: 41,
+          serviceAmountJpy: 14_850,
+          baseServiceAmountJpy: 8_200,
+          extensionAmountJpy: 6_650,
+          nominationChargeAmountJpy: 0,
+          wasTechnicianNominated: false,
+          compensationBasisVersion: "shop_default:73",
+          checkoutPayment: expect.objectContaining({ method: paymentMethod })
+        }),
+        { transactionClient: settlementContext.transactionClient }
+      );
+    }
+  );
+
   it("calculates checkout as base plus accepted add-ons plus travel fare minus discount", () => {
     expect(calculateOrderCheckoutSnapshot({
       currency: "JPY", servicePrice: 8_800, travelFareAmountJpy: 500,

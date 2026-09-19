@@ -73,6 +73,7 @@ import type { LiveDashboardEventPublisher } from "./live-dashboard-event.gateway
 import { LiveDashboardOrderChangePublisher } from "./live-dashboard-order-change.publisher";
 import type { ShopVisibilityRepositoryPort } from "./shop-visibility.service";
 import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
+import { readCompensationBasisVersion } from "./compensation-basis";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -1239,6 +1240,19 @@ export class BookingService {
     const confirmed = context.order.statusHistory.find(
       (history) => history.toStatus === "confirmed"
     );
+    const compensationBasisVersion = readCompensationBasisVersion(context.order.serviceSnapshot);
+    const hasAuditableCompensationBreakdown =
+      compensationBasisVersion !== null &&
+      context.checkout.travelFareAmountJpy === 0 &&
+      context.checkout.discountAmountJpy === 0 &&
+      context.checkout.baseAmountJpy + context.checkout.addOnAmountJpy ===
+        context.checkout.checkoutAmountJpy;
+    const workedFrom = context.order.serviceSession?.startedAt ?? context.order.startsAt;
+    const workedTo = context.order.serviceSession?.endedAt ?? context.order.endsAt;
+    const workedMinutes = Math.max(
+      0,
+      Math.round((workedTo.getTime() - workedFrom.getTime()) / 60_000)
+    );
     await this.ledgerService.settleBookingCompletion(
       {
         bookingOrderId: context.order.id,
@@ -1252,14 +1266,20 @@ export class BookingService {
         completedAt: this.now(),
         customerUserId: context.order.customerUserId,
         actorUserId,
-        ...(context.checkout.paymentMethod === "ndp"
+        ...(hasAuditableCompensationBreakdown
           ? {
-              checkoutPayment: {
-                method: "ndp" as const,
-                payableNdp: context.checkout.payableNdp
-              }
+              baseServiceAmountJpy: context.checkout.baseAmountJpy,
+              extensionAmountJpy: context.checkout.addOnAmountJpy,
+              nominationChargeAmountJpy: 0,
+              wasTechnicianNominated: false,
+              compensationBasisVersion,
+              workedMinutes
             }
-          : {})
+          : {}),
+        checkoutPayment:
+          context.checkout.paymentMethod === "ndp"
+            ? { method: "ndp" as const, payableNdp: context.checkout.payableNdp }
+            : { method: context.checkout.paymentMethod ?? "other" }
       },
       { transactionClient: context.transactionClient }
     );
