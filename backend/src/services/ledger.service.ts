@@ -271,11 +271,20 @@ export interface OrderFinancialUpsertInput {
   shopId: number;
   technicianProfileId?: number | null;
   serviceAmountJpy: number;
+  baseServiceAmountJpy?: number | null;
+  extensionAmountJpy?: number | null;
+  nominationChargeAmountJpy?: number | null;
+  wasTechnicianNominated?: boolean | null;
   platformCollectedServiceAmountJpy?: number;
   offlineReportedServiceAmountJpy?: number;
   unknownOrUnreportedServiceAmountJpy?: number;
-  paymentChannel?: "platform_online" | "platform_test_ndp";
+  paymentChannel?: "platform_online" | "platform_test_ndp" | "offline_cash" | "other";
   serviceIncomeStatus?: "confirmed";
+  serviceIncomeReportedById?: number | null;
+  serviceIncomeReportedAt?: Date | null;
+  serviceIncomeConfirmedById?: number | null;
+  serviceIncomeConfirmedAt?: Date | null;
+  serviceIncomeNote?: string | null;
   bPlatformFeeHoldNdp?: number;
   bPlatformFeeActualNdp?: number;
   cRequestFeeHoldNdp?: number;
@@ -582,10 +591,21 @@ export interface BookingLedgerSettlementInput {
   completedAt?: Date;
   customerUserId?: number;
   actorUserId: number | null;
-  checkoutPayment?: {
-    method: "ndp";
-    payableNdp: number;
-  };
+  checkoutPayment?:
+    | {
+        method: "ndp";
+        payableNdp: number;
+      }
+    | {
+        method: "cash" | "other";
+        amountJpy: number;
+        baseServiceAmountJpy?: number;
+        extensionAmountJpy?: number;
+        evidence: "technician_receipt_confirmation" | "operations_receipt_override";
+        confirmedById: number;
+        confirmedAt: Date;
+        reason: string;
+      };
   suppressCustomerReward?: boolean;
   insufficientBalanceConfirmation?: {
     confirmed: true;
@@ -3436,8 +3456,9 @@ export class LedgerService
     override: Partial<OrderFinancialUpsertInput>,
     ndpCurrency: LedgerCurrency
   ): Promise<void> {
+    const checkoutPayment = input.checkoutPayment;
     const checkoutIncome =
-      input.checkoutPayment?.method === "ndp"
+      checkoutPayment?.method === "ndp"
         ? {
             platformCollectedServiceAmountJpy: ndpCurrency === "NDP" ? input.serviceAmountJpy : 0,
             offlineReportedServiceAmountJpy: 0,
@@ -3448,7 +3469,34 @@ export class LedgerService
                 : ("platform_online" as const),
             serviceIncomeStatus: "confirmed" as const
           }
-        : {};
+        : checkoutPayment
+          ? {
+              platformCollectedServiceAmountJpy: 0,
+              offlineReportedServiceAmountJpy: checkoutPayment.amountJpy,
+              unknownOrUnreportedServiceAmountJpy: 0,
+              paymentChannel:
+                checkoutPayment.method === "cash" ? ("offline_cash" as const) : ("other" as const),
+              serviceIncomeStatus: "confirmed" as const,
+              ...(checkoutPayment.baseServiceAmountJpy !== undefined &&
+              checkoutPayment.extensionAmountJpy !== undefined
+                ? {
+                    baseServiceAmountJpy: checkoutPayment.baseServiceAmountJpy,
+                    extensionAmountJpy: checkoutPayment.extensionAmountJpy,
+                    nominationChargeAmountJpy: 0,
+                    wasTechnicianNominated: false
+                  }
+                : {}),
+              serviceIncomeReportedById: checkoutPayment.confirmedById,
+              serviceIncomeReportedAt: checkoutPayment.confirmedAt,
+              serviceIncomeConfirmedById: checkoutPayment.confirmedById,
+              serviceIncomeConfirmedAt: checkoutPayment.confirmedAt,
+              serviceIncomeNote: checkoutPayment.reason
+            }
+          : {};
+    const timelineEvent =
+      checkoutPayment && checkoutPayment.method !== "ndp"
+        ? this.offlineCheckoutTimelineEvent(checkoutPayment, override.timelineEvent)
+        : override.timelineEvent;
     return repository.upsertOrderFinancial!({
       bookingOrderId: input.bookingOrderId,
       orderType: input.orderType,
@@ -3459,8 +3507,54 @@ export class LedgerService
       serviceAmountJpy: input.serviceAmountJpy,
       unknownOrUnreportedServiceAmountJpy: input.serviceAmountJpy,
       ...checkoutIncome,
-      ...override
+      ...override,
+      timelineEvent
     });
+  }
+
+  private offlineCheckoutTimelineEvent(
+    payment: Exclude<
+      NonNullable<BookingLedgerSettlementInput["checkoutPayment"]>,
+      { method: "ndp" }
+    >,
+    settlementEvent: unknown
+  ): Record<string, unknown> {
+    const paymentChannel = payment.method === "cash" ? "offline_cash" : "other";
+    const event =
+      settlementEvent && typeof settlementEvent === "object" && !Array.isArray(settlementEvent)
+        ? (settlementEvent as Record<string, unknown>)
+        : {};
+    const eventMetadata =
+      event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+        ? (event.metadata as Record<string, unknown>)
+        : {};
+
+    return {
+      ...event,
+      type: "service_income_confirmed",
+      label: "线下服务收入已确认",
+      amountJpy: payment.amountJpy,
+      actorType:
+        payment.evidence === "technician_receipt_confirmation" ? "technician" : "backoffice",
+      occurredAt: payment.confirmedAt.toISOString(),
+      status: "confirmed",
+      metadata: {
+        ...eventMetadata,
+        paymentChannel,
+        paymentEvidence: payment.evidence,
+        confirmedById: payment.confirmedById,
+        reason: payment.reason,
+        ...(payment.baseServiceAmountJpy !== undefined
+          ? { baseServiceAmountJpy: payment.baseServiceAmountJpy }
+          : {}),
+        ...(payment.extensionAmountJpy !== undefined
+          ? { extensionAmountJpy: payment.extensionAmountJpy }
+          : {}),
+        ...(typeof event.platformFeeNdp === "number"
+          ? { platformFeeNdp: event.platformFeeNdp }
+          : {})
+      }
+    };
   }
 
   public createWalletAdjustmentRequest(

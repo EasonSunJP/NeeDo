@@ -670,6 +670,81 @@ describe("LedgerService wallet mutations", () => {
     });
   });
 
+  it("projects a confirmed cash checkout as audited offline income with exact add-on basis", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 1_000 });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+    const input = {
+      ...bookingInput({
+        bookingOrderId: 24410,
+        shopId: 10,
+        actorUserId: 2,
+        customerUserId: 3,
+        technicianProfileId: 21
+      }),
+      serviceAmountJpy: 14_850
+    };
+    const receiptConfirmedAt = new Date("2026-09-19T10:16:01.000Z");
+
+    await service.freezeBookingAcceptance(input);
+    await service.settleBookingCompletion({
+      ...input,
+      customerUserId: 3,
+      checkoutPayment: {
+        method: "cash",
+        amountJpy: 14_850,
+        baseServiceAmountJpy: 8_200,
+        extensionAmountJpy: 6_650,
+        evidence: "technician_receipt_confirmation",
+        confirmedById: 2,
+        confirmedAt: receiptConfirmedAt,
+        reason: "cash received"
+      }
+    } as never);
+
+    expect(repository.financials.get(24410)).toMatchObject({
+      serviceAmountJpy: 14_850,
+      baseServiceAmountJpy: 8_200,
+      extensionAmountJpy: 6_650,
+      nominationChargeAmountJpy: 0,
+      wasTechnicianNominated: false,
+      platformCollectedServiceAmountJpy: 0,
+      offlineReportedServiceAmountJpy: 14_850,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      paymentChannel: "offline_cash",
+      serviceIncomeStatus: "confirmed",
+      serviceIncomeReportedById: 2,
+      serviceIncomeReportedAt: receiptConfirmedAt,
+      serviceIncomeConfirmedById: 2,
+      serviceIncomeConfirmedAt: receiptConfirmedAt,
+      serviceIncomeNote: "cash received",
+      bPlatformFeeActualNdp: 500,
+      userRewardNdp: 100,
+      settlementStatus: "settled",
+      timelineEvent: expect.objectContaining({
+        action: "booking_complete_snapshot_settlement",
+        type: "service_income_confirmed",
+        amountJpy: 14_850,
+        actorType: "technician",
+        occurredAt: receiptConfirmedAt.toISOString(),
+        status: "confirmed",
+        metadata: expect.objectContaining({
+          paymentChannel: "offline_cash",
+          paymentEvidence: "technician_receipt_confirmation",
+          baseServiceAmountJpy: 8_200,
+          extensionAmountJpy: 6_650,
+          platformFeeNdp: 500
+        })
+      })
+    });
+  });
+
   it("settles a no-show from the frozen 500 NDP fee without issuing a customer reward", async () => {
     const repository = new InMemoryLedgerRepository();
     repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 1_000 });

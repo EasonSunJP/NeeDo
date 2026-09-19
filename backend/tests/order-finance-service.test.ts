@@ -315,6 +315,87 @@ describe("OrderFinanceService", () => {
     );
   });
 
+  it("reconciles confirmed cash add-ons with the persisted platform-fee split", async () => {
+    const receiptConfirmedAt = "2026-09-19T10:16:01.000Z";
+    const repository = createRepository();
+    repository.findOrderFinance.mockResolvedValueOnce({
+      ...orderFinanceRecord,
+      bookingOrderId: 24410,
+      orderNo: "ND202609191916018586",
+      priceAmountJpy: 8_200,
+      financial: {
+        ...orderFinanceRecord.financial!,
+        serviceAmountJpy: 14_850,
+        baseServiceAmountJpy: 8_200,
+        extensionAmountJpy: 6_650,
+        nominationChargeAmountJpy: 0,
+        wasTechnicianNominated: false,
+        platformCollectedServiceAmountJpy: 0,
+        offlineReportedServiceAmountJpy: 14_850,
+        unknownOrUnreportedServiceAmountJpy: 0,
+        paymentChannel: "offline_cash",
+        serviceIncomeStatus: "confirmed",
+        serviceIncomeReportedById: 2,
+        serviceIncomeReportedAt: receiptConfirmedAt,
+        serviceIncomeConfirmedById: 2,
+        serviceIncomeConfirmedAt: receiptConfirmedAt,
+        serviceIncomeNote: "cash received",
+        bPlatformFeeActualNdp: 500,
+        userRewardNdp: 100,
+        settlementStatus: "settled",
+        moneyTimeline: [
+          {
+            type: "service_income_confirmed",
+            label: "线下服务收入已确认",
+            amountJpy: 14_850,
+            actorType: "technician",
+            occurredAt: receiptConfirmedAt,
+            status: "confirmed",
+            metadata: {
+              paymentChannel: "offline_cash",
+              paymentEvidence: "technician_receipt_confirmation",
+              baseServiceAmountJpy: 8_200,
+              extensionAmountJpy: 6_650,
+              platformFeeNdp: 500
+            }
+          }
+        ]
+      },
+      activeCompensationRule: {
+        ...orderFinanceRecord.activeCompensationRule!,
+        fixedOrderPayJpy: 0,
+        commissionRatePercent: 40,
+        extensionCommissionRatePercent: 60,
+        ndpFeeBearer: "split",
+        technicianNdpSharePercent: 30
+      }
+    });
+    const service = new OrderFinanceService(repository, { record: jest.fn() });
+
+    await expect(
+      service.getMerchantOrderFinance(merchantActor, context, 24410)
+    ).resolves.toMatchObject({
+      estimatedServiceGmvJpy: 14_850,
+      offlineReportedServiceAmountJpy: 14_850,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      paymentChannel: "offline_cash",
+      serviceIncomeStatus: "confirmed",
+      moneyTimelineStatus: "complete",
+      platformNdpRevenue: 400,
+      technicianIncomePreview: {
+        baseServiceAmountJpy: 8_200,
+        extensionAmountJpy: 6_650,
+        serviceCommissionPayJpy: 3_280,
+        extensionCommissionPayJpy: 3_990,
+        technicianGrossIncomeJpy: 7_270,
+        technicianNdpShareNdp: 150,
+        shopNdpShareNdp: 350,
+        technicianNetIncomeJpy: 7_120,
+        shopEstimatedGrossProfitJpy: 7_230
+      }
+    });
+  });
+
   it("rejects merchant finance order access outside the current shop scope", async () => {
     const service = new OrderFinanceService(createRepository(), { record: jest.fn() });
 
