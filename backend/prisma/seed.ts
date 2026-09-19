@@ -2205,6 +2205,54 @@ const seedMerchantSaasBillingData = async (
     }
   });
   await ensureSeedMerchantIdentifier(tx, merchantAccount.id);
+  const existingMerchantOrganizationIdentity = await tx.userIdentity.findFirst({
+    where: {
+      userId: input.ownerUserId,
+      type: "merchant_organization",
+      scopeType: "merchant_account",
+      scopeId: merchantAccount.id,
+      deletedAt: null
+    },
+    select: { id: true }
+  });
+  const legacyMerchantOrganizationIdentity = existingMerchantOrganizationIdentity
+    ? null
+    : await tx.userIdentity.findFirst({
+        where: {
+          userId: input.ownerUserId,
+          type: "merchant_organization",
+          scopeType: "global",
+          scopeId: null,
+          deletedAt: null
+        },
+        select: { id: true }
+      });
+  if (legacyMerchantOrganizationIdentity) {
+    await tx.userIdentity.update({
+      where: { id: legacyMerchantOrganizationIdentity.id },
+      data: {
+        scopeType: "merchant_account",
+        scopeId: merchantAccount.id,
+        displayName: merchantAccount.name,
+        isDefault: false,
+        isActive: true,
+        deletedAt: null
+      }
+    });
+    await tx.auditLog.create({
+      data: {
+        actorId: input.ownerUserId,
+        action: "seed.core_read.merchant_organization_scope_reconcile",
+        targetType: "UserIdentity",
+        targetId: legacyMerchantOrganizationIdentity.id,
+        metadata: {
+          previousScopeType: "global",
+          scopeType: "merchant_account",
+          merchantAccountId: merchantAccount.id
+        }
+      }
+    });
+  }
   await upsertSeedIdentity(tx, {
     userId: input.ownerUserId,
     type: "merchant_organization",
@@ -4148,7 +4196,8 @@ export const seedUserManagement = async (
   const adminPasswordHash = await hash(adminConfig.password, BCRYPT_ROUNDS);
   const seedTestAccounts = shouldSeedRequiredTestAccounts();
   const seedCoreReadFormalTest = shouldSeedCoreReadFormalTestData();
-  const testUserPasswordHash = seedTestAccounts
+  const seedAnyFormalTestData = seedCoreReadFormalTest || seedTestAccounts;
+  const testUserPasswordHash = seedAnyFormalTestData
     ? await hash(getTestUserSeedPassword(), BCRYPT_ROUNDS)
     : null;
   const rolePermissionAssignments = buildRolePermissionAssignments();
@@ -4373,8 +4422,8 @@ export const seedUserManagement = async (
         scopeId: adminCustomerProfile.id
       });
 
-    if (seedCoreReadFormalTest || seedTestAccounts) {
-      await seedCoreReadData(tx, adminPasswordHash, roleByCode, {
+    if (seedAnyFormalTestData && testUserPasswordHash) {
+      await seedCoreReadData(tx, testUserPasswordHash, roleByCode, {
         seedRequiredTestAccounts: seedTestAccounts,
         testUserPasswordHash
       });
