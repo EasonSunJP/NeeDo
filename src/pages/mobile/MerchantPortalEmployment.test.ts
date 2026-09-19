@@ -509,5 +509,6 @@ describe("MerchantPortal formal employment data", () => {
       expect(container.textContent).not.toContain("店铺定价");
       expect(container.querySelector<HTMLButtonElement>('[role="switch"]')?.disabled).toBe(true);
     });
+
   });
 });

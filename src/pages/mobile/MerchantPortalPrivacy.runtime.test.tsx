@@ -193,6 +193,32 @@ describe("MerchantPortal merchant-profile privacy authority", () => {
     expect(pricingModeApi.getShopVisibility).not.toHaveBeenCalled();
   });
 
+  it("keeps a failed profile load fail-closed and recovers through an explicit retry", async () => {
+    vi.mocked(merchantProfileApi.getMine)
+      .mockReset()
+      .mockRejectedValueOnce(new Error("error.identity.forbidden"))
+      .mockResolvedValueOnce({ ...profile, visibility: "limited" });
+
+    await act(async () => root.render(portal()));
+    await waitFor(() => {
+      const control = container.querySelector('[data-testid="merchant-store-privacy-control"]');
+      expect(control?.textContent).toContain("Couldn't load privacy mode");
+      expect(control?.textContent).not.toContain("公开可见");
+    });
+
+    const toggle = container.querySelector<HTMLButtonElement>('button[aria-label="开启店铺隐私模式"]');
+    expect(toggle?.disabled).toBe(true);
+
+    const retry = container.querySelector<HTMLButtonElement>('button[aria-label="Retry loading privacy mode"]');
+    expect(retry).not.toBeNull();
+    await act(async () => retry?.click());
+
+    await waitFor(() => expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).toContain("对好友可见"));
+    expect(merchantProfileApi.getMine).toHaveBeenCalledTimes(2);
+    expect(toggle?.disabled).toBe(false);
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+  });
+
   it("isolates slower profile loads across merchant identity and shop switches", async () => {
     let resolveFirst: ((value: MerchantIdentityProfile) => void) | undefined;
     const firstRequest = new Promise<MerchantIdentityProfile>((resolve) => {

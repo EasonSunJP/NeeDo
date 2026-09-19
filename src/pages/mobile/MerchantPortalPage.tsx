@@ -1693,6 +1693,7 @@ function MerchantStorePrivacyControl({
   menuOpen,
   onEnabledChange,
   onMenuOpenChange,
+  onRetry,
   onVisibilityChange,
   pending,
   visibility
@@ -1700,12 +1701,16 @@ function MerchantStorePrivacyControl({
   menuOpen: boolean;
   onEnabledChange: (enabled: boolean) => void;
   onMenuOpenChange: (open: boolean) => void;
+  onRetry: () => void;
   onVisibilityChange: (visibility: MerchantStorePrivacyVisibility) => void;
   pending: boolean;
   visibility: MerchantProfileVisibility | null;
 }) {
+  const { language } = useOptionalI18n();
+  const t = (source: string) => translateText(source, language);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const enabled = visibility !== null && visibility !== "public";
+  const loadFailed = visibility === null && !pending;
 
   useEffect(() => {
     if (!menuOpen) {
@@ -1730,15 +1735,20 @@ function MerchantStorePrivacyControl({
       <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.18)] backdrop-blur-xl">
         <div className="flex items-center justify-between gap-2">
           <button
+            aria-label={loadFailed ? t("重试读取隐私模式") : undefined}
             aria-expanded={enabled ? menuOpen : undefined}
             className="min-w-0 flex-1 text-left disabled:cursor-default"
-            disabled={!enabled || pending}
-            onClick={() => onMenuOpenChange(!menuOpen)}
+            disabled={pending || (visibility !== null && !enabled)}
+            onClick={() => loadFailed ? onRetry() : onMenuOpenChange(!menuOpen)}
             type="button"
           >
             <span className="block truncate text-[10px] font-black text-[color:var(--client-muted)]">隐私模式</span>
             <strong className="mt-0.5 block truncate text-[11px] font-black text-[color:var(--client-text)]">
-              {getMerchantStorePrivacySummary(visibility, pending)}
+              {visibility === null
+                ? pending
+                  ? t("隐私模式读取中")
+                  : t("隐私模式读取失败")
+                : getMerchantStorePrivacySummary(visibility, pending)}
             </strong>
           </button>
           <ToggleSwitch
@@ -1959,6 +1969,7 @@ export function MerchantPortalContent({
   const [storePricingRatioMenuOpen, setStorePricingRatioMenuOpen] = useState(false);
   const [storePricingModeConfirmOpen, setStorePricingModeConfirmOpen] = useState(false);
   const [storePrivacyVisibility, setStorePrivacyVisibility] = useState<MerchantProfileVisibility | null>(null);
+  const [storePrivacyLoadRevision, setStorePrivacyLoadRevision] = useState(0);
   const [storePrivacySaving, setStorePrivacySaving] = useState(false);
   const [storePrivacyMenuOpen, setStorePrivacyMenuOpen] = useState(false);
   const [storePrivacyConfirmOpen, setStorePrivacyConfirmOpen] = useState(false);
@@ -2245,7 +2256,7 @@ export function MerchantPortalContent({
     return () => {
       mounted = false;
     };
-  }, [activeMeTab, activeMerchantIdentityId, activeView, merchantPrivacyAuthorityKey, merchantPrivacyScopeKey, storeApiId]);
+  }, [activeMeTab, activeMerchantIdentityId, activeView, merchantPrivacyAuthorityKey, merchantPrivacyScopeKey, storeApiId, storePrivacyLoadRevision]);
 
   useEffect(() => {
     if (activeView !== "staff" || !staffIdParam) {
@@ -2831,6 +2842,10 @@ export function MerchantPortalContent({
     void saveStorePrivacyVisibility(visibility);
   };
 
+  const retryStorePrivacyLoad = () => {
+    setStorePrivacyLoadRevision((revision) => revision + 1);
+  };
+
   const updateStorePricingMode = async (nextMode: MerchantStorePricingMode, nextRatePercent = storeTechnicianPricingRatePercent) => {
     const pricingModeChanged = nextMode !== storePricingMode;
     const pricingRateChanged = nextRatePercent !== storeTechnicianPricingRatePercent;
@@ -2912,6 +2927,7 @@ export function MerchantPortalContent({
         menuOpen={storePrivacyMenuOpen}
         onEnabledChange={updateStorePrivacyEnabled}
         onMenuOpenChange={updateStorePrivacyMenuOpen}
+        onRetry={retryStorePrivacyLoad}
         onVisibilityChange={updateStorePrivacyVisibility}
         pending={storePrivacySaving}
         visibility={storePrivacyVisibility}
