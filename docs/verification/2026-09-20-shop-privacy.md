@@ -80,4 +80,24 @@ public 恢复后匿名和所有登录身份均可搜索和访问详情。
 `public, no-cache` 和登录 `private, no-store`。
 
 本记录不代表 staging、production 或安装版 iPhone/Android PWA 验收；未连接远程环境。
-合并后还需在最终本地 main 上重跑相关测试、构建并完成 5180 页面/API 验证。
+
+## 本地 main 与 5180 最终验收
+
+开发提交 `af2ceaeb` 已合并本地 main（合并提交 `ca2be8c8`）。合并后在 main
+工作目录重新执行前端 58 项、后端 169 项和真实 MySQL 2 项，共 229 项全部通过；
+前后端 lint、类型检查和 build 再次通过。
+
+实际监听 5180 的 Vite 及 3000/3001/3002 API 均运行于 main 工作目录
+`.worktrees/staging-release-cc999f09`；Vite 代理分别指向本机 3000/3002/3001。
+后端使用经核实的 LOCAL 环境文件。合并后 watch 进程已加载更新，无需替换或清理
+旧的、带未提交日志的 `main-runtime-5180` worktree。
+
+5180 正常密码登录后，从页面完整执行
+`public → privateAll → limited → network → public`，刷新后 limited 保留。
+每个模式再次核对匿名、店主、好友、非好友的搜索总数及两种 ID 的详情授权。
+数据库回查确认新增四条完整审计记录，顾客与商户个人资料仍为 privateAll。
+本批次临时页面、5190/3110 服务、3 个账号、1 家店铺、对应关系和登录经验记录
+已清理，相关刷新会话已撤销；回查临时账号和店铺残留均为零。
+
+已知范围外现象：正常登录跳转期间控制台有一条空图片 `src` 的 React 提示；
+店铺隐私控件、保存与访问结果未受影响，本次未扩展修改图片渲染。
