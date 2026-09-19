@@ -74,6 +74,46 @@ const requireIntelligenceServiceRef: RequestHandler = (request, _response, next)
   next();
 };
 
+export const createExchangeRequestAutomationProcessor = (
+  claimService: ExchangeClaimService
+): TechnicianAutomationProcessor =>
+  new TechnicianAutomationProcessor(
+    new TechnicianAutomationRepository(),
+    {
+      confirmBooking: async () => {
+        throw new Error("booking automation authority is unavailable on exchange routes");
+      }
+    },
+    {
+      applyRequest: async (input) => {
+        await claimService.createClaim(
+          {
+            userId: input.technicianUserId,
+            email: "",
+            accessTokenJti: "technician-automation",
+            accessTokenExpiresAt: 0,
+            currentIdentityId: input.technicianIdentityId,
+            currentPublicId: input.technicianPublicId,
+            currentIdentityType: "technician",
+            currentIdentityScopeType: "technician_profile",
+            currentIdentityScopeId: input.technicianProfileId,
+            roles: ["technician"],
+            permissions: [EXCHANGE_PERMISSIONS.claimCreate]
+          },
+          input.postId,
+          {
+            scheduleSlotId: input.scheduleSlotId,
+            quoteAmountJpy: input.quoteAmountJpy,
+            message: input.message
+          },
+          input.idempotencyKey,
+          { ip: "127.0.0.1", userAgent: "technician-automation" },
+          { suppressQuickMatching: true }
+        );
+      }
+    }
+  );
+
 export const createExchangeRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
   const router = Router();
   const authenticate = createAuthenticateMiddleware(
@@ -98,42 +138,9 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
     new ExchangeClaimService(new ExchangeClaimRepository(), actorRepository);
   const automationProcessor =
     dependencies.technicianAutomationProcessor ??
-    (dependencies.exchangeService ? undefined : new TechnicianAutomationProcessor(
-      new TechnicianAutomationRepository(),
-      {
-        confirmBooking: async () => {
-          throw new Error("booking automation authority is unavailable on exchange routes");
-        }
-      },
-      {
-        applyRequest: async (input) => {
-          await claimService.createClaim(
-            {
-              userId: input.technicianUserId,
-              email: "",
-              accessTokenJti: "technician-automation",
-              accessTokenExpiresAt: 0,
-              currentIdentityId: input.technicianIdentityId,
-              currentPublicId: input.technicianPublicId,
-              currentIdentityType: "technician",
-              currentIdentityScopeType: "technician_profile",
-              currentIdentityScopeId: input.technicianProfileId,
-              roles: ["technician"],
-              permissions: [EXCHANGE_PERMISSIONS.claimCreate]
-            },
-            input.postId,
-            {
-              scheduleSlotId: input.scheduleSlotId,
-              quoteAmountJpy: input.quoteAmountJpy,
-              message: input.message
-            },
-            input.idempotencyKey,
-            { ip: "127.0.0.1", userAgent: "technician-automation" },
-            { suppressQuickMatching: true }
-          );
-        }
-      }
-    ));
+    (dependencies.exchangeService
+      ? undefined
+      : createExchangeRequestAutomationProcessor(claimService));
   const controller = new ExchangeController(service, automationProcessor);
 
   router.get(
