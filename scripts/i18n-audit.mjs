@@ -69,6 +69,14 @@ const platformReviewTranslationsPath = path.join(
   workspaceRoot,
   "src/features/platform-reviews/i18n.ts",
 );
+const settingsRouteTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/settings/route-i18n.ts",
+);
+const socialRouteTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/social/route-i18n.ts",
+);
 const sourceDirectories = [
   path.join(workspaceRoot, "src"),
   path.join(workspaceRoot, "scripts"),
@@ -86,6 +94,8 @@ const excludedFilePatterns = [
   /src\/features\/scheduling\/calendar-participant-i18n\.ts$/u,
   /src\/features\/auth\/i18n\.ts$/u,
   /src\/features\/platform-reviews\/i18n\.ts$/u,
+  /src\/features\/settings\/route-i18n\.ts$/u,
+  /src\/features\/social\/route-i18n\.ts$/u,
 ];
 
 function normalizeText(value) {
@@ -188,6 +198,21 @@ let technicianAutomationTranslationsPromise;
 let calendarParticipantTranslationsPromise;
 let authTranslationsPromise;
 let platformReviewTranslationsPromise;
+let settingsRouteTranslationsPromise;
+let socialRouteTranslationsPromise;
+
+async function loadStandaloneTranslations(filePath, exportName) {
+  const source = await fs.readFile(filePath, "utf8");
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+  const loaded = await import(`data:text/javascript;base64,${encoded}`);
+  return loaded[exportName] ?? {};
+}
 
 async function loadEkycTranslations() {
   ekycTranslationsPromise ??= (async () => {
@@ -448,6 +473,22 @@ async function loadPlatformReviewTranslations() {
   return platformReviewTranslationsPromise;
 }
 
+async function loadSettingsRouteTranslations() {
+  settingsRouteTranslationsPromise ??= loadStandaloneTranslations(
+    settingsRouteTranslationsPath,
+    "settingsRouteTranslations",
+  );
+  return settingsRouteTranslationsPromise;
+}
+
+async function loadSocialRouteTranslations() {
+  socialRouteTranslationsPromise ??= loadStandaloneTranslations(
+    socialRouteTranslationsPath,
+    "socialRouteTranslations",
+  );
+  return socialRouteTranslationsPromise;
+}
+
 async function loadTranslationsFromSource(sourceCode) {
   const { translations: ekycTranslations, chineseErrors: ekycChineseErrors } =
     await loadEkycTranslations();
@@ -465,6 +506,8 @@ async function loadTranslationsFromSource(sourceCode) {
   const calendarParticipantTranslations = await loadCalendarParticipantTranslations();
   const authTranslations = await loadAuthTranslations();
   const platformReviewTranslations = await loadPlatformReviewTranslations();
+  const settingsRouteTranslations = await loadSettingsRouteTranslations();
+  const socialRouteTranslations = await loadSocialRouteTranslations();
   const standaloneSource = sourceCode.replace(
     /import\s+\{\s*ekycTranslations\s*,\s*ekycChineseErrors\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const ekycTranslations = ${JSON.stringify(ekycTranslations)};\nconst ekycChineseErrors = ${JSON.stringify(ekycChineseErrors)};`,
@@ -529,6 +572,8 @@ async function loadTranslationsFromSource(sourceCode) {
       ...platformUserManagementTranslations,
       ...travelFareTranslations,
       ...calendarParticipantTranslations,
+      ...settingsRouteTranslations,
+      ...socialRouteTranslations,
       ...(loaded.translations ?? {}),
     };
   } finally {

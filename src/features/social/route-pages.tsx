@@ -4,17 +4,26 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { getSocialScopeFromPathname, socialPaths, socialReplyFocusState } from "./paths";
 
-const FullSocialTimelinePage = lazy(() => import("./pages/SocialTimelinePage").then((module) => ({ default: module.SocialTimelinePage })));
-const FullSocialComposerPage = lazy(() => import("./pages/SocialComposerPage").then((module) => ({ default: module.SocialComposerPage })));
-const FullSocialDraftsPage = lazy(() => import("./pages/SocialDraftsPage").then((module) => ({ default: module.SocialDraftsPage })));
-const FullSocialFavoritesPage = lazy(() => import("./pages/SocialFavoritesPage").then((module) => ({ default: module.SocialFavoritesPage })));
-const FullSocialMediaViewerPage = lazy(() => import("./pages/SocialMediaViewerPage").then((module) => ({ default: module.SocialMediaViewerPage })));
-const FullSocialNotificationsPage = lazy(() => import("./pages/SocialNotificationsPage").then((module) => ({ default: module.SocialNotificationsPage })));
-const FullSocialPostDetailPage = lazy(() => import("./pages/SocialPostDetailPage").then((module) => ({ default: module.SocialPostDetailPage })));
-const FullSocialRelationshipsPage = lazy(() => import("./pages/SocialRelationshipsPage").then((module) => ({ default: module.SocialRelationshipsPage })));
-const FullSocialRepostPage = lazy(() => import("./pages/SocialRepostPage").then((module) => ({ default: module.SocialRepostPage })));
-const FullSocialSearchPage = lazy(() => import("./pages/SocialSearchPage").then((module) => ({ default: module.SocialSearchPage })));
-const FullSocialAccountProfilePage = lazy(() => import("./pages/SocialProfilePage").then((module) => ({ default: module.SocialAccountProfilePage })));
+async function loadSocialPage<TModule, TName extends keyof TModule>(
+  loader: () => Promise<TModule>,
+  name: TName
+) {
+  await import("./registerRouteI18n");
+  const module = await loader();
+  return { default: module[name] as ComponentType<any> };
+}
+
+const FullSocialTimelinePage = lazy(() => loadSocialPage(() => import("./pages/SocialTimelinePage"), "SocialTimelinePage"));
+const FullSocialComposerPage = lazy(() => loadSocialPage(() => import("./pages/SocialComposerPage"), "SocialComposerPage"));
+const FullSocialDraftsPage = lazy(() => loadSocialPage(() => import("./pages/SocialDraftsPage"), "SocialDraftsPage"));
+const FullSocialFavoritesPage = lazy(() => loadSocialPage(() => import("./pages/SocialFavoritesPage"), "SocialFavoritesPage"));
+const FullSocialMediaViewerPage = lazy(() => loadSocialPage(() => import("./pages/SocialMediaViewerPage"), "SocialMediaViewerPage"));
+const FullSocialNotificationsPage = lazy(() => loadSocialPage(() => import("./pages/SocialNotificationsPage"), "SocialNotificationsPage"));
+const FullSocialPostDetailPage = lazy(() => loadSocialPage(() => import("./pages/SocialPostDetailPage"), "SocialPostDetailPage"));
+const FullSocialRelationshipsPage = lazy(() => loadSocialPage(() => import("./pages/SocialRelationshipsPage"), "SocialRelationshipsPage"));
+const FullSocialRepostPage = lazy(() => loadSocialPage(() => import("./pages/SocialRepostPage"), "SocialRepostPage"));
+const FullSocialSearchPage = lazy(() => loadSocialPage(() => import("./pages/SocialSearchPage"), "SocialSearchPage"));
+const FullSocialAccountProfilePage = lazy(() => loadSocialPage(() => import("./pages/SocialProfilePage"), "SocialAccountProfilePage"));
 
 function FullSocialRoute({ page: Page }: { page: ComponentType }) {
   const { language } = useI18n();

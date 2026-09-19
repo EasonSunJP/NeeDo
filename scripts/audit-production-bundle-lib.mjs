@@ -12,9 +12,15 @@ const forbiddenRuntimeMarkers = [
   "正式需求与情报功能尚未启用"
 ];
 const defaultBudgets = {
-  main: 4_000_000,
-  i18n: 3_708_400
+  main: 3_590_000,
+  i18n: 3_600_000
 };
+const routeDeferredAssetPrefixes = [
+  "settings-i18n-",
+  "social-i18n-",
+  "UnifiedSettingsPages-",
+  "UserSettingsPages-"
+];
 
 const nonRuntimeExtension = /\.(psd|psb|ai|sketch|fig|md|docx|zip|rar|7z|bak|orig|tmp|pem|key|p12|pfx)$/i;
 
@@ -83,6 +89,9 @@ export async function auditProductionBundle(distDir, budgets = defaultBudgets) {
     for (const reference of references) {
       if (!assetNames.includes(reference)) {
         failures.push(`${htmlName} references missing asset ${reference}`);
+      }
+      if (routeDeferredAssetPrefixes.some((prefix) => reference.startsWith(prefix))) {
+        failures.push(`${htmlName} eagerly references route-deferred asset ${reference}`);
       }
     }
   }

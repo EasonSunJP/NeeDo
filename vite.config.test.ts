@@ -129,6 +129,10 @@ describe("Needo production chunks", () => {
       .toBe("auth-i18n");
     expect(resolveNeedoManualChunk("/workspace/src/features/platform-reviews/i18n.ts"))
       .toBe("platform-reviews-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/settings/route-i18n.ts"))
+      .toBe("settings-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/social/route-i18n.ts"))
+      .toBe("social-i18n");
     expect(resolveNeedoManualChunk("/workspace/src/features/affiliate-profile/i18n.ts"))
       .toBe("affiliate-i18n");
     expect(resolveNeedoManualChunk("/workspace/src/features/affiliate-marketplace/i18n.ts"))

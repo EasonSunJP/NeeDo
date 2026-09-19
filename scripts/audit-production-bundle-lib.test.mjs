@@ -14,9 +14,11 @@ afterEach(async () => {
 });
 
 async function createBundleFixture({
+  deferredChunkInEntry = false,
   staticDemo = false,
   missingAsset = false,
   exchangeResidue = false,
+  mainBytes,
   i18nBytes
 } = {}) {
   const distDir = await mkdtemp(path.join(tmpdir(), "needo-bundle-audit-"));
@@ -25,18 +27,27 @@ async function createBundleFixture({
   await mkdir(assetsDir);
   await writeFile(
     path.join(assetsDir, "main-hash.js"),
-    exchangeResidue ? "console.log('needoExchangeBridge');" : "console.log('formal');"
+    exchangeResidue
+      ? "console.log('needoExchangeBridge');"
+      : mainBytes === undefined
+        ? "console.log('formal');"
+        : "x".repeat(mainBytes)
   );
   await writeFile(
     path.join(assetsDir, "i18n-hash.js"),
     i18nBytes === undefined ? "export default {};" : "x".repeat(i18nBytes)
   );
+  await writeFile(path.join(assetsDir, "settings-i18n-hash.js"), "export default {};");
   if (staticDemo) {
     await writeFile(path.join(assetsDir, "staticDemo-hash.js"), "needoStaticDemo");
   }
   await writeFile(
     path.join(distDir, "user.html"),
-    `<script src="./assets/${missingAsset ? "missing.js" : "main-hash.js"}"></script>`
+    `<script src="./assets/${missingAsset ? "missing.js" : "main-hash.js"}"></script>${
+      deferredChunkInEntry
+        ? '<script src="./assets/settings-i18n-hash.js"></script>'
+        : ""
+    }`
   );
   return distDir;
 }
@@ -90,19 +101,29 @@ describe("production bundle audit", () => {
     expect(report.failures).toEqual([]);
   });
 
-  it("accepts an optimized i18n artifact at the restored default budget", async () => {
+  it("rejects route-deferred settings translations preloaded by an HTML entry", async () => {
     const report = await auditProductionBundle(
-      await createBundleFixture({ i18nBytes: 3_708_400 })
+      await createBundleFixture({ deferredChunkInEntry: true })
+    );
+    expect(report.failures).toContain(
+      "user.html eagerly references route-deferred asset settings-i18n-hash.js"
+    );
+  });
+
+  it("accepts optimized entry artifacts at the tightened default budgets", async () => {
+    const report = await auditProductionBundle(
+      await createBundleFixture({ mainBytes: 3_590_000, i18nBytes: 3_600_000 })
     );
     expect(report.failures).toEqual([]);
   });
 
-  it("rejects an i18n artifact one byte above the restored default budget", async () => {
+  it("rejects entry artifacts above the tightened default budgets", async () => {
     const report = await auditProductionBundle(
-      await createBundleFixture({ i18nBytes: 3_708_401 })
+      await createBundleFixture({ mainBytes: 3_590_001, i18nBytes: 3_600_001 })
     );
     expect(report.failures).toEqual([
-      "i18n-hash.js is 3708401 bytes; budget is 3708400"
+      "main-hash.js is 3590001 bytes; budget is 3590000",
+      "i18n-hash.js is 3600001 bytes; budget is 3600000"
     ]);
   });
 
