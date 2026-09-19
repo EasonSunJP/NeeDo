@@ -35,6 +35,12 @@ describe("UnifiedCalendarDayTimeline availability and participant draft renderin
 
   beforeEach(() => {
     Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: vi.fn() });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 844 });
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 480 });
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 1;
+    });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -43,6 +49,7 @@ describe("UnifiedCalendarDayTimeline availability and participant draft renderin
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+    document.querySelectorAll("[data-test-floating-boundary]").forEach((element) => element.remove());
     vi.restoreAllMocks();
   });
 
@@ -78,6 +85,49 @@ describe("UnifiedCalendarDayTimeline availability and participant draft renderin
     expect(strips.every((strip) => strip.style.width === "24px")).toBe(true);
     expect(strips.map((strip) => strip.textContent)).toEqual(["自由排班", "LifeDance排班"]);
     expect(container.querySelectorAll("[data-calendar-event-card]")).toHaveLength(0);
+  });
+
+  it.each([
+    ["standalone safe-area header", 59, 180, null],
+    ["mobile web header with an unrelated fixed layer", 0, 168, 300],
+  ])("anchors floating technician avatars below the actual %s", async (_mode, headerTop, headerBottom, unrelatedBottom) => {
+    const fixedHeader = document.createElement("div");
+    fixedHeader.className = "client-floating-header-host fixed";
+    fixedHeader.setAttribute("data-test-floating-boundary", "true");
+    document.body.appendChild(fixedHeader);
+    const unrelatedFixedLayer = unrelatedBottom == null ? null : document.createElement("div");
+    if (unrelatedFixedLayer) {
+      unrelatedFixedLayer.className = "fixed";
+      unrelatedFixedLayer.setAttribute("data-test-floating-boundary", "true");
+      document.body.appendChild(unrelatedFixedLayer);
+    }
+
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this === fixedHeader) {
+        return DOMRect.fromRect({ y: headerTop, height: headerBottom - headerTop, width: 480 });
+      }
+      if (this === unrelatedFixedLayer) {
+        return DOMRect.fromRect({ y: 0, height: unrelatedBottom ?? 0, width: 480 });
+      }
+      if (this.hasAttribute("data-calendar-day-timeline")) {
+        return DOMRect.fromRect({ x: 12, y: -120, width: 456, height: 900 });
+      }
+      if (this.hasAttribute("data-calendar-lane-header")) {
+        return DOMRect.fromRect({ x: 12, y: 12, width: 456, height: 54 });
+      }
+      return DOMRect.fromRect();
+    });
+
+    await act(async () => root.render(
+      <UnifiedCalendarDayTimeline calendarLanes={lanes} date="2026-09-09" events={[]} onOpen={vi.fn()} />,
+    ));
+
+    const floatingRail = container.querySelector<HTMLElement>('[data-calendar-floating-lane-rail="true"]');
+    expect(floatingRail).not.toBeNull();
+    expect(floatingRail?.style.top).toBe(`${headerBottom + 8}px`);
+
+    fixedHeader.remove();
+    unrelatedFixedLayer?.remove();
   });
 
   it("renders source-typed employee availability projections as strips without database ids", async () => {
