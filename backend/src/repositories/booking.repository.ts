@@ -5060,11 +5060,6 @@ export class BookingRepository implements BookingRepositoryPort {
     } else {
       shopId = scope.shopId;
     }
-    const shop = await transaction.shop.findFirst({
-      where: { id: shopId, deletedAt: null, status: "published" },
-      select: { id: true }
-    });
-    if (!shop) return null;
     if (technicianServiceId) {
       const technicianService = await transaction.technicianService.findFirst({
         where: {
@@ -5073,7 +5068,7 @@ export class BookingRepository implements BookingRepositoryPort {
           isActive: true,
           isBookable: true
         },
-        select: { id: true, technicianId: true, durationMinutes: true }
+        select: { id: true, technicianId: true, shopId: true, durationMinutes: true }
       });
       if (
         !technicianService ||
@@ -5081,6 +5076,14 @@ export class BookingRepository implements BookingRepositoryPort {
       )
         return null;
       technicianProfileId = technicianService.technicianId;
+      if (scope.scope === "technician" && technicianService.shopId) {
+        shopId = technicianService.shopId;
+      }
+      const shop = await transaction.shop.findFirst({
+        where: { id: shopId, deletedAt: null, status: "published" },
+        select: { id: true }
+      });
+      if (!shop) return null;
       if (!(await this.hasActiveScheduleAffiliation(transaction, shopId, technicianProfileId)))
         return null;
       return {
@@ -5091,6 +5094,11 @@ export class BookingRepository implements BookingRepositoryPort {
         durationMinutes: technicianService.durationMinutes
       };
     }
+    const shop = await transaction.shop.findFirst({
+      where: { id: shopId, deletedAt: null, status: "published" },
+      select: { id: true }
+    });
+    if (!shop) return null;
     const [service, technician] = await Promise.all([
       transaction.service.findFirst({
         where: { id: serviceId, shopId, deletedAt: null, status: "published" },

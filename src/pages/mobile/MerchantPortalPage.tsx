@@ -147,6 +147,7 @@ type MerchantPendingStaffDelete =
   | { type: "manual"; id: string; name: string }
   | { type: "technician"; id: string; name: string };
 type MerchantStorePricingMode = "store" | "technician";
+type MerchantStorePricingModeLoadState = "loading" | "ready" | "error";
 type MerchantStorePrivacyVisibility = "privateAll" | "limited" | "network";
 
 function merchantStorePricingModeToApi(mode: MerchantStorePricingMode): ShopPricingMode {
@@ -1511,6 +1512,7 @@ function getMerchantStorePrivacySummary(enabled: boolean, visibility: MerchantSt
 }
 
 function MerchantStorePricingModeControl({
+  loadState,
   menuOpen,
   mode,
   onTechnicianPricingConfirmRequest,
@@ -1519,6 +1521,7 @@ function MerchantStorePricingModeControl({
   pending,
   ratePercent
 }: {
+  loadState: MerchantStorePricingModeLoadState;
   menuOpen: boolean;
   mode: MerchantStorePricingMode;
   onTechnicianPricingConfirmRequest: () => void;
@@ -1533,7 +1536,7 @@ function MerchantStorePricingModeControl({
   const technicianPricing = mode === "technician";
   const nextMode = technicianPricing ? "store" : "technician";
   const requestModeChange = (targetMode: MerchantStorePricingMode) => {
-    if (pending || targetMode === mode) {
+    if (pending || loadState !== "ready" || targetMode === mode) {
       return;
     }
 
@@ -1587,21 +1590,25 @@ function MerchantStorePricingModeControl({
           <button
             aria-pressed={technicianPricing}
             className="min-w-0 flex-1 text-left disabled:opacity-60"
-            disabled={pending}
+            disabled={pending || loadState !== "ready"}
             onClick={() => requestModeChange(nextMode)}
             type="button"
           >
             <span className="block truncate text-[10px] font-black text-[color:var(--client-muted)]">定价模式</span>
             <strong className="mt-0.5 block text-[11px] font-black leading-4 text-[color:var(--client-text)]">
-              {technicianPricing
-                ? <>技师定价（店铺 {100 - ratePercent}%：{ratePercent}% 技师）</>
-                : "店铺定价"}
+              {loadState === "loading"
+                ? "定价模式读取中"
+                : loadState === "error"
+                  ? "定价模式读取失败"
+                  : technicianPricing
+                    ? <>技师定价（店铺 {100 - ratePercent}%：{ratePercent}% 技师）</>
+                    : "店铺定价"}
             </strong>
           </button>
           <ToggleSwitch
             ariaLabel={technicianPricing ? "切换为店铺定价" : "切换为技师定价"}
             checked={technicianPricing}
-            disabled={pending}
+            disabled={pending || loadState !== "ready"}
             onChange={(checked) => requestModeChange(checked ? "technician" : "store")}
           />
         </div>
@@ -1796,8 +1803,21 @@ function MerchantPortalDataGate() {
   const { view } = useParams();
   const { session } = useAuth();
   const activeView = getMerchantView(view);
-  const storeApiId = getMerchantStoreApiId(session?.linkedStoreId);
   const persistentCacheScope = getAuthenticatedPersistentCacheScope();
+  const merchantShopOwnerKey = session
+    ? JSON.stringify([session.id, session.activeIdentityId, session.merchantShopPublicId ?? ""])
+    : null;
+  const merchantShopQuery = useCoreReadQuery(
+    () => session && merchantShopOwnerKey
+      ? backofficeRealDataApi.merchantShop()
+          .then((page) => ({ ownerKey: merchantShopOwnerKey, page }))
+      : null,
+    [merchantShopOwnerKey, activeView]
+  );
+  const merchantShopPage = merchantShopQuery.data?.ownerKey === merchantShopOwnerKey
+    ? merchantShopQuery.data.page
+    : null;
+  const storeApiId = getMerchantStoreApiId(merchantShopPage?.list[0]?.id);
   const formalStoreQuery = useCoreReadQuery(
     () => storeApiId ? coreReadApi.getShopDetail(storeApiId) : null,
     [storeApiId, activeView],
@@ -1819,8 +1839,16 @@ function MerchantPortalDataGate() {
   );
 
   if (!storeApiId || !formalStoreQuery.data || !formalStaffQuery.data) {
-    const failed = (!formalStoreQuery.loading && Boolean(formalStoreQuery.error)) ||
-      (!formalStaffQuery.loading && Boolean(formalStaffQuery.error));
+    const merchantShopFailed = !merchantShopQuery.loading && Boolean(
+      merchantShopQuery.error || (merchantShopPage && !storeApiId)
+    );
+    const formalStoreFailed = Boolean(
+      storeApiId && !formalStoreQuery.loading && formalStoreQuery.error
+    );
+    const formalStaffFailed = Boolean(
+      storeApiId && !formalStaffQuery.loading && formalStaffQuery.error
+    );
+    const failed = merchantShopFailed || formalStoreFailed || formalStaffFailed;
     return (
       <main className="grid min-h-dvh place-items-center bg-[color:var(--client-bg)] px-6 text-center text-[color:var(--client-text)]">
         <div>
@@ -1908,6 +1936,7 @@ export function MerchantPortalContent({
   const [followedStaffIds, setFollowedStaffIds] = useState<string[]>(["tech-1"]);
   const [followedCustomerIds, setFollowedCustomerIds] = useState<string[]>(["cus-1", "cus-3"]);
   const [storePricingMode, setStorePricingMode] = useState<MerchantStorePricingMode>("store");
+  const [storePricingModeLoadState, setStorePricingModeLoadState] = useState<MerchantStorePricingModeLoadState>("loading");
   const [storeTechnicianPricingRatePercent, setStoreTechnicianPricingRatePercent] = useState(100);
   const [storePricingModeSaving, setStorePricingModeSaving] = useState(false);
   const [storePricingRatioMenuOpen, setStorePricingRatioMenuOpen] = useState(false);
@@ -2126,21 +2155,24 @@ export function MerchantPortalContent({
 
   useEffect(() => {
     if (!storeApiId) {
+      setStorePricingModeLoadState("error");
       return;
     }
 
     let mounted = true;
+    setStorePricingModeLoadState("loading");
     pricingModeApi
       .getShopPricingMode(storeApiId)
       .then((result) => {
         if (mounted) {
           setStorePricingMode(merchantStorePricingModeFromApi(result.pricingMode));
           setStoreTechnicianPricingRatePercent(normalizeTechnicianSettlementShare(result.technicianPricingRatePercent));
+          setStorePricingModeLoadState("ready");
         }
       })
       .catch(() => {
         if (mounted) {
-          setStorePricingMode("store");
+          setStorePricingModeLoadState("error");
         }
       });
 
@@ -2702,7 +2734,7 @@ export function MerchantPortalContent({
     const pricingModeChanged = nextMode !== storePricingMode;
     const pricingRateChanged = nextRatePercent !== storeTechnicianPricingRatePercent;
 
-    if ((!pricingModeChanged && !pricingRateChanged) || storePricingModeSaving) {
+    if ((!pricingModeChanged && !pricingRateChanged) || storePricingModeSaving || storePricingModeLoadState !== "ready") {
       return;
     }
 
@@ -2714,21 +2746,28 @@ export function MerchantPortalContent({
     }
 
     setStorePricingModeSaving(true);
+    const requestedShopId = storeApiId;
     try {
       const result = await pricingModeApi.updateShopPricingMode(
-        storeApiId,
+        requestedShopId,
         merchantStorePricingModeToApi(nextMode),
         nextRatePercent
       );
-      setStorePricingMode(merchantStorePricingModeFromApi(result.pricingMode));
+      if (storeApiIdRef.current !== requestedShopId) return;
+      const savedMode = merchantStorePricingModeFromApi(result.pricingMode);
+      setStorePricingMode(savedMode);
       setStoreTechnicianPricingRatePercent(normalizeTechnicianSettlementShare(result.technicianPricingRatePercent));
-      setContactLog(nextMode === "technician"
+      setContactLog(savedMode === "technician"
         ? `已切换为技师定价，结算分成：店铺 ${100 - result.technicianPricingRatePercent}%：${result.technicianPricingRatePercent}% 技师。`
         : "已切换为店铺定价。");
     } catch {
-      setContactLog("定价模式保存失败，请稍后重试。");
+      if (storeApiIdRef.current === requestedShopId) {
+        setContactLog("定价模式保存失败，请稍后重试。");
+      }
     } finally {
-      setStorePricingModeSaving(false);
+      if (storeApiIdRef.current === requestedShopId) {
+        setStorePricingModeSaving(false);
+      }
     }
   };
 
@@ -2748,6 +2787,7 @@ export function MerchantPortalContent({
   const storePricingModeControl = (
     <>
       <MerchantStorePricingModeControl
+        loadState={storePricingModeLoadState}
         menuOpen={storePricingRatioMenuOpen}
         mode={storePricingMode}
         onMenuOpenChange={updateStorePricingRatioMenuOpen}

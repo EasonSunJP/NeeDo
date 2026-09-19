@@ -249,8 +249,12 @@ export class ShopPresentationRepository implements ShopPresentationRepositoryPor
       ...content.carousel.map((item) => item.mediaAssetPublicId),
       ...content.serviceMenus.flatMap((item) => item.coverMediaAssetPublicId ? [item.coverMediaAssetPublicId] : [])
     ])];
-    const count = await transaction.mediaAsset.count({ where: { checksumSha256: { in: mediaIds }, shopId, isActive: true, deletedAt: null } });
-    if (count !== mediaIds.length) {
+    const media = await transaction.mediaAsset.findMany({
+      where: { checksumSha256: { in: mediaIds }, shopId, isActive: true, deletedAt: null },
+      select: { checksumSha256: true }
+    });
+    const validMediaIds = new Set(media.flatMap((item) => item.checksumSha256 ? [item.checksumSha256] : []));
+    if (validMediaIds.size !== mediaIds.length) {
       throw new AppError({ code: ERROR_CODES.VALIDATION, message: "error.shop_presentation.media_invalid", statusCode: 400 });
     }
   }

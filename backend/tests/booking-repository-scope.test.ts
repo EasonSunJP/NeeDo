@@ -543,6 +543,110 @@ describe("BookingRepository order list scope", () => {
     });
   });
 
+  it("projects technician-owned slots onto the selected technician service shop", async () => {
+    const startsAt = new Date("2026-09-21T01:00:00.000Z");
+    const endsAt = new Date("2026-09-21T02:00:00.000Z");
+    const availabilityCreate = jest.fn().mockResolvedValue({ id: 49018 });
+    const scheduleCreate = jest.fn().mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: 49019,
+        availabilityId: 49018,
+        serviceId: null,
+        technicianServiceId: 201,
+        shopId: data.shopId,
+        technicianProfileId: 22,
+        startsAt,
+        endsAt,
+        capacity: 1,
+        bookedCount: 0,
+        status: "AVAILABLE",
+        createdAt: startsAt,
+        updatedAt: startsAt,
+        deletedAt: null,
+        availability: { sourceType: "TECHNICIAN" },
+        service: null,
+        technicianService: {
+          name: "StagingTest service",
+          priceAmount: 10_000,
+          currency: "JPY",
+          durationMinutes: 60
+        },
+        shop: { name: "StagingTest" },
+        technicianProfile: { displayName: "Staging technician" }
+      })
+    );
+    const shopFindFirst = jest
+      .fn()
+      .mockImplementation(({ where }) => Promise.resolve({ id: where.id }));
+    const tx = {
+      entitySuspension: { findFirst: jest.fn().mockResolvedValue(null) },
+      shop: { findFirst: shopFindFirst },
+      technicianProfile: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 22,
+          technicianShopAffiliations: [{ shopId: 5 }]
+        }),
+        update: jest.fn().mockResolvedValue({ id: 22 })
+      },
+      technicianService: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 201,
+          technicianId: 22,
+          shopId: 11,
+          durationMinutes: 60
+        })
+      },
+      technicianShopAffiliation: {
+        findFirst: jest.fn().mockResolvedValue({ id: 91 })
+      },
+      scheduleSlot: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: scheduleCreate
+      },
+      availability: { create: availabilityCreate }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(
+      repository.createScheduleSlot({
+        scope: "technician",
+        technicianProfileId: 22,
+        technicianServiceId: 201,
+        startsAt,
+        endsAt,
+        capacity: 1
+      })
+    ).resolves.toMatchObject({
+      outcome: "ok",
+      slot: { id: 49019, shopId: 11, technicianServiceId: 201 }
+    });
+
+    expect(shopFindFirst).toHaveBeenCalledWith({
+      where: { id: 11, deletedAt: null, status: "published" },
+      select: { id: true }
+    });
+    expect(availabilityCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        shopId: 11,
+        technicianProfileId: 22,
+        sourceType: "TECHNICIAN",
+        visibility: "AFFILIATED_SHOPS"
+      })
+    });
+    expect(scheduleCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          shopId: 11,
+          technicianProfileId: 22,
+          technicianServiceId: 201,
+          serviceId: null
+        })
+      })
+    );
+  });
+
   it("rejects merchant schedule creation when profile.shopId has no formal affiliation", async () => {
     const startsAt = new Date("2026-08-29T13:00:00.000Z");
     const endsAt = new Date("2026-08-29T14:00:00.000Z");

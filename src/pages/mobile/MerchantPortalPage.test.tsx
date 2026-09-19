@@ -11,6 +11,7 @@ describe("MerchantPortalPage store privacy control", () => {
     );
 
     expect(merchantSource).toContain("function MerchantPortalDataGate");
+    expect(dataGateSource).toContain("backofficeRealDataApi.merchantShop()");
     expect(merchantSource).toContain("coreReadApi.getShopDetail(storeApiId)");
     expect(dataGateSource).toContain("loadEveryMerchantTechnicianPage()");
     expect(dataGateSource).toContain("getAuthenticatedPersistentCacheScope()");
@@ -25,6 +26,9 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("storeServices={formalStoreQuery.data.services}");
     expect(merchantSource).toContain("<MerchantPortalContent");
     expect(merchantSource).toContain("technicians={technicians}");
+    expect(dataGateSource).not.toContain("getMerchantStoreApiId(session?.linkedStoreId)");
+    expect(dataGateSource).toContain("merchantShopQuery.data?.ownerKey === merchantShopOwnerKey");
+    expect(dataGateSource).toContain(".then((page) => ({ ownerKey: merchantShopOwnerKey, page }))");
     expect(merchantSource).not.toContain("stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0]");
   });
 
