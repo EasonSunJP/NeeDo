@@ -51,7 +51,7 @@ describe("IM pages", () => {
     expect(componentSource).toContain('className="fixed z-[120]');
   });
 
-  it("binds the chat-list delete swipe action to full conversation deletion", () => {
+  it("binds the chat-list delete swipe action to conversation-only deletion", () => {
     const pageStart = pagesSource.indexOf("export function ImConversationListPage");
     const pageEnd = pagesSource.indexOf("export function ImContactsListPage", pageStart);
     const pageSource = pagesSource.slice(pageStart, pageEnd);
@@ -59,6 +59,7 @@ describe("IM pages", () => {
     expect(pageSource).toContain('key: "delete"');
     expect(pageSource).toContain('label: "删除"');
     expect(pageSource).toContain("store.deleteConversation(conversation.id)");
+    expect(pageSource).not.toContain("store.deleteContact(conversation.id)");
   });
 
   it("renders the shared Test badge after the service-account title", () => {
