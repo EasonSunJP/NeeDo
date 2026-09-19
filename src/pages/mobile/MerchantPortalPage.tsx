@@ -1912,6 +1912,8 @@ export function MerchantPortalContent({
   const activeView = getMerchantView(view);
   const activeMeTab = getMerchantMeTab(searchParams.get("meTab"));
   const storeApiId = getMerchantStoreApiId(store.id);
+  const storeApiIdRef = useRef(storeApiId);
+  storeApiIdRef.current = storeApiId;
   const activeMerchantIdentityId = session?.activeIdentityId ?? null;
   const merchantPrivacyAuthorityKey = `${session?.id ?? "none"}:${activeMerchantIdentityId ?? "none"}`;
   const merchantPrivacyScopeKey = `${merchantPrivacyAuthorityKey}:${storeApiId ?? "none"}`;
