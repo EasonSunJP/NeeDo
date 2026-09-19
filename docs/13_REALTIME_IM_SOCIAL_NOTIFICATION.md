@@ -121,7 +121,7 @@
 - 正式模式复用原有完整 IM / 联系人页面及交互结构，仅由 `formal-api.ts` 将页面状态模型映射到正式 REST/SSE；静态演示模式才会安装旧浏览器 mock adapter。
 - 已删除曾用于正式账号的简化 IM 页面和双路由切换分支，所有 IM 路由只有一套页面实现，避免账号或环境切换时进入错误设计。
 - 正式模式不写入旧 IM/Social 浏览器业务数据库；草稿等纯 UI 状态可保留在本地。置顶、免打扰、已读/未读和个人删除现已写入正式 `conversation_participants` 状态；联系人拉黑/解除拉黑写入当前账号自己的 `contacts.blocked_at`，由 `contact:block` 权限保护并发送 `contact.updated`；高级群设置仍不会制造假成功。
-- 聊天列表左滑“删除”只设置当前参与者的 `hidden_at` 并推进该参与者的 `cleared_through_message_id`，从当前聊天列表移除会话并隐藏其旧聊天记录；不会删除或修改双方通讯录联系人关系，也不删除共享成员或对方消息。新消息到达后会重新显示该会话，但删除边界前的聊天记录不会恢复。
+- 聊天列表左滑“删除”只设置当前参与者的 `hidden_at` 并推进该参与者的 `cleared_through_message_id`，从当前聊天列表移除会话并隐藏其旧聊天记录；不会删除或修改双方通讯录联系人关系，保留的联系人仍显示在通讯录，也不删除共享成员或对方消息。新消息到达后会重新显示该会话，但删除边界前的聊天记录不会恢复。
 - 真实模拟账号运行验收已覆盖：建会话、发消息、未读清零、非成员 404、公开动态、关注者可见性、取消关注隔离和单条动态读取。
 - 正式 Social 测试 Seed 会更新 210 个三个月模拟账号及 6 个固定入口账号，共写入 3,240 条正式 `SocialPost`：每账号 15 条，纯文字、单图、多图、视频、引用各 3 条；所有媒体均使用可持久化 URL，不写入 `blob:` 临时地址。
 - 216 个正式测试账号统一使用由环境变量提供的同一测试密码，并改为真实日文店名、店铺官方受付名和人物姓名；每个账号精确建立 36 个双向好友，且同时覆盖店铺服务号、技师和普通用户。
@@ -541,6 +541,14 @@
 - 正式构建 CSS 的浏览器几何验证故意把聊天房间底边截短 96px：757px 可视高度下房间底边为 661px，输入 dock 底边仍为 757px；设置 280px 键盘偏移后 dock 底边为 477px，与预期可视底边一致。该验证证明输入区定位已与错误房间高度解耦，而不是再次依赖模拟的房间尺寸。
 - 新增回归先在旧结构上失败，再在外层 dock 结构上通过；IM 与视口相关 43 个文件、541 项及前端全量 581 个文件、3,928 项通过，TypeScript lint 与正式 build 通过。
 - 本节不修改 `VisualViewport` 阈值、safe-area 数值、IM API、数据库、migration 或消息数据。iPhone 镜像用于否定旧方案并确定工作/失效布局差异；由于本批次禁止远程部署，新代码仍须发布后在已安装 PWA 上完成最终验收。
+
+## 6.37 PWA 聊天根滚动锁与底部裁剪修复（2026-09-20，本地）
+
+- iPhone 镜像再次确认：无键盘进入会话后，聊天壁纸与输入区共同在屏幕底部上方约 45px 处结束；此前的 96px 房间 overscan 仍无法越过同一水平裁剪线。因此问题不是 `VisualViewport` 高度不足，也不是输入框自身的 safe-area padding，而是整个聊天树被更外层包含块裁剪。
+- 会话使用的 `useDocumentScrollLock` 会把 `body` 改成 `position: fixed`。WebKit 237961 已记录 `display-mode: standalone`、`viewport-fit=cover` 与 fixed `html/body` 组合会产生无法由 `bottom: 0`、`100vh` 或 `-webkit-fill-available` 填补的底部空白；房间、壁纸和 composer 都是该 fixed body 的后代，因此历次修改房间高度、底边和 overscan 只能在已被裁短的包含块内移动。
+- 文档滚动锁改为只锁定 `html/body` 的 overflow，不再修改 `body` 的 position、top、left、right 或 width，也不再在卸载时强制恢复滚动坐标。聊天消息仍由独立滚动容器承载，页面级 overscroll 继续被现有 class 阻止。
+- 所有 Web/PWA 入口将虚拟键盘策略统一为 `interactive-widget=resizes-visual`：布局视口保持全屏，键盘只改变 visual viewport，现有键盘态测量不再与 Android 的 layout viewport 收缩叠加。iOS 当前公开 WebKit 忽略该指令时仍沿用相同的默认 visual viewport 行为。
+- 删除无效的 96px 固定 overscan 及其 layout/composer 反向补偿，避免继续用设备像素补丁掩盖祖先裁剪。新增回归锁定 overflow-only scroll lock 和八个正式入口的 viewport 策略；不涉及 IM API、消息数据、数据库、migration、缓存或实时事件。
 
 ---
 

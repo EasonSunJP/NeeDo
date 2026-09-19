@@ -31297,7 +31297,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary:
           "Delete the current participant conversation and clear their history; reopening does not restore earlier messages. Other participants retain their messages",
         description:
-          "This viewer-scoped deletion does not delete or alter any contact relationship.",
+          "This viewer-scoped deletion does not delete or alter any contact relationship, and the preserved contact remains visible in the contact list.",
         security: [{ bearerAuth: [] }],
         parameters: [
           {

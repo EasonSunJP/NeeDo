@@ -14,5 +14,8 @@ describe("IM conversation deletion contract", () => {
     expect(`${operation?.summary ?? ""} ${operation?.description ?? ""}`).toContain(
       "contact relationship"
     );
+    expect(`${operation?.summary ?? ""} ${operation?.description ?? ""}`).toContain(
+      "contact list"
+    );
   });
 });

@@ -97,6 +97,24 @@ describe("persistent resource cache", () => {
     expect(JSON.stringify(database.inspectEntries())).not.toContain("private-message-body");
   });
 
+  it("returns fresh server data when encrypted cache persistence is unavailable", async () => {
+    const database = createMemoryPersistentCacheDatabase();
+    database.putEntry = async () => {
+      throw new Error("crypto.subtle unavailable");
+    };
+    const cache = createPersistentResourceCache({ database });
+
+    await expect(cache.load({
+      key: "user-center:self:1",
+      load: async () => ({ displayName: "実機ユーザー" }),
+      scope: "account:1"
+    })).resolves.toEqual({ displayName: "実機ユーザー" });
+    expect(cache.peek("account:1", "user-center:self:1")).toEqual({
+      displayName: "実機ユーザー"
+    });
+    expect(database.inspectEntries()).toEqual([]);
+  });
+
   it("discards a corrupt entry and recovers from the server", async () => {
     const database = createMemoryPersistentCacheDatabase();
     database.seedCorruptEntry("account:3", "calendar:month");

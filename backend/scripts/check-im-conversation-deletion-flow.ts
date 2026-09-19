@@ -16,6 +16,7 @@ type Conversation = {
   lastMessage?: { id: number } | null;
 };
 type MessagePage = { list: Array<{ content: string; id: number }>; total: number };
+type ContactPage = { list: Array<{ contactUserId: number; id: number }>; total: number };
 type ContactSnapshot = { deletedAt: Date | null; id: number; updatedAt: Date };
 
 const main = async (): Promise<void> => {
@@ -79,8 +80,10 @@ const main = async (): Promise<void> => {
         deletedAt: null
       },
       select: {
+        id: true,
         contactUserId: true,
         contactIdentityId: true,
+        source: true,
         contactUser: { select: { email: true, isActive: true, deletedAt: true } }
       },
       take: 50
@@ -100,9 +103,17 @@ const main = async (): Promise<void> => {
       (conversation) =>
         conversation.type === "direct" &&
         conversation.directPeer &&
-        conversation.lastMessage
+        conversation.lastMessage &&
+        contacts.some(
+          (contact) =>
+            contact.contactUserId === conversation.directPeer?.userId &&
+            contact.source !== "friend_request"
+        )
     );
-    assert(direct?.directPeer, "no populated direct conversation is available for acceptance");
+    assert(
+      direct?.directPeer,
+      "no populated non-friend business conversation is available for contact-visibility acceptance"
+    );
     directConversationId = direct.id;
     directParticipantSnapshot = await prisma.conversationParticipant.findUnique({
       where: {
@@ -119,7 +130,7 @@ const main = async (): Promise<void> => {
         contactUserId: direct.directPeer.userId,
         deletedAt: null
       },
-      select: { contactIdentityId: true }
+      select: { contactIdentityId: true, id: true }
     });
     assert(directContact, "direct conversation peer is not an active contact");
     directContactSnapshots = await prisma.contact.findMany({
@@ -166,6 +177,18 @@ const main = async (): Promise<void> => {
           );
         }),
       "conversation deletion changed the contact relationship"
+    );
+    const visibleContactsAfterDelete = await request<ContactPage>(
+      "/im/contacts?page=1&pageSize=100",
+      { token: actorTokens.accessToken }
+    );
+    assert(
+      visibleContactsAfterDelete.list.some(
+        (contact) =>
+          contact.id === directContact.id &&
+          contact.contactUserId === direct.directPeer?.userId
+      ),
+      "conversation deletion removed the preserved contact from the contact list"
     );
     const afterDelete = await request<{ list: Conversation[] }>(
       "/im/conversations?page=1&pageSize=100",
@@ -319,7 +342,7 @@ const main = async (): Promise<void> => {
     await Promise.all([logout(actorTokens), logout(peerTokens)]);
     if (acceptancePassed) {
       console.log(
-        "IM conversation deletion acceptance passed: direct history cleared; contact relationship preserved; group reopened with new history only; fixture state restored."
+        "IM conversation deletion acceptance passed: direct history cleared; contact relationship and contact-list visibility preserved; group reopened with new history only; fixture state restored."
       );
     }
     await disconnectPrisma();

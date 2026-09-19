@@ -1,5 +1,7 @@
 import { lazy, Suspense, type ComponentType } from "react";
 import { Navigate, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { useI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import { getSocialScopeFromPathname, socialPaths, socialReplyFocusState } from "./paths";
 
 async function loadSocialPage<TModule, TName extends keyof TModule>(
@@ -24,7 +26,8 @@ const FullSocialSearchPage = lazy(() => loadSocialPage(() => import("./pages/Soc
 const FullSocialAccountProfilePage = lazy(() => loadSocialPage(() => import("./pages/SocialProfilePage"), "SocialAccountProfilePage"));
 
 function FullSocialRoute({ page: Page }: { page: ComponentType }) {
-  return <Suspense fallback={<div className="grid min-h-[100dvh] place-items-center text-sm font-black">正在加载动态...</div>}><Page /></Suspense>;
+  const { language } = useI18n();
+  return <Suspense fallback={<div className="grid min-h-[100dvh] place-items-center text-sm font-black">{translateText("正在加载…", language)}</div>}><Page /></Suspense>;
 }
 
 export function SocialTimelinePage() { return <FullSocialRoute page={FullSocialTimelinePage} />; }

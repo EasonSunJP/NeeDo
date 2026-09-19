@@ -386,15 +386,7 @@ describe("IM pages", () => {
     expect(stylesSource).toMatch(
       /\.im-conversation-layout--viewport-docked \.im-conversation-scroll--glass-underlay\s*\{[^}]*margin-top:\s*0;[^}]*padding-top:\s*12px;[^}]*scroll-padding-top:\s*12px;/s,
     );
-    expect(stylesSource).toMatch(
-      /html\[data-needo-display-mode="standalone"\][^{]*\.im-conversation-room-shell\[data-im-conversation-voice-underlay="true"\]\s*\{[^}]*--im-conversation-room-overscan:\s*96px;[^}]*height:\s*calc\([^;]*\+ var\(--im-conversation-room-overscan\)\);[^}]*bottom:\s*calc\([^;]*- var\(--im-conversation-room-overscan\)\);/s,
-    );
-    expect(stylesSource).toMatch(
-      /html\[data-needo-display-mode="standalone"\][^{]*\.im-conversation-composer-dock\s*\{[^}]*bottom:\s*var\(--im-conversation-room-overscan\);/s,
-    );
-    expect(stylesSource).toMatch(
-      /html\[data-needo-display-mode="standalone"\][^{]*\.im-conversation-layout--viewport-docked\s*\{[^}]*margin-bottom:\s*var\(--im-conversation-room-overscan\);/s,
-    );
+    expect(stylesSource).not.toContain("--im-conversation-room-overscan");
     const liveRoomSource = componentSource.slice(
       componentSource.indexOf('data-im-conversation-voice-underlay="true"'),
     );
