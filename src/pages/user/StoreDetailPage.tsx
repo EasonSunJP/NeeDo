@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import { useAuth } from "../../auth/AuthProvider";
 import {
   backofficeRealDataApi,
+  type BackofficeServicePayload,
   type ShopPresentationLocale,
   type ShopPresentationWorkspacePayload
 } from "../../api/backofficeRealData";
@@ -46,6 +47,7 @@ import {
   coreReadShopIdFromRoute,
   mapCoreShopToStore,
   mapCoreTechnicianToTechnician,
+  type CoreCategory,
   type CoreShopDetail
 } from "../../features/core-read/api";
 import type { BookingScheduleSlot } from "../../features/booking/api";
@@ -54,6 +56,7 @@ import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
 import { mapBookingNavigationServiceToMenuCard } from "../../features/pricing-mode/bookingServiceCards";
 import { canAddShopService, SHOP_SERVICE_LIMIT } from "../../features/pricing-mode/shopServiceLimit";
+import { loadCurrentMerchantShopServices } from "../../features/pricing-mode/shopServiceCatalog";
 import { applyShopPresentationLocale, buildShopPresentationContent, mergeUploadedCarouselImage } from "../../features/shop-presentation/model";
 import { ShopServiceTaxonomyEditor } from "../../features/shop-taxonomy/ShopServiceTaxonomyEditor";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
@@ -1580,7 +1583,47 @@ function StoreMenuCoverImage({
   );
 }
 
-function MerchantAddServiceButton({ disabled, onAdd }: { disabled: boolean; onAdd: () => void }) {
+const merchantShopServiceCopy: Record<Language, {
+  add: string;
+  atLimit: string;
+  cancel: string;
+  category: string;
+  create: string;
+  creating: string;
+  description: string;
+  duration: string;
+  invalid: string;
+  name: string;
+  newService: string;
+  price: string;
+}> = {
+  zh: { add: "添加服务", atLimit: "服务已达上限", cancel: "取消", category: "服务分类", create: "创建并添加", creating: "创建中…", description: "服务说明", duration: "时长（分钟）", invalid: "请填写有效的服务分类、名称、价格和时长", name: "服务名称", newService: "创建新服务", price: "价格（日元）" },
+  "zh-Hant": { add: "添加服務", atLimit: "服務已達上限", cancel: "取消", category: "服務分類", create: "建立並添加", creating: "建立中…", description: "服務說明", duration: "時長（分鐘）", invalid: "請填寫有效的服務分類、名稱、價格和時長", name: "服務名稱", newService: "建立新服務", price: "價格（日圓）" },
+  ja: { add: "サービスを追加", atLimit: "サービス上限", cancel: "キャンセル", category: "サービス分類", create: "作成して追加", creating: "作成中…", description: "サービス説明", duration: "所要時間（分）", invalid: "有効な分類、名称、価格、所要時間を入力してください", name: "サービス名", newService: "新しいサービスを作成", price: "価格（円）" },
+  en: { add: "Add service", atLimit: "Service limit", cancel: "Cancel", category: "Category", create: "Create and add", creating: "Creating…", description: "Description", duration: "Duration (minutes)", invalid: "Enter a valid category, name, price, and duration", name: "Service name", newService: "Create a new service", price: "Price (JPY)" },
+  ko: { add: "서비스 추가", atLimit: "서비스 한도", cancel: "취소", category: "서비스 분류", create: "생성 후 추가", creating: "생성 중…", description: "서비스 설명", duration: "소요 시간(분)", invalid: "올바른 분류, 이름, 가격 및 소요 시간을 입력하세요", name: "서비스명", newService: "새 서비스 만들기", price: "가격(엔)" }
+};
+
+type MerchantShopServiceDraft = {
+  categoryId: number;
+  description: string;
+  durationMinutes: string;
+  name: string;
+  priceAmount: string;
+  serviceMode: "home" | "store";
+};
+
+const emptyMerchantShopServiceDraft: MerchantShopServiceDraft = {
+  categoryId: 0,
+  description: "",
+  durationMinutes: "60",
+  name: "",
+  priceAmount: "",
+  serviceMode: "store"
+};
+
+function MerchantAddServiceButton({ currentCount, disabled, language, onAdd }: { currentCount: number; disabled: boolean; language: Language; onAdd: () => void }) {
+  const copy = merchantShopServiceCopy[language];
   return (
     <button
       className="focus-ring inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_16%,var(--client-surface)_84%)] px-4 text-sm font-black text-[color:var(--client-text)] shadow-[0_14px_28px_color-mix(in_srgb,var(--client-primary)_10%,transparent)]"
@@ -1589,8 +1632,56 @@ function MerchantAddServiceButton({ disabled, onAdd }: { disabled: boolean; onAd
       type="button"
     >
       <AppIcon className="h-4 w-4 text-[color:var(--client-primary)]" name="plus" />
-      {disabled ? `服务已达上限 ${SHOP_SERVICE_LIMIT}/${SHOP_SERVICE_LIMIT}` : "添加服务"}
+      {disabled
+        ? `${copy.atLimit} ${SHOP_SERVICE_LIMIT}/${SHOP_SERVICE_LIMIT}`
+        : `${copy.add} ${currentCount}/${SHOP_SERVICE_LIMIT}`}
     </button>
+  );
+}
+
+function MerchantShopServiceCreateEditor({
+  categories,
+  draft,
+  error,
+  language,
+  onCancel,
+  onChange,
+  onSave,
+  saving
+}: {
+  categories: CoreCategory[];
+  draft: MerchantShopServiceDraft;
+  error: string;
+  language: Language;
+  onCancel: () => void;
+  onChange: (draft: MerchantShopServiceDraft) => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  const copy = merchantShopServiceCopy[language];
+  const inputClassName = "mt-1 h-11 w-full rounded-[14px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-3 text-sm font-bold text-[color:var(--client-text)] outline-none";
+  return (
+    <section className="space-y-3 rounded-[22px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4" data-testid="merchant-shop-service-create-editor">
+      <h4 className="text-sm font-black text-[color:var(--client-text)]">{copy.newService}</h4>
+      <label className="block text-xs font-bold text-[color:var(--client-muted)]">
+        {copy.category}
+        <select className={inputClassName} disabled={saving} onChange={(event) => onChange({ ...draft, categoryId: Number(event.target.value) })} value={draft.categoryId}>
+          <option value={0}>{copy.category}</option>
+          {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+        </select>
+      </label>
+      <label className="block text-xs font-bold text-[color:var(--client-muted)]">{copy.name}<input className={inputClassName} disabled={saving} onChange={(event) => onChange({ ...draft, name: event.target.value })} value={draft.name} /></label>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block text-xs font-bold text-[color:var(--client-muted)]">{copy.price}<input className={inputClassName} disabled={saving} inputMode="numeric" onChange={(event) => onChange({ ...draft, priceAmount: event.target.value })} value={draft.priceAmount} /></label>
+        <label className="block text-xs font-bold text-[color:var(--client-muted)]">{copy.duration}<input className={inputClassName} disabled={saving} inputMode="numeric" onChange={(event) => onChange({ ...draft, durationMinutes: event.target.value })} value={draft.durationMinutes} /></label>
+      </div>
+      <label className="block text-xs font-bold text-[color:var(--client-muted)]">{copy.description}<textarea className="mt-1 min-h-20 w-full rounded-[14px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-3 py-2 text-sm font-bold text-[color:var(--client-text)] outline-none" disabled={saving} onChange={(event) => onChange({ ...draft, description: event.target.value })} value={draft.description} /></label>
+      {error ? <p className="text-xs font-bold text-red-500" role="alert">{error}</p> : null}
+      <div className="grid grid-cols-2 gap-2">
+        <button className="rounded-[16px] border border-[color:var(--client-line)] px-3 py-2.5 text-sm font-black" disabled={saving} onClick={onCancel} type="button">{copy.cancel}</button>
+        <button className="rounded-[16px] bg-[color:var(--client-primary)] px-3 py-2.5 text-sm font-black text-[color:var(--client-needo-text)] disabled:opacity-50" disabled={saving} onClick={onSave} type="button">{saving ? copy.creating : copy.create}</button>
+      </div>
+    </section>
   );
 }
 
@@ -2778,6 +2869,13 @@ export function StoreDetailExperience({
   const [presentationSaveState, setPresentationSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("idle");
   const [presentationError, setPresentationError] = useState("");
   const [presentationSyncConfirmOpen, setPresentationSyncConfirmOpen] = useState(false);
+  const [merchantShopServices, setMerchantShopServices] = useState<BackofficeServicePayload[]>([]);
+  const [merchantServiceCatalogLoading, setMerchantServiceCatalogLoading] = useState(false);
+  const [merchantServiceEditorOpen, setMerchantServiceEditorOpen] = useState(false);
+  const [merchantServiceSaving, setMerchantServiceSaving] = useState(false);
+  const [merchantServiceError, setMerchantServiceError] = useState("");
+  const [merchantServiceCategories, setMerchantServiceCategories] = useState<CoreCategory[]>([]);
+  const [merchantServiceDraft, setMerchantServiceDraft] = useState<MerchantShopServiceDraft>(emptyMerchantShopServiceDraft);
 
   useEffect(() => {
     setEditableStore(sourceStore);
@@ -2786,7 +2884,28 @@ export function StoreDetailExperience({
     setPresentationSaveState("idle");
     setPresentationError("");
     setPresentationSyncConfirmOpen(false);
+    setMerchantShopServices([]);
+    setMerchantServiceEditorOpen(false);
+    setMerchantServiceError("");
+    setMerchantServiceDraft(emptyMerchantShopServiceDraft);
   }, [sourceStore.id]);
+
+  useEffect(() => {
+    if (!isMerchantEditable) return;
+    let active = true;
+    setMerchantServiceCatalogLoading(true);
+    loadCurrentMerchantShopServices((query) => backofficeRealDataApi.services("merchant-admin", query))
+      .then((catalog) => {
+        if (active) setMerchantShopServices(catalog);
+      })
+      .catch((error: unknown) => {
+        if (active) setMerchantServiceError(error instanceof Error ? error.message : "error.service.list_failed");
+      })
+      .finally(() => {
+        if (active) setMerchantServiceCatalogLoading(false);
+      });
+    return () => { active = false; };
+  }, [isMerchantEditable, sourceStore.id]);
 
   useEffect(() => {
     if (!isMerchantEditable || presentationWorkspace) return;
@@ -2883,9 +3002,12 @@ export function StoreDetailExperience({
     [serviceCardsOverride]
   );
   const menuCards = useMemo(() => {
+    const merchantWorkspaceServiceIds = new Set(
+      presentationWorkspace?.services.map((service) => String(service.id)) ?? []
+    );
     const sourceCards = formalApiOnly
       ? isMerchantEditable
-        ? mergeMenuCardOverrides([], config.menuCards).filter((menuCard) => serviceInfoById.has(menuCard.sourceServiceId))
+        ? mergeMenuCardOverrides([], config.menuCards).filter((menuCard) => merchantWorkspaceServiceIds.has(menuCard.sourceServiceId))
         : baseMenuCards
       : mergeMenuCardOverrides(baseMenuCards, config.menuCards);
 
@@ -2897,7 +3019,7 @@ export function StoreDetailExperience({
         mapStoreMenuConfigToUnifiedData(menuCard, store),
     }));
   },
-    [baseMenuCards, config.menuCards, formalApiOnly, isMerchantEditable, serviceInfoById, store]
+    [baseMenuCards, config.menuCards, formalApiOnly, isMerchantEditable, presentationWorkspace?.services, serviceInfoById, store]
   );
   const servicePriceRangeLabel = useMemo(() => buildDisplayedMenuPriceRangeLabel(menuCards, buildServiceMenuPriceRangeLabel(store, industry)), [industry, menuCards, store]);
   const displayedBudgetLabel = industry === "cleaning" ? "¥10,000 - ¥20,000" : servicePriceRangeLabel.replace(/\s*-\s*/g, " - ");
@@ -3373,11 +3495,8 @@ export function StoreDetailExperience({
     }
     updateMenuCard(menuIndex, { ...menuCards[menuIndex], cover: nextImage });
   };
-  const addMerchantMenuCard = () => {
-    if (!canAddShopService(menuCards.length) || !presentationWorkspace) return;
-    const usedServiceIds = new Set(menuCards.map((item) => Number(item.sourceServiceId)));
-    const service = presentationWorkspace.services.find((item) => !usedServiceIds.has(item.id));
-    if (!service) return;
+  const appendMerchantMenuCard = (service: ShopPresentationWorkspacePayload["services"][number]) => {
+    if (!presentationWorkspace || menuCards.length >= 5) return;
     const amount = Number(service.priceAmount);
     const nextMenuCard: MenuCard = {
       id: `shop-service-${service.id}`,
@@ -3402,6 +3521,88 @@ export function StoreDetailExperience({
     updateMenuCards([...menuCards, nextMenuCard]);
     if (!onEditFocus) {
       setActiveEditor({ menuCard: nextMenuCard, mode: "menu", target: nextMenuCardEditorTarget });
+    }
+  };
+  const openMerchantServiceEditor = () => {
+    setMerchantServiceEditorOpen(true);
+    setMerchantServiceError("");
+    if (merchantServiceCategories.length > 0) return;
+    void coreReadApi.listCategories({ page: 1, pageSize: 100 })
+      .then((response) => {
+        const categories = response.list.filter((category) => category.isActive);
+        setMerchantServiceCategories(categories);
+        setMerchantServiceDraft((current) => ({
+          ...current,
+          categoryId: current.categoryId || categories[0]?.id || 0
+        }));
+      })
+      .catch((error: unknown) => {
+        setMerchantServiceError(error instanceof Error ? error.message : "error.category.list_failed");
+      });
+  };
+  const addMerchantMenuCard = () => {
+    if (!canAddShopService(merchantShopServices.length) || merchantServiceCatalogLoading || !presentationWorkspace) return;
+    const usedServiceIds = new Set(menuCards.map((item) => Number(item.sourceServiceId)));
+    const service = menuCards.length < 5
+      ? presentationWorkspace.services.find((item) => !usedServiceIds.has(item.id))
+      : undefined;
+    if (service) {
+      appendMerchantMenuCard(service);
+      return;
+    }
+    openMerchantServiceEditor();
+  };
+  const saveMerchantShopService = async () => {
+    if (merchantServiceSaving || !presentationWorkspace || !canAddShopService(merchantShopServices.length)) return;
+    const priceAmount = Number(merchantServiceDraft.priceAmount);
+    const durationMinutes = Number(merchantServiceDraft.durationMinutes);
+    if (
+      !merchantServiceDraft.categoryId ||
+      !merchantServiceDraft.name.trim() ||
+      !Number.isSafeInteger(priceAmount) ||
+      priceAmount < 0 ||
+      !Number.isSafeInteger(durationMinutes) ||
+      durationMinutes < 1
+    ) {
+      setMerchantServiceError(merchantShopServiceCopy[language].invalid);
+      return;
+    }
+    setMerchantServiceSaving(true);
+    setMerchantServiceError("");
+    try {
+      const saved = await backofficeRealDataApi.createService("merchant-admin", {
+        categoryId: merchantServiceDraft.categoryId,
+        technicianProfileId: null,
+        name: merchantServiceDraft.name.trim(),
+        description: merchantServiceDraft.description.trim() || null,
+        city: store.area,
+        serviceMode: merchantServiceDraft.serviceMode,
+        priceAmount,
+        durationMinutes,
+        status: "published",
+        sortOrder: merchantShopServices.length
+      });
+      const workspaceService: ShopPresentationWorkspacePayload["services"][number] = {
+        id: saved.id,
+        name: saved.name,
+        description: saved.description ?? "",
+        priceAmount: String(saved.priceAmount),
+        currency: saved.currency,
+        durationMinutes: saved.durationMinutes,
+        coverMediaAssetPublicId: null
+      };
+      setMerchantShopServices((current) => [...current, saved]);
+      setPresentationWorkspace((current) => current ? {
+        ...current,
+        services: [...current.services, workspaceService]
+      } : current);
+      if (menuCards.length < 5) appendMerchantMenuCard(workspaceService);
+      setMerchantServiceDraft(emptyMerchantShopServiceDraft);
+      setMerchantServiceEditorOpen(false);
+    } catch (error) {
+      setMerchantServiceError(error instanceof Error ? error.message : "error.service.create_failed");
+    } finally {
+      setMerchantServiceSaving(false);
     }
   };
   const handleMerchantEditFocus = (focus: StoreDisplayEditorMode, target: string = focus) => {
@@ -3677,10 +3878,30 @@ export function StoreDetailExperience({
             );
           })}
           {isMerchantEditable ? (
-            <MerchantAddServiceButton
-              disabled={!canAddShopService(menuCards.length) || !presentationWorkspace?.services.some((service) => !menuCards.some((menu) => Number(menu.sourceServiceId) === service.id))}
-              onAdd={addMerchantMenuCard}
-            />
+            <>
+              <MerchantAddServiceButton
+                currentCount={merchantShopServices.length}
+                disabled={merchantServiceCatalogLoading || !presentationWorkspace || !canAddShopService(merchantShopServices.length)}
+                language={language}
+                onAdd={addMerchantMenuCard}
+              />
+              {merchantServiceEditorOpen ? (
+                <MerchantShopServiceCreateEditor
+                  categories={merchantServiceCategories}
+                  draft={merchantServiceDraft}
+                  error={merchantServiceError}
+                  language={language}
+                  onCancel={() => {
+                    setMerchantServiceEditorOpen(false);
+                    setMerchantServiceError("");
+                    setMerchantServiceDraft(emptyMerchantShopServiceDraft);
+                  }}
+                  onChange={setMerchantServiceDraft}
+                  onSave={() => { void saveMerchantShopService(); }}
+                  saving={merchantServiceSaving}
+                />
+              ) : null}
+            </>
           ) : null}
           </div>
         ) : null}

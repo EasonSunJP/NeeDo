@@ -387,7 +387,7 @@ describe("StoreDetailPage routed booking defaults", () => {
 
   it("opens newly added services instead of falling back to the first menu card", () => {
     const fullscreenEditorSource = pageSource.slice(pageSource.indexOf("function StoreDisplayFullscreenEditor"), pageSource.indexOf("function CompactMenuCard"));
-    const addServiceSource = pageSource.slice(pageSource.indexOf("const addMerchantMenuCard"), pageSource.indexOf("const handleMerchantEditFocus"));
+    const addServiceSource = pageSource.slice(pageSource.indexOf("const appendMerchantMenuCard"), pageSource.indexOf("const handleMerchantEditFocus"));
 
     expect(fullscreenEditorSource).not.toContain("Math.max(0, menuCards.findIndex");
     expect(fullscreenEditorSource).toContain("fallbackMenuCard");
@@ -584,7 +584,7 @@ describe("StoreDetailPage formal route isolation", () => {
 
   it("never sends a formal shop without persisted services through the legacy fallback checkout", () => {
     expect(pageSource).toContain("formalApiOnly");
-    expect(pageSource).toContain("serviceInfoById.has(menuCard.sourceServiceId)");
+    expect(pageSource).toContain("merchantWorkspaceServiceIds.has(menuCard.sourceServiceId)");
     expect(pageSource).toContain("hasBookableCheckoutTarget");
     expect(pageSource).toContain("暂无可预约服务");
     expect(pageSource).toContain("formalApiOnly={true}");
