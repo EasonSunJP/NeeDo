@@ -166,13 +166,16 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain('description: "仅好友可以看到该账号信息"');
     expect(merchantSource).toContain('description: "仅好友以及关联店铺和介绍关系中的关联人可见"');
     expect(merchantSource).toContain("privacyControl={storePrivacyControl}");
-    expect(merchantSource).toContain("pricingModeApi.getShopVisibility(storeApiId)");
-    expect(merchantSource).toContain("pricingModeApi.updateShopVisibility(requestedShopId, visibility)");
+    expect(merchantSource).toContain("merchantProfileApi.getMine()");
+    expect(merchantSource).toContain("merchantProfileApi.updateMine({ visibility })");
+    expect(merchantSource).not.toContain("pricingModeApi.getShopVisibility(storeApiId)");
+    expect(merchantSource).not.toContain("pricingModeApi.updateShopVisibility(requestedShopId, visibility)");
     expect(merchantSource).toContain("storePrivacySaving");
     expect(merchantSource).toContain("setStorePrivacySaving(true)");
     expect(merchantSource).toContain("setStorePrivacySaving(false)");
     expect(merchantSource).toContain("disabled={pending}");
-    expect(merchantSource).toContain("storeApiIdRef.current !== requestedShopId");
+    expect(merchantSource).toContain("merchantPrivacyScopeKeyRef.current !== requestedScopeKey");
+    expect(merchantSource).toContain("result.identityId !== activeMerchantIdentityId");
     expect(merchantSource).toContain('setContactLog(t("店铺隐私模式设置已保存。"))');
 
     expect(storeDetailSource).toContain("privacyControl?: ReactNode");
