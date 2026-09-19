@@ -21,6 +21,10 @@ import type {
   NdpConsumptionExperienceSource,
   NdpExperienceReversalSource
 } from "../domain/user-experience";
+import {
+  CompensationEngine,
+  type CompensationRuleSet
+} from "./compensation-engine.service";
 
 export type { LedgerCurrency } from "./ledger-currency.service";
 
@@ -275,6 +279,7 @@ export interface OrderFinancialUpsertInput {
   extensionAmountJpy?: number | null;
   nominationChargeAmountJpy?: number | null;
   wasTechnicianNominated?: boolean | null;
+  compensationBasisVersion?: `shop_default:${number}` | `technician_override:${number}`;
   platformCollectedServiceAmountJpy?: number;
   offlineReportedServiceAmountJpy?: number;
   unknownOrUnreportedServiceAmountJpy?: number;
@@ -316,6 +321,7 @@ export interface OrderFinancialUpsertInput {
   completedOrderOrdinalInPeriod?: number | null;
   appliedFeeRuleIds?: string[];
   timelineEvent?: unknown;
+  timelineEvents?: unknown[];
   settlementStatus?: OrderFinancialSettlementStatus;
 }
 
@@ -559,6 +565,11 @@ export interface LedgerRepositoryPort {
     metadata?: unknown;
   }) => Promise<WalletHoldPayload>;
   upsertOrderFinancial?: (input: OrderFinancialUpsertInput) => Promise<void>;
+  findCompensationRuleByBasis?: (
+    shopId: number,
+    technicianProfileId: number | null,
+    basisVersion: `shop_default:${number}` | `technician_override:${number}`
+  ) => Promise<CompensationRuleSet | null>;
   findWallet?: (input: WalletLookupInput) => Promise<WalletPayload | null>;
   findWallets?: (input: {
     ownerType: WalletOwnerType;
@@ -586,6 +597,12 @@ export interface BookingLedgerSettlementInput {
   technicianProfileId?: number | null;
   serviceId?: number | null;
   serviceAmountJpy: number;
+  baseServiceAmountJpy?: number;
+  extensionAmountJpy?: number;
+  nominationChargeAmountJpy?: number;
+  wasTechnicianNominated?: boolean;
+  compensationBasisVersion?: `shop_default:${number}` | `technician_override:${number}`;
+  workedMinutes?: number;
   scheduledStartAt: Date;
   acceptedAt?: Date;
   completedAt?: Date;
@@ -3450,24 +3467,30 @@ export class LedgerService
     };
   }
 
-  private upsertOrderFinancial(
+  private async upsertOrderFinancial(
     repository: LedgerRepositoryPort,
     input: BookingLedgerSettlementInput,
     override: Partial<OrderFinancialUpsertInput>,
     ndpCurrency: LedgerCurrency
   ): Promise<void> {
     const checkoutPayment = input.checkoutPayment;
+    const confirmedAt = input.completedAt ?? this.now();
     const checkoutIncome =
       checkoutPayment?.method === "ndp"
         ? {
             platformCollectedServiceAmountJpy: ndpCurrency === "NDP" ? input.serviceAmountJpy : 0,
             offlineReportedServiceAmountJpy: 0,
             unknownOrUnreportedServiceAmountJpy: 0,
-            paymentChannel:
-              ndpCurrency === "TEST_NDP"
-                ? ("platform_test_ndp" as const)
-                : ("platform_online" as const),
-            serviceIncomeStatus: "confirmed" as const
+              paymentChannel:
+                ndpCurrency === "TEST_NDP"
+                  ? ("platform_test_ndp" as const)
+                  : ("platform_online" as const),
+              serviceIncomeStatus: "confirmed" as const,
+              serviceIncomeReportedById: input.actorUserId,
+              serviceIncomeReportedAt: confirmedAt,
+              serviceIncomeConfirmedById: input.actorUserId,
+              serviceIncomeConfirmedAt: confirmedAt,
+              serviceIncomeNote: "ndp_ledger"
           }
         : checkoutPayment
           ? {
@@ -3493,11 +3516,86 @@ export class LedgerService
               serviceIncomeNote: checkoutPayment.reason
             }
           : {};
-    const timelineEvent =
-      checkoutPayment && checkoutPayment.method !== "ndp"
-        ? this.offlineCheckoutTimelineEvent(checkoutPayment, override.timelineEvent)
-        : override.timelineEvent;
-    return repository.upsertOrderFinancial!({
+    const hasCompleteCompensationSnapshot =
+      input.baseServiceAmountJpy !== undefined &&
+      input.extensionAmountJpy !== undefined &&
+      input.nominationChargeAmountJpy !== undefined &&
+      input.wasTechnicianNominated !== undefined &&
+      input.compensationBasisVersion !== undefined &&
+      input.baseServiceAmountJpy +
+        input.extensionAmountJpy +
+        input.nominationChargeAmountJpy ===
+        input.serviceAmountJpy;
+    const compensationSnapshot = hasCompleteCompensationSnapshot
+      ? {
+          baseServiceAmountJpy: input.baseServiceAmountJpy,
+          extensionAmountJpy: input.extensionAmountJpy,
+          nominationChargeAmountJpy: input.nominationChargeAmountJpy,
+          wasTechnicianNominated: input.wasTechnicianNominated,
+          compensationBasisVersion: input.compensationBasisVersion
+        }
+      : {};
+    let projectionEvent: unknown = null;
+    if (
+      hasCompleteCompensationSnapshot &&
+      checkoutPayment !== undefined &&
+      override.settlementStatus === "settled"
+    ) {
+      const rule = await repository.findCompensationRuleByBasis?.(
+        input.shopId,
+        input.technicianProfileId ?? null,
+        input.compensationBasisVersion!
+      );
+      if (
+        !rule ||
+        rule.shopId !== input.shopId ||
+        (rule.sourceType === "technician_override" &&
+          rule.technicianProfileId !== input.technicianProfileId)
+      ) {
+        throw this.repositoryUnavailableError();
+      }
+      const preview = new CompensationEngine().calculate(rule, {
+        baseServiceAmountJpy: input.baseServiceAmountJpy,
+        extensionAmountJpy: input.extensionAmountJpy,
+        nominationChargeAmountJpy: input.nominationChargeAmountJpy,
+        nominated: input.wasTechnicianNominated,
+        platformFeeNdp: Math.max(
+          override.bPlatformFeeActualNdp ?? 0,
+          override.bPlatformFeeHoldNdp ?? 0
+        ),
+        workedMinutes: input.workedMinutes
+      });
+      projectionEvent = {
+        type: "technician_income_estimated",
+        label: "技师收入预估",
+        amountJpy: preview.technicianNetIncomeJpy,
+        actorType: "system",
+        occurredAt: confirmedAt.toISOString(),
+        status: "estimated",
+        metadata: {
+          workedMinutes: input.workedMinutes ?? 60,
+          shopEstimatedGrossProfitJpy: preview.shopEstimatedGrossProfitJpy,
+          compensationBasisVersion: input.compensationBasisVersion,
+          compensationRuleExplanation: preview.explanation
+        }
+      };
+    }
+    const settlementTimelineEvent = checkoutPayment
+      ? checkoutPayment.method === "ndp"
+        ? this.platformCheckoutTimelineEvent(
+            checkoutPayment,
+            input,
+            confirmedAt,
+            override.timelineEvent
+          )
+        : this.offlineCheckoutTimelineEvent(checkoutPayment, override.timelineEvent)
+      : override.timelineEvent;
+    const timelineEvents = [
+      settlementTimelineEvent,
+      ...(override.timelineEvents ?? []),
+      projectionEvent
+    ].filter((event): event is NonNullable<typeof event> => event !== null && event !== undefined);
+    await repository.upsertOrderFinancial!({
       bookingOrderId: input.bookingOrderId,
       orderType: input.orderType,
       ndpCurrency,
@@ -3507,8 +3605,10 @@ export class LedgerService
       serviceAmountJpy: input.serviceAmountJpy,
       unknownOrUnreportedServiceAmountJpy: input.serviceAmountJpy,
       ...checkoutIncome,
+      ...compensationSnapshot,
       ...override,
-      timelineEvent
+      timelineEvent: settlementTimelineEvent,
+      timelineEvents
     });
   }
 
@@ -3553,6 +3653,39 @@ export class LedgerService
         ...(typeof event.platformFeeNdp === "number"
           ? { platformFeeNdp: event.platformFeeNdp }
           : {})
+      }
+    };
+  }
+
+  private platformCheckoutTimelineEvent(
+    payment: Extract<NonNullable<BookingLedgerSettlementInput["checkoutPayment"]>, { method: "ndp" }>,
+    input: BookingLedgerSettlementInput,
+    confirmedAt: Date,
+    settlementEvent: unknown
+  ): Record<string, unknown> {
+    const event =
+      settlementEvent && typeof settlementEvent === "object" && !Array.isArray(settlementEvent)
+        ? (settlementEvent as Record<string, unknown>)
+        : {};
+    const eventMetadata =
+      event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+        ? (event.metadata as Record<string, unknown>)
+        : {};
+
+    return {
+      ...event,
+      type: "service_income_confirmed",
+      label: "平台服务收入已确认",
+      amountJpy: input.serviceAmountJpy,
+      actorType: "system",
+      occurredAt: confirmedAt.toISOString(),
+      status: "confirmed",
+      metadata: {
+        ...eventMetadata,
+        paymentChannel: "ndp_ledger",
+        paymentEvidence: "ndp_ledger",
+        confirmedById: input.actorUserId,
+        payableNdp: payment.payableNdp
       }
     };
   }

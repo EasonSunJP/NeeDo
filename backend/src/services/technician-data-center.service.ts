@@ -26,11 +26,14 @@ export interface TechnicianDataCenterResolvedPeriod {
 
 export interface TechnicianDataCenterFinancialSource {
   serviceIncomeStatus: string;
+  serviceAmountJpy: number;
   baseServiceAmountJpy: number | null;
   extensionAmountJpy: number | null;
   nominationChargeAmountJpy: number | null;
   wasTechnicianNominated: boolean | null;
   compensationBasisVersion: string | null;
+  platformFeeNdp: number;
+  estimatedTechnicianIncomeJpy?: number | null;
 }
 
 export interface TechnicianDataCenterOrderSource {
@@ -38,6 +41,8 @@ export interface TechnicianDataCenterOrderSource {
   orderNo: string;
   serviceName: string;
   shopName: string;
+  shopId?: number;
+  technicianProfileId?: number | null;
   status: string;
   startsAt: string;
   endsAt: string;
@@ -396,6 +401,9 @@ export class TechnicianDataCenterService {
     const fromPayslip = source.recognizedIncomeByOrderId[order.id];
     if (fromPayslip !== undefined) return fromPayslip;
     const financial = order.financial;
+    if (typeof financial?.estimatedTechnicianIncomeJpy === "number") {
+      return financial.estimatedTechnicianIncomeJpy;
+    }
     if (
       financial?.serviceIncomeStatus !== "confirmed" ||
       financial.baseServiceAmountJpy === null ||
@@ -406,12 +414,19 @@ export class TechnicianDataCenterService {
       return null;
     const rule = source.compensationRulesByBasis[financial.compensationBasisVersion];
     if (!rule) return null;
+    if (order.shopId !== undefined && rule.shopId !== order.shopId) return null;
+    if (
+      rule.sourceType === "technician_override" &&
+      rule.technicianProfileId !== (order.technicianProfileId ?? source.technician.id)
+    ) {
+      return null;
+    }
     return this.compensationEngine.calculate(rule, {
       baseServiceAmountJpy: financial.baseServiceAmountJpy,
       extensionAmountJpy: financial.extensionAmountJpy,
       nominationChargeAmountJpy: financial.nominationChargeAmountJpy,
       nominated: financial.wasTechnicianNominated === true,
-      platformFeeNdp: 0,
+      platformFeeNdp: financial.platformFeeNdp,
       workedMinutes: this.workedMinutes(order)
     }).technicianNetIncomeJpy;
   }

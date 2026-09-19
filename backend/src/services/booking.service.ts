@@ -73,6 +73,7 @@ import type { LiveDashboardEventPublisher } from "./live-dashboard-event.gateway
 import { LiveDashboardOrderChangePublisher } from "./live-dashboard-order-change.publisher";
 import type { ShopVisibilityRepositoryPort } from "./shop-visibility.service";
 import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
+import { readCompensationBasisVersion } from "./compensation-basis";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -1246,6 +1247,19 @@ export class BookingService {
     const confirmed = context.order.statusHistory.find(
       (history) => history.toStatus === "confirmed"
     );
+    const compensationBasisVersion = readCompensationBasisVersion(context.order.serviceSnapshot);
+    const hasAuditableCompensationBreakdown =
+      compensationBasisVersion !== null &&
+      context.checkout.travelFareAmountJpy === 0 &&
+      context.checkout.discountAmountJpy === 0 &&
+      context.checkout.baseAmountJpy + context.checkout.addOnAmountJpy ===
+        context.checkout.checkoutAmountJpy;
+    const workedFrom = context.order.startsAt;
+    const workedTo = context.order.endsAt;
+    const workedMinutes =
+      workedFrom && workedTo
+        ? Math.max(0, Math.round((workedTo.getTime() - workedFrom.getTime()) / 60_000))
+        : undefined;
     const hasExactServiceComponentBasis =
       context.checkout.baseAmountJpy + context.checkout.addOnAmountJpy ===
       context.checkout.checkoutAmountJpy;
@@ -1289,6 +1303,16 @@ export class BookingService {
         completedAt: this.now(),
         customerUserId: context.order.customerUserId,
         actorUserId,
+        ...(hasAuditableCompensationBreakdown
+          ? {
+              baseServiceAmountJpy: context.checkout.baseAmountJpy,
+              extensionAmountJpy: context.checkout.addOnAmountJpy,
+              nominationChargeAmountJpy: 0,
+              wasTechnicianNominated: false,
+              compensationBasisVersion,
+              ...(workedMinutes !== undefined ? { workedMinutes } : {})
+            }
+          : {}),
         ...(checkoutPayment ? { checkoutPayment } : {})
       },
       { transactionClient: context.transactionClient }

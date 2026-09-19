@@ -1315,6 +1315,135 @@ describe("LedgerService wallet mutations", () => {
     expect(repository.entries).toHaveLength(3);
   });
 
+  it.each([
+    ["TEST_NDP", { method: "ndp", payableNdp: 8_200 }, "platform_test_ndp", 0, 0, 8_200, 8_200, 0],
+    [
+      "cash",
+      {
+        method: "cash",
+        amountJpy: 14_850,
+        baseServiceAmountJpy: 8_200,
+        extensionAmountJpy: 6_650,
+        evidence: "technician_receipt_confirmation",
+        confirmedById: 2,
+        confirmedAt: new Date("2026-09-20T02:45:00.000Z"),
+        reason: "cash received"
+      },
+      "offline_cash",
+      0,
+      14_850,
+      14_850,
+      8_200,
+      6_650
+    ]
+  ] as const)(
+    "persists one auditable compensation projection for %s completion",
+    async (
+      _label,
+      checkoutPayment,
+      paymentChannel,
+      platformCollected,
+      offlineReported,
+      serviceAmountJpy,
+      baseServiceAmountJpy,
+      extensionAmountJpy
+    ) => {
+      const repository = new InMemoryLedgerRepository();
+      repository.accountClassifications.set(3, true);
+      repository.seedWallet({
+        ownerType: "shop",
+        ownerId: 10,
+        availableBalance: 1_000,
+        currency: "TEST_NDP"
+      });
+      const findCompensationRuleByBasis = jest.fn(async () => ({
+          id: 73,
+          sourceType: "shop_default",
+          shopId: 10,
+          technicianProfileId: null,
+          name: "full split",
+          wageMode: "commission",
+          baseSalaryJpy: 0,
+          hourlyRateJpy: 0,
+          dailyRateJpy: 0,
+          fixedOrderPayJpy: 0,
+          commissionRatePercent: 100,
+          extensionCommissionRatePercent: 100,
+          nominationFeeJpy: 0,
+          guaranteedMinimumJpy: 0,
+          ndpFeeBearer: "shop",
+          technicianNdpSharePercent: 0,
+          bonusRules: [],
+          deductionRules: []
+        }));
+      Object.assign(repository, { findCompensationRuleByBasis });
+      const service = new LedgerService(repository, createFeeService());
+      const input = {
+        ...bookingInput({
+          bookingOrderId: paymentChannel === "offline_cash" ? 24410 : 24413,
+          shopId: 10,
+          technicianProfileId: 42,
+          actorUserId: 2,
+          customerUserId: 3
+        }),
+        serviceAmountJpy,
+        baseServiceAmountJpy,
+        extensionAmountJpy,
+        nominationChargeAmountJpy: 0,
+        wasTechnicianNominated: false,
+        compensationBasisVersion: "shop_default:73" as const,
+        checkoutPayment,
+        completedAt: now,
+        workedMinutes: paymentChannel === "offline_cash" ? 105 : 60
+      };
+
+      await service.freezeBookingAcceptance(input);
+      await service.settleBookingCompletion({ ...input, customerUserId: 3 });
+      const writesAfterFirstCompletion = repository.upsertFinancialCallCount;
+      await service.settleBookingCompletion({ ...input, customerUserId: 3 });
+
+      expect(repository.financials.get(input.bookingOrderId)).toMatchObject({
+        baseServiceAmountJpy,
+        extensionAmountJpy,
+        nominationChargeAmountJpy: 0,
+        wasTechnicianNominated: false,
+        compensationBasisVersion: "shop_default:73",
+        serviceIncomeStatus: "confirmed",
+        paymentChannel,
+        platformCollectedServiceAmountJpy: platformCollected,
+        offlineReportedServiceAmountJpy: offlineReported,
+        unknownOrUnreportedServiceAmountJpy: 0,
+        serviceIncomeConfirmedById: 2,
+        serviceIncomeConfirmedAt:
+          checkoutPayment.method === "ndp" ? now : checkoutPayment.confirmedAt,
+        timelineEvents: expect.arrayContaining([
+          expect.objectContaining({
+            type: "service_income_confirmed",
+            amountJpy: serviceAmountJpy,
+            occurredAt:
+              checkoutPayment.method === "ndp"
+                ? now.toISOString()
+                : checkoutPayment.confirmedAt.toISOString()
+          }),
+          expect.objectContaining({
+            type: "technician_income_estimated",
+            amountJpy: serviceAmountJpy,
+            occurredAt: now.toISOString(),
+            metadata: expect.objectContaining({
+              workedMinutes: paymentChannel === "offline_cash" ? 105 : 60,
+              shopEstimatedGrossProfitJpy: -500
+            })
+          })
+        ])
+      });
+      expect(repository.upsertFinancialCallCount).toBe(writesAfterFirstCompletion);
+      expect(repository.auditRows.filter((row) => row.action.includes("booking_complete"))).toHaveLength(
+        1
+      );
+      expect(findCompensationRuleByBasis).toHaveBeenCalledTimes(1);
+    }
+  );
+
   it("completes against the original technician wallet and snapshotted fee after policy changes", async () => {
     const repository = new InMemoryLedgerRepository();
     repository.technicianUsers.set(9, 77);

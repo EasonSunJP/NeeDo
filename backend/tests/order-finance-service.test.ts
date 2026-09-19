@@ -204,6 +204,48 @@ describe("OrderFinanceService", () => {
     );
   });
 
+  it("uses one persisted technician projection instead of recomputing an hourly estimate", async () => {
+    const repository = createRepository();
+    repository.findOrderFinance.mockResolvedValueOnce({
+      ...orderFinanceRecord,
+      financial: {
+        ...orderFinanceRecord.financial!,
+        moneyTimeline: [
+          {
+            type: "technician_income_estimated",
+            label: "技师收入预估",
+            amountJpy: 3_000,
+            actorType: "system",
+            occurredAt: now.toISOString(),
+            status: "estimated",
+            metadata: { workedMinutes: 90, shopEstimatedGrossProfitJpy: 5_300 }
+          }
+        ]
+      },
+      activeCompensationRule: {
+        ...orderFinanceRecord.activeCompensationRule!,
+        wageMode: "hourly",
+        hourlyRateJpy: 2_000,
+        fixedOrderPayJpy: 0,
+        commissionRatePercent: 0,
+        extensionCommissionRatePercent: 0,
+        ndpFeeBearer: "shop"
+      }
+    });
+    const service = new OrderFinanceService(repository, { record: jest.fn() });
+
+    const detail = await service.getMerchantOrderFinance(merchantActor, context, 101);
+
+    expect(detail.technicianIncomePreview).toMatchObject({
+      basePayJpy: 3_000,
+      technicianNetIncomeJpy: 3_000,
+      shopEstimatedGrossProfitJpy: 5_300
+    });
+    expect(
+      detail.moneyTimeline.filter((event) => event.type === "technician_income_estimated")
+    ).toHaveLength(1);
+  });
+
   it("updates service income report, confirms it when requested, and records an audit log", async () => {
     const repository = createRepository();
     const auditLogService = { record: jest.fn(async () => undefined) };

@@ -13,27 +13,44 @@ import type {
   CompensationRuleSet,
   CompensationWageMode
 } from "../services/compensation-engine.service";
+import { readCompensationBasisVersion } from "../services/compensation-basis";
 
 type TechnicianRuleRecord = Prisma.TechnicianCompensationProfileGetPayload<Record<string, never>>;
 type ShopRuleRecord = Prisma.ShopFinanceRuleSetGetPayload<Record<string, never>>;
 
 const orderSelect = {
   id: true,
+  shopId: true,
+  technicianProfileId: true,
   orderNo: true,
   status: true,
+  paymentStatus: true,
   startsAt: true,
   endsAt: true,
+  serviceSnapshotJson: true,
   serviceNameSnapshot: true,
   service: { select: { name: true } },
   shop: { select: { name: true } },
+  checkout: {
+    select: {
+      baseAmountJpy: true,
+      addOnAmountJpy: true,
+      travelFareAmountJpy: true,
+      discountAmountJpy: true,
+      checkoutAmountJpy: true
+    }
+  },
   financial: {
     select: {
       serviceIncomeStatus: true,
+      serviceAmountJpy: true,
       baseServiceAmountJpy: true,
       extensionAmountJpy: true,
       nominationChargeAmountJpy: true,
       wasTechnicianNominated: true,
-      compensationBasisVersion: true
+      compensationBasisVersion: true,
+      bPlatformFeeActualNdp: true,
+      moneyTimelineJson: true
     }
   }
 } satisfies Prisma.BookingOrderSelect;
@@ -93,6 +110,7 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
         where: {
           technicianProfileId,
           status: "COMPLETED",
+          paymentStatus: "CONFIRMED",
           startsAt: { gte: range.startsAt, lt: range.endsAt },
           deletedAt: null
         },
@@ -130,7 +148,7 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
     const allOrderIds = [...new Set([...periodOrders, ...recentOrders].map((order) => order.id))];
     const [recognizedIncomeByOrderId, compensationRulesByBasis, incomeModel] = await Promise.all([
       this.recognizedIncome(technicianProfileId, allOrderIds),
-      this.historicalRules([...periodOrders, ...recentOrders]),
+      this.historicalRules([...periodOrders, ...recentOrders], technicianProfileId),
       shopId ? this.currentIncomeModel(shopId, technicianProfileId) : Promise.resolve(null)
     ]);
 
@@ -184,7 +202,8 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
   }
 
   private async historicalRules(
-    orders: TechnicianDataCenterOrderSource[]
+    orders: TechnicianDataCenterOrderSource[],
+    technicianProfileId: number
   ): Promise<Record<string, CompensationRuleSet>> {
     const technicianIds = new Set<number>();
     const shopIds = new Set<number>();
@@ -199,12 +218,12 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
     const [technicianRules, shopRules] = await Promise.all([
       technicianIds.size > 0
         ? this.client.technicianCompensationProfile.findMany({
-            where: { id: { in: [...technicianIds] }, deletedAt: null }
+            where: { id: { in: [...technicianIds] }, technicianProfileId }
           })
         : Promise.resolve([]),
       shopIds.size > 0
         ? this.client.shopFinanceRuleSet.findMany({
-            where: { id: { in: [...shopIds] }, deletedAt: null }
+            where: { id: { in: [...shopIds] } }
           })
         : Promise.resolve([])
     ]);
@@ -251,25 +270,82 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
 
   private mapOrder(order: OrderRecord): TechnicianDataCenterOrderSource {
     const normalized = order.status.toLowerCase();
+    const persistedBreakdown =
+      order.financial !== null &&
+      order.financial.baseServiceAmountJpy !== null &&
+      order.financial.extensionAmountJpy !== null &&
+      order.financial.nominationChargeAmountJpy !== null &&
+      order.financial.wasTechnicianNominated !== null &&
+      order.financial.compensationBasisVersion !== null &&
+      order.financial.baseServiceAmountJpy +
+        order.financial.extensionAmountJpy +
+        order.financial.nominationChargeAmountJpy ===
+        order.financial.serviceAmountJpy;
+    const snapshotBasis = readCompensationBasisVersion(order.serviceSnapshotJson);
+    const checkoutBreakdown =
+      order.financial !== null &&
+      !persistedBreakdown &&
+      snapshotBasis !== null &&
+      order.checkout !== null &&
+      order.checkout.travelFareAmountJpy === 0 &&
+      order.checkout.discountAmountJpy === 0 &&
+      order.checkout.checkoutAmountJpy === order.financial.serviceAmountJpy &&
+      order.checkout.baseAmountJpy + order.checkout.addOnAmountJpy ===
+        order.checkout.checkoutAmountJpy;
     return {
       id: order.id,
       orderNo: order.orderNo,
       serviceName: order.serviceNameSnapshot ?? order.service?.name ?? "",
       shopName: order.shop.name,
+      shopId: order.shopId,
+      technicianProfileId: order.technicianProfileId,
       status: normalized === "in_service" ? "inService" : normalized,
       startsAt: order.startsAt.toISOString(),
       endsAt: order.endsAt.toISOString(),
       financial: order.financial
         ? {
-            serviceIncomeStatus: order.financial.serviceIncomeStatus,
-            baseServiceAmountJpy: order.financial.baseServiceAmountJpy,
-            extensionAmountJpy: order.financial.extensionAmountJpy,
-            nominationChargeAmountJpy: order.financial.nominationChargeAmountJpy,
-            wasTechnicianNominated: order.financial.wasTechnicianNominated,
-            compensationBasisVersion: order.financial.compensationBasisVersion
+            serviceIncomeStatus:
+              order.status === "COMPLETED" &&
+              order.paymentStatus === "CONFIRMED" &&
+              (persistedBreakdown || checkoutBreakdown)
+                ? "confirmed"
+                : order.financial.serviceIncomeStatus,
+            serviceAmountJpy: order.financial.serviceAmountJpy,
+            baseServiceAmountJpy: checkoutBreakdown
+              ? order.checkout!.baseAmountJpy
+              : order.financial.baseServiceAmountJpy,
+            extensionAmountJpy: checkoutBreakdown
+              ? order.checkout!.addOnAmountJpy
+              : order.financial.extensionAmountJpy,
+            nominationChargeAmountJpy: checkoutBreakdown
+              ? 0
+              : order.financial.nominationChargeAmountJpy,
+            wasTechnicianNominated: checkoutBreakdown
+              ? false
+              : order.financial.wasTechnicianNominated,
+            compensationBasisVersion: checkoutBreakdown
+              ? snapshotBasis
+              : order.financial.compensationBasisVersion,
+            platformFeeNdp: order.financial.bPlatformFeeActualNdp,
+            estimatedTechnicianIncomeJpy: this.timelineAmount(
+              order.financial.moneyTimelineJson,
+              "technician_income_estimated"
+            )
           }
         : null
     };
+  }
+
+  private timelineAmount(value: unknown, type: string): number | null {
+    if (!Array.isArray(value)) return null;
+    const event = value.find(
+      (item) =>
+        item !== null &&
+        typeof item === "object" &&
+        !Array.isArray(item) &&
+        (item as { type?: unknown }).type === type
+    ) as { amountJpy?: unknown } | undefined;
+    return typeof event?.amountJpy === "number" ? event.amountJpy : null;
   }
 
   private mapTechnicianRule(record: TechnicianRuleRecord): CompensationRuleSet {

@@ -88,11 +88,13 @@ const source: TechnicianDataCenterSource = {
       endsAt: "2026-08-31T07:00:00.000Z",
       financial: {
         serviceIncomeStatus: "confirmed",
+        serviceAmountJpy: 15_000,
         baseServiceAmountJpy: 10_000,
         extensionAmountJpy: 4_000,
         nominationChargeAmountJpy: 1_000,
         wasTechnicianNominated: true,
-        compensationBasisVersion: "technician_override:81"
+        compensationBasisVersion: "technician_override:81",
+        platformFeeNdp: 0
       }
     }
   ],
@@ -156,6 +158,139 @@ describe("TechnicianDataCenterService", () => {
       31,
       expect.objectContaining({ period: "last7days" })
     );
+  });
+
+  it("reconciles confirmed cash and TEST_NDP orders from one snapshotted compensation basis", async () => {
+    const shopRule = {
+      ...rule,
+      id: 73,
+      sourceType: "shop_default" as const,
+      technicianProfileId: null,
+      name: "店铺默认 100/100",
+      baseSalaryJpy: 0,
+      commissionRatePercent: 100,
+      extensionCommissionRatePercent: 100,
+      nominationFeeJpy: 0,
+      bonusRules: []
+    };
+    const scenario: TechnicianDataCenterSource = {
+      ...source,
+      incomeModel: { ...shopRule, version: 73, updatedAt: "2026-09-01T00:00:00.000Z" },
+      compensationRulesByBasis: { "shop_default:73": shopRule },
+      recognizedIncomeByOrderId: {},
+      periodOrders: [
+        {
+          id: 24_410,
+          orderNo: "24410",
+          serviceName: "基础服务 + 延长",
+          shopName: "店铺 12",
+          status: "completed",
+          startsAt: "2026-08-30T01:00:00.000Z",
+          endsAt: "2026-08-30T02:45:00.000Z",
+          financial: {
+            serviceIncomeStatus: "confirmed",
+            serviceAmountJpy: 14_850,
+            baseServiceAmountJpy: 8_200,
+            extensionAmountJpy: 6_650,
+            nominationChargeAmountJpy: 0,
+            wasTechnicianNominated: false,
+            compensationBasisVersion: "shop_default:73",
+            platformFeeNdp: 500
+          }
+        },
+        {
+          id: 24_413,
+          orderNo: "24413",
+          serviceName: "基础服务",
+          shopName: "店铺 12",
+          status: "completed",
+          startsAt: "2026-08-31T01:00:00.000Z",
+          endsAt: "2026-08-31T02:00:00.000Z",
+          financial: {
+            serviceIncomeStatus: "confirmed",
+            serviceAmountJpy: 8_200,
+            baseServiceAmountJpy: 8_200,
+            extensionAmountJpy: 0,
+            nominationChargeAmountJpy: 0,
+            wasTechnicianNominated: false,
+            compensationBasisVersion: "shop_default:73",
+            platformFeeNdp: 500
+          }
+        }
+      ],
+      recentOrders: [],
+      upcomingOrderCount: 0,
+      nextOrder: null
+    };
+    scenario.recentOrders = scenario.periodOrders;
+    const service = new TechnicianDataCenterService(
+      { load: jest.fn(async () => scenario) },
+      { record: jest.fn(async () => undefined) },
+      () => new Date("2026-09-01T03:00:00.000Z")
+    );
+
+    const result = await service.getMine(
+      actor,
+      { ip: "127.0.0.1", userAgent: "jest" },
+      "last7days"
+    );
+
+    expect(result.summary).toMatchObject({
+      recognizedIncomeJpy: 23_050,
+      completedOrderCount: 2,
+      workedMinutes: 165
+    });
+    expect(result.recentOrders.map((order) => order.recognizedIncomeJpy)).toEqual([
+      14_850,
+      8_200
+    ]);
+  });
+
+  it("prefers persisted income and rejects a technician override owned by another technician", async () => {
+    const wrongOwnerRule = { ...rule, technicianProfileId: 999 };
+    const scenario: TechnicianDataCenterSource = {
+      ...source,
+      recognizedIncomeByOrderId: {},
+      compensationRulesByBasis: { "technician_override:81": wrongOwnerRule },
+      periodOrders: [
+        {
+          ...source.periodOrders[1]!,
+          id: 601,
+          shopId: 73,
+          technicianProfileId: 31,
+          financial: {
+            ...source.periodOrders[1]!.financial!,
+            estimatedTechnicianIncomeJpy: 9_000
+          }
+        },
+        {
+          ...source.periodOrders[1]!,
+          id: 602,
+          shopId: 73,
+          technicianProfileId: 31,
+          financial: {
+            ...source.periodOrders[1]!.financial!,
+            estimatedTechnicianIncomeJpy: null
+          }
+        }
+      ],
+      recentOrders: [],
+      upcomingOrderCount: 0,
+      nextOrder: null
+    };
+    const service = new TechnicianDataCenterService(
+      { load: jest.fn(async () => scenario) },
+      { record: jest.fn(async () => undefined) },
+      () => new Date("2026-09-01T03:00:00.000Z")
+    );
+
+    const result = await service.getMine(
+      actor,
+      { ip: "127.0.0.1", userAgent: "jest" },
+      "last7days"
+    );
+
+    expect(result.summary.recognizedIncomeJpy).toBe(9_000);
   });
 
   it("rejects non-technician identity scope", async () => {

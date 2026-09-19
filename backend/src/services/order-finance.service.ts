@@ -325,7 +325,11 @@ export class OrderFinanceService {
         financial.cRequestFeeActualNdp -
         financial.releasedNdp
     );
-    const technicianIncomePreview = record.activeCompensationRule
+    const persistedProjection = this.sanitizeTimeline(financial.moneyTimeline).find(
+      (event) => event.type === "technician_income_estimated"
+    );
+    const persistedWorkedMinutes = persistedProjection?.metadata?.workedMinutes;
+    const calculatedTechnicianIncomePreview = record.activeCompensationRule
       ? this.compensationEngine.calculate(record.activeCompensationRule, {
           ...(financial.baseServiceAmountJpy !== null &&
           financial.extensionAmountJpy !== null &&
@@ -338,8 +342,26 @@ export class OrderFinanceService {
               }
             : { serviceAmountJpy: estimatedServiceGmvJpy }),
           platformFeeNdp: Math.max(financial.bPlatformFeeActualNdp, financial.bPlatformFeeHoldNdp),
-          workedMinutes: this.durationMinutes(record.startsAt, record.endsAt)
+          workedMinutes:
+            typeof persistedWorkedMinutes === "number" &&
+            Number.isFinite(persistedWorkedMinutes) &&
+            persistedWorkedMinutes >= 0
+              ? persistedWorkedMinutes
+              : this.durationMinutes(record.startsAt, record.endsAt)
         })
+      : null;
+    const persistedTechnicianIncomeJpy = persistedProjection?.amountJpy;
+    const persistedShopProfitJpy = persistedProjection?.metadata?.shopEstimatedGrossProfitJpy;
+    const technicianIncomePreview = calculatedTechnicianIncomePreview
+      ? {
+          ...calculatedTechnicianIncomePreview,
+          ...(typeof persistedTechnicianIncomeJpy === "number"
+            ? { technicianNetIncomeJpy: persistedTechnicianIncomeJpy }
+            : {}),
+          ...(typeof persistedShopProfitJpy === "number"
+            ? { shopEstimatedGrossProfitJpy: persistedShopProfitJpy }
+            : {})
+        }
       : null;
     const moneyTimeline = this.buildTimeline(record, financial, technicianIncomePreview);
 
@@ -469,7 +491,10 @@ export class OrderFinanceService {
       });
     }
 
-    if (technicianIncomePreview) {
+    if (
+      technicianIncomePreview &&
+      !timeline.some((event) => event.type === "technician_income_estimated")
+    ) {
       timeline.push({
         type: "technician_income_estimated",
         label: "技师收入预估",
