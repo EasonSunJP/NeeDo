@@ -392,9 +392,30 @@ export function createPersistentResourceCache(input: { database: PersistentCache
     const request = (async () => {
       const value = await load();
       if (refreshGenerations.get(id) !== refreshGeneration) return value;
-      const stored = await storeValue(scope, key, value, generation);
-      if (stored.changed) onRefresh?.(stored.value);
-      return stored.value;
+      try {
+        const stored = await storeValue(scope, key, value, generation);
+        if (stored.changed) onRefresh?.(stored.value);
+        return stored.value;
+      } catch (error) {
+        if (
+          (lockGeneration.get(scope) ?? 0) !== generation ||
+          (error instanceof Error && error.message === "error.cache.locked")
+        ) {
+          throw error;
+        }
+
+        const current = memory.get(id);
+        const changed = JSON.stringify(current?.value) !== JSON.stringify(value);
+        memory.set(id, {
+          fingerprint: `volatile:${refreshGeneration}`,
+          value
+        });
+        if (changed) {
+          notify(scope, key, value);
+          onRefresh?.(value);
+        }
+        return value;
+      }
     })();
     refreshes.set(id, request);
     try {
