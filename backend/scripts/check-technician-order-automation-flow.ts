@@ -161,15 +161,19 @@ function customerAccess(input: {
 }
 
 async function loadFoundation(prisma: PrismaClient) {
-  const [customer, technician, pausedTechnician, shop, successService, mismatchService] = await Promise.all([
+  const [customer, technician, pausedTechnician, shop, successService, mismatchService, technicianService] = await Promise.all([
     prisma.user.findUnique({ where: { email: `${MULTISHOP_MARKER}-customer@example.invalid` } }),
     prisma.user.findUnique({ where: { email: `${MULTISHOP_MARKER}-technician@example.invalid` } }),
     prisma.user.findUnique({ where: { email: `${MULTISHOP_MARKER}-paused-technician@example.invalid` } }),
     prisma.shop.findFirst({ where: { name: `${MULTISHOP_MARKER}-merchant`, deletedAt: null } }),
     prisma.service.findFirst({ where: { name: `${MULTISHOP_MARKER}-store-service-ndp`, deletedAt: null } }),
-    prisma.service.findFirst({ where: { name: `${MULTISHOP_MARKER}-store-service-cash`, deletedAt: null } })
+    prisma.service.findFirst({ where: { name: `${MULTISHOP_MARKER}-store-service-cash`, deletedAt: null } }),
+    prisma.technicianService.findFirst({
+      where: { name: `${MULTISHOP_MARKER}-technician-service-ndp`, deletedAt: null },
+      include: { shop: true }
+    })
   ]);
-  assert(customer && technician && pausedTechnician && shop && successService && mismatchService,
+  assert(customer && technician && pausedTechnician && shop && successService && mismatchService && technicianService,
     "run check:multishop-pricing-settlement first to create the retained foundation");
   const [customerIdentity, technicianProfile, pausedProfile] = await Promise.all([
     prisma.userIdentity.findFirst({ where: { userId: customer.id, type: "customer", isActive: true, deletedAt: null }, include: { publicIdentifier: true } }),
@@ -184,7 +188,12 @@ async function loadFoundation(prisma: PrismaClient) {
   assert(technicianIdentity?.publicIdentifier && pausedIdentity?.publicIdentifier, "technician public identities are incomplete");
   await Promise.all([
     prisma.technicianProfile.update({ where: { id: technicianProfile.id }, data: { verifiedAt: technicianProfile.verifiedAt ?? new Date() } }),
-    prisma.technicianProfile.update({ where: { id: pausedProfile.id }, data: { verifiedAt: pausedProfile.verifiedAt ?? new Date() } })
+    prisma.technicianProfile.update({ where: { id: pausedProfile.id }, data: { verifiedAt: pausedProfile.verifiedAt ?? new Date() } }),
+    prisma.technicianWorkState.upsert({
+      where: { technicianProfileId: technicianProfile.id },
+      create: { technicianProfileId: technicianProfile.id, status: "on_duty", syncedAt: new Date() },
+      update: { status: "on_duty", syncedAt: new Date(), deletedAt: null }
+    })
   ]);
   return {
     customer,
@@ -197,7 +206,8 @@ async function loadFoundation(prisma: PrismaClient) {
     pausedIdentity,
     shop,
     successService,
-    mismatchService
+    mismatchService,
+    technicianService
   };
 }
 
@@ -205,14 +215,14 @@ async function ensureSetting(
   service: import("../src/services/technician-automation.service").TechnicianAutomationService,
   actor: AuthenticatedAccessContext,
   kind: "booking" | "request",
-  serviceId: number
+  serviceIds: number[]
 ) {
   const { defaultTechnicianAutomationRules } = await import("../src/validators/technician-automation.validator");
   const current = await service.getSetting(actor, kind);
   const rules = {
     ...defaultTechnicianAutomationRules(kind),
     maxDistanceKm: null,
-    serviceIds: [serviceId],
+    serviceIds,
     onlyOnline: false,
     requestStartWindow: "any" as const,
     requireMatchingTags: false
@@ -251,24 +261,48 @@ async function ensureFundedWallet(
 
 async function ensureSlot(
   prisma: PrismaClient,
-  input: { shopId: number; technicianProfileId: number; serviceId: number; startsAt: Date }
+  input: {
+    shopId: number;
+    technicianProfileId: number;
+    serviceId?: number;
+    technicianServiceId?: number;
+    startsAt: Date;
+  }
 ) {
   const existing = await prisma.scheduleSlot.findFirst({
     where: {
       shopId: input.shopId,
       technicianProfileId: input.technicianProfileId,
-      serviceId: input.serviceId,
+      serviceId: input.serviceId ?? null,
+      technicianServiceId: input.technicianServiceId ?? null,
       startsAt: input.startsAt,
       deletedAt: null
     }
   });
-  return existing ?? prisma.scheduleSlot.create({
+  if (existing) return existing;
+  const endsAt = new Date(input.startsAt.getTime() + 60 * 60_000);
+  const availability = await prisma.availability.create({
     data: {
       shopId: input.shopId,
       technicianProfileId: input.technicianProfileId,
-      serviceId: input.serviceId,
       startsAt: input.startsAt,
-      endsAt: new Date(input.startsAt.getTime() + 60 * 60_000),
+      endsAt,
+      capacity: 1,
+      sourceType: "TECHNICIAN",
+      visibility: "SHOP_ONLY",
+      isActive: true,
+      isScheduleControlWindow: true
+    }
+  });
+  return prisma.scheduleSlot.create({
+    data: {
+      shopId: input.shopId,
+      technicianProfileId: input.technicianProfileId,
+      serviceId: input.serviceId ?? null,
+      technicianServiceId: input.technicianServiceId ?? null,
+      availabilityId: availability.id,
+      startsAt: input.startsAt,
+      endsAt,
       capacity: 1,
       bookedCount: 0,
       status: "AVAILABLE"
@@ -306,7 +340,8 @@ async function ensureRequest(
     customerPublicId: string;
     shopId: number;
     technicianProfileId: number;
-    serviceId: number;
+    serviceId?: number;
+    technicianServiceId?: number;
     startsAt: Date;
   }
 ) {
@@ -439,10 +474,13 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
     const mismatchCustomerActor = customerAccess(mismatchCustomer);
     const zeroShopCustomerActor = customerAccess(zeroShopCustomer);
     const [bookingSetting, requestSetting] = await Promise.all([
-      ensureSetting(settings, technicianActor, "booking", fixture.successService.id),
-      ensureSetting(settings, technicianActor, "request", fixture.successService.id)
+      ensureSetting(settings, technicianActor, "booking", [fixture.successService.id]),
+      ensureSetting(settings, technicianActor, "request", [
+        fixture.successService.id,
+        fixture.technicianService.id
+      ])
     ]);
-    await ensureSetting(settings, pausedActor, "booking", fixture.successService.id);
+    await ensureSetting(settings, pausedActor, "booking", [fixture.successService.id]);
     const processor = new TechnicianAutomationProcessor(
       repository,
       {
@@ -489,8 +527,19 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
       technicianProfileId: fixture.technicianProfile.id, serviceId: fixture.mismatchService.id,
       startsAt: new Date("2099-02-02T03:00:00.000Z")
     });
+    const technicianServiceRequest = await ensureRequest(prisma, {
+      key: "request-technician-service-v3",
+      customerUserId: fixture.customer.id,
+      customerIdentityId: fixture.customerIdentity.id,
+      customerPublicId: fixture.customerIdentity.publicIdentifier!.publicId,
+      shopId: fixture.technicianService.shopId,
+      technicianProfileId: fixture.technicianProfile.id,
+      technicianServiceId: fixture.technicianService.id,
+      startsAt: new Date("2099-04-02T05:00:00.000Z")
+    });
     await processor.processRequest(requestSuccess.post.id);
     await processor.processRequest(requestMismatch.post.id);
+    await processor.processRequest(technicianServiceRequest.post.id);
     await processor.processRequest(requestSuccess.post.id);
     await processor.processRequest(requestMismatch.post.id);
 
@@ -521,8 +570,8 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
     await processor.processBooking(pausedOrder.id);
 
     const [successOrder, mismatchOrder, zeroShopOrder, bookingSuccessDecision, bookingMismatchDecision,
-      requestSuccessDecision, requestMismatchDecision, successClaims, mismatchClaims, zeroCandidate,
-      zeroProfile] = await Promise.all([
+      requestSuccessDecision, requestMismatchDecision, technicianServiceDecision, successClaims,
+      mismatchClaims, technicianServiceClaims, zeroCandidate, zeroProfile] = await Promise.all([
         prisma.bookingOrder.findUniqueOrThrow({ where: { id: bookingSuccess.id } }),
         prisma.bookingOrder.findUniqueOrThrow({ where: { id: bookingMismatch.id } }),
         prisma.bookingOrder.findUniqueOrThrow({ where: { id: pausedOrder.id } }),
@@ -530,8 +579,10 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
         prisma.technicianAutomationDecisionLog.findUnique({ where: { idempotencyKey: `booking:${bookingMismatch.id}:${fixture.technicianProfile.id}:accept_booking` } }),
         prisma.technicianAutomationDecisionLog.findUnique({ where: { idempotencyKey: `request:${requestSuccess.post.id}:${fixture.technicianProfile.id}:apply_request` } }),
         prisma.technicianAutomationDecisionLog.findUnique({ where: { idempotencyKey: `request:${requestMismatch.post.id}:${fixture.technicianProfile.id}:apply_request` } }),
+        prisma.technicianAutomationDecisionLog.findUnique({ where: { idempotencyKey: `request:${technicianServiceRequest.post.id}:${fixture.technicianProfile.id}:apply_request` } }),
         prisma.exchangeClaim.count({ where: { exchangePostId: requestSuccess.post.id, technicianProfileId: fixture.technicianProfile.id, deletedAt: null } }),
         prisma.exchangeClaim.count({ where: { exchangePostId: requestMismatch.post.id, technicianProfileId: fixture.technicianProfile.id, deletedAt: null } }),
+        prisma.exchangeClaim.count({ where: { exchangePostId: technicianServiceRequest.post.id, technicianProfileId: fixture.technicianProfile.id, deletedAt: null } }),
         repository.loadBookingCandidate(pausedOrder.id),
         new (await import("../src/repositories/technician-profile.repository")).TechnicianProfileRepository(prisma)
           .findMine(fixture.pausedTechnician.id, fixture.pausedProfile.id)
@@ -541,6 +592,7 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
     assert((bookingMismatchDecision.failedReasons as string[]).includes("service:not_selected"), "Booking mismatch reason missing");
     assert(successClaims === 1 && requestSuccessDecision?.outcome === "EXECUTED", "matching Request was not auto-applied exactly once");
     assert(mismatchClaims === 0 && requestMismatchDecision?.outcome === "NOT_MATCHED", "non-matching Request did not stay in the candidate pool");
+    assert(technicianServiceClaims === 1 && technicianServiceDecision?.outcome === "EXECUTED", "matching technician-priced Request was not auto-applied exactly once");
     assert((requestMismatchDecision.failedReasons as string[]).includes("service:not_selected"), "Request mismatch reason missing");
     assert(zeroShopOrder.status === "PENDING" && zeroCandidate === null, "zero-shop technician auto-accepted a Booking");
     assert(zeroProfile?.shopAccessStatus === "requires_shop", "zero-shop technician was not paused");
@@ -548,7 +600,8 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
       `booking:${bookingSuccess.id}:${fixture.technicianProfile.id}:accept_booking`,
       `booking:${bookingMismatch.id}:${fixture.technicianProfile.id}:accept_booking`,
       `request:${requestSuccess.post.id}:${fixture.technicianProfile.id}:apply_request`,
-      `request:${requestMismatch.post.id}:${fixture.technicianProfile.id}:apply_request`
+      `request:${requestMismatch.post.id}:${fixture.technicianProfile.id}:apply_request`,
+      `request:${technicianServiceRequest.post.id}:${fixture.technicianProfile.id}:apply_request`
     ];
     const decisions = await prisma.technicianAutomationDecisionLog.count({
       where: { idempotencyKey: { in: expectedDecisionKeys }, deletedAt: null }
@@ -562,6 +615,7 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
         bookingNotMatched: { orderId: mismatchOrder.id, status: mismatchOrder.status, outcome: bookingMismatchDecision.outcome, failedReasons: bookingMismatchDecision.failedReasons },
         requestMatched: { postId: requestSuccess.post.id, claimCount: successClaims, outcome: requestSuccessDecision.outcome },
         requestNotMatched: { postId: requestMismatch.post.id, claimCount: mismatchClaims, outcome: requestMismatchDecision.outcome, failedReasons: requestMismatchDecision.failedReasons },
+        technicianServiceRequestMatched: { postId: technicianServiceRequest.post.id, claimCount: technicianServiceClaims, outcome: technicianServiceDecision.outcome },
         repeatedTriggers: "idempotent",
         zeroShop: { orderId: zeroShopOrder.id, status: zeroShopOrder.status, shopAccessStatus: zeroProfile.shopAccessStatus }
       },
