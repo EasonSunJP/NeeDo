@@ -2856,13 +2856,14 @@ export function StoreDetailExperience({
     };
   }, [isMerchantEditable, storeApiId]);
 
-  const storeTechnicians = useMemo(
-    () =>
-      displayedTechnicians
-        .filter((item) => (item.storeId === store.id || item.relatedStoreIds?.includes(store.id)) && (isMerchantEditable || isTechnicianDisplayVisible(item)))
-        .slice(0, 8),
-    [displayedTechnicians, isMerchantEditable, store.id]
-  );
+  const storeTechnicians = useMemo(() => {
+    const scopedTechnicians = displayedTechnicians.filter(
+      (item) =>
+        (item.storeId === store.id || item.relatedStoreIds?.includes(store.id)) &&
+        (isMerchantEditable || isTechnicianDisplayVisible(item))
+    );
+    return isMerchantEditable ? scopedTechnicians : scopedTechnicians.slice(0, 8);
+  }, [displayedTechnicians, isMerchantEditable, store.id]);
   const config = useMemo(
     () => presentationOverride ?? buildStoreProfileConfig(store, industry),
     [industry, presentationOverride, store, store.presentation]

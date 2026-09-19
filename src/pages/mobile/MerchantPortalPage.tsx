@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import {
   backofficeRealDataApi,
+  mapBackofficeTechnician,
   type BackofficeTechnicianPayload
 } from "../../api/backofficeRealData";
 import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
@@ -49,7 +50,6 @@ import { emptyOrders as orders, emptySettlements as settlements, formalMediaFall
 import {
   coreReadApi,
   mapCoreShopToStore,
-  mapCoreTechnicianToTechnician,
   type CoreShopDetail
 } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
@@ -1797,6 +1797,7 @@ function MerchantPortalDataGate() {
   const { session } = useAuth();
   const activeView = getMerchantView(view);
   const storeApiId = getMerchantStoreApiId(session?.linkedStoreId);
+  const persistentCacheScope = getAuthenticatedPersistentCacheScope();
   const formalStoreQuery = useCoreReadQuery(
     () => storeApiId ? coreReadApi.getShopDetail(storeApiId) : null,
     [storeApiId, activeView],
@@ -1806,9 +1807,20 @@ function MerchantPortalDataGate() {
       key: `core:shop:${storeApiId ?? "missing"}`
     }
   );
+  const formalStaffQuery = useCoreReadQuery(
+    () => storeApiId && session?.portal === "merchant" ? loadEveryMerchantTechnicianPage() : null,
+    [storeApiId, session?.activeIdentityId, activeView],
+    {
+      enabled: Boolean(storeApiId && session?.portal === "merchant"),
+      force: true,
+      key: `merchant:technician-roster:v2:${storeApiId ?? "missing"}:identity:${session?.activeIdentityId ?? "missing"}`,
+      scope: persistentCacheScope
+    }
+  );
 
-  if (!storeApiId || !formalStoreQuery.data) {
-    const failed = !formalStoreQuery.loading && Boolean(formalStoreQuery.error);
+  if (!storeApiId || !formalStoreQuery.data || !formalStaffQuery.data) {
+    const failed = (!formalStoreQuery.loading && Boolean(formalStoreQuery.error)) ||
+      (!formalStaffQuery.loading && Boolean(formalStaffQuery.error));
     return (
       <main className="grid min-h-dvh place-items-center bg-[color:var(--client-bg)] px-6 text-center text-[color:var(--client-text)]">
         <div>
@@ -1822,13 +1834,17 @@ function MerchantPortalDataGate() {
   }
 
   const store = mapCoreShopToStore(formalStoreQuery.data);
-  const technicians = formalStoreQuery.data.technicians.map((technician) => ({
-    ...mapCoreTechnicianToTechnician(technician),
+  const formalStaff = formalStaffQuery.data.filter((technician) => technician.shopId === storeApiId);
+  const technicians = formalStaff.map((technician) => ({
+    ...mapBackofficeTechnician(technician),
+    id: String(technician.id),
+    systemId: technician.needoId,
     storeId: store.id
   }));
 
   return (
     <MerchantPortalContent
+      initialFormalStaff={formalStaff}
       store={store}
       storeServices={formalStoreQuery.data.services}
       technicians={technicians}
@@ -1837,10 +1853,12 @@ function MerchantPortalDataGate() {
 }
 
 export function MerchantPortalContent({
+  initialFormalStaff,
   store,
   storeServices = [],
   technicians
 }: {
+  initialFormalStaff?: BackofficeTechnicianPayload[];
   store: Store;
   storeServices?: CoreShopDetail["services"];
   technicians: Technician[];
@@ -1916,8 +1934,10 @@ export function MerchantPortalContent({
   const [employeeSalaryDraft, setEmployeeSalaryDraft] = useState("");
   const [pendingStaffDelete, setPendingStaffDelete] = useState<MerchantPendingStaffDelete | null>(null);
   const [staffRoleNameOverrides, setStaffRoleNameOverrides] = useState<Record<string, string>>(() => getInitialMerchantStaffRoleLabelOverrides());
-  const [formalStaffByNeedoId, setFormalStaffByNeedoId] = useState<Map<string, BackofficeTechnicianPayload>>(() => new Map());
-  const [formalStaffEmploymentLoaded, setFormalStaffEmploymentLoaded] = useState(false);
+  const [formalStaffByNeedoId, setFormalStaffByNeedoId] = useState<Map<string, BackofficeTechnicianPayload>>(
+    () => new Map(initialFormalStaff?.map((technician) => [technician.needoId, technician]) ?? [])
+  );
+  const [formalStaffEmploymentLoaded, setFormalStaffEmploymentLoaded] = useState(Boolean(initialFormalStaff));
   const [formalStaffEmploymentError, setFormalStaffEmploymentError] = useState("");
   const [workRevision, setWorkRevision] = useState(0);
   useEffect(() => subscribeWorkStatusRefresh(() => setWorkRevision(value => value + 1)), []);
@@ -1934,6 +1954,14 @@ export function MerchantPortalContent({
 
     if (!session || session.portal !== "merchant") {
       setFormalStaffByNeedoId(new Map());
+      return () => {
+        active = false;
+      };
+    }
+
+    if (workRevision === 0 && initialFormalStaff) {
+      setFormalStaffByNeedoId(new Map(initialFormalStaff.map((technician) => [technician.needoId, technician])));
+      setFormalStaffEmploymentLoaded(true);
       return () => {
         active = false;
       };
@@ -1957,7 +1985,7 @@ export function MerchantPortalContent({
     return () => {
       active = false;
     };
-  }, [session, workRevision]);
+  }, [initialFormalStaff, session, workRevision]);
   const formalHomeQuery = useCoreReadQuery(
     () => session?.portal === "merchant" ? loadFormalMerchantHome().then((data) => ({ ...data, storeId: store.id })) : null,
     [store.id, session?.portal, workRevision],

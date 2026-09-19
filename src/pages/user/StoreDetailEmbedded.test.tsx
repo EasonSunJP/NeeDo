@@ -39,7 +39,7 @@ async function render() {
   await act(async () => root.render(<MemoryRouter><UnifiedFormalStoreDetail shopId={21} scope="user" embedded /></MemoryRouter>));
 }
 
-async function renderFormalMerchantPreview() {
+async function renderFormalMerchantPreview(technicianCount = 1) {
   const store = {
     id: "21",
     systemId: "shop7507769538",
@@ -62,13 +62,13 @@ async function renderFormalMerchantPreview() {
     mode: "store",
     paymentMethods: []
   } satisfies Store;
-  const technician = {
-    id: "501",
-    systemId: "s0000000501",
-    name: "正式技师一号",
+  const technicians = Array.from({ length: technicianCount }, (_, index) => ({
+    id: String(501 + index),
+    systemId: `s${String(501 + index).padStart(10, "0")}`,
+    name: index === 0 ? "正式技师一号" : `正式技师${index + 1}号`,
     storeId: "21",
-    role: "therapist",
-    status: "available",
+    role: "therapist" as const,
+    status: "available" as const,
     rating: 0,
     orderCount: 0,
     income: 0,
@@ -80,8 +80,8 @@ async function renderFormalMerchantPreview() {
     favoriteCount: 0,
     shareCount: 0,
     languages: ["日本語"],
-    avatar: "/images/generated/profiles/ai-profile-01.jpg"
-  } satisfies Technician;
+    avatar: `/images/generated/profiles/ai-profile-${String(index + 1).padStart(2, "0")}.jpg`
+  })) satisfies Technician[];
 
   await act(async () => root.render(
     <MemoryRouter>
@@ -119,7 +119,7 @@ async function renderFormalMerchantPreview() {
         scope="merchant"
         serviceCardsOverride={[]}
         store={store}
-        techniciansOverride={[technician]}
+        techniciansOverride={technicians}
       />
     </MemoryRouter>
   ));
@@ -181,6 +181,15 @@ it("rejects legacy service cards while keeping the formal technician projection 
   expect(container.textContent).not.toContain("标准到店服务");
   expect(container.textContent).not.toContain("￥0");
   expect(container.querySelector('a[href*="svc-fallback"]')).toBeNull();
+});
+
+it("renders the complete merchant technician roster when more than eight employees are returned", async () => {
+  await renderFormalMerchantPreview(10);
+
+  expect(container.textContent).toContain("正式技师一号");
+  expect(container.textContent).toContain("正式技师9号");
+  expect(container.textContent).toContain("正式技师10号");
+  expect(container.textContent?.match(/正式技师(?:一号|\d+号)/g)).toHaveLength(10);
 });
 
 it("builds checkout actions only from an exact future formal slot", async () => {

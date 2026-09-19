@@ -5,12 +5,23 @@ import storeDetailSource from "../user/StoreDetailPage.tsx?raw";
 
 describe("MerchantPortalPage store privacy control", () => {
   it("loads the active store and staff from the formal API before rendering the merchant workspace", () => {
+    const dataGateSource = merchantSource.slice(
+      merchantSource.indexOf("function MerchantPortalDataGate"),
+      merchantSource.indexOf("export function MerchantPortalContent")
+    );
+
     expect(merchantSource).toContain("function MerchantPortalDataGate");
     expect(merchantSource).toContain("coreReadApi.getShopDetail(storeApiId)");
+    expect(dataGateSource).toContain("loadEveryMerchantTechnicianPage()");
+    expect(dataGateSource).toContain("getAuthenticatedPersistentCacheScope()");
+    expect(dataGateSource).toContain("session?.activeIdentityId");
+    expect(dataGateSource).toContain("technician.shopId === storeApiId");
+    expect(dataGateSource).toContain("merchant:technician-roster:v2:");
+    expect(dataGateSource).toContain("scope: persistentCacheScope");
+    expect(dataGateSource).toContain("force: true");
     expect(merchantSource).toContain("mapCoreShopToStore(formalStoreQuery.data)");
-    expect(merchantSource).toContain("mapCoreTechnicianToTechnician(technician)");
+    expect(dataGateSource).not.toContain("formalStoreQuery.data.technicians.map");
     expect(merchantSource).toContain("[storeApiId, activeView]");
-    expect(merchantSource).toContain("force: true");
     expect(merchantSource).toContain("storeServices={formalStoreQuery.data.services}");
     expect(merchantSource).toContain("<MerchantPortalContent");
     expect(merchantSource).toContain("technicians={technicians}");
