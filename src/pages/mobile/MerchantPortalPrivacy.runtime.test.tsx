@@ -50,10 +50,14 @@ vi.mock("../../components/client-ui/AppScaffold", async () => {
   const actual = await vi.importActual<typeof import("../../components/client-ui/AppScaffold")>("../../components/client-ui/AppScaffold");
   return {
     ...actual,
-    FeatureSegmentedTabs: ({ items }: { items: Array<{ label: React.ReactNode; value: string }> }) =>
-      createElement("div", null, items.map((item) => createElement("span", { key: item.value }, item.label)))
+    FeatureSegmentedTabs: ({ items, onChange }: { items: Array<{ label: React.ReactNode; value: string }>; onChange: (value: string) => void }) =>
+      createElement("div", null, items.map((item) => createElement("button", { key: item.value, onClick: () => onChange(item.value), type: "button" }, item.label)))
   };
 });
+
+vi.mock("../../components/merchant/MerchantIdentityInfoCard", () => ({
+  MerchantIdentityInfoCard: () => createElement("section", { "data-testid": "merchant-identity-card" })
+}));
 
 vi.mock("../../theme/ClientThemeProvider", () => ({
   getClientThemeClassName: () => "",
@@ -216,6 +220,58 @@ describe("MerchantPortal merchant-profile privacy authority", () => {
     await act(async () => resolveFirst?.({ ...profile, visibility: "privateAll" }));
     expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).toContain("对好友以及关联人可见");
     expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).not.toContain("对所有人不可见");
+  });
+
+  it("reloads the formal profile whenever the merchant returns to the service tab", async () => {
+    vi.mocked(merchantProfileApi.getMine)
+      .mockReset()
+      .mockResolvedValueOnce(profile)
+      .mockResolvedValueOnce({ ...profile, visibility: "network" });
+
+    await act(async () => root.render(portal()));
+    await waitFor(() => expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).toContain("公开可见"));
+
+    const tab = (label: string) => [...container.querySelectorAll("button")].find((button) => button.textContent === label);
+    await act(async () => tab("信息卡")?.click());
+    expect(container.querySelector('[data-testid="merchant-identity-card"]')).not.toBeNull();
+    await act(async () => tab("店铺展示")?.click());
+
+    await waitFor(() => expect(merchantProfileApi.getMine).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).toContain("对好友以及关联人可见"));
+  });
+
+  it("ignores an older save failure after an A to B to A identity and shop switch", async () => {
+    let rejectSave: ((reason?: unknown) => void) | undefined;
+    const pendingSave = new Promise<MerchantIdentityProfile>((_resolve, reject) => {
+      rejectSave = reject;
+    });
+    vi.mocked(merchantProfileApi.getMine)
+      .mockReset()
+      .mockResolvedValueOnce(profile)
+      .mockResolvedValueOnce({ ...profile, id: 62, publicId: "b0000000210", identityId: 210, visibility: "limited" })
+      .mockResolvedValueOnce({ ...profile, visibility: "network" });
+    vi.mocked(merchantProfileApi.updateMine).mockReturnValue(pendingSave);
+
+    await act(async () => root.render(portal()));
+    await waitFor(() => expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).toContain("公开可见"));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="开启店铺隐私模式"]')?.click());
+    const confirm = [...container.querySelectorAll("button")].find((button) => button.textContent === "开启");
+    await act(async () => confirm?.click());
+    await waitFor(() => expect(merchantProfileApi.updateMine).toHaveBeenCalledWith({ visibility: "privateAll" }));
+
+    testState.session.activeIdentityId = 210;
+    testState.session.linkedStoreId = "store-72";
+    await act(async () => root.render(portal({ ...store, id: "store-72", systemId: "shop0000000072" })));
+    await waitFor(() => expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).toContain("对好友可见"));
+
+    testState.session.activeIdentityId = 109;
+    testState.session.linkedStoreId = "store-71";
+    await act(async () => root.render(portal()));
+    await waitFor(() => expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).toContain("对好友以及关联人可见"));
+
+    await act(async () => rejectSave?.(new Error("late failure")));
+    expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).toContain("对好友以及关联人可见");
+    expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).not.toContain("公开可见");
   });
 
   it("persists a visibility change through the merchant profile and reloads it after remount", async () => {
