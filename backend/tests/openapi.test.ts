@@ -1052,8 +1052,14 @@ describe("GET /api/v1/openapi.json", () => {
       ])
     );
     expect(response.body.components.schemas.TechnicianDetail.allOf[1].required).toEqual(
-      expect.arrayContaining(["gender", "heightCm", "languages", "reviewTagSummary"])
+      expect.arrayContaining(["socialAccountUserId", "socialIdentityId", "gender", "heightCm", "languages", "reviewTagSummary"])
     );
+    expect(
+      response.body.components.schemas.TechnicianDetail.allOf[1].properties.socialAccountUserId
+    ).toEqual({ type: "integer", minimum: 1 });
+    expect(
+      response.body.components.schemas.TechnicianDetail.allOf[1].properties.socialIdentityId
+    ).toEqual({ type: "integer", minimum: 1 });
     expect(
       response.body.components.schemas.TechnicianDetail.allOf[1].properties.reviewTagSummary
     ).toEqual({ $ref: "#/components/schemas/TechnicianReviewTagSummary" });
@@ -1795,6 +1801,12 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/social/posts/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/social/follows");
     expect(response.body.paths).toHaveProperty("/api/v1/social/follows/{targetUserId}");
+    expect(
+      response.body.paths["/api/v1/social/follows"].post.requestBody.content["application/json"].schema.properties
+    ).toHaveProperty("targetIdentityId");
+    expect(response.body.paths["/api/v1/social/follows/{targetUserId}"].delete.parameters).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "identityId", in: "query" })])
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/notifications");
     expect(response.body.paths).toHaveProperty("/api/v1/notifications/{id}/read");
     expect(response.body.paths).toHaveProperty("/api/v1/notifications/read-all");
@@ -2352,6 +2364,12 @@ describe("GET /api/v1/openapi.json", () => {
           name: "userId",
           in: "path",
           required: true,
+          schema: { type: "integer", minimum: 1 }
+        }),
+        expect.objectContaining({
+          name: "identityId",
+          in: "query",
+          required: false,
           schema: { type: "integer", minimum: 1 }
         })
       ]

@@ -23,7 +23,8 @@ describe("SocialProfilePage core-read technician fallback", () => {
 describe("SocialAccountProfilePage", () => {
   it("loads a numeric account on entry and reuses the complete social profile scene", () => {
     expect(socialProfilePageSource).toContain("export function SocialAccountProfilePage");
-    expect(socialProfilePageSource).toContain("ensureAccountProfile(userId)");
+    expect(socialProfilePageSource).toContain("ensureAccountProfile(userId, requestedIdentityId)");
+    expect(socialProfilePageSource).toContain('searchParams.get("identityId")');
     expect(socialProfilePageSource).toContain("<SocialProfileScene");
     expect(socialProfilePageSource).toContain('"好友近期无动态"');
   });
@@ -36,6 +37,8 @@ describe("SocialProfileTopBar shared controls", () => {
     expect(unifiedSocialUiSource).toContain('icon="heart"');
     expect(unifiedSocialUiSource).toContain('icon="share"');
     expect(unifiedSocialUiSource).toContain("shareContent({");
+    expect(unifiedSocialUiSource).toContain("profile.identityId");
+    expect(unifiedSocialUiSource).toContain("socialPaths.accountProfile(scope, Number(profile.id), profile.identityId)");
     expect(unifiedSocialUiSource).not.toContain('label="关闭资料页"');
   });
 });

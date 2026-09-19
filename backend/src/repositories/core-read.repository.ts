@@ -209,6 +209,8 @@ export interface ShopDetailPayload extends ShopCardPayload {
 }
 
 export interface TechnicianDetailPayload extends TechnicianCardPayload {
+  socialAccountUserId: number;
+  socialIdentityId: number;
   shop: ShopCardPayload | null;
   bio: string | null;
   serviceArea: string | null;
@@ -330,8 +332,9 @@ type TechnicianCardRecord = TechnicianProfile & {
     entityShareEvents: number;
   };
   user: {
+    id: number;
     avatarBootstrapUrl: string | null;
-    identities: Array<{ publicIdentifier: PublicIdentifier | null }>;
+    identities: Array<{ id: number; publicIdentifier: PublicIdentifier | null }>;
   };
   shop?: { latitude: Prisma.Decimal | null; longitude: Prisma.Decimal | null } | null;
   technicianShopAffiliations?: Array<{
@@ -1102,6 +1105,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       },
       user: {
         select: {
+          id: true,
           avatarBootstrapUrl: true,
           identities: {
             where: {
@@ -1811,8 +1815,17 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     reviewTagSummary: TechnicianReviewTagSummaryPayload,
     origin?: Coordinates
   ): TechnicianDetailPayload {
+    const socialIdentity = technician.user.identities.find((identity) =>
+      this.isActivePublicIdentifier(identity.publicIdentifier, "S")
+    );
+    if (!socialIdentity) {
+      throw new Error("Formal S identity is unavailable.");
+    }
+
     return {
       ...this.mapTechnicianCard(technician, origin),
+      socialAccountUserId: technician.user.id,
+      socialIdentityId: socialIdentity.id,
       shop: technician.shop ? this.mapShopCard(technician.shop, origin) : null,
       bio: technician.bio,
       serviceArea: technician.serviceArea,

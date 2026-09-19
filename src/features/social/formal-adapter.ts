@@ -169,6 +169,7 @@ export function mapFormalSocialProfile(author: RealtimeSocialProfileSummary): So
 
   return {
     id: String(author.userId),
+    identityId: author.identityId,
     entityType,
     displayName: author.displayName || author.username,
     handle: author.username,

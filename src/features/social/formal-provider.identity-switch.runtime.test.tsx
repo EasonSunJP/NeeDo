@@ -62,6 +62,7 @@ function makeWirePost(content: string): RealtimeSocialPost {
       avatarUrl: null,
       displayName: content,
       entityType: "user",
+      identityId: content === "identity-a" ? 70 : 80,
       joinedAt: "2026-08-31T00:00:00.000Z",
       userId: 7,
       username: content

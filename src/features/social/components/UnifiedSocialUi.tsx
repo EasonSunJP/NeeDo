@@ -1795,7 +1795,9 @@ export function SocialProfileTopBar({
   onBack: () => void;
 }) {
   const { profiles, state, toggleFollow } = useSocial();
-  const profilePath = socialPaths.profile(scope, profile);
+  const profilePath = profile.identityId
+    ? socialPaths.accountProfile(scope, Number(profile.id), profile.identityId)
+    : socialPaths.profile(scope, profile);
   const targetKey = profileKey(profile);
   const following = state.follows[actorKey]?.includes(targetKey) ?? false;
   const profileInContext = Boolean(profiles[targetKey]);

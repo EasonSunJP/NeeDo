@@ -26,6 +26,7 @@ import {
   directorySearchQuerySchema,
   directoryUserIdParamSchema,
   followCreateBodySchema,
+  followDeleteQuerySchema,
   followTargetParamSchema,
   friendRequestCreateBodySchema,
   friendRequestIdParamSchema,
@@ -45,6 +46,7 @@ import {
   socialPostListQuerySchema,
   socialPostShareBodySchema,
   socialPostUpdateBodySchema,
+  socialActivityStatusQuerySchema,
   socialUserIdParamSchema
 } from "../validators/realtime.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
@@ -342,7 +344,7 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     "/social/users/:userId/activity-status",
     authenticate(),
     authorize(REALTIME_ROUTE_PERMISSIONS.listSocialPosts),
-    validateRequest({ params: socialUserIdParamSchema }),
+    validateRequest({ params: socialUserIdParamSchema, query: socialActivityStatusQuerySchema }),
     controller.getSocialActivityStatus
   );
   router.get(
@@ -427,7 +429,7 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     "/social/follows/:targetUserId",
     authenticate(),
     authorize(REALTIME_ROUTE_PERMISSIONS.writeFollow),
-    validateRequest({ params: followTargetParamSchema }),
+    validateRequest({ params: followTargetParamSchema, query: followDeleteQuerySchema }),
     controller.deleteFollow
   );
   router.get(

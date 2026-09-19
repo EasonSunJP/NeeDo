@@ -5,7 +5,6 @@ import { PRISMA_INT_MAX } from "../constants/database";
 import type {
   ConversationPayload,
   CreateConversationInput,
-  CreateFollowInput,
   CreateFriendRequestInput,
   CreateMessageInput,
   CreateNeedoEntityShareInput,
@@ -1098,7 +1097,9 @@ export class RealtimeService
     const scope = await this.resolvePersonalIdentityScope(auth);
     return this.repository.listSocialPosts(
       scope.identityId,
-      input.authorUserId === auth.userId ? { ...input, authorIdentityId: scope.identityId } : input,
+      input.authorUserId === auth.userId && !input.authorIdentityId
+        ? { ...input, authorIdentityId: scope.identityId }
+        : input,
       auth.userId
     );
   }
@@ -1255,13 +1256,14 @@ export class RealtimeService
   public async getSocialActivityStatus(
     auth: AuthenticatedAccessContext,
     targetUserId: number,
+    requestedTargetIdentityId?: number,
     now: Date = new Date()
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     const targetIdentityId =
-      targetUserId === auth.userId
+      requestedTargetIdentityId ?? (targetUserId === auth.userId
         ? scope.identityId
-        : await this.repository.findCanonicalIdentityIdForUser(targetUserId);
+        : await this.repository.findCanonicalIdentityIdForUser(targetUserId));
     if (!targetIdentityId) {
       throw this.notFoundError("error.realtime.social_profile_not_found");
     }
@@ -1282,7 +1284,7 @@ export class RealtimeService
 
   public async createFollow(
     auth: AuthenticatedAccessContext,
-    input: Omit<CreateFollowInput, "followerUserId" | "followingUserId"> & { targetUserId: number }
+    input: { targetUserId: number; targetIdentityId?: number }
   ) {
     if (auth.userId === input.targetUserId) {
       throw this.validationError("error.realtime.follow_self");
@@ -1290,7 +1292,10 @@ export class RealtimeService
 
     await this.assertActiveUsers([input.targetUserId]);
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const targetIdentityId = await this.requireCanonicalTargetIdentity(input.targetUserId);
+    const targetIdentityId = await this.requireTargetIdentity(
+      input.targetUserId,
+      input.targetIdentityId
+    );
     const follow = await this.repository.createFollow({
       followerUserId: auth.userId,
       followerIdentityId: scope.identityId,
@@ -1309,9 +1314,16 @@ export class RealtimeService
     return follow;
   }
 
-  public async deleteFollow(auth: AuthenticatedAccessContext, targetUserId: number) {
+  public async deleteFollow(
+    auth: AuthenticatedAccessContext,
+    targetUserId: number,
+    requestedTargetIdentityId?: number
+  ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const targetIdentityId = await this.requireCanonicalTargetIdentity(targetUserId);
+    const targetIdentityId = await this.requireTargetIdentity(
+      targetUserId,
+      requestedTargetIdentityId
+    );
     return this.repository.deleteFollow(scope.identityId, targetIdentityId);
   }
 
@@ -1453,6 +1465,18 @@ export class RealtimeService
       throw this.notFoundError("error.realtime.user_not_found");
     }
     return identityId;
+  }
+
+  private async requireTargetIdentity(userId: number, identityId?: number): Promise<number> {
+    if (identityId === undefined) {
+      return this.requireCanonicalTargetIdentity(userId);
+    }
+
+    const resolvedIdentityId = await this.repository.findIdentityIdForUser(userId, identityId);
+    if (!resolvedIdentityId) {
+      throw this.notFoundError("error.realtime.user_not_found");
+    }
+    return resolvedIdentityId;
   }
 
   private async publishToConversation(

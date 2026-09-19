@@ -513,6 +513,13 @@ const createFixture = async () => {
     findCanonicalIdentityIdForUser: jest.fn(
       async (userId: number) => users.find((user) => user.id === userId)?.identities[0]?.id ?? null
     ),
+    findIdentityIdForUser: jest.fn(async (userId: number, identityId: number) =>
+      users
+        .find((user) => user.id === userId)
+        ?.identities.find(
+          (identity) => identity.id === identityId && identity.isActive && identity.deletedAt === null
+        )?.id ?? null
+    ),
     listConversationRecipients: jest.fn(async (conversationIdToFind: number) => {
       const conversation = conversations.find((item) => item.id === conversationIdToFind);
       return (conversation?.participantUserIds ?? []).map((userId) => ({
@@ -1770,7 +1777,7 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .expect(201);
 
     const response = await request(fixture.app)
-      .get("/api/v1/social/users/2/activity-status")
+      .get("/api/v1/social/users/2/activity-status?identityId=2002")
       .set("Authorization", `Bearer ${ayaToken}`)
       .expect(200);
 
@@ -1792,7 +1799,7 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
     });
     expect(response.body.data).not.toHaveProperty("media");
     expect(fixture.realtimeRepository.getSocialActivityStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ viewerUserId: 1, targetUserId: 2 })
+      expect.objectContaining({ viewerUserId: 1, targetUserId: 2, targetIdentityId: 2002 })
     );
 
     await request(fixture.app)
@@ -2571,11 +2578,20 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
     await request(fixture.app)
       .post("/api/v1/social/follows")
       .set("Authorization", `Bearer ${mikaToken}`)
-      .send({ targetUserId: 1 })
+      .send({ targetUserId: 1, targetIdentityId: 1 })
       .expect(201)
       .expect((response) => {
         expect(response.body.data).toMatchObject({ followerUserId: 2, followingUserId: 1 });
       });
+    expect(fixture.realtimeRepository.createFollow).toHaveBeenCalledWith(
+      expect.objectContaining({ followingUserId: 1, followingIdentityId: 1 })
+    );
+
+    await request(fixture.app)
+      .delete("/api/v1/social/follows/1?identityId=1")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(200);
+    expect(fixture.realtimeRepository.deleteFollow).toHaveBeenCalledWith(2, 1);
 
     const postsResponse = await request(fixture.app)
       .get("/api/v1/social/posts?page=1&pageSize=20")

@@ -106,10 +106,11 @@ const publishedTechnicianWithoutServices = {
     entityShareEvents: 8
   },
   user: {
+    id: 741,
     avatarBootstrapUrl: null,
     identities: [
-      { publicIdentifier: inactiveTechnicianIdentifier },
-      { publicIdentifier: activeTechnicianIdentifier }
+      { id: 32, publicIdentifier: inactiveTechnicianIdentifier },
+      { id: 31, publicIdentifier: activeTechnicianIdentifier }
     ]
   }
 };
@@ -806,6 +807,8 @@ describe("CoreReadRepository multi-entity search", () => {
       longitude: 139.701636
     })).resolves.toMatchObject({
       id: 41,
+      socialAccountUserId: 741,
+      socialIdentityId: 31,
       gender: "female",
       heightCm: 164,
       languages: ["日本語", "中文"],

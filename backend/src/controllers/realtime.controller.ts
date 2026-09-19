@@ -17,6 +17,7 @@ import {
   directorySearchQuerySchema,
   directoryUserIdParamSchema,
   followCreateBodySchema,
+  followDeleteQuerySchema,
   followTargetParamSchema,
   friendRequestCreateBodySchema,
   friendRequestIdParamSchema,
@@ -37,6 +38,7 @@ import {
   socialPostListQuerySchema,
   socialPostShareBodySchema,
   socialPostUpdateBodySchema,
+  socialActivityStatusQuerySchema,
   socialUserIdParamSchema
 } from "../validators/realtime.validator";
 
@@ -409,8 +411,13 @@ export class RealtimeController {
 
   public getSocialActivityStatus = this.createHandler((request, response) => {
     const params = socialUserIdParamSchema.parse(request.params);
+    const query = socialActivityStatusQuerySchema.parse(request.query);
 
-    return this.service.getSocialActivityStatus(getAuthenticatedAccess(response), params.userId);
+    return this.service.getSocialActivityStatus(
+      getAuthenticatedAccess(response),
+      params.userId,
+      query.identityId
+    );
   });
 
   public createFollow = this.createHandler(
@@ -424,8 +431,13 @@ export class RealtimeController {
 
   public deleteFollow = this.createHandler((request, response) => {
     const params = followTargetParamSchema.parse(request.params);
+    const query = followDeleteQuerySchema.parse(request.query);
 
-    return this.service.deleteFollow(getAuthenticatedAccess(response), params.targetUserId);
+    return this.service.deleteFollow(
+      getAuthenticatedAccess(response),
+      params.targetUserId,
+      query.identityId
+    );
   });
 
   public listNotifications = this.createHandler((request, response) =>

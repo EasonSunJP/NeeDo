@@ -323,8 +323,10 @@ describe("formal social provider gate", () => {
   it("loads a selected account only after its profile page asks for it and deduplicates concurrent requests", () => {
     expect(source).toContain("ensureAccountProfile:");
     expect(source).toContain("accountProfileRequestsRef");
-    expect(source).toContain("realtimeApi.getSocialActivityStatus(userId)");
-    expect(source).toContain("realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: userId })");
+    expect(source).toContain("realtimeApi.getSocialActivityStatus(userId, identityId)");
+    expect(source).toContain("authorIdentityId: identityId");
+    expect(source).toContain("realtimeApi.follow(Number(target.id), target.identityId)");
+    expect(source).toContain("realtimeApi.unfollow(Number(target.id), target.identityId)");
     expect(source).toContain("accountProfileRequestsRef.current.set(requestKey, request)");
     expect(source).toContain("accountProfileRequestsRef.current.delete(requestKey)");
   });

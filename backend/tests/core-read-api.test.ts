@@ -186,6 +186,8 @@ describe("Step 08 core read API", () => {
       })),
       findTechnicianDetail: jest.fn(async () => ({
         ...technicianCard,
+        socialAccountUserId: 741,
+        socialIdentityId: 1741,
         shop: shopCard,
         bio: "Certified body care technician.",
         serviceArea: "Minato, Shibuya",

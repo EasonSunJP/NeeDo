@@ -11025,6 +11025,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             type: "object",
             required: [
+              "socialAccountUserId",
+              "socialIdentityId",
               "shop",
               "bio",
               "serviceArea",
@@ -11039,6 +11041,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "updatedAt"
             ],
             properties: {
+              socialAccountUserId: { type: "integer", minimum: 1 },
+              socialIdentityId: { type: "integer", minimum: 1 },
               shop: {
                 anyOf: [{ $ref: "#/components/schemas/ShopCard" }, { type: "null" }]
               },
@@ -32206,6 +32210,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "path",
             required: true,
             schema: { type: "integer", minimum: 1 }
+          },
+          {
+            name: "identityId",
+            in: "query",
+            required: false,
+            description: "Optional active identity belonging to the target user.",
+            schema: { type: "integer", minimum: 1 }
           }
         ],
         responses: {
@@ -32239,6 +32250,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: "authorUserId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "authorIdentityId", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "replyToPostId", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "bookmarked", in: "query", schema: { type: "boolean" } },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
@@ -32536,7 +32548,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 type: "object",
                 required: ["targetUserId"],
                 properties: {
-                  targetUserId: { type: "integer", minimum: 1 }
+                  targetUserId: { type: "integer", minimum: 1 },
+                  targetIdentityId: { type: "integer", minimum: 1 }
                 }
               }
             }
@@ -32557,6 +32570,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "targetUserId",
             in: "path",
             required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
+          {
+            name: "identityId",
+            in: "query",
+            required: false,
             schema: { type: "integer", minimum: 1 }
           }
         ],

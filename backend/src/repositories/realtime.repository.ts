@@ -687,7 +687,7 @@ export interface SocialActivityStatusInput {
   viewerUserId: number;
   viewerIdentityId?: number;
   targetUserId: number;
-  targetIdentityId?: number;
+  targetIdentityId: number;
   since: Date;
 }
 
@@ -717,6 +717,7 @@ export interface CreateOrderStatusNotificationInput {
 export interface RealtimeRepositoryPort {
   findActiveUserIds: (ids: number[]) => Promise<number[]>;
   findCanonicalIdentityIdForUser: (userId: number) => Promise<number | null>;
+  findIdentityIdForUser: (userId: number, identityId: number) => Promise<number | null>;
   createConversation: (input: CreateConversationInput) => Promise<CreateConversationOutcome>;
   updateConversationPrivacy: (
     input: UpdateConversationPrivacyInput
@@ -1116,6 +1117,21 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   public findCanonicalIdentityIdForUser(userId: number): Promise<number | null> {
     return this.findCanonicalIdentityId(this.client, userId);
+  }
+
+  public async findIdentityIdForUser(userId: number, identityId: number): Promise<number | null> {
+    const identity = await this.client.userIdentity.findFirst({
+      where: {
+        id: identityId,
+        userId,
+        isActive: true,
+        deletedAt: null,
+        user: { isActive: true, deletedAt: null }
+      },
+      select: { id: true }
+    });
+
+    return identity?.id ?? null;
   }
 
   public listConversationRecipients(
@@ -4961,10 +4977,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     if (!profile) {
       return null;
     }
+    const targetIdentity = profile.identities.find(
+      (identity) => identity.id === input.targetIdentityId
+    );
+    if (!targetIdentity) {
+      return null;
+    }
 
     const latestVisiblePost = await this.client.socialPost.findFirst({
       where: {
-        authorIdentityId: input.targetIdentityId ?? input.targetUserId,
+        authorIdentityId: input.targetIdentityId,
         createdAt: { gte: input.since },
         deletedAt: null,
         OR: [
@@ -4988,7 +5010,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
     return {
       status: latestVisiblePost ? "recent_posts" : "no_recent_posts",
-      profile: this.mapSocialAuthor(profile),
+      profile: this.mapSocialAuthor(profile, targetIdentity),
       latestVisiblePostAt: latestVisiblePost?.createdAt ?? null
     };
   }

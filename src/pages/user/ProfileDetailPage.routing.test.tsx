@@ -66,6 +66,8 @@ const shop: CoreShopDetail = {
 
 const technician: CoreTechnicianDetail = {
   id: 17,
+  socialAccountUserId: 741,
+  socialIdentityId: 1741,
   publicId: "s0000000017",
   displayName: "Misaki",
   city: "东京都",
