@@ -1439,13 +1439,17 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       });
     }
 
+    const scopedSearchWhere: Prisma.ShopWhereInput =
+      searchBranches.length > 0
+        ? { AND: [visibilityWhere, { OR: searchBranches }] }
+        : visibilityWhere;
+
     return {
       deletedAt: null,
       status: PUBLISHED_STATUS,
       publicIdentifier: { is: this.publicIdentifierWhere("SHOP") },
-      ...visibilityWhere,
+      ...scopedSearchWhere,
       ...(input.city ? { city: input.city } : {}),
-      ...(searchBranches.length > 0 ? { OR: searchBranches } : {})
     };
   }
 
