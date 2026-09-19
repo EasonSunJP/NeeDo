@@ -311,6 +311,36 @@ describe("MerchantPortal merchant-profile privacy authority", () => {
     expect(container.querySelector<HTMLButtonElement>('button[aria-label="开启店铺隐私模式"]')?.disabled).toBe(false);
   });
 
+  it("isolates a pending profile save by account and identity when only the shop changes", async () => {
+    let resolveSave: ((value: MerchantIdentityProfile) => void) | undefined;
+    const pendingSave = new Promise<MerchantIdentityProfile>((resolve) => {
+      resolveSave = resolve;
+    });
+    vi.mocked(merchantProfileApi.getMine)
+      .mockReset()
+      .mockResolvedValueOnce(profile)
+      .mockResolvedValueOnce({ ...profile, visibility: "network" })
+      .mockResolvedValueOnce({ ...profile, visibility: "privateAll" });
+    vi.mocked(merchantProfileApi.updateMine).mockReturnValue(pendingSave);
+
+    await act(async () => root.render(portal()));
+    await waitFor(() => expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).toContain("公开可见"));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="开启店铺隐私模式"]')?.click());
+    const confirm = [...container.querySelectorAll("button")].find((button) => button.textContent === "开启");
+    await act(async () => confirm?.click());
+    await waitFor(() => expect(merchantProfileApi.updateMine).toHaveBeenCalledWith({ visibility: "privateAll" }));
+
+    testState.session.linkedStoreId = "store-72";
+    await act(async () => root.render(portal({ ...store, id: "store-72", systemId: "shop0000000072" })));
+    await waitFor(() => expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).toContain("对好友以及关联人可见"));
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="开启店铺隐私模式"]')?.disabled).toBe(true);
+
+    await act(async () => resolveSave?.({ ...profile, visibility: "privateAll" }));
+    await waitFor(() => expect(merchantProfileApi.getMine).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(container.querySelector('[data-testid="merchant-store-privacy-control"]')?.textContent).toContain("对所有人不可见"));
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="开启店铺隐私模式"]')?.disabled).toBe(false);
+  });
+
   it("persists a visibility change through the merchant profile and reloads it after remount", async () => {
     vi.mocked(merchantProfileApi.getMine).mockResolvedValue({ ...profile, visibility: "privateAll" });
     vi.mocked(merchantProfileApi.updateMine).mockResolvedValue({ ...profile, visibility: "limited" });

@@ -1867,10 +1867,13 @@ export function MerchantPortalContent({
   const activeMeTab = getMerchantMeTab(searchParams.get("meTab"));
   const storeApiId = getMerchantStoreApiId(store.id);
   const activeMerchantIdentityId = session?.activeIdentityId ?? null;
-  const merchantPrivacyScopeKey = `${activeMerchantIdentityId ?? "none"}:${storeApiId ?? "none"}`;
+  const merchantPrivacyAuthorityKey = `${session?.id ?? "none"}:${activeMerchantIdentityId ?? "none"}`;
+  const merchantPrivacyScopeKey = `${merchantPrivacyAuthorityKey}:${storeApiId ?? "none"}`;
+  const merchantPrivacyAuthorityKeyRef = useRef(merchantPrivacyAuthorityKey);
   const merchantPrivacyScopeKeyRef = useRef(merchantPrivacyScopeKey);
   const merchantPrivacyRequestGenerationRef = useRef(0);
-  const merchantPrivacyPendingSaveScopesRef = useRef(new Set<string>());
+  const merchantPrivacyPendingSaveAuthoritiesRef = useRef(new Set<string>());
+  merchantPrivacyAuthorityKeyRef.current = merchantPrivacyAuthorityKey;
   merchantPrivacyScopeKeyRef.current = merchantPrivacyScopeKey;
   const storeTechnicians = useMemo(() => {
     return technicians.filter((tech) => tech.storeId === store.id);
@@ -2173,14 +2176,14 @@ export function MerchantPortalContent({
           merchantPrivacyRequestGenerationRef.current === requestGeneration &&
           merchantPrivacyScopeKeyRef.current === requestedScopeKey
         ) {
-          setStorePrivacySaving(merchantPrivacyPendingSaveScopesRef.current.has(requestedScopeKey));
+          setStorePrivacySaving(merchantPrivacyPendingSaveAuthoritiesRef.current.has(merchantPrivacyAuthorityKey));
         }
       });
 
     return () => {
       mounted = false;
     };
-  }, [activeMeTab, activeMerchantIdentityId, activeView, merchantPrivacyScopeKey, storeApiId]);
+  }, [activeMeTab, activeMerchantIdentityId, activeView, merchantPrivacyAuthorityKey, merchantPrivacyScopeKey, storeApiId]);
 
   useEffect(() => {
     if (activeView !== "staff" || !staffIdParam) {
@@ -2645,9 +2648,10 @@ export function MerchantPortalContent({
     }
   }, []);
 
-  const reconcileStorePrivacyVisibility = async (requestedScopeKey: string, requestedIdentityId: number) => {
-    if (merchantPrivacyScopeKeyRef.current !== requestedScopeKey) return;
+  const reconcileStorePrivacyVisibility = async (requestedAuthorityKey: string, requestedIdentityId: number) => {
+    if (merchantPrivacyAuthorityKeyRef.current !== requestedAuthorityKey) return;
 
+    const requestedScopeKey = merchantPrivacyScopeKeyRef.current;
     const requestGeneration = merchantPrivacyRequestGenerationRef.current + 1;
     merchantPrivacyRequestGenerationRef.current = requestGeneration;
     setStorePrivacySaving(true);
@@ -2656,6 +2660,7 @@ export function MerchantPortalContent({
       const result = await merchantProfileApi.getMine();
       if (
         merchantPrivacyRequestGenerationRef.current !== requestGeneration ||
+        merchantPrivacyAuthorityKeyRef.current !== requestedAuthorityKey ||
         merchantPrivacyScopeKeyRef.current !== requestedScopeKey ||
         result.identityId !== requestedIdentityId
       ) return;
@@ -2663,6 +2668,7 @@ export function MerchantPortalContent({
     } catch {
       if (
         merchantPrivacyRequestGenerationRef.current === requestGeneration &&
+        merchantPrivacyAuthorityKeyRef.current === requestedAuthorityKey &&
         merchantPrivacyScopeKeyRef.current === requestedScopeKey
       ) {
         setStorePrivacyVisibility(null);
@@ -2671,9 +2677,10 @@ export function MerchantPortalContent({
     } finally {
       if (
         merchantPrivacyRequestGenerationRef.current === requestGeneration &&
+        merchantPrivacyAuthorityKeyRef.current === requestedAuthorityKey &&
         merchantPrivacyScopeKeyRef.current === requestedScopeKey
       ) {
-        setStorePrivacySaving(merchantPrivacyPendingSaveScopesRef.current.has(requestedScopeKey));
+        setStorePrivacySaving(merchantPrivacyPendingSaveAuthoritiesRef.current.has(requestedAuthorityKey));
       }
     }
   };
@@ -2687,7 +2694,7 @@ export function MerchantPortalContent({
       !activeMerchantIdentityId ||
       storePrivacyVisibility === null ||
       storePrivacySaving ||
-      merchantPrivacyPendingSaveScopesRef.current.has(merchantPrivacyScopeKey)
+      merchantPrivacyPendingSaveAuthoritiesRef.current.has(merchantPrivacyAuthorityKey)
     ) {
       if (!storeApiId || !activeMerchantIdentityId) {
         setContactLog(t("当前店铺资料尚未绑定正式店铺 ID，无法保存隐私模式。"));
@@ -2696,19 +2703,20 @@ export function MerchantPortalContent({
     }
     setStorePrivacySaving(true);
     const previousVisibility = storePrivacyVisibility;
+    const requestedAuthorityKey = merchantPrivacyAuthorityKey;
     const requestedScopeKey = merchantPrivacyScopeKey;
     const requestGeneration = merchantPrivacyRequestGenerationRef.current + 1;
     merchantPrivacyRequestGenerationRef.current = requestGeneration;
-    merchantPrivacyPendingSaveScopesRef.current.add(requestedScopeKey);
+    merchantPrivacyPendingSaveAuthoritiesRef.current.add(requestedAuthorityKey);
     try {
       const result = await merchantProfileApi.updateMine({ visibility });
-      merchantPrivacyPendingSaveScopesRef.current.delete(requestedScopeKey);
+      merchantPrivacyPendingSaveAuthoritiesRef.current.delete(requestedAuthorityKey);
       if (
         merchantPrivacyRequestGenerationRef.current !== requestGeneration ||
         merchantPrivacyScopeKeyRef.current !== requestedScopeKey
       ) {
-        if (merchantPrivacyScopeKeyRef.current === requestedScopeKey) {
-          void reconcileStorePrivacyVisibility(requestedScopeKey, activeMerchantIdentityId);
+        if (merchantPrivacyAuthorityKeyRef.current === requestedAuthorityKey) {
+          void reconcileStorePrivacyVisibility(requestedAuthorityKey, activeMerchantIdentityId);
         }
         return;
       }
@@ -2719,18 +2727,18 @@ export function MerchantPortalContent({
       setStorePrivacyMenuOpen(openMenuAfterSave && result.visibility !== "public");
       setContactLog(t("店铺隐私模式设置已保存。"));
     } catch {
-      merchantPrivacyPendingSaveScopesRef.current.delete(requestedScopeKey);
+      merchantPrivacyPendingSaveAuthoritiesRef.current.delete(requestedAuthorityKey);
       if (
         merchantPrivacyRequestGenerationRef.current === requestGeneration &&
         merchantPrivacyScopeKeyRef.current === requestedScopeKey
       ) {
         setStorePrivacyVisibility(previousVisibility);
         setContactLog(t("店铺隐私模式保存失败，请稍后重试。"));
-      } else if (merchantPrivacyScopeKeyRef.current === requestedScopeKey) {
+      } else if (merchantPrivacyAuthorityKeyRef.current === requestedAuthorityKey) {
         setStorePrivacySaving(false);
       }
     } finally {
-      merchantPrivacyPendingSaveScopesRef.current.delete(requestedScopeKey);
+      merchantPrivacyPendingSaveAuthoritiesRef.current.delete(requestedAuthorityKey);
       if (
         merchantPrivacyRequestGenerationRef.current === requestGeneration &&
         merchantPrivacyScopeKeyRef.current === requestedScopeKey
