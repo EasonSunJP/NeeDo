@@ -24,7 +24,7 @@ After the change:
 
 | Asset | Final raw bytes | Final gzip bytes | Change in raw bytes |
 | --- | ---: | ---: | ---: |
-| `main` | 3,565,987 | 968,108 | -136,542 |
+| `main` | 3,565,616 | 967,954 | -136,913 |
 | `i18n` | 3,582,930 | 1,208,696 | -117,836 |
 
 The build no longer emits the chunk-size warning at the existing 3,600 kB threshold. The bundle audit budgets were tightened to 3,590,000 bytes for `main` and 3,600,000 bytes for `i18n`.
