@@ -95,6 +95,8 @@ export const translations: TranslationMap = {
   "查看收藏详细数字": fourLanguageTranslation("查看收藏詳細數字", "お気に入り登録数の詳細を表示", "View favorite count details", "즐겨찾기 수 상세 보기"),
   "全员可见": fourLanguageTranslation("全員可見", "全員に表示", "Visible to everyone", "모두에게 표시"),
   "公开可见": fourLanguageTranslation("公開可見", "全員に表示", "Visible to everyone", "모두에게 표시"),
+  "正在读取隐私设置": fourLanguageTranslation("正在讀取隱私設定", "プライバシー設定を読み込んでいます", "Loading privacy settings", "개인정보 보호 설정을 불러오는 중입니다"),
+  "隐私设置不可用": fourLanguageTranslation("隱私設定無法使用", "プライバシー設定を利用できません", "Privacy settings are unavailable", "개인정보 보호 설정을 사용할 수 없습니다"),
   "对所有人不可见": fourLanguageTranslation("對所有人不可見", "全員に非表示", "Hidden from everyone", "모두에게 숨기기"),
   "对好友可见": fourLanguageTranslation("對好友可見", "友だちにのみ表示", "Visible to friends", "친구에게만 표시"),
   "好友及关联人可见": fourLanguageTranslation("好友及關聯人可見", "友だち・関係者に表示", "Visible to friends and related contacts", "친구 및 관계자에게 표시"),
