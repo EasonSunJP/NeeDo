@@ -457,22 +457,20 @@ export class StagingTestChibaShopProvisioner {
         select: { id: true }
       });
       assert(massageCategory, "STAGING_TEST_CHIBA_MASSAGE_CATEGORY_MISSING");
-      const taxonomyKey = `staging-test-chiba:${shop.id}:category:${massageCategory.id}`;
       const taxonomySelection = await tx.shopServiceCategory.findFirst({
         where: { shopId: shop.id, categoryId: massageCategory.id }
       });
       if (taxonomySelection) {
         await tx.shopServiceCategory.update({
           where: { id: taxonomySelection.id },
-          data: { selectedByUserId: owner.id, activeKey: taxonomyKey, deletedAt: null }
+          data: { selectedByUserId: owner.id, deletedAt: null }
         });
       } else {
         await tx.shopServiceCategory.create({
           data: {
             shopId: shop.id,
             categoryId: massageCategory.id,
-            selectedByUserId: owner.id,
-            activeKey: taxonomyKey
+            selectedByUserId: owner.id
           }
         });
       }

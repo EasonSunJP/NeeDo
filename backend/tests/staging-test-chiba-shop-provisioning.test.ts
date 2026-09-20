@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   STAGING_TEST_CHIBA_SERVICES,
   buildNightlyServiceSlotRanges,
@@ -73,5 +75,18 @@ describe("StagingTest Chiba shop provisioning gate", () => {
     expect(STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "option")).toHaveLength(2);
     expect(STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "extension")).toHaveLength(1);
     expect(STAGING_TEST_CHIBA_SERVICES.every((service) => service.currency === "JPY" && service.priceAmountJpy > 0)).toBe(true);
+  });
+
+  it("leaves the shop taxonomy active key to the database generated column", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/staging/staging-test-chiba-shop-provisioning.ts"),
+      "utf8"
+    );
+    const taxonomyWriteBlock = source.match(
+      /const taxonomySelection =[\s\S]*?const services:/u
+    )?.[0];
+
+    expect(taxonomyWriteBlock).toBeDefined();
+    expect(taxonomyWriteBlock).not.toContain("activeKey");
   });
 });
