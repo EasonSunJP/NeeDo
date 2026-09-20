@@ -1,4 +1,7 @@
-import { parseStagingTestOperationsConfig } from "../src/staging/staging-test-operations-provisioning";
+import {
+  parseStagingTestOperationsConfig,
+  planAvailabilityReconciliation
+} from "../src/staging/staging-test-operations-provisioning";
 
 describe("StagingTest operations provisioning gate", () => {
   const valid = {
@@ -28,5 +31,30 @@ describe("StagingTest operations provisioning gate", () => {
     ["ALLOW_STAGING_TEST_OPERATIONS_PROVISIONING", "false"]
   ])("rejects an unsafe %s boundary", (key, value) => {
     expect(() => parseStagingTestOperationsConfig({ ...valid, [key]: value })).toThrow();
+  });
+
+  it("keeps one active availability per technician and day while soft-deleting duplicates", () => {
+    const startsAt = new Date("2026-09-19T15:00:00.000Z");
+    const endsAt = new Date("2026-09-20T15:00:00.000Z");
+
+    expect(planAvailabilityReconciliation([
+      { id: 20, technicianProfileId: 8, startsAt, endsAt, isActive: false },
+      { id: 21, technicianProfileId: 8, startsAt, endsAt, isActive: true },
+      { id: 22, technicianProfileId: 8, startsAt, endsAt, isActive: true },
+      {
+        id: 23,
+        technicianProfileId: 9,
+        startsAt: new Date("2026-09-20T15:00:00.000Z"),
+        endsAt: new Date("2026-09-21T15:00:00.000Z"),
+        isActive: false
+      }
+    ])).toEqual({
+      existingKeys: new Set([
+        "8:2026-09-19T15:00:00.000Z:2026-09-20T15:00:00.000Z",
+        "9:2026-09-20T15:00:00.000Z:2026-09-21T15:00:00.000Z"
+      ]),
+      inactiveIds: [23],
+      duplicateIds: [20, 22]
+    });
   });
 });

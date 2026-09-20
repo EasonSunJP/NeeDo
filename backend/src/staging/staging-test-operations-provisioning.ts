@@ -26,8 +26,53 @@ export interface StagingTestOperationsResult {
   startDate: string;
   endDate: string;
   availabilityCount: number;
+  deduplicatedAvailabilityCount: number;
   automationSettingCount: number;
 }
+
+interface StagingAvailabilityRow {
+  id: number;
+  technicianProfileId: number | null;
+  startsAt: Date;
+  endsAt: Date;
+  isActive: boolean;
+}
+
+const availabilityKey = (item: {
+  technicianProfileId?: number | null;
+  startsAt: Date | string;
+  endsAt: Date | string;
+}): string =>
+  `${item.technicianProfileId}:${new Date(item.startsAt).toISOString()}:${new Date(item.endsAt).toISOString()}`;
+
+export const planAvailabilityReconciliation = (rows: StagingAvailabilityRow[]): {
+  existingKeys: Set<string>;
+  inactiveIds: number[];
+  duplicateIds: number[];
+} => {
+  const existingKeys = new Set<string>();
+  const inactiveIds: number[] = [];
+  const duplicateIds: number[] = [];
+  const orderedRows = [...rows].sort(
+    (left, right) => Number(right.isActive) - Number(left.isActive) || left.id - right.id
+  );
+
+  for (const row of orderedRows) {
+    const key = availabilityKey(row);
+    if (existingKeys.has(key)) {
+      duplicateIds.push(row.id);
+      continue;
+    }
+    existingKeys.add(key);
+    if (!row.isActive) inactiveIds.push(row.id);
+  }
+
+  return {
+    existingKeys,
+    inactiveIds: inactiveIds.sort((left, right) => left - right),
+    duplicateIds: duplicateIds.sort((left, right) => left - right)
+  };
+};
 
 const addCalendarYear = (date: string): string => {
   const [year, month, day] = date.split("-").map(Number);
@@ -166,14 +211,14 @@ export class StagingTestOperationsProvisioner {
         },
         select: { id: true, technicianProfileId: true, startsAt: true, endsAt: true, isActive: true }
       });
-      const availabilityKey = (item: {
-        technicianProfileId?: number | null;
-        startsAt: Date | string;
-        endsAt: Date | string;
-      }): string =>
-        `${item.technicianProfileId}:${new Date(item.startsAt).toISOString()}:${new Date(item.endsAt).toISOString()}`;
-      const existingKeys = new Set(existingAvailabilities.map(availabilityKey));
-      const inactiveIds = existingAvailabilities.filter((item) => !item.isActive).map((item) => item.id);
+      const { existingKeys, inactiveIds, duplicateIds } =
+        planAvailabilityReconciliation(existingAvailabilities);
+      if (duplicateIds.length > 0) {
+        await transaction.availability.updateMany({
+          where: { id: { in: duplicateIds } },
+          data: { isActive: false, deletedAt: new Date() }
+        });
+      }
       if (inactiveIds.length > 0) {
         await transaction.availability.updateMany({
           where: { id: { in: inactiveIds } },
@@ -223,6 +268,7 @@ export class StagingTestOperationsProvisioner {
             endDate: config.endDate,
             technicianProfileIds,
             availabilityCount,
+            deduplicatedAvailabilityCount: duplicateIds.length,
             automationSettingCount
           }
         }
@@ -234,6 +280,7 @@ export class StagingTestOperationsProvisioner {
         startDate: toDateString(periodStart),
         endDate: toDateString(inclusiveEnd),
         availabilityCount,
+        deduplicatedAvailabilityCount: duplicateIds.length,
         automationSettingCount
       };
     }, { timeout: 120_000 });
