@@ -30977,7 +30977,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           required: true,
           content: {
             "application/json": {
-              schema: { type: "object", required: ["enabled", "expectedVersion", "rules"] }
+              schema: {
+                type: "object",
+                required: ["enabled", "expectedVersion", "rules"],
+                properties: {
+                  enabled: { type: "boolean" },
+                  expectedVersion: { type: "integer", minimum: 1 },
+                  rules: {
+                    type: "object",
+                    required: ["minimumPrepaymentPercent"],
+                    properties: {
+                      minimumPrepaymentPercent: {
+                        description: "0 disables the gate; enabled values are integer percentages from 10 through 100",
+                        oneOf: [
+                          { type: "integer", enum: [0] },
+                          { type: "integer", minimum: 10, maximum: 100 }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         },

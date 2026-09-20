@@ -55,6 +55,10 @@ export const technicianAutomationRulesSchema = z.object({
   serviceModes: uniqueArray(z.enum(["store", "home"]), 2, 1),
   paymentMethods: uniqueArray(z.enum(["onsite", "card", "ndp", "bank_transfer", "other"]), 5, 1),
   serviceIds: uniqueArray(z.number().int().positive(), 200),
+  minimumPrepaymentPercent: z.union([
+    z.literal(0),
+    z.number().int().min(10).max(100)
+  ]),
   onlyOnline: z.boolean(),
   requestStartWindow: z.enum(["immediate", "within_1_hour", "within_3_hours", "today", "any"]),
   requireMatchingTags: z.boolean()
@@ -102,6 +106,7 @@ export function defaultTechnicianAutomationRules(
     serviceModes: ["store", "home"],
     paymentMethods: ["onsite", "card", "ndp", "bank_transfer", "other"],
     serviceIds: [],
+    minimumPrepaymentPercent: 0,
     onlyOnline: kind === "request",
     requestStartWindow: kind === "request" ? "within_3_hours" : "any",
     requireMatchingTags: kind === "request"

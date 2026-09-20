@@ -36,6 +36,7 @@ export function defaultAutomationRules(kind: TechnicianAutomationKind): Technici
     serviceModes: ["store", "home"],
     paymentMethods: ["onsite", "card", "ndp", "bank_transfer", "other"],
     serviceIds: [],
+    minimumPrepaymentPercent: 0,
     onlyOnline: kind === "request",
     requestStartWindow: kind === "request" ? "within_3_hours" : "any",
     requireMatchingTags: kind === "request"
@@ -184,8 +185,12 @@ export function TechnicianAutomationSettingsPanel({
   const validation = useMemo(() => {
     if (specificSource && rules.source.contactIdentityIds.length === 0) return "请选择至少一位联系人";
     if (rules.timeWindows.some((window) => window.endMinute <= window.startMinute)) return "结束时间必须晚于开始时间";
+    if (
+      rules.minimumPrepaymentPercent !== 0 &&
+      (!Number.isInteger(rules.minimumPrepaymentPercent) || rules.minimumPrepaymentPercent < 10 || rules.minimumPrepaymentPercent > 100)
+    ) return "最低预付比例必须是 10 至 100 的整数";
     return "";
-  }, [rules.source.contactIdentityIds.length, rules.timeWindows, specificSource]);
+  }, [rules.minimumPrepaymentPercent, rules.source.contactIdentityIds.length, rules.timeWindows, specificSource]);
 
   const save = async () => {
     if (!setting || validation) return;
@@ -332,6 +337,35 @@ export function TechnicianAutomationSettingsPanel({
           <MultiChoice label="服务方式" options={[{ value: "store", label: "到店" }, { value: "home", label: "上门" }]} value={rules.serviceModes} onChange={(serviceModes) => updateRules({ serviceModes })} />
           <MultiChoice label="支付方式" options={[{ value: "onsite", label: "现场" }, { value: "card", label: "银行卡" }, { value: "ndp", label: "NDP" }, { value: "bank_transfer", label: "转账" }, { value: "other", label: "其他" }]} value={rules.paymentMethods} onChange={(paymentMethods) => updateRules({ paymentMethods })} />
           <fieldset><legend className="text-xs font-black text-[color:var(--client-muted)]">项目类型（不选表示全部）</legend><div className="mt-2 space-y-2">{services.length === 0 ? <p className="text-xs text-[color:var(--client-muted)]">当前没有可用的正式服务项目</p> : services.map((service) => <label className="flex items-center gap-2 rounded-xl border border-[color:var(--client-line)] p-3 text-sm font-bold" key={service.id}><input checked={rules.serviceIds.includes(service.id)} onChange={(event) => updateRules({ serviceIds: event.target.checked ? [...rules.serviceIds, service.id] : rules.serviceIds.filter((id) => id !== service.id) })} type="checkbox" />{service.name}<span className="ml-auto text-xs text-[color:var(--client-muted)]">¥{service.priceAmount.toLocaleString()}</span></label>)}</div></fieldset>
+          <div className="space-y-3 border-t border-[color:var(--client-line)] pt-4" data-testid="automation-prepayment-rule">
+            <Toggle
+              checked={rules.minimumPrepaymentPercent !== 0}
+              label="需要预付"
+              onChange={(required) => updateRules({ minimumPrepaymentPercent: required ? 10 : 0 })}
+            />
+            {rules.minimumPrepaymentPercent !== 0 ? (
+              <label className="block text-xs font-black text-[color:var(--client-muted)]">
+                最低预付比例
+                <span className="mt-2 flex items-center gap-2">
+                  <input
+                    aria-label="最低预付比例"
+                    className={fieldClass}
+                    inputMode="numeric"
+                    max={100}
+                    min={10}
+                    onChange={(event) => updateRules({
+                      minimumPrepaymentPercent: event.target.value === "" ? Number.NaN : Number(event.target.value)
+                    })}
+                    step={1}
+                    type="number"
+                    value={Number.isFinite(rules.minimumPrepaymentPercent) ? rules.minimumPrepaymentPercent : ""}
+                  />
+                  <span className="shrink-0 text-sm text-[color:var(--client-text)]">%以上</span>
+                </span>
+                <span className="mt-2 block font-bold leading-5">按订单金额计算；达到该比例后才会自动接单或抢单。</span>
+              </label>
+            ) : null}
+          </div>
         </div>
       </section>
 

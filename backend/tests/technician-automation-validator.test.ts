@@ -11,12 +11,14 @@ describe("technician automation validators", () => {
       maxDistanceKm: 5,
       minLeadMinutes: 30,
       acceptNewCustomers: true,
+      minimumPrepaymentPercent: 0,
       serviceModes: ["store", "home"]
     });
     expect(defaultTechnicianAutomationRules("request")).toMatchObject({
       bufferMinutes: 30,
       maxDistanceKm: 5,
       minLeadMinutes: 0,
+      minimumPrepaymentPercent: 0,
       onlyOnline: true,
       requestStartWindow: "within_3_hours"
     });
@@ -44,6 +46,10 @@ describe("technician automation validators", () => {
       { ...rules, maxDistanceKm: 0 },
       { ...rules, minCustomerRating: 5.1 },
       { ...rules, maxCancellationRatePercent: 101 },
+      { ...rules, minimumPrepaymentPercent: 1 },
+      { ...rules, minimumPrepaymentPercent: 9 },
+      { ...rules, minimumPrepaymentPercent: 10.5 },
+      { ...rules, minimumPrepaymentPercent: 101 },
       { ...rules, serviceIds: [4, 4] },
       { ...rules, source: { mode: "any", contactIdentityIds: [31] } }
     ];
@@ -53,6 +59,20 @@ describe("technician automation validators", () => {
         expectedVersion: 1,
         rules: candidate
       }).success).toBe(false);
+    }
+  });
+
+  it("accepts only off or an integer prepayment threshold from 10 through 100", () => {
+    for (const minimumPrepaymentPercent of [0, 10, 30, 100]) {
+      const result = technicianAutomationSettingsUpdateSchema.parse({
+        enabled: true,
+        expectedVersion: 1,
+        rules: {
+          ...defaultTechnicianAutomationRules("booking"),
+          minimumPrepaymentPercent
+        }
+      });
+      expect(result.rules.minimumPrepaymentPercent).toBe(minimumPrepaymentPercent);
     }
   });
 

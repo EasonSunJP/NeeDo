@@ -14,6 +14,9 @@ export interface TechnicianAutomationEvaluationContext {
   distanceKm: number | null;
   grossAmountJpy: number;
   netAmountJpy: number | null;
+  prepaidServiceAmountJpy: number;
+  prepaymentBaseAmountJpy: number;
+  prepaymentConfirmed: boolean;
   customerRating: number | null;
   customerCompletedOrders: number;
   customerHistoricalOrders: number;
@@ -113,6 +116,18 @@ export function evaluateTechnicianAutomationRules(
   }
   if (kind === "request" && rules.minNetAmountJpy !== null) {
     pass("amount:net_minimum", context.netAmountJpy !== null && context.netAmountJpy >= rules.minNetAmountJpy, context.netAmountJpy === null ? "amount:net_unavailable" : "amount:net_too_low");
+  }
+  if (rules.minimumPrepaymentPercent > 0) {
+    const requiredPrepaymentJpy = Math.ceil(
+      context.prepaymentBaseAmountJpy * rules.minimumPrepaymentPercent / 100
+    );
+    pass(
+      "payment:prepayment_minimum",
+      context.prepaymentConfirmed && context.prepaidServiceAmountJpy >= requiredPrepaymentJpy,
+      context.prepaymentConfirmed
+        ? "payment:prepayment_too_low"
+        : "payment:prepayment_unconfirmed"
+    );
   }
   if (rules.minCustomerRating !== null) {
     pass("customer:rating", context.customerRating !== null && context.customerRating >= rules.minCustomerRating, context.customerRating === null ? "customer:rating_unavailable" : "customer:rating_too_low");

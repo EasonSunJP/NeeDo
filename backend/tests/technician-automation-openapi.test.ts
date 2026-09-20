@@ -9,6 +9,9 @@ describe("technician automation OpenAPI", () => {
     expect(settings).toEqual(expect.objectContaining({ get: expect.any(Object), put: expect.any(Object) }));
     expect(contacts).toEqual(expect.objectContaining({ get: expect.any(Object) }));
     expect(JSON.stringify(settings)).toContain("technician:automation-settings:write");
+    expect(JSON.stringify(settings)).toContain("minimumPrepaymentPercent");
+    expect(JSON.stringify(settings)).toContain("10");
+    expect(JSON.stringify(settings)).toContain("100");
     expect(JSON.stringify(contacts)).toContain("page_size");
   });
 });

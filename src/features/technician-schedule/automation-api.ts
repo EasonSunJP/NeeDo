@@ -29,6 +29,7 @@ export type TechnicianAutomationRules = {
   serviceModes: Array<"store" | "home">;
   paymentMethods: Array<"onsite" | "card" | "ndp" | "bank_transfer" | "other">;
   serviceIds: number[];
+  minimumPrepaymentPercent: number;
   onlyOnline: boolean;
   requestStartWindow: "immediate" | "within_1_hour" | "within_3_hours" | "today" | "any";
   requireMatchingTags: boolean;

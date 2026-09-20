@@ -12,6 +12,9 @@ const context = () => ({
   distanceKm: 3,
   grossAmountJpy: 12_000,
   netAmountJpy: 9_000,
+  prepaidServiceAmountJpy: 0,
+  prepaymentBaseAmountJpy: 12_000,
+  prepaymentConfirmed: false,
   customerRating: 4.8,
   customerCompletedOrders: 8,
   customerHistoricalOrders: 10,
@@ -97,5 +100,45 @@ describe("evaluateTechnicianAutomationRules", () => {
       .toContain("online:offline");
     expect(evaluateTechnicianAutomationRules("request", rules, { ...context(), referralContactIdentityId: 99 }).failedReasons)
       .toContain("source:specific_referral_required");
+  });
+
+  it("requires confirmed service prepayment at or above the integer threshold", () => {
+    const rules = {
+      ...defaultTechnicianAutomationRules("booking"),
+      minimumPrepaymentPercent: 30
+    };
+    expect(evaluateTechnicianAutomationRules("booking", rules, {
+      ...context(),
+      prepaymentBaseAmountJpy: 10_001,
+      prepaidServiceAmountJpy: 3_001,
+      prepaymentConfirmed: true
+    })).toMatchObject({
+      matched: true,
+      matchedConditions: expect.arrayContaining(["payment:prepayment_minimum"])
+    });
+    expect(evaluateTechnicianAutomationRules("booking", rules, {
+      ...context(),
+      prepaymentBaseAmountJpy: 10_001,
+      prepaidServiceAmountJpy: 3_000,
+      prepaymentConfirmed: true
+    }).failedReasons).toContain("payment:prepayment_too_low");
+    expect(evaluateTechnicianAutomationRules("booking", rules, {
+      ...context(),
+      prepaymentBaseAmountJpy: 10_001,
+      prepaidServiceAmountJpy: 3_001,
+      prepaymentConfirmed: false
+    }).failedReasons).toContain("payment:prepayment_unconfirmed");
+  });
+
+  it("treats a zero threshold as disabled", () => {
+    const result = evaluateTechnicianAutomationRules(
+      "booking",
+      defaultTechnicianAutomationRules("booking"),
+      context()
+    );
+    expect(result.failedReasons).not.toEqual(expect.arrayContaining([
+      "payment:prepayment_unconfirmed",
+      "payment:prepayment_too_low"
+    ]));
   });
 });

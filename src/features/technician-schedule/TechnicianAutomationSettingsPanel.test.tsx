@@ -118,4 +118,38 @@ describe("TechnicianAutomationSettingsPanel", () => {
     expect(mocks.updateSetting).not.toHaveBeenCalled();
     expect(container.textContent).toContain("当前设置已是最新");
   });
+
+  it("places an integer prepayment threshold at the bottom of order attributes", async () => {
+    await act(async () => root.render(
+      <TechnicianAutomationSettingsPanel kind="booking" />
+    ));
+    await act(async () => Promise.resolve());
+    await act(async () => Promise.resolve());
+
+    const orderAttributes = Array.from(container.querySelectorAll("section"))
+      .find((section) => section.querySelector("h3")?.textContent === "订单属性");
+    expect(orderAttributes).toBeTruthy();
+    const prepaymentSwitch = orderAttributes?.querySelector('[aria-label="需要预付"]') as HTMLInputElement;
+    expect(prepaymentSwitch?.type).toBe("checkbox");
+    expect(prepaymentSwitch.checked).toBe(false);
+    expect(orderAttributes?.lastElementChild?.textContent).toContain("需要预付");
+
+    await act(async () => prepaymentSwitch.click());
+    const input = orderAttributes?.querySelector('[aria-label="最低预付比例"]') as HTMLInputElement;
+    expect(input.value).toBe("10");
+    expect(input.min).toBe("10");
+    expect(input.max).toBe("100");
+    expect(input.step).toBe("1");
+
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      valueSetter?.call(input, "30");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => (container.querySelector('[data-testid="automation-save"]') as HTMLButtonElement).click());
+    await act(async () => Promise.resolve());
+    expect(mocks.updateSetting).toHaveBeenCalledWith("booking", expect.objectContaining({
+      rules: expect.objectContaining({ minimumPrepaymentPercent: 30 })
+    }));
+  });
 });
