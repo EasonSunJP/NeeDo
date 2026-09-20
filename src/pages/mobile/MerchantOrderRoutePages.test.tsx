@@ -43,13 +43,13 @@ describe("MerchantOrderRoutePages service cards", () => {
     expect(cardBuilder).not.toMatch(/scenario === "restaurant" \? "2 小时" : "90 分钟"/u);
   });
 
-  it("uses the user booking-detail scaffold and shared sections for formal merchant orders", () => {
+  it("uses the fullscreen booking-detail scaffold and shared sections for formal merchant orders", () => {
     const start = source.indexOf("function FormalMerchantOrderDetailContent");
     const end = source.indexOf("function MerchantOrderDetailContent", start);
     const formalDetail = source.slice(start, end);
 
-    expect(formalDetail).toContain("<PageScaffold");
-    expect(formalDetail).toContain("<AppTopBar");
+    expect(formalDetail).toContain("<MobileFullscreenPage>");
+    expect(formalDetail).toContain("<MobileFullscreenHeader");
     expect(formalDetail).toContain('title="预约详情"');
     expect(formalDetail).toContain("<OrderDynamicStatusCard");
     expect(formalDetail).toContain("<OrderDetailSection");
