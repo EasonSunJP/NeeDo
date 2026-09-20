@@ -85,6 +85,7 @@ test("immutable staging packaging explicitly disables Google auth in the fronten
   const packager = read("../../scripts/aws-staging-package-application.mjs");
 
   assert.match(packager, /VITE_AUTH_GOOGLE_ENABLED:\s*"false"/);
+  assert.match(packager, /VITE_DEPLOYMENT_VERSION:\s*revision\.slice\(0, 8\)/);
   assert.match(packager, /"backend\/prisma\.config\.ts"/);
 });
 

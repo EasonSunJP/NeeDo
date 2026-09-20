@@ -42,11 +42,12 @@ function parseArgs(argv) {
   };
 }
 
-async function run(file, args, cwd = repositoryRoot) {
+async function run(file, args, cwd = repositoryRoot, environment = {}) {
   await execFileAsync(file, args, {
     cwd,
     env: {
       ...process.env,
+      ...environment,
       CI: "1",
       NEEDO_BUILD_TARGET: "production",
       VITE_AUTH_GOOGLE_ENABLED: "false",
@@ -144,7 +145,9 @@ async function main() {
   const evidenceBytes = await fs.readFile(environmentEvidencePath);
   const acceptedEnvironment = requireAcceptedEnvironment(JSON.parse(evidenceBytes.toString("utf8")));
 
-  await run("npm", ["run", "verify:production-build"]);
+  await run("npm", ["run", "verify:production-build"], repositoryRoot, {
+    VITE_DEPLOYMENT_VERSION: revision.slice(0, 8)
+  });
   await run("npm", ["run", "prisma:generate"], path.join(repositoryRoot, "backend"));
   await run("npm", ["run", "build"], path.join(repositoryRoot, "backend"));
   await assertCleanRevision(repository, revision);

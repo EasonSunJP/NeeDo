@@ -18,9 +18,11 @@ describe("login copyright copy", () => {
   });
 
   it("keeps splash entry loading copy minimal", () => {
-    expect(appSource).toContain('const splashVersionLabel = "0.001";');
+    expect(appSource).toContain('import { deploymentVersionLabel } from "./config/deploymentVersion";');
+    expect(appSource).toContain("const splashVersionLabel = deploymentVersionLabel;");
     expect(appSource).toContain('className="needo-splash-version-badge"');
     expect(appSource).toContain("ver：{splashVersionLabel}");
+    expect(appSource).not.toContain('const splashVersionLabel = "0.001";');
     expect(appSource).not.toContain("ver：2604170914");
     expect(appSource).not.toContain("正在进入当前端口。");
     expect(appSource).not.toContain("正在载入界面");

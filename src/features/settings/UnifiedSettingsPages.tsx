@@ -16,6 +16,7 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { deploymentVersionLabel } from "../../config/deploymentVersion";
 import {
   SettingsDetailPage,
   SettingsHomePage,
@@ -74,7 +75,7 @@ import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheS
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
 const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
-const appVersion = "0.001";
+const appVersion = deploymentVersionLabel;
 const merchantTagPool = ["深夜营业", "女性友好", "到店主力", "上门服务", "可预约", "多语言", "企业合作", "高复购"];
 
 function normalizeAreaToken(value: string) {

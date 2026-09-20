@@ -242,6 +242,27 @@ export interface AvailabilityListInput extends PaginationInput {
   to: Date;
 }
 
+type AvailabilityOccupancyRow = {
+  id: number;
+  conflict: bigint | number;
+  releasedCount: bigint | number;
+  bookedCount: number;
+  capacity: number;
+  status: string;
+};
+
+const projectAvailabilityOccupancy = (rows: AvailabilityOccupancyRow[]) => {
+  const blockedIds = rows.filter((row) => Boolean(row.conflict)).map((row) => row.id);
+  const releasedCounts = new Map(rows.map((row) => [row.id, Number(row.releasedCount)]));
+  const replaceableIds = rows
+    .filter((row) => !row.conflict && Number(row.releasedCount) > 0
+      && row.bookedCount >= Number(row.releasedCount)
+      && row.bookedCount - Number(row.releasedCount) < row.capacity
+      && ["available", "booked"].includes(row.status))
+    .map((row) => row.id);
+  return { blockedIds, releasedCounts, replaceableIds };
+};
+
 const currentBookableScheduleSlotSourcesWhere = (): {
   AND: Prisma.ScheduleSlotWhereInput[];
 } => ({
@@ -1520,15 +1541,10 @@ export class BookingRepository implements BookingRepositoryPort {
     const scopedInput = { ...input, shopId: resolvedShopId };
     const currentLocationShopIds =
       await this.listShopsWithCurrentVerifiedServiceLocations(transaction, scopedInput);
-    const occupancy = await this.listAvailabilityOccupancy(transaction, scopedInput, now, customerUserId);
-    const blockedIds = occupancy.filter((row) => Boolean(row.conflict)).map((row) => row.id);
-    const releasedCounts = new Map(occupancy.map((row) => [row.id, Number(row.releasedCount)]));
-    const replaceableIds = occupancy
-      .filter((row) => !row.conflict && Number(row.releasedCount) > 0
-        && row.bookedCount >= Number(row.releasedCount)
-        && row.bookedCount - Number(row.releasedCount) < row.capacity
-        && ["available", "booked"].includes(row.status))
-      .map((row) => row.id);
+    const prefilterOccupancy = input.includeUnavailable
+      ? []
+      : await this.listAvailabilityOccupancy(transaction, scopedInput, now, customerUserId);
+    const prefilterProjection = projectAvailabilityOccupancy(prefilterOccupancy);
     const capacityWhere: Prisma.ScheduleSlotWhereInput = {
       status: "AVAILABLE",
       bookedCount: { lt: transaction.scheduleSlot.fields.capacity }
@@ -1586,10 +1602,12 @@ export class BookingRepository implements BookingRepositoryPort {
       ...(input.includeUnavailable
         ? {}
         : {
-            ...(replaceableIds.length > 0
-              ? { OR: [capacityWhere, { id: { in: replaceableIds } }] }
+            ...(prefilterProjection.replaceableIds.length > 0
+              ? { OR: [capacityWhere, { id: { in: prefilterProjection.replaceableIds } }] }
               : capacityWhere),
-            ...(blockedIds.length > 0 ? { id: { notIn: blockedIds } } : {})
+            ...(prefilterProjection.blockedIds.length > 0
+              ? { id: { notIn: prefilterProjection.blockedIds } }
+              : {})
           }),
       ...(input.serviceId ? { serviceId: input.serviceId, technicianServiceId: null } : {}),
       ...(input.technicianServiceId
@@ -1636,6 +1654,19 @@ export class BookingRepository implements BookingRepositoryPort {
       transaction.scheduleSlot.count({ where })
     ]);
 
+    const pageOccupancy = input.includeUnavailable && list.length > 0
+      ? await this.listAvailabilityOccupancy(
+          transaction,
+          scopedInput,
+          now,
+          customerUserId,
+          list.map((slot) => slot.id)
+        )
+      : prefilterOccupancy;
+    const occupancyProjection = input.includeUnavailable
+      ? projectAvailabilityOccupancy(pageOccupancy)
+      : prefilterProjection;
+
     const nominationFees = await this.resolveNominationFeesForSlots(transaction, list, now);
 
     return buildPaginatedResponse(
@@ -1647,9 +1678,11 @@ export class BookingRepository implements BookingRepositoryPort {
             ? (nominationFees.get(`${slot.shopId}:${slot.technicianProfileId}`) ?? 0)
             : 0
         };
-        if (blockedIds.includes(slot.id)) return { ...pricedPayload, status: "blocked" as const };
-        const released = releasedCounts.get(slot.id) ?? 0;
-        if (replaceableIds.includes(slot.id)) {
+        if (occupancyProjection.blockedIds.includes(slot.id)) {
+          return { ...pricedPayload, status: "blocked" as const };
+        }
+        const released = occupancyProjection.releasedCounts.get(slot.id) ?? 0;
+        if (occupancyProjection.replaceableIds.includes(slot.id)) {
           return { ...pricedPayload, status: "available" as const, bookedCount: slot.bookedCount - released };
         }
         return payload.status === "available" && slot.bookedCount >= slot.capacity
@@ -1665,8 +1698,10 @@ export class BookingRepository implements BookingRepositoryPort {
     transaction: Prisma.TransactionClient,
     input: AvailabilityListInput,
     now: Date,
-    customerUserId?: number
-  ) {
+    customerUserId?: number,
+    slotIds?: number[]
+  ): Promise<AvailabilityOccupancyRow[]> {
+    if (slotIds?.length === 0) return [];
     const customer = customerUserId
       ? await transaction.customerProfile.findFirst({
           where: { userId: customerUserId, deletedAt: null },
@@ -1674,12 +1709,9 @@ export class BookingRepository implements BookingRepositoryPort {
         })
       : null;
     const isBlackMember = customer?.membershipLevel.toLowerCase() === "black";
-    // Correlate overlap to each slot in SQL, before pagination. Only changed projections
-    // are materialized; do not fetch every order or run one conflict query per slot.
-    return transaction.$queryRaw<Array<{
-      id: number; conflict: bigint | number; releasedCount: bigint | number;
-      bookedCount: number; capacity: number; status: string;
-    }>>(Prisma.sql`
+    // Correlate overlap to each slot in SQL. Include-unavailable callers provide the
+    // selected page IDs; filtering callers intentionally project before pagination.
+    return transaction.$queryRaw<AvailabilityOccupancyRow[]>(Prisma.sql`
       SELECT projection.* FROM (
         SELECT s.id, s.booked_count AS bookedCount, s.capacity, s.status,
           (s.starts_at <= ${now}
@@ -1723,6 +1755,7 @@ export class BookingRepository implements BookingRepositoryPort {
           )` : Prisma.sql`0`} AS releasedCount
         FROM schedule_slots s
         WHERE s.deleted_at IS NULL AND s.starts_at >= ${input.from} AND s.starts_at < ${input.to}
+          ${slotIds ? Prisma.sql`AND s.id IN (${Prisma.join(slotIds)})` : Prisma.empty}
           ${input.shopId ? Prisma.sql`AND s.shop_id = ${input.shopId}` : Prisma.empty}
           ${input.serviceId ? Prisma.sql`AND s.service_id = ${input.serviceId}` : Prisma.empty}
           ${input.technicianServiceId ? Prisma.sql`AND s.technician_service_id = ${input.technicianServiceId}` : Prisma.empty}

@@ -1,6 +1,7 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ComponentType, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { RouteScrollReset } from "./components/ui/RouteScrollReset";
+import { deploymentVersionLabel } from "./config/deploymentVersion";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
 import { getMerchantAdminPreview } from "./auth/merchantAdminPreview";
@@ -638,7 +639,7 @@ const splashImages: Record<SplashPortal, string> = {
   merchantAdmin: backendManagementSystemBgUrl
 };
 
-const splashVersionLabel = "0.001";
+const splashVersionLabel = deploymentVersionLabel;
 const splashCopyrightText = "Copyright © 2026 LifeDance Co., Ltd. All rights reserved.";
 
 const splashAdminThemeConfig = {

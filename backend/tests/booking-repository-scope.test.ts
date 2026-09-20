@@ -1270,6 +1270,60 @@ describe("BookingRepository order list scope", () => {
     expect(scheduleSlot.count).toHaveBeenCalledWith({ where });
   });
 
+  it("checks occupancy only after paging include-unavailable slots", async () => {
+    const slot = {
+      id: 501,
+      serviceId: 12,
+      technicianServiceId: null,
+      shopId: 11,
+      technicianProfileId: null,
+      startsAt: new Date("2026-09-03T01:00:00.000Z"),
+      endsAt: new Date("2026-09-03T02:00:00.000Z"),
+      capacity: 1,
+      bookedCount: 0,
+      status: "AVAILABLE",
+      availability: { sourceType: "SHOP" },
+      service: { name: "Aroma", priceAmount: 8800, currency: "JPY", durationMinutes: 60 },
+      technicianService: null,
+      shop: { name: "StagingTest" },
+      technicianProfile: null
+    };
+    const scheduleSlot = {
+      fields: { capacity: Symbol("capacity") },
+      findMany: jest.fn(async () => [slot]),
+      count: jest.fn(async () => 1)
+    };
+    const client = availabilityClient({
+      customerProfile: {
+        findFirst: jest.fn(async () => ({ membershipLevel: "standard" }))
+      },
+      service: { findFirst: jest.fn(async () => ({ shopId: 11 })) },
+      scheduleSlot,
+      shopServiceLocation: { findMany: jest.fn(async () => [currentShopServiceLocation(11)]) }
+    });
+    const queryRaw = (client as unknown as { $queryRaw: jest.Mock }).$queryRaw;
+    const repository = new BookingRepository(client);
+
+    await repository.listAvailableSlots({
+      serviceId: 12,
+      includeUnavailable: true,
+      from: new Date("2026-09-02T15:00:00.000Z"),
+      to: new Date("2026-09-03T15:00:00.000Z"),
+      page: 1,
+      pageSize: 100
+    }, { visibility: "public" }, 77);
+
+    expect(scheduleSlot.findMany.mock.invocationCallOrder[0]).toBeLessThan(
+      queryRaw.mock.invocationCallOrder[0]
+    );
+    const query = queryRaw.mock.calls[0]?.[0] as {
+      strings?: readonly string[];
+      values?: readonly unknown[];
+    };
+    expect(query.strings?.join(" ")).toMatch(/s\.id IN/u);
+    expect(query.values).toContain(slot.id);
+  });
+
   it("rejects a partial affiliate hook pair before opening the booking transaction", async () => {
     const client = { $transaction: jest.fn().mockResolvedValue(null) };
     const repository = new BookingRepository(client as never);
