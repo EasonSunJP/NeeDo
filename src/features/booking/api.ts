@@ -213,6 +213,7 @@ export type BookingScheduleSlot = {
   priceAmount: string;
   currency: string;
   durationMinutes: number;
+  nominationFeeJpy?: number;
   availabilitySourceType?: "shop" | "technician" | null;
 };
 
@@ -359,6 +360,7 @@ type CreateBookingBaseInput = {
   orderType?: "booking" | "request";
   paymentMethod?: ManualPaymentMethod;
   scheduleSlotId: number;
+  nominatedTechnicianProfileId?: number;
 } &
   ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
 
@@ -522,6 +524,18 @@ export const bookingApi = {
   },
   getOrder(id: number) {
     return httpClient.request<BookingOrder>(`/orders/${id}`);
+  },
+  assignOrderTechnician(id: number, technicianProfileId: number) {
+    return httpClient.request<BookingOrder>(`/orders/${id}/assign-technician`, {
+      body: { technicianProfileId },
+      method: "POST"
+    });
+  },
+  editMerchantOrder(id: number, input: { priceAmountJpy?: number; paymentMethod?: ManualPaymentMethod; note?: string | null }) {
+    return httpClient.request<BookingOrder>(`/orders/${id}/merchant-edit`, {
+      body: input,
+      method: "PATCH"
+    });
   },
   confirmOrder(id: number, input?: OrderConfirmInput) {
     return httpClient.request<BookingOrder>(`/orders/${id}/confirm`, {

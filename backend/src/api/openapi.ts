@@ -2941,6 +2941,24 @@ const orderRefundPathParameters = [
   { name: "caseId", in: "path", required: true, schema: { type: "string", format: "uuid" } }
 ];
 
+const userFavoriteInteractionPathParameters = [
+  {
+    name: "type",
+    in: "path",
+    required: true,
+    schema: {
+      type: "string",
+      enum: ["shop", "technician", "service", "social_post", "chat_record"]
+    }
+  },
+  {
+    name: "itemKey",
+    in: "path",
+    required: true,
+    schema: { type: "string", minLength: 1, maxLength: 191 }
+  }
+];
+
 const orderRefundCommandOperation = (input: {
   summary: string;
   permission: string;
@@ -10827,6 +10845,61 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      UserFavoriteTimelineItem: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "key", "type", "itemKey", "title", "summary", "imageUrl", "detailPath",
+          "favoritedAt", "activityAt", "pinnedAt", "reaction", "canForward", "canDelete"
+        ],
+        properties: {
+          key: { type: "string", maxLength: 240 },
+          type: {
+            type: "string",
+            enum: ["shop", "technician", "service", "social_post", "chat_record"]
+          },
+          itemKey: { type: "string", maxLength: 191 },
+          title: { type: "string" },
+          summary: { type: ["string", "null"] },
+          imageUrl: { type: ["string", "null"] },
+          detailPath: { type: "string" },
+          favoritedAt: { type: "string", format: "date-time" },
+          activityAt: { type: "string", format: "date-time" },
+          pinnedAt: { type: ["string", "null"], format: "date-time" },
+          reaction: { type: ["string", "null"], maxLength: 16 },
+          canForward: { type: "boolean" },
+          canDelete: { type: "boolean" }
+        }
+      },
+      UserFavoriteTimelinePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/UserFavoriteTimelineItem" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      UserFavoriteInteractionState: {
+        type: "object",
+        additionalProperties: false,
+        required: ["itemType", "itemKey", "pinnedAt", "reaction", "updatedAt"],
+        properties: {
+          itemType: {
+            type: "string",
+            enum: ["shop", "technician", "service", "social_post", "chat_record"]
+          },
+          itemKey: { type: "string", maxLength: 191 },
+          pinnedAt: { type: ["string", "null"], format: "date-time" },
+          reaction: { type: ["string", "null"], maxLength: 16 },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
       EntityShareReceipt: {
         type: "object",
         additionalProperties: false,
@@ -11663,10 +11736,74 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           serviceName: { type: "string" },
           shopName: { type: "string" },
           technicianName: { type: ["string", "null"] },
+          nominationFeeJpy: {
+            type: "integer",
+            minimum: 0,
+            description: "Fee added only when the customer explicitly nominates this technician"
+          },
           priceAmount: { type: "string", example: "8800.00" },
           currency: { type: "string", example: "JPY" },
           durationMinutes: { type: "integer" }
         }
+      },
+      ShopAutoDispatchRuleInput: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "enabled", "startsOn", "endsOn", "startMinute", "endMinute", "allowStore",
+          "allowHome", "minimumRating", "minimumAcceptanceRate", "maximumCancellationRate",
+          "dailyTechnicianLimit", "strategy", "preferredTechnicianIds", "travelMinutesPerKm",
+          "strictWindow"
+        ],
+        properties: {
+          enabled: { type: "boolean" },
+          startsOn: { type: ["string", "null"], format: "date" },
+          endsOn: { type: ["string", "null"], format: "date" },
+          startMinute: { type: "integer", minimum: 0, maximum: 1439 },
+          endMinute: { type: "integer", minimum: 0, maximum: 1439 },
+          allowStore: { type: "boolean" },
+          allowHome: { type: "boolean" },
+          minimumRating: { type: ["number", "null"], minimum: 0, maximum: 5, multipleOf: 0.1 },
+          minimumAcceptanceRate: { type: ["integer", "null"], minimum: 0, maximum: 100 },
+          maximumCancellationRate: { type: ["integer", "null"], minimum: 0, maximum: 100 },
+          dailyTechnicianLimit: { type: ["integer", "null"], minimum: 1, maximum: 100 },
+          strategy: { type: "string", enum: ["balanced", "longest_idle", "highest_rating", "preferred"] },
+          preferredTechnicianIds: {
+            type: "array",
+            maxItems: 200,
+            uniqueItems: true,
+            items: { type: "integer", minimum: 1 }
+          },
+          travelMinutesPerKm: { type: "integer", minimum: 1, maximum: 120 },
+          strictWindow: { type: "boolean" }
+        }
+      },
+      ShopAutoDispatchRule: {
+        allOf: [
+          { $ref: "#/components/schemas/ShopAutoDispatchRuleInput" },
+          {
+            type: "object",
+            required: ["id", "shopId", "candidates", "createdAt", "updatedAt"],
+            properties: {
+              id: { type: ["integer", "null"], minimum: 1 },
+              shopId: { type: "integer", minimum: 1 },
+              candidates: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["id", "displayName"],
+                  properties: {
+                    id: { type: "integer", minimum: 1 },
+                    displayName: { type: "string", minLength: 1 }
+                  }
+                }
+              },
+              createdAt: { type: ["string", "null"], format: "date-time" },
+              updatedAt: { type: ["string", "null"], format: "date-time" }
+            }
+          }
+        ]
       },
       SchedulePreload: {
         type: "object",
@@ -21831,6 +21968,120 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/me/favorites`]: {
+      get: {
+        tags: ["Entity Engagement"],
+        summary: "List all authenticated-user favorites in one timeline",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          {
+            name: "type",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["shop", "technician", "service", "social_post", "chat_record"]
+            }
+          },
+          { name: "query", in: "query", schema: { type: "string", maxLength: 120 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated unified favorites", {
+            $ref: "#/components/schemas/UserFavoriteTimelinePage"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/me/favorites/{type}/{itemKey}/pin`]: {
+      put: {
+        tags: ["Entity Engagement"],
+        summary: "Pin one owned favorite",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:write",
+        parameters: userFavoriteInteractionPathParameters,
+        responses: {
+          "200": jsonDataResponse("Favorite interaction state", {
+            $ref: "#/components/schemas/UserFavoriteInteractionState"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.favorite.not_found")
+        }
+      },
+      delete: {
+        tags: ["Entity Engagement"],
+        summary: "Unpin one owned favorite",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:write",
+        parameters: userFavoriteInteractionPathParameters,
+        responses: {
+          "200": jsonDataResponse("Favorite interaction state", {
+            $ref: "#/components/schemas/UserFavoriteInteractionState"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.favorite.not_found")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/me/favorites/{type}/{itemKey}/reaction`]: {
+      put: {
+        tags: ["Entity Engagement"],
+        summary: "Set a private quick reaction on one owned favorite",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:write",
+        parameters: userFavoriteInteractionPathParameters,
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["reaction"],
+                properties: { reaction: { type: "string", minLength: 1, maxLength: 16 } }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Favorite interaction state", {
+            $ref: "#/components/schemas/UserFavoriteInteractionState"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.favorite.not_found")
+        }
+      },
+      delete: {
+        tags: ["Entity Engagement"],
+        summary: "Clear a private quick reaction from one owned favorite",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:write",
+        parameters: userFavoriteInteractionPathParameters,
+        responses: {
+          "200": jsonDataResponse("Favorite interaction state", {
+            $ref: "#/components/schemas/UserFavoriteInteractionState"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.favorite.not_found")
+        }
+      }
+    },
     [`${config.API_PREFIX}/entities/{targetType}/{publicId}/shares/needo`]: {
       post: {
         tags: ["Entity Engagement"],
@@ -22709,6 +22960,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   expectedPriceAmountJpy: { type: "integer", minimum: 0 },
                   serviceId: { type: "integer", minimum: 1 },
                   technicianServiceId: { type: "integer", minimum: 1 },
+                  nominatedTechnicianProfileId: { type: "integer", minimum: 1 },
                   exchangeIntelligencePostId: { type: "integer", minimum: 1 },
                   scheduleSlotId: { type: "integer", minimum: 1 },
                   orderType: { type: "string", enum: ["booking", "request"] },
@@ -22738,6 +22990,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       expectedPriceAmountJpy: { type: "integer", minimum: 0 },
                       serviceId: { type: "integer", minimum: 1 },
                       technicianServiceId: { type: "integer", minimum: 1 },
+                      nominatedTechnicianProfileId: { type: "integer", minimum: 1 },
                       scheduleSlotId: { type: "integer", minimum: 1 },
                       orderType: { type: "string", enum: ["booking", "request"] },
                       fulfillmentMode: { type: "string", enum: ["store"] },
@@ -22767,6 +23020,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       expectedPriceAmountJpy: { type: "integer", minimum: 0 },
                       serviceId: { type: "integer", minimum: 1 },
                       technicianServiceId: { type: "integer", minimum: 1 },
+                      nominatedTechnicianProfileId: { type: "integer", minimum: 1 },
                       scheduleSlotId: { type: "integer", minimum: 1 },
                       orderType: { type: "string", enum: ["booking", "request"] },
                       fulfillmentMode: { type: "string", enum: ["home"] },
@@ -22828,6 +23082,41 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "40905 error.booking.slot_unavailable for an invalid or stale slot; 41045 error.booking.slot_concurrent_occupancy when capacity is consumed during booking; estimate expired/consumed; Intelligence unavailable/mismatched; idempotency conflict; 41038 error.booking.price_changed; or 41044 error.booking.service_location_unresolved when the current JP shop assignment cannot be verified"
           },
           "422": { description: "Home estimate required, invalid, or mismatched" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/auto-dispatch-rule`]: {
+      get: {
+        tags: ["Booking"],
+        summary: "Read the authenticated shop's automatic dispatch rule",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "schedule:slots:list",
+        responses: {
+          "200": jsonDataResponse("Current rule and active employee candidates", {
+            $ref: "#/components/schemas/ShopAutoDispatchRule"
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Shop scope or schedule:slots:list permission required" }
+        }
+      },
+      put: {
+        tags: ["Booking"],
+        summary: "Replace the authenticated shop's automatic dispatch rule",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "schedule:slots:write",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/ShopAutoDispatchRuleInput" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Saved rule and active employee candidates", {
+            $ref: "#/components/schemas/ShopAutoDispatchRule"
+          }),
+          "400": { description: "Strict rule validation failed" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Shop scope or schedule:slots:write permission required" }
         }
       }
     },
@@ -22922,6 +23211,70 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             { $ref: "#/components/schemas/CustomerBookingOrderDetail" }
           ),
           "404": { description: "Order not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/assign-technician`]: {
+      post: {
+        tags: ["Booking"],
+        summary: "Manually assign an unassigned shop booking to an active technician",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:confirm",
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["technicianProfileId"],
+                properties: { technicianProfileId: { type: "integer", minimum: 1 } }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Assigned booking order", { $ref: "#/components/schemas/BookingOrder" }),
+          "400": { description: "Strict assignment validation failed" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Owning shop and order:confirm permission required" },
+          "404": { description: "Order or active technician affiliation not found" },
+          "409": { description: "Order is already assigned, immutable, or overlaps the technician's work" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/merchant-edit`]: {
+      patch: {
+        tags: ["Booking"],
+        summary: "Edit mutable merchant-owned booking fields",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:confirm",
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                minProperties: 1,
+                properties: {
+                  priceAmountJpy: { type: "integer", minimum: 0 },
+                  paymentMethod: { type: "string", enum: ["onsite", "bank_transfer"] },
+                  note: { type: ["string", "null"], maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Edited booking order", { $ref: "#/components/schemas/BookingOrder" }),
+          "400": { description: "Strict edit validation failed" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Owning shop and order:confirm permission required" },
+          "404": { description: "Order not found" },
+          "409": { description: "Order is no longer merchant-editable" }
         }
       }
     },
@@ -31133,6 +31486,51 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:list permission" },
           "404": { description: "Bundle missing or unavailable to the active identity" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/chat-records/{publicId}/forward`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Forward an existing immutable chat record to another conversation",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["targetConversationId", "idempotencyKey"],
+                properties: {
+                  targetConversationId: {
+                    type: "integer",
+                    minimum: 1,
+                    maximum: safeIntegerMaximum
+                  },
+                  idempotencyKey: { type: "string", format: "uuid" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Forwarded or exactly replayed chat-record delivery", {
+            $ref: "#/components/schemas/ImChatRecordDeliveryResult"
+          }),
+          "400": { description: "Strict forwarding validation failed" },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": { description: "Missing message:forward permission" },
+          "404": { description: "Source bundle or target conversation unavailable to the active identity" },
+          "409": { description: "Idempotency key reused with changed payload" }
         }
       }
     },

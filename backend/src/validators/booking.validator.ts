@@ -156,6 +156,7 @@ const bookingBaseSchema = z.object({
   expectedPriceAmountJpy: z.coerce.number().int().nonnegative(),
   serviceId: z.coerce.number().int().positive().optional(),
   technicianServiceId: z.coerce.number().int().positive().optional(),
+  nominatedTechnicianProfileId: z.coerce.number().int().positive().optional(),
   exchangeIntelligencePostId: z.coerce.number().int().positive().optional(),
   scheduleSlotId: z.coerce.number().int().positive(),
   orderType: z.enum(["booking", "request"]).optional(),
@@ -230,6 +231,16 @@ export const technicianManualBookingIdempotencySchema = idempotencyKeySchema;
 export const orderIdParamSchema = z.object({
   id: z.coerce.number().int().positive()
 });
+
+export const orderAssignTechnicianBodySchema = z.object({
+  technicianProfileId: z.coerce.number().int().positive()
+}).strict();
+
+export const merchantOrderEditBodySchema = z.object({
+  priceAmountJpy: z.coerce.number().int().nonnegative().optional(),
+  paymentMethod: z.enum(["onsite", "bank_transfer"]).optional(),
+  note: z.string().trim().max(500).nullable().optional()
+}).strict().refine((value) => Object.keys(value).length > 0, { message: "At least one field is required" });
 
 export const orderAddOnIdParamsSchema = z
   .object({
@@ -565,6 +576,8 @@ export type AvailabilityWindowUpdateBody = z.infer<typeof availabilityWindowUpda
 export type BookingCreateBody = z.infer<typeof bookingCreateBodySchema>;
 export type TechnicianManualBookingBody = z.infer<typeof technicianManualBookingBodySchema>;
 export type OrderIdParams = z.infer<typeof orderIdParamSchema>;
+export type OrderAssignTechnicianBody = z.infer<typeof orderAssignTechnicianBodySchema>;
+export type MerchantOrderEditBody = z.infer<typeof merchantOrderEditBodySchema>;
 export type OrderAddOnIdParams = z.infer<typeof orderAddOnIdParamsSchema>;
 export type OrderConfirmBody = z.infer<typeof orderConfirmBodySchema>;
 export type StartServiceInput = z.infer<typeof startServiceBodySchema>;

@@ -37,6 +37,16 @@ export interface ResolvedMerchantShopScope {
   tokenMerchantShopPublicId?: string;
 }
 
+type MerchantShopScopeActor = Pick<
+  AuthenticatedAccessContext,
+  | "isReadOnlyMerchantPreview"
+  | "merchantPreviewShopId"
+  | "currentIdentityType"
+  | "currentIdentityScopeType"
+  | "currentIdentityScopeId"
+  | "selectedMerchantShopId"
+>;
+
 export const merchantShopIdentityForbidden = (): AppError =>
   new AppError({
     code: ERROR_CODES.IDENTITY_FORBIDDEN,
@@ -47,7 +57,7 @@ export const merchantShopIdentityForbidden = (): AppError =>
 const isValidShopId = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 
-export function hasMerchantShopScope(actor: AuthenticatedAccessContext): boolean {
+export function hasMerchantShopScope(actor: MerchantShopScopeActor): boolean {
   return (
     actor.isReadOnlyMerchantPreview === true ||
     actor.currentIdentityScopeType === "shop" ||
@@ -55,7 +65,7 @@ export function hasMerchantShopScope(actor: AuthenticatedAccessContext): boolean
   );
 }
 
-export function requireMerchantShopId(actor: AuthenticatedAccessContext): number {
+export function requireMerchantShopId(actor: MerchantShopScopeActor): number {
   if (actor.isReadOnlyMerchantPreview === true) {
     if (isValidShopId(actor.merchantPreviewShopId)) return actor.merchantPreviewShopId;
     throw merchantShopIdentityForbidden();

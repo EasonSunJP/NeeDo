@@ -21,7 +21,8 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("technicianServiceId: catalogRef.id");
     expect(formalSource).toContain("isCheckoutSlotBookable(slot, Date.now())");
     expect(formalSource).toContain("scheduleSlotId: freshSelectedSlot.id");
-    expect(formalSource).toContain("expectedPriceAmountJpy: Number(displayServiceInfo?.priceAmount ?? freshSelectedSlot.priceAmount)");
+    expect(formalSource).toContain("nominatedTechnicianProfileId");
+    expect(formalSource).toContain("freshSelectedSlot.nominationFeeJpy ?? 0");
     expect(formalSource).toContain('return "priceUpdated"');
     expect(formalSource).toContain("error.code === 41038");
     expect(formalSource).toContain("navigate(`/orders/${order.id}`");

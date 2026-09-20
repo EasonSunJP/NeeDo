@@ -1,4 +1,5 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { realtimeApi, subscribeRealtimeEvents, type RealtimeUnreadCounts } from "./api";
 
@@ -13,7 +14,8 @@ const RealtimeUnreadCountsContext = createContext<RealtimeUnreadCounts>(emptyCou
 
 export function RealtimeUnreadCountsProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isRestoring, session } = useAuth();
-  const enabled = isAuthenticated && Boolean(session) && !isRestoring;
+  const location = useLocation();
+  const enabled = isAuthenticated && Boolean(session) && !isRestoring && !location.pathname.startsWith("/login");
   const [counts, setCounts] = useState<RealtimeUnreadCounts>(emptyCounts);
 
   const refresh = useCallback(async () => {

@@ -17,6 +17,7 @@ import {
 import { getImHomeRoute, getImRoleConfig } from "./role-config";
 import pagesSource from "./pages.tsx?raw";
 import componentsSource from "./components.tsx?raw";
+import longPressSource from "./useImLongPressAction.ts?raw";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
@@ -571,16 +572,14 @@ describe("IM pages", () => {
   });
 
   it("always suppresses the native desktop context menu before preserving a message text selection", () => {
-    const componentStart = pagesSource.indexOf("function MessagePressable");
-    const componentEnd = pagesSource.indexOf("function ImQuickMenuItem", componentStart);
-    const componentSource = pagesSource.slice(componentStart, componentEnd);
-    const contextMenuStart = componentSource.indexOf("onContextMenu={(event) => {");
-    const contextMenuEnd = componentSource.indexOf("onPointerCancel", contextMenuStart);
-    const contextMenuSource = componentSource.slice(contextMenuStart, contextMenuEnd);
+    const contextMenuStart = longPressSource.indexOf("onContextMenu(event");
+    const contextMenuEnd = longPressSource.indexOf("onPointerCancel", contextMenuStart);
+    const contextMenuSource = longPressSource.slice(contextMenuStart, contextMenuEnd);
 
     expect(contextMenuStart).toBeGreaterThan(-1);
     expect(contextMenuSource.indexOf("event.preventDefault()"))
       .toBeLessThan(contextMenuSource.indexOf("hasActiveImMessageTextSelection"));
+    expect(pagesSource).toContain("useImLongPressAction(onOpenMenu)");
   });
 
   it("keeps portal action-sheet pointer events out of the conversation dismissal path", () => {

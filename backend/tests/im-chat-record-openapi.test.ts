@@ -24,11 +24,12 @@ type OpenApiDocument = {
 const document = (): OpenApiDocument => createOpenApiDocument(env) as unknown as OpenApiDocument;
 
 describe("chat-record OpenAPI contract", () => {
-  it("documents all eight protected operations and their formal schemas", () => {
+  it("documents all nine protected operations and their formal schemas", () => {
     const api = document();
     const expected = [
       ["/api/v1/im/conversations/{targetConversationId}/chat-records", "post"],
       ["/api/v1/im/chat-records/{publicId}", "get"],
+      ["/api/v1/im/chat-records/{publicId}/forward", "post"],
       ["/api/v1/im/chat-records/{publicId}/items", "get"],
       ["/api/v1/im/chat-records/{publicId}/media/{checksumSha256}", "get"],
       ["/api/v1/im/chat-record-favorites", "post"],

@@ -20,3 +20,18 @@ export function readCompensationBasisVersion(value: unknown): CompensationBasisV
     ? candidate as CompensationBasisVersion
     : null;
 }
+
+export function readBookingNominationSnapshot(
+  value: unknown
+): { nominationChargeAmountJpy: number; wasTechnicianNominated: boolean } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { nominationChargeAmountJpy: 0, wasTechnicianNominated: false };
+  }
+  const snapshot = value as Record<string, unknown>;
+  const amount = snapshot.nominationChargeAmountJpy;
+  return {
+    nominationChargeAmountJpy:
+      typeof amount === "number" && Number.isSafeInteger(amount) && amount >= 0 ? amount : 0,
+    wasTechnicianNominated: snapshot.wasTechnicianNominated === true
+  };
+}

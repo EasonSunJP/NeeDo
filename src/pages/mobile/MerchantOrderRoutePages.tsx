@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { backofficeRealDataApi, type BackofficeOrderPayload } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
+import { shopAutoDispatchApi, type ShopAutoDispatchTechnician } from "../../api/shopAutoDispatch";
 import { useAuth } from "../../auth/AuthProvider";
 import { AppTopBar, PageScaffold } from "../../components/client-ui/AppScaffold";
 import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
@@ -1286,20 +1287,17 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
       ) : null}
 
       {loadStatus === "success" && order ? (
-        <MobileBottomActionBar contentClassName="grid grid-cols-2 gap-2">
+        <MobileBottomActionBar contentClassName="grid grid-cols-3 gap-2">
           <Button
             to={getMessagePath("merchant", getMerchantCustomerConversationId(String(order.customerUserId)), `/merchant/orders/${order.id}`)}
             variant="secondary"
           >
             联系用户
           </Button>
-          {technician ? (
-            <Button to={getMessagePath("merchant", getMerchantTechnicianConversationId(technician.id), `/merchant/orders/${order.id}`)}>
-              联系技师
-            </Button>
-          ) : (
-            <Button aria-label="联系技师（尚未指定担当）" disabled>联系技师</Button>
-          )}
+          <Button to={`/merchant/orders/${order.id}/change`} variant="secondary">变更</Button>
+          {technician
+            ? <Button to={getMessagePath("merchant", getMerchantTechnicianConversationId(technician.id), `/merchant/orders/${order.id}`)}>联系技师</Button>
+            : <Button to={`/merchant/orders/${order.id}/dispatch`}>派单</Button>}
         </MobileBottomActionBar>
       ) : null}
 
@@ -1877,6 +1875,8 @@ export function MerchantOrderDetailRoutePage() {
 }
 
 export function MerchantOrderChangeRoutePage() {
+  const { orderId } = useParams();
+  if (isBookingApiId(orderId)) return <FormalMerchantOrderChangeContent orderId={Number(orderId)} />;
   return (
     <MobileShell navItems={[]}>
       <MerchantOrderChangeContent />
@@ -1884,10 +1884,119 @@ export function MerchantOrderChangeRoutePage() {
   );
 }
 
+function FormalMerchantOrderChangeContent({ orderId }: { orderId: number }) {
+  const navigate = useNavigate();
+  const [order, setOrder] = useState<BookingOrder | null>(null);
+  const [amount, setAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"onsite" | "bank_transfer">("onsite");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    bookingApi.getOrder(orderId).then((value) => {
+      if (!active) return;
+      setOrder(value);
+      setAmount(String(value.paymentAmountJpy));
+      setPaymentMethod(value.paymentMethod === "bank_transfer" ? "bank_transfer" : "onsite");
+      setNote(value.note ?? "");
+    }).catch(() => { if (active) setError("正式订单读取失败，请重试。"); });
+    return () => { active = false; };
+  }, [orderId]);
+
+  const save = async () => {
+    const numericAmount = Number(amount);
+    if (!Number.isSafeInteger(numericAmount) || numericAmount < 0 || saving) {
+      setError("金额必须是 0 以上的整数。");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await bookingApi.editMerchantOrder(orderId, { priceAmountJpy: numericAmount, paymentMethod, note: note.trim() || null });
+      navigate(`/merchant/orders/${orderId}`, { replace: true });
+    } catch {
+      setError("订单变更保存失败，请确认订单仍可编辑。");
+      setSaving(false);
+    }
+  };
+
+  return <MobileFullscreenPage>
+    <MobileFullscreenHeader className={fullscreenHeaderClassName} onBack={() => navigate(-1)} title="修改预约订单" />
+    <main className="client-app-gutter min-h-0 flex-1 space-y-4 overflow-y-auto py-4 pb-28">
+      <section className="space-y-4 rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5 shadow-panel">
+        <div><p className="text-xs font-black text-[color:var(--client-muted)]">服务</p><p className="mt-1 text-lg font-black">{order?.serviceName ?? "正在读取…"}</p></div>
+        <label className="block text-sm font-black">金额<input className={orderChangeInputClassName} inputMode="numeric" onChange={(event) => setAmount(event.target.value.replace(/\D/gu, ""))} value={amount} /></label>
+        <label className="block text-sm font-black">支付手段<select className={orderChangeInputClassName} onChange={(event) => setPaymentMethod(event.target.value as "onsite" | "bank_transfer")} value={paymentMethod}><option value="onsite">现场支付</option><option value="bank_transfer">银行转账</option></select></label>
+        <label className="block text-sm font-black">备注<textarea className={`${orderChangeInputClassName} min-h-32 py-3`} maxLength={500} onChange={(event) => setNote(event.target.value)} value={note} /></label>
+      </section>
+      {error ? <p className="rounded-2xl bg-red-500/10 p-4 text-sm font-black text-red-500" role="alert">{error}</p> : null}
+    </main>
+    <MobileBottomActionBar contentClassName="grid grid-cols-2 gap-2"><Button onClick={() => navigate(-1)} variant="secondary">取消</Button><Button disabled={!order || saving} onClick={() => void save()}>{saving ? "保存中…" : "保存变更"}</Button></MobileBottomActionBar>
+  </MobileFullscreenPage>;
+}
+
 export function MerchantOrderDispatchRoutePage() {
+  const { orderId } = useParams();
+  if (isBookingApiId(orderId)) return <FormalMerchantOrderDispatchContent orderId={Number(orderId)} />;
   return (
     <MobileShell navItems={[]}>
       <MerchantOrderDispatchContent />
     </MobileShell>
   );
+}
+
+function FormalMerchantOrderDispatchContent({ orderId }: { orderId: number }) {
+  const navigate = useNavigate();
+  const [order, setOrder] = useState<BookingOrder | null>(null);
+  const [candidates, setCandidates] = useState<ShopAutoDispatchTechnician[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([bookingApi.getOrder(orderId), shopAutoDispatchApi.read()]).then(([nextOrder, rule]) => {
+      if (!active) return;
+      setOrder(nextOrder);
+      setCandidates(rule.candidates);
+      setSelectedId(rule.candidates[0]?.id ?? null);
+    }).catch(() => { if (active) setError("正式派单资料读取失败，请重试。"); });
+    return () => { active = false; };
+  }, [orderId]);
+
+  const submit = async () => {
+    if (!selectedId || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await bookingApi.assignOrderTechnician(orderId, selectedId);
+      navigate(`/merchant/orders/${orderId}`, { replace: true });
+    } catch (caught) {
+      setError(caught instanceof ApiClientError ? caught.message : "派单失败，请重试。");
+      setSaving(false);
+    }
+  };
+
+  return <MobileFullscreenPage>
+    <MobileFullscreenHeader className={fullscreenHeaderClassName} onBack={() => navigate(-1)} title="手动派单" />
+    <main className="client-app-gutter min-h-0 flex-1 space-y-4 overflow-y-auto py-4 pb-28">
+      <section className="rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5 shadow-panel">
+        <p className="text-xs font-black text-[color:var(--client-muted)]">预约订单</p>
+        <h1 className="mt-1 text-lg font-black">{order?.serviceName ?? "正在读取…"}</h1>
+        <p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{order ? `${formatApiOrderDateTime(order.startsAt)} · ${order.orderNo}` : ""}</p>
+      </section>
+      <section className="space-y-3 rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5 shadow-panel">
+        <h2 className="text-lg font-black">选择员工</h2>
+        {candidates.map((candidate) => <button aria-pressed={selectedId === candidate.id} className={`w-full rounded-[20px] border p-4 text-left font-black ${selectedId === candidate.id ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)]" : "border-[color:var(--client-line)]"}`} key={candidate.id} onClick={() => setSelectedId(candidate.id)} type="button">{candidate.displayName}</button>)}
+        {candidates.length === 0 ? <p className="text-sm font-bold text-[color:var(--client-muted)]">当前没有可选择的正式在职技师。</p> : null}
+      </section>
+      {error ? <p className="rounded-2xl bg-red-500/10 p-4 text-sm font-black text-red-500" role="alert">{error}</p> : null}
+    </main>
+    <MobileBottomActionBar contentClassName="grid grid-cols-2 gap-2">
+      <Button onClick={() => navigate(-1)} size="lg" variant="secondary">取消</Button>
+      <Button disabled={!selectedId || saving || Boolean(order?.technicianProfileId)} onClick={() => void submit()} size="lg">{saving ? "派单中…" : order?.technicianProfileId ? "已派单" : "确认派单"}</Button>
+    </MobileBottomActionBar>
+  </MobileFullscreenPage>;
 }

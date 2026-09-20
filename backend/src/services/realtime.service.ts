@@ -66,6 +66,7 @@ export type OrderRealtimeChangeType =
   | "add_on"
   | "checkout"
   | "review"
+  | "assignment"
   | "timeline_comment";
 
 export interface OrderChangedRealtimeInput {

@@ -2356,6 +2356,7 @@ export function SwipeActionRow({
                     : "bg-[color:color-mix(in_srgb,var(--client-accent)_82%,#6b231b_18%)]",
               )}
               data-swipe-action-button="true"
+              data-swipe-action-key={action.key}
               key={action.key}
               onClick={() => {
                 action.onClick();

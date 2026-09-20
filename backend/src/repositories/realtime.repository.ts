@@ -681,6 +681,7 @@ export interface SocialPostListInput extends PaginationInput {
   authorIdentityId?: number;
   replyToPostId?: number;
   bookmarked?: boolean;
+  query?: string;
 }
 
 export interface SocialActivityStatusInput {
@@ -4311,6 +4312,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   ): Promise<PaginatedResponse<SocialPostPayload>> {
     void userId;
     const pagination = toPrismaPagination(input);
+    const search = input.query?.trim();
     const where: Prisma.SocialPostWhereInput = {
       deletedAt: null,
       ...(input.authorUserId ? { authorUserId: input.authorUserId } : {}),
@@ -4323,6 +4325,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             }
           }
         : {}),
+      ...(search ? { content: { contains: search } } : {}),
       OR: [
         { visibility: SocialPostVisibility.PUBLIC },
         { authorIdentityId: identityId },
@@ -4563,9 +4566,19 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           data: { actorUserId: input.actorUserId, deletedAt: null }
         });
       } else if (!input.active && existing && !existing.deletedAt) {
+        const deletedAt = new Date();
         await transaction.socialPostBookmark.update({
           where: { id: existing.id },
-          data: { deletedAt: new Date() }
+          data: { deletedAt }
+        });
+        await transaction.userFavoriteInteraction.updateMany({
+          where: {
+            ownerUserId: input.actorUserId,
+            itemType: "social_post",
+            itemKey: String(socialPost.id),
+            deletedAt: null
+          },
+          data: { deletedAt }
         });
       }
 

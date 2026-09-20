@@ -115,6 +115,7 @@ const repositoryFixture = (): jest.Mocked<ImChatRecordRepositoryPort> => ({
       createdAt: now
     }
   })),
+  forwardBundle: jest.fn(async () => null),
   getBundle: jest.fn(async () => null),
   listItems: jest.fn(async () => ({
     list: [],
@@ -169,6 +170,71 @@ const createFixture = () => {
 };
 
 describe("ImChatRecordService", () => {
+  it("forwards an authorized immutable bundle and publishes the created message", async () => {
+    const fixture = createFixture();
+    const delivery = await repositoryFixture().createDelivery({
+      createdByUserId: 41,
+      items: [{}],
+      previewSnapshot: "A: message 1",
+      publicId: "11111111-1111-4111-8111-111111111111",
+      senderNamesSnapshot: ["A"],
+      targetConversationId: 99,
+      titleSnapshot: "A"
+    } as never);
+    fixture.repository.forwardBundle.mockResolvedValue(delivery);
+
+    await expect(fixture.service.forwardBundle(
+      auth,
+      context,
+      "11111111-1111-4111-8111-111111111111",
+      { targetConversationId: 99, idempotencyKey: "22222222-2222-4222-8222-222222222222" }
+    )).resolves.toEqual(delivery);
+
+    expect(fixture.repository.forwardBundle).toHaveBeenCalledWith({
+      publicId: "11111111-1111-4111-8111-111111111111",
+      targetConversationId: 99,
+      idempotencyKey: "22222222-2222-4222-8222-222222222222",
+      createdByUserId: 41,
+      createdByIdentityId: 71,
+      context
+    });
+    expect(fixture.eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
+      type: "message.created",
+      recipientUserId: 41,
+      recipientIdentityId: 71,
+      payload: delivery.message
+    }));
+  });
+
+  it("keeps a committed forward successful when realtime publication fails", async () => {
+    const fixture = createFixture();
+    const delivery = await repositoryFixture().createDelivery({
+      createdByUserId: 41,
+      items: [{}],
+      previewSnapshot: "A: message 1",
+      publicId: "11111111-1111-4111-8111-111111111111",
+      senderNamesSnapshot: ["A"],
+      targetConversationId: 99,
+      titleSnapshot: "A"
+    } as never);
+    fixture.repository.forwardBundle.mockResolvedValue(delivery);
+    fixture.eventGateway.publish.mockImplementation(() => { throw new Error("redis unavailable"); });
+
+    await expect(fixture.service.forwardBundle(
+      auth,
+      context,
+      "11111111-1111-4111-8111-111111111111",
+      { targetConversationId: 99, idempotencyKey: "22222222-2222-4222-8222-222222222222" }
+    )).resolves.toEqual(delivery);
+    expect(fixture.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 99,
+        operation: "im_chat_record_forward_realtime_publish"
+      }),
+      "Forwarded chat record realtime publication failed"
+    );
+  });
+
   it("preserves repository-derived first and subsequent cursor page metadata", async () => {
     const fixture = createFixture();
     fixture.repository.getBundle.mockResolvedValue({

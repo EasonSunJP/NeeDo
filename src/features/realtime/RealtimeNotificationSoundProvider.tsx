@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import type { PortalScope } from "../../auth/portal";
 import {
@@ -63,6 +64,7 @@ function readSoundEnabled(portal: PortalScope | undefined) {
 
 export function RealtimeNotificationSound() {
   const { isAuthenticated, isRestoring, session } = useAuth();
+  const location = useLocation();
   const soundEnabled = useRef(readSoundEnabled(session?.portal));
   const context = useRef<RealtimeSoundContext>({
     currentUserId: null,
@@ -121,7 +123,7 @@ export function RealtimeNotificationSound() {
   useEffect(() => {
     scheduler.current?.reset();
 
-    if (!isAuthenticated || isRestoring || !session) {
+    if (!isAuthenticated || isRestoring || !session || location.pathname.startsWith("/login")) {
       return undefined;
     }
 
@@ -139,7 +141,7 @@ export function RealtimeNotificationSound() {
       unsubscribe();
       scheduler.current?.reset();
     };
-  }, [isAuthenticated, isRestoring, session?.activeIdentityId, session?.id, session?.portal]);
+  }, [isAuthenticated, isRestoring, location.pathname, session?.activeIdentityId, session?.id, session?.portal]);
 
   return null;
 }

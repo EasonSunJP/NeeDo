@@ -1,56 +1,56 @@
-// @vitest-environment jsdom
+/** @vitest-environment jsdom */
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatLocalizedImChatRecordTitle } from "../../features/im/chat-records";
-import { entityEngagementApi } from "../../features/entity-engagement/api";
-import type { EntityFavoriteListItem } from "../../features/entity-engagement/api";
-import type { Language } from "../../i18n/translations";
 import appSource from "../../App.tsx?raw";
-import pageSource from "./UserFavoritesPage.tsx?raw";
-import { UserFavoritesPage, type UserFavoritesApi } from "./UserFavoritesPage";
+import type { UnifiedFavoriteItem, UnifiedFavoritePage } from "../../features/favorites/model";
+import { UserFavoritesPage, type FavoritesTimelineApi } from "./UserFavoritesPage";
 
-function favoriteAt(index: number) {
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+function favorite(overrides: Partial<UnifiedFavoriteItem> = {}): UnifiedFavoriteItem {
   return {
-    id: String(index),
-    bundlePublicId: `11111111-1111-4111-8111-${String(index).padStart(12, "0")}`,
-    title: "backend title",
-    titleKind: "single" as const,
-    preview: `A${index}: saved`,
-    senderNames: [`A${index}`],
-    senderCount: 1,
-    itemCount: 1,
-    createdAt: "2026-08-31T10:00:00.000Z",
+    key: "shop:shop:shop0000000001",
+    type: "shop",
+    itemKey: "shop:shop0000000001",
+    title: "StagingTest",
+    summary: "东京店铺",
+    imageUrl: null,
+    detailPath: "/stores/shop0000000001",
+    favoritedAt: "2026-09-20T15:05:00.000Z",
+    activityAt: "2026-09-20T15:05:00.000Z",
+    pinnedAt: null,
+    reaction: null,
+    canForward: true,
+    canDelete: true,
+    ...overrides,
   };
 }
 
-const favorite = favoriteAt(7);
-
-function LocationProbe() {
-  return <output data-testid="location-probe">{useLocation().pathname}</output>;
+function page(list: UnifiedFavoriteItem[]): UnifiedFavoritePage {
+  return { list, total: list.length, page: 1, page_size: 20 };
 }
 
-function formalPage(list: ReturnType<typeof favoriteAt>[], page: number) {
+function makeApi(rows = [favorite()]): FavoritesTimelineApi {
   return {
-    list: list.slice((page - 1) * 20, page * 20),
-    total: list.length,
-    page,
-    page_size: 20,
-  };
-}
-
-function makeApi(): UserFavoritesApi {
-  let rows = Array.from({ length: 21 }, (_, index) => favoriteAt(index + 1));
-  return {
-    listChatRecordFavorites: vi.fn(async ({ page = 1 } = {}) =>
-      formalPage(rows, page),
-    ),
-    removeChatRecordFavorite: vi.fn(async (favoriteId) => {
-      rows = rows.filter((row) => row.id !== favoriteId);
-      return { deleted: true as const };
-    }),
+    list: vi.fn(async () => page(rows)),
+    removeSourceFavorite: vi.fn(async () => ({ deleted: true as const })),
+    setPinned: vi.fn(async (type, itemKey, active) => ({
+      itemType: type,
+      itemKey,
+      pinnedAt: active ? "2026-09-21T00:00:00.000Z" : null,
+      reaction: null,
+      updatedAt: "2026-09-21T00:00:00.000Z",
+    })),
+    setReaction: vi.fn(async (type, itemKey, reaction) => ({
+      itemType: type,
+      itemKey,
+      pinnedAt: null,
+      reaction,
+      updatedAt: "2026-09-21T00:00:00.000Z",
+    })),
   };
 }
 
@@ -61,848 +61,74 @@ async function flush() {
   });
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((nextResolve, nextReject) => {
-    resolve = nextResolve;
-    reject = nextReject;
-  });
-  return { promise, reject, resolve };
-}
-
 describe("UserFavoritesPage", () => {
+  it("keeps the timeline route outside the initial application bundle", () => {
+    expect(appSource).toContain('lazy(() => import("./pages/user/UserFavoritesPage")');
+    expect(appSource).toContain("<Suspense fallback={null}><UserFavoritesRoutePage /></Suspense>");
+  });
+
   let container: HTMLDivElement;
   let root: Root;
 
   beforeEach(() => {
     container = document.createElement("div");
-    document.body.appendChild(container);
+    document.body.append(container);
     root = createRoot(container);
   });
 
   afterEach(async () => {
     await act(async () => root.unmount());
+    document.body.replaceChildren();
     vi.restoreAllMocks();
-    container.remove();
-    document.body.innerHTML = "";
   });
 
-  it.each<[Language, [string, string, string]]>([
-    ["zh", ["A的聊天记录", "A和B的聊天记录", "群聊记录"]],
-    ["zh-Hant", ["A的聊天記錄", "A和B的聊天記錄", "群組聊天記錄"]],
-    ["ja", ["Aのチャット履歴", "AとBのチャット履歴", "グループチャット履歴"]],
-    [
-      "en",
-      ["A's chat history", "A and B's chat history", "Group chat history"],
-    ],
-    ["ko", ["A의 채팅 기록", "A와 B의 채팅 기록", "그룹 채팅 기록"]],
-  ])(
-    "formats single, pair, and group chat-record titles in %s",
-    (language, expected) => {
-      expect([
-        formatLocalizedImChatRecordTitle(["A"], "single", language),
-        formatLocalizedImChatRecordTitle(["A", "B"], "pair", language),
-        formatLocalizedImChatRecordTitle(["A", "B", "C"], "group", language),
-      ]).toEqual(expected);
-    },
-  );
+  it("renders six header tabs and the unified Tokyo date timeline", async () => {
+    const api = makeApi([
+      favorite({ key: "shop:new", title: "今天项目", activityAt: "2026-09-20T15:05:00.000Z" }),
+      favorite({ key: "service:old", type: "service", title: "昨天项目", activityAt: "2026-09-20T14:59:00.000Z" }),
+    ]);
+    await act(async () => root.render(
+      <MemoryRouter>
+        <UserFavoritesPage api={api} language="zh" now={() => new Date("2026-09-20T15:30:00.000Z")} />
+      </MemoryRouter>,
+    ));
+    await flush();
 
-  it("loads formal paginated favorites and treats one complete record as one row", async () => {
+    expect(Array.from(container.querySelectorAll('[role="tab"]')).map((tab) => tab.textContent)).toEqual([
+      "全部", "店铺", "技师", "服务", "动态", "聊天记录",
+    ]);
+    expect(container.textContent).toContain("今天");
+    expect(container.textContent).toContain("昨天");
+    expect(container.textContent?.indexOf("今天项目")).toBeLessThan(container.textContent?.indexOf("昨天项目") ?? 0);
+    expect(api.list).toHaveBeenCalledWith({ type: undefined, query: undefined, page: 1, pageSize: 20 });
+  });
+
+  it("queries the selected category and keeps the search term", async () => {
     const api = makeApi();
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage api={api} language="zh" />
-        </MemoryRouter>,
-      ),
-    );
+    await act(async () => root.render(<MemoryRouter><UserFavoritesPage api={api} language="zh" /></MemoryRouter>));
     await flush();
-    expect(document.body.textContent).toContain("我的收藏");
-    expect(document.body.textContent).toContain("A1的聊天记录");
-    expect(
-      document.body.querySelectorAll("[data-im-chat-record-opener]"),
-    ).toHaveLength(20);
-    expect(api.listChatRecordFavorites).toHaveBeenCalledWith({
-      page: 1,
-      pageSize: 20,
-    });
-    const next = Array.from(document.body.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("下一页"),
-    );
-    await act(async () => next?.click());
-    await flush();
-    expect(api.listChatRecordFavorites).toHaveBeenLastCalledWith({
-      page: 2,
-      pageSize: 20,
-    });
-  });
-
-  it("loads formal entity favorites into the same unified card system", async () => {
-    const api = makeApi();
-    vi.spyOn(entityEngagementApi, "getFavoriteStatuses").mockResolvedValue({
-      list: [
-        {
-          targetType: "shop",
-          publicId: "shop0000000001",
-          isFavorited: true,
-          favoriteCount: 3,
-        },
-      ],
-    });
-    const entityApi = {
-      listFavorites: vi.fn(async () => ({
-        list: [
-          {
-            targetType: "shop" as const,
-            publicId: "shop0000000001",
-            isFavorited: true,
-            favoriteCount: 3,
-            favoritedAt: "2026-09-09T00:00:00.000Z",
-            card: {
-              kind: "shop" as const,
-              name: "LifeDance 港区店",
-              description: "深夜疗愈",
-              address: "東京都港区麻布十番",
-              imageUrl: null,
-              rating: 4.9,
-              reviewCount: 32,
-              completedOrderCount: 1999,
-              shareCount: 8,
-            },
-          },
-        ],
-        total: 1,
-        page: 1,
-        page_size: 100,
-      })),
-      setFavorite: vi.fn(async () => ({})),
-    };
-
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage api={api} entityApi={entityApi} language="ja" />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-
-    expect(entityApi.listFavorites).toHaveBeenCalledWith({
-      page: 1,
-      pageSize: 100,
-    });
-    expect(document.body.textContent).toContain("LifeDance 港区店");
-    expect(document.body.textContent).toContain("東京都港区麻布十番");
-    expect(document.querySelector('[data-card-kind="shop"]')).not.toBeNull();
-    expect(document.body.textContent).toContain("1.9k");
-    expect(document.body.textContent).not.toContain("32");
-    expect(document.querySelector('[aria-label="完了件数"]')).not.toBeNull();
-    expect(document.querySelector('[aria-label="完单数"]')).toBeNull();
-
-    vi.mocked(entityApi.setFavorite).mockRejectedValueOnce(new Error("network"));
-    const remove = document.querySelector<HTMLButtonElement>(
-      'section[aria-label="店舗"] button',
-    );
-    await act(async () => remove?.click());
-    await flush();
-    expect(document.body.textContent).toContain(
-      "お気に入りの削除に失敗しました。もう一度お試しください",
-    );
-    expect(document.body.textContent).toContain("LifeDance 港区店");
-  });
-
-  it("opens shop, technician, and service cards through their formal public-ID routes", async () => {
-    const entityRows: EntityFavoriteListItem[] = [
-      {
-        targetType: "shop",
-        publicId: "shop0000000001",
-        isFavorited: true,
-        favoriteCount: 3,
-        favoritedAt: "2026-09-09T00:00:00.000Z",
-        card: {
-          kind: "shop",
-          name: "麻布十番超级按摩",
-          description: "深夜疗愈",
-          address: "東京都港区麻布十番",
-          imageUrl: null,
-          rating: 4.9,
-          reviewCount: 32,
-          completedOrderCount: 126,
-          shareCount: 8,
-        },
-      },
-      {
-        targetType: "technician",
-        publicId: "s0000000001",
-        isFavorited: true,
-        favoriteCount: 5,
-        favoritedAt: "2026-09-09T00:00:00.000Z",
-        card: {
-          kind: "technician",
-          name: "技师 Mika",
-          description: "肩颈护理",
-          imageUrl: null,
-          languages: ["日本語"],
-          rating: 4.8,
-          completedOrderCount: 50,
-          shareCount: 4,
-        },
-      },
-      {
-        targetType: "service",
-        publicId: "11111111-1111-4111-8111-111111111111",
-        isFavorited: true,
-        favoriteCount: 7,
-        favoritedAt: "2026-09-09T00:00:00.000Z",
-        card: {
-          kind: "service",
-          name: "全身调理",
-          description: "90 分钟",
-          imageUrl: null,
-          priceAmount: 12000,
-          currency: "JPY",
-          durationMinutes: 90,
-          usageCount: 12,
-          shareCount: 2,
-          isBookable: true,
-          shopPublicId: "shop0000000001",
-          shopAddress: "東京都港区",
-          tags: ["调理"],
-        },
-      },
-    ];
-    const entityApi = {
-      listFavorites: vi.fn(async () => ({
-        list: entityRows,
-        total: entityRows.length,
-        page: 1,
-        page_size: 100,
-      })),
-      setFavorite: vi.fn(async () => ({})),
-    };
-
-    await act(async () =>
-      root.render(
-        <MemoryRouter initialEntries={["/me/favorites"]}>
-          <UserFavoritesPage api={makeApi()} entityApi={entityApi} language="zh" />
-          <LocationProbe />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-
-    const expectedLinks = [
-      ["查看店铺 麻布十番超级按摩", "/stores/shop0000000001"],
-      ["查看技师 技师 Mika", "/profiles/technician/s0000000001"],
-      ["查看服务 全身调理", "/services/11111111-1111-4111-8111-111111111111"],
-    ] as const;
-    for (const [label, href] of expectedLinks) {
-      const link = container.querySelector<HTMLAnchorElement>(
-        `a[aria-label="${label}"]`,
-      );
-      expect(link?.getAttribute("href")).toBe(href);
-      expect(link?.tabIndex).toBe(0);
-      link?.focus();
-      expect(document.activeElement).toBe(link);
-    }
-
-    await act(async () =>
-      container
-        .querySelector<HTMLAnchorElement>('a[aria-label="查看店铺 麻布十番超级按摩"]')
-        ?.click(),
-    );
-    expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe(
-      "/stores/shop0000000001",
-    );
-  });
-
-  it("does not invent a detail route for a missing public ID and keeps removal independent", async () => {
-    const invalidFavorite = {
-      targetType: "shop",
-      publicId: "",
-      isFavorited: true,
-      favoriteCount: 1,
-      favoritedAt: "2026-09-09T00:00:00.000Z",
-      card: {
-        kind: "shop",
-        name: "缺少公开 ID 的店铺",
-        description: null,
-        address: "東京都港区",
-        imageUrl: null,
-        rating: 4.5,
-        reviewCount: 2,
-        completedOrderCount: 3,
-        shareCount: 0,
-      },
-    } as EntityFavoriteListItem;
-    const removableFavorite: EntityFavoriteListItem = {
-      ...invalidFavorite,
-      publicId: "shop0000000002",
-      card: {
-        ...invalidFavorite.card,
-        name: "可独立移除的店铺",
-      },
-    };
-    const entityApi = {
-      listFavorites: vi.fn(async () => ({
-        list: [invalidFavorite, removableFavorite],
-        total: 2,
-        page: 1,
-        page_size: 100,
-      })),
-      setFavorite: vi.fn(async () => ({})),
-    };
-
-    await act(async () =>
-      root.render(
-        <MemoryRouter initialEntries={["/me/favorites"]}>
-          <UserFavoritesPage api={makeApi()} entityApi={entityApi} language="zh" />
-          <LocationProbe />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-
-    expect(container.textContent).toContain("缺少公开 ID 的店铺");
-    expect(
-      container.querySelector('a[aria-label="查看店铺 缺少公开 ID 的店铺"]'),
-    ).toBeNull();
-    const removableRow = Array.from(container.querySelectorAll("li")).find((row) =>
-      row.textContent?.includes("可独立移除的店铺"),
-    );
-    const remove = removableRow?.querySelector<HTMLButtonElement>("button");
-    expect(remove?.closest("a")).toBeNull();
-    await act(async () => remove?.click());
-    await flush();
-    expect(entityApi.setFavorite).toHaveBeenCalledWith(
-      { targetType: "shop", publicId: "shop0000000002" },
-      false,
-    );
-    expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe(
-      "/me/favorites",
-    );
-  });
-
-  it("uses one canonical bottom-nav-free route with shared back, search, and close controls", () => {
-    expect(appSource).toContain(
-      '<Route path="/me/favorites" element={protect("user", <UserFavoritesRoutePage />)} />',
-    );
-    expect(appSource).toContain(
-      '<Route path="/me/favorites/chat-records" element={protect("user", <Navigate replace to="/me/favorites" />)} />',
-    );
-    expect(pageSource).toContain("<MobileFullscreenHeader");
-    expect(pageSource).toContain("showBottomNav={false}");
-  });
-
-  it("lists shop, technician, service, post, and chat-record favorites and filters them from the header search", async () => {
-    const api = makeApi();
-    const entityRows: EntityFavoriteListItem[] = [
-      {
-        targetType: "shop",
-        publicId: "shop0000000001",
-        isFavorited: true,
-        favoriteCount: 3,
-        favoritedAt: "2026-09-09T00:00:00.000Z",
-        card: {
-          kind: "shop",
-          name: "LifeDance 港区店",
-          description: "深夜疗愈",
-          address: "東京都港区",
-          imageUrl: null,
-          rating: 4.9,
-          reviewCount: 32,
-          completedOrderCount: 126,
-          shareCount: 8,
-        },
-      },
-      {
-        targetType: "technician",
-        publicId: "s0000000001",
-        isFavorited: true,
-        favoriteCount: 5,
-        favoritedAt: "2026-09-09T00:00:00.000Z",
-        card: {
-          kind: "technician",
-          name: "技师 Mika",
-          description: "肩颈护理",
-          imageUrl: null,
-          languages: ["日本語"],
-          rating: 4.8,
-          completedOrderCount: 50,
-          shareCount: 4,
-        },
-      },
-      {
-        targetType: "service",
-        publicId: "svc000000001",
-        isFavorited: true,
-        favoriteCount: 7,
-        favoritedAt: "2026-09-09T00:00:00.000Z",
-        card: {
-          kind: "service",
-          name: "全身调理",
-          description: "90 分钟",
-          imageUrl: null,
-          priceAmount: 12000,
-          currency: "JPY",
-          durationMinutes: 90,
-          usageCount: 12,
-          shareCount: 2,
-          isBookable: true,
-          shopPublicId: "shop0000000001",
-          shopAddress: "東京都港区",
-          tags: ["调理"],
-        },
-      },
-    ];
-    const entityApi = {
-      listFavorites: vi.fn(async () => ({
-        list: entityRows,
-        total: entityRows.length,
-        page: 1,
-        page_size: 100,
-      })),
-      setFavorite: vi.fn(async () => ({})),
-    };
-
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage
-            api={api}
-            entityApi={entityApi}
-            language="zh"
-            socialFavorites={[
-              {
-                authorAvatar: "/avatar.webp",
-                authorName: "LifeDance",
-                mediaType: "video",
-                mediaUrl: "/media/content/season.mp4",
-                postId: "701",
-                text: "季节视频公告",
-              },
-            ]}
-          />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-
-    expect(container.textContent).toContain("店铺");
-    expect(container.textContent).toContain("技师");
-    expect(container.textContent).toContain("服务");
-    expect(container.textContent).toContain("动态");
-    expect(container.textContent).toContain("聊天记录");
-    expect(container.querySelector('[data-card-kind="shop"]')).not.toBeNull();
-    expect(container.querySelector('[data-card-kind="technician"]')).not.toBeNull();
-    expect(container.querySelector('[data-card-kind="service"]')).not.toBeNull();
-    expect(container.querySelector("[data-social-post-compact-card]")).not.toBeNull();
-    expect(container.querySelector("[data-im-chat-record-opener]")).not.toBeNull();
-    expect(container.querySelector('button[aria-label="返回个人中心"]')).not.toBeNull();
-    expect(container.querySelector('button[aria-label="关闭收藏"]')).not.toBeNull();
-
-    await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('button[aria-label="搜索收藏"]')
-        ?.click(),
-    );
-    const search = container.querySelector<HTMLInputElement>(
-      'input[aria-label="搜索收藏内容"]',
-    );
-    expect(search).not.toBeNull();
+    const searchButton = container.querySelector<HTMLButtonElement>('button[aria-label="搜索收藏"]')!;
+    await act(async () => searchButton.click());
+    const input = container.querySelector<HTMLInputElement>('input[type="search"]')!;
     await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        "value",
-      )?.set;
-      setter?.call(search, "季节视频");
-      search?.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-
-    expect(container.textContent).toContain("季节视频公告");
-    expect(container.textContent).not.toContain("LifeDance 港区店");
-    expect(container.textContent).not.toContain("A1的聊天记录");
-  });
-
-  it("shows a retryable dynamic-favorite error instead of an empty state", async () => {
-    const onRetrySocial = vi.fn();
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage
-            api={makeApi()}
-            language="zh"
-            onRetrySocial={onRetrySocial}
-            socialStatus="error"
-          />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-
-    const dynamicSection = container.querySelector('section[aria-label="动态"]');
-    expect(dynamicSection?.textContent).toContain("收藏读取失败");
-    expect(dynamicSection?.textContent).not.toContain("暂无收藏的动态");
-    await act(async () =>
-      dynamicSection?.querySelector<HTMLButtonElement>("button")?.click(),
-    );
-    expect(onRetrySocial).toHaveBeenCalledTimes(1);
-  });
-
-  it("retains a favorite on remove failure and removes it only after API success", async () => {
-    const api = makeApi();
-    vi.mocked(api.removeChatRecordFavorite).mockRejectedValueOnce(
-      new Error("network"),
-    );
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage api={api} language="zh" />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-    const remove = () =>
-      Array.from(document.body.querySelectorAll("button")).find((button) =>
-        button.textContent?.includes("移除收藏"),
-      );
-    await act(async () => remove()?.click());
-    await flush();
-    expect(document.body.textContent).toContain("A1的聊天记录");
-    expect(document.body.textContent).toContain("移除失败");
-    await act(async () => remove()?.click());
-    await flush();
-    expect(document.body.textContent).not.toContain("A1的聊天记录");
-    expect(
-      document.body.querySelectorAll("[data-im-chat-record-opener]"),
-    ).toHaveLength(20);
-    expect(document.body.textContent).toContain("A21的聊天记录");
-    expect(api.listChatRecordFavorites).toHaveBeenCalledTimes(2);
-    expect(api.removeChatRecordFavorite).toHaveBeenCalledTimes(2);
-  });
-
-  it("clears old rows during page changes and offers retry without mixing a failed page", async () => {
-    const pageTwo =
-      deferred<
-        Awaited<ReturnType<UserFavoritesApi["listChatRecordFavorites"]>>
-      >();
-    const api = makeApi();
-    vi.mocked(api.listChatRecordFavorites).mockImplementation(
-      async ({ page = 1 } = {}) => {
-        if (page === 2) return pageTwo.promise;
-        return formalPage(
-          Array.from({ length: 21 }, (_, index) => favoriteAt(index + 1)),
-          page,
-        );
-      },
-    );
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage api={api} language="zh" />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-    const next = Array.from(document.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("下一页"),
-    );
-    await act(async () => next?.click());
-    expect(document.body.textContent).not.toContain("A1的聊天记录");
-    pageTwo.reject(new Error("network"));
-    await flush();
-    expect(document.body.textContent).toContain("收藏读取失败");
-    const retry = Array.from(document.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("重试"),
-    );
-    expect(retry).not.toBeUndefined();
-    vi.mocked(api.listChatRecordFavorites).mockResolvedValueOnce(
-      formalPage(
-        Array.from({ length: 21 }, (_, index) => favoriteAt(index + 1)),
-        2,
-      ),
-    );
-    await act(async () => retry?.click());
-    await flush();
-    expect(api.listChatRecordFavorites).toHaveBeenLastCalledWith({
-      page: 2,
-      pageSize: 20,
-    });
-  });
-
-  it("serializes page removals so exact offset reloads stay authoritative", async () => {
-    let rows = Array.from({ length: 42 }, (_, index) => favoriteAt(index + 1));
-    const api = makeApi();
-    vi.mocked(api.listChatRecordFavorites).mockImplementation(
-      async ({ page = 1 } = {}) => formalPage(rows, page),
-    );
-    vi.mocked(api.removeChatRecordFavorite).mockImplementation(
-      async (favoriteId) => {
-        rows = rows.filter((row) => row.id !== favoriteId);
-        return { deleted: true };
-      },
-    );
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage api={api} language="zh" />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-    await act(async () =>
-      Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-        .find((button) => button.textContent?.includes("下一页"))
-        ?.click(),
-    );
-    await flush();
-    await act(async () =>
-      Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-        .find((button) => button.textContent?.includes("下一页"))
-        ?.click(),
-    );
-    await flush();
-    expect(document.body.textContent).toContain("A41的聊天记录");
-    expect(document.body.textContent).toContain("A42的聊天记录");
-
-    const [firstRemove, secondRemove] = Array.from(
-      document.querySelectorAll<HTMLButtonElement>("button"),
-    ).filter((button) => button.textContent?.includes("移除收藏"));
-    await act(async () => {
-      firstRemove?.click();
-      secondRemove?.click();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "东京");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await flush();
-
-    expect(api.removeChatRecordFavorite).toHaveBeenCalledTimes(1);
-    expect(api.removeChatRecordFavorite).toHaveBeenLastCalledWith("41");
-    expect(api.listChatRecordFavorites).toHaveBeenLastCalledWith({
-      page: 3,
-      pageSize: 20,
-    });
-    expect(document.body.textContent).not.toContain("A41的聊天记录");
-    expect(document.body.textContent).toContain("A42的聊天记录");
-
-    await act(async () =>
-      Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-        .find((button) => button.textContent?.includes("移除收藏"))
-        ?.click(),
-    );
+    const serviceTab = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((tab) => tab.textContent === "服务")!;
+    await act(async () => serviceTab.click());
     await flush();
-    expect(api.removeChatRecordFavorite).toHaveBeenCalledTimes(2);
-    expect(api.removeChatRecordFavorite).toHaveBeenLastCalledWith("42");
-    expect(api.listChatRecordFavorites).toHaveBeenLastCalledWith({
-      page: 2,
-      pageSize: 20,
-    });
+    expect(api.list).toHaveBeenLastCalledWith({ type: "service", query: "东京", page: 1, pageSize: 20 });
   });
 
-  it("guards same-tick duplicate removal and ignores its late success after paging", async () => {
-    const removal = deferred<{ deleted: true }>();
+  it("uses the formal pin command and reloads the authoritative page", async () => {
     const api = makeApi();
-    vi.mocked(api.removeChatRecordFavorite).mockReturnValue(removal.promise);
-    let rows = Array.from({ length: 21 }, (_, index) => ({
-      ...favoriteAt(index + 1),
-      preview: `A: page-${index < 20 ? "one" : "later"}`,
-    }));
-    vi.mocked(api.removeChatRecordFavorite).mockImplementation(() =>
-      removal.promise.then((result) => {
-        rows = rows.filter((row) => row.id !== "1");
-        return result;
-      }),
-    );
-    vi.mocked(api.listChatRecordFavorites).mockImplementation(
-      async ({ page = 1 } = {}) => formalPage(rows, page),
-    );
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage api={api} language="zh" />
-        </MemoryRouter>,
-      ),
-    );
+    await act(async () => root.render(<MemoryRouter><UserFavoritesPage api={api} language="zh" /></MemoryRouter>));
     await flush();
-    const remove = Array.from(
-      document.querySelectorAll<HTMLButtonElement>("button"),
-    ).find((button) => button.textContent?.includes("移除收藏"))!;
-    await act(async () => {
-      remove.click();
-      remove.click();
-    });
-    expect(api.removeChatRecordFavorite).toHaveBeenCalledTimes(1);
-    await act(async () =>
-      Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-        .find((button) => button.textContent?.includes("下一页"))
-        ?.click(),
-    );
+    const pin = container.querySelector<HTMLButtonElement>('[data-swipe-action-key="pin"]')!;
+    await act(async () => pin.click());
     await flush();
-    expect(document.body.textContent).toContain("page-later");
-    removal.resolve({ deleted: true });
-    await flush();
-    expect(document.body.textContent).toContain("page-later");
-    expect(
-      vi
-        .mocked(api.listChatRecordFavorites)
-        .mock.calls.filter(([query]) => query?.page === 2),
-    ).toHaveLength(1);
-  });
-
-  it("returns from an emptied later page and loads the preceding page", async () => {
-    const api = makeApi();
-    let rows = Array.from({ length: 21 }, (_, index) => favoriteAt(index + 1));
-    vi.mocked(api.listChatRecordFavorites).mockImplementation(
-      async ({ page = 1 } = {}) => formalPage(rows, page),
-    );
-    vi.mocked(api.removeChatRecordFavorite).mockImplementation(
-      async (favoriteId) => {
-        rows = rows.filter((row) => row.id !== favoriteId);
-        return { deleted: true };
-      },
-    );
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage api={api} language="zh" />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-    await act(async () =>
-      Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-        .find((button) => button.textContent?.includes("下一页"))
-        ?.click(),
-    );
-    await flush();
-    await act(async () =>
-      Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-        .find((button) => button.textContent?.includes("移除收藏"))
-        ?.click(),
-    );
-    await flush();
-    expect(api.listChatRecordFavorites).toHaveBeenLastCalledWith({
-      page: 1,
-      pageSize: 20,
-    });
-  });
-
-  it("reloads the origin page when a late removal completes after leaving and returning", async () => {
-    const removal = deferred<{ deleted: true }>();
-    let rows = Array.from({ length: 21 }, (_, index) => favoriteAt(index + 1));
-    const api = makeApi();
-    vi.mocked(api.listChatRecordFavorites).mockImplementation(
-      async ({ page = 1 } = {}) => formalPage(rows, page),
-    );
-    vi.mocked(api.removeChatRecordFavorite).mockImplementation(() =>
-      removal.promise.then((result) => {
-        rows = rows.filter((row) => row.id !== "1");
-        return result;
-      }),
-    );
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage api={api} language="zh" />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-    const remove = Array.from(
-      document.querySelectorAll<HTMLButtonElement>("button"),
-    ).find((button) => button.textContent?.includes("移除收藏"))!;
-    await act(async () => remove.click());
-    await act(async () =>
-      Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-        .find((button) => button.textContent?.includes("下一页"))
-        ?.click(),
-    );
-    await flush();
-    await act(async () =>
-      Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-        .find((button) => button.textContent?.includes("上一页"))
-        ?.click(),
-    );
-    await flush();
-    removal.resolve({ deleted: true });
-    await flush();
-    expect(document.body.textContent).not.toContain("A1的聊天记录");
-    expect(document.body.textContent).toContain("A21的聊天记录");
-    expect(
-      vi
-        .mocked(api.listChatRecordFavorites)
-        .mock.calls.filter(([query]) => query?.page === 1),
-    ).toHaveLength(3);
-  });
-
-  it("loads the updated origin page by normal paging after late success on another page", async () => {
-    const removal = deferred<{ deleted: true }>();
-    let rows = Array.from({ length: 21 }, (_, index) => favoriteAt(index + 1));
-    const api = makeApi();
-    vi.mocked(api.listChatRecordFavorites).mockImplementation(
-      async ({ page = 1 } = {}) => formalPage(rows, page),
-    );
-    vi.mocked(api.removeChatRecordFavorite).mockImplementation(() =>
-      removal.promise.then((result) => {
-        rows = rows.filter((row) => row.id !== "1");
-        return result;
-      }),
-    );
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage api={api} language="zh" />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-    const remove = Array.from(
-      document.querySelectorAll<HTMLButtonElement>("button"),
-    ).find((button) => button.textContent?.includes("移除收藏"))!;
-    await act(async () => remove.click());
-    await act(async () =>
-      Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-        .find((button) => button.textContent?.includes("下一页"))
-        ?.click(),
-    );
-    await flush();
-    removal.resolve({ deleted: true });
-    await flush();
-    expect(document.body.textContent).toContain("A21的聊天记录");
-    expect(
-      vi
-        .mocked(api.listChatRecordFavorites)
-        .mock.calls.filter(([query]) => query?.page === 2),
-    ).toHaveLength(1);
-    await act(async () =>
-      Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-        .find((button) => button.textContent?.includes("上一页"))
-        ?.click(),
-    );
-    await flush();
-    expect(document.body.textContent).not.toContain("A1的聊天记录");
-    expect(document.body.textContent).toContain("A21的聊天记录");
-    expect(
-      vi
-        .mocked(api.listChatRecordFavorites)
-        .mock.calls.filter(([query]) => query?.page === 1),
-    ).toHaveLength(2);
-  });
-
-  it("renders complete English favorites navigation and removal copy", async () => {
-    const api = makeApi();
-    await act(async () =>
-      root.render(
-        <MemoryRouter>
-          <UserFavoritesPage api={api} language="en" />
-        </MemoryRouter>,
-      ),
-    );
-    await flush();
-    expect(document.body.textContent).toContain("My favorites");
-    expect(document.body.textContent).toContain("Saved chat records");
-    expect(document.body.textContent).toContain("A1's chat history");
-    expect(document.body.textContent).toContain("Remove favorite");
-    expect(document.body.textContent).toContain("Previous page");
-    expect(document.body.textContent).toContain("Next page");
+    expect(api.setPinned).toHaveBeenCalledWith("shop", "shop:shop0000000001", true);
+    expect(api.list).toHaveBeenCalledTimes(2);
   });
 });

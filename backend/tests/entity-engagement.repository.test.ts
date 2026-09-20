@@ -28,7 +28,11 @@ describe("EntityEngagementRepository", () => {
     expect(entityFavorite.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          OR: [{ shop: { is: expect.objectContaining(visibilityWhere) } }]
+          AND: [
+            {
+              OR: [{ shop: { is: expect.objectContaining(visibilityWhere) } }]
+            }
+          ]
         })
       })
     );

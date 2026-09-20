@@ -49,7 +49,9 @@ export function ImMessageMultiSelectCircle({
 }
 
 export function ImMessageMultiSelectOverlay({
+  actionItems,
   deleteConfirmationOpen,
+  deleteConfirmationText,
   language,
   notice,
   onCancel,
@@ -63,8 +65,17 @@ export function ImMessageMultiSelectOverlay({
   pendingAction,
   recordActionsSupported,
   selectedCount,
+  selectedCountText,
+  showRangeControls = true,
 }: {
+  actionItems?: Array<{
+    icon: "copy" | "delete" | "forward" | "top";
+    key: ImMultiSelectAction;
+    label: string;
+    onClick: () => void;
+  }>;
   deleteConfirmationOpen: boolean;
+  deleteConfirmationText?: string;
   language: Language;
   notice: string | null;
   onCancel: () => void;
@@ -78,15 +89,17 @@ export function ImMessageMultiSelectOverlay({
   pendingAction: ImMultiSelectAction | null;
   recordActionsSupported: boolean;
   selectedCount: number;
+  selectedCountText?: string;
+  showRangeControls?: boolean;
 }) {
   const hereLabel = translateImUiText("选择到这里", language);
-  const selectedCountLabel = translateImUiText("已选择 {count} 条信息", language).replace("{count}", String(selectedCount));
-  const deleteConfirmation = translateImUiText("将从你的聊天记录中删除 {count} 条信息，不影响对方。", language).replace("{count}", String(selectedCount));
+  const selectedCountLabel = selectedCountText ?? translateImUiText("已选择 {count} 条信息", language).replace("{count}", String(selectedCount));
+  const deleteConfirmation = deleteConfirmationText ?? translateImUiText("将从你的聊天记录中删除 {count} 条信息，不影响对方。", language).replace("{count}", String(selectedCount));
   const disabled = selectedCount === 0 || pendingAction !== null;
   const unsupportedRecordNotice = !recordActionsSupported && selectedCount > 0
     ? translateImUiText("所选信息包含暂不支持转发或收藏的类型", language)
     : null;
-  const actions = [
+  const actions = actionItems ?? [
     { icon: "forward" as const, key: "forward", label: "转发", onClick: onForward },
     { icon: "copy" as const, key: "copy", label: "复制", onClick: onCopy },
     { icon: "top" as const, key: "favorite", label: "收藏", onClick: onFavorite },
@@ -117,7 +130,7 @@ export function ImMessageMultiSelectOverlay({
         <span aria-hidden="true" className="h-11 w-11" />
       </header>
 
-      {(["upper", "lower"] as const).map((position) => (
+      {showRangeControls ? (["upper", "lower"] as const).map((position) => (
         <button
           className={cn(
             "focus-ring fixed left-3 z-[71] min-h-11 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_90%,transparent)] px-3 text-[12px] font-black text-[color:var(--client-text)] shadow-[0_10px_28px_rgba(0,0,0,0.16)]",
@@ -133,11 +146,12 @@ export function ImMessageMultiSelectOverlay({
         >
           {position === "upper" ? "↑" : "↓"} {hereLabel}
         </button>
-      ))}
+      )) : null}
 
       <div
-        className="client-liquid-glass-surface fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+8px)] z-[72] mx-auto grid max-w-[min(856px,calc(100vw-1.5rem))] grid-cols-4 gap-1 rounded-[24px] p-1.5"
+        className="client-liquid-glass-surface fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+8px)] z-[72] mx-auto grid max-w-[min(856px,calc(100vw-1.5rem))] gap-1 rounded-[24px] p-1.5"
         data-im-multiselect-action-bar="true"
+        style={{ gridTemplateColumns: `repeat(${actions.length}, minmax(0, 1fr))` }}
       >
         {actions.map((action) => (
           <button

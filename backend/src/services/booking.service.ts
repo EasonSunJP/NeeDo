@@ -37,6 +37,7 @@ import type {
   ScheduleSlotPayload,
   ScheduleSlotUpdateInput
 } from "../repositories/booking.repository";
+import { MerchantOrderEditConflictError } from "../repositories/booking.repository";
 import type {
   CreateOrderAddOnInput,
   ConfirmReceiptInput,
@@ -73,7 +74,7 @@ import type { LiveDashboardEventPublisher } from "./live-dashboard-event.gateway
 import { LiveDashboardOrderChangePublisher } from "./live-dashboard-order-change.publisher";
 import { toShopVisibilityViewer, type ShopVisibilityRepositoryPort } from "./shop-visibility.service";
 import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
-import { readCompensationBasisVersion } from "./compensation-basis";
+import { readBookingNominationSnapshot, readCompensationBasisVersion } from "./compensation-basis";
 import type { ServicePrepaymentService } from "./service-prepayment.service";
 
 export interface AuthenticatedBookingActor {
@@ -463,6 +464,7 @@ export class BookingService {
       orderType: input.orderType ?? "booking",
       serviceId: input.serviceId,
       technicianServiceId: input.technicianServiceId,
+      nominatedTechnicianProfileId: input.nominatedTechnicianProfileId,
       scheduleSlotId: input.scheduleSlotId,
       fulfillmentMode: input.fulfillmentMode,
       serviceLocation:
@@ -706,6 +708,60 @@ export class BookingService {
       };
     }
 
+    return order;
+  }
+
+  public async assignOrderTechnician(
+    actor: AuthenticatedBookingActor,
+    id: number,
+    technicianProfileId: number
+  ): Promise<BookingOrderPayload> {
+    if (!this.repository.assignTechnician) throw this.dependencyUnavailableError();
+    const result = await this.repository.assignTechnician({
+      orderId: id,
+      shopId: requireMerchantShopId(actor),
+      technicianProfileId,
+      actorUserId: actor.userId
+    });
+    if (result.outcome === "ok") {
+      await this.notifyOrderChangedBestEffort(actor, result.order, "assignment");
+      await this.publishLiveDashboardChangesBestEffort([result.order.id]);
+      return result.order;
+    }
+    if (result.outcome === "not_found") throw this.notFoundError();
+    throw new AppError({
+      code: ERROR_CODES.SCHEDULE_CONFLICT,
+      message: result.outcome === "already_assigned"
+        ? "error.booking.technician_already_assigned"
+        : "error.booking.technician_unavailable",
+      statusCode: 409
+    });
+  }
+
+  public async editMerchantOrder(
+    actor: AuthenticatedBookingActor,
+    id: number,
+    input: { priceAmountJpy?: number; paymentMethod?: "onsite" | "bank_transfer"; note?: string | null }
+  ): Promise<BookingOrderPayload> {
+    if (!this.repository.editMerchantOrder) throw this.dependencyUnavailableError();
+    const order = await this.repository.editMerchantOrder({
+      ...input,
+      orderId: id,
+      shopId: requireMerchantShopId(actor),
+      actorUserId: actor.userId
+    }).catch((error: unknown) => {
+      if (error instanceof MerchantOrderEditConflictError) {
+        throw new AppError({
+          code: ERROR_CODES.PAYMENT_CONFLICT,
+          message: error.message,
+          statusCode: 409
+        });
+      }
+      throw error;
+    });
+    if (!order) throw this.notFoundError();
+    await this.notifyOrderChangedBestEffort(actor, order, "status");
+    await this.publishLiveDashboardChangesBestEffort([order.id]);
     return order;
   }
 
@@ -1247,6 +1303,7 @@ export class BookingService {
       (history) => history.toStatus === "confirmed"
     );
     const compensationBasisVersion = readCompensationBasisVersion(context.order.serviceSnapshot);
+    const nominationSnapshot = readBookingNominationSnapshot(context.order.serviceSnapshot);
     const hasAuditableCompensationBreakdown =
       compensationBasisVersion !== null &&
       context.checkout.travelFareAmountJpy === 0 &&
@@ -1306,8 +1363,8 @@ export class BookingService {
           ? {
               baseServiceAmountJpy: context.checkout.baseAmountJpy,
               extensionAmountJpy: context.checkout.addOnAmountJpy,
-              nominationChargeAmountJpy: 0,
-              wasTechnicianNominated: false,
+              nominationChargeAmountJpy: nominationSnapshot.nominationChargeAmountJpy,
+              wasTechnicianNominated: nominationSnapshot.wasTechnicianNominated,
               compensationBasisVersion,
               ...(workedMinutes !== undefined ? { workedMinutes } : {})
             }

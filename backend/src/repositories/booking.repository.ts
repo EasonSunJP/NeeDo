@@ -16,6 +16,11 @@ import {
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../config/env";
 import { ERROR_CODES } from "../constants/error-codes";
+import {
+  calculateBookingNominationPrice,
+  resolveBookingNominatedTechnicianProfileId
+} from "../domain/booking-nomination";
+import { shiftCalendarDate, startOfTokyoCalendarDate, toTokyoCalendarDate } from "../domain/dashboard-period";
 import { prisma } from "../prisma/client";
 import { AppError } from "../utils/app-error";
 import type { LedgerTransactionClient } from "../services/ledger.service";
@@ -366,6 +371,7 @@ export interface BookingCreateRepositoryInput {
   orderType?: BookingOrderTypePayload;
   serviceId?: number;
   technicianServiceId?: number;
+  nominatedTechnicianProfileId?: number;
   scheduleSlotId: number;
   fulfillmentMode: BookingFulfillmentMode;
   serviceLocation: BookingServiceLocationInput;
@@ -376,6 +382,25 @@ export interface BookingCreateRepositoryInput {
   exchangeIntelligencePostId?: number;
   idempotencyKey?: string;
 }
+
+export interface BookingAssignTechnicianInput {
+  orderId: number;
+  shopId: number;
+  technicianProfileId: number;
+  actorUserId: number;
+}
+export interface MerchantBookingEditInput {
+  orderId: number;
+  shopId: number;
+  actorUserId: number;
+  priceAmountJpy?: number;
+  paymentMethod?: "onsite" | "bank_transfer";
+  note?: string | null;
+}
+
+export type BookingAssignTechnicianResult =
+  | { outcome: "ok"; order: BookingOrderPayload }
+  | { outcome: "not_found" | "already_assigned" | "technician_unavailable" };
 
 export interface BookingCreateAffiliatePreparationContext {
   transactionClient: LedgerTransactionClient;
@@ -422,6 +447,13 @@ class BookingPriceChangedError extends Error {
   public constructor(public readonly currentPriceAmountJpy: number) {
     super("error.booking.price_changed");
     this.name = "BookingPriceChangedError";
+  }
+}
+
+export class MerchantOrderEditConflictError extends Error {
+  public constructor(public readonly reason: "financial_locked" | "concurrent_change") {
+    super(`error.booking.merchant_edit_${reason}`);
+    this.name = "MerchantOrderEditConflictError";
   }
 }
 
@@ -602,6 +634,7 @@ export interface ScheduleSlotPayload {
   shopName: string;
   technicianName: string | null;
   priceAmount: string;
+  nominationFeeJpy?: number;
   currency: string;
   durationMinutes: number;
   availabilitySourceType?: "shop" | "technician" | null;
@@ -1093,6 +1126,8 @@ export interface BookingRepositoryPort {
   isShopSuspended?: (shopId: number) => Promise<boolean>;
   listOrders: (input: OrderListInput) => Promise<PaginatedResponse<BookingOrderPayload>>;
   findOrderById: (id: number) => Promise<BookingOrderPayload | null>;
+  assignTechnician?: (input: BookingAssignTechnicianInput) => Promise<BookingAssignTechnicianResult>;
+  editMerchantOrder?: (input: MerchantBookingEditInput) => Promise<BookingOrderPayload | null>;
   listCancellableOrdersForScheduleSlot?: (scheduleSlotId: number) => Promise<BookingOrderPayload[]>;
   findOrderRealtimeRecipients?: (
     id: number
@@ -1552,17 +1587,25 @@ export class BookingRepository implements BookingRepositoryPort {
       transaction.scheduleSlot.count({ where })
     ]);
 
+    const nominationFees = await this.resolveNominationFeesForSlots(transaction, list, now);
+
     return buildPaginatedResponse(
       list.map((slot) => {
         const payload = this.mapSlot(slot);
-        if (blockedIds.includes(slot.id)) return { ...payload, status: "blocked" as const };
+        const pricedPayload = {
+          ...payload,
+          nominationFeeJpy: slot.technicianProfileId
+            ? (nominationFees.get(`${slot.shopId}:${slot.technicianProfileId}`) ?? 0)
+            : 0
+        };
+        if (blockedIds.includes(slot.id)) return { ...pricedPayload, status: "blocked" as const };
         const released = releasedCounts.get(slot.id) ?? 0;
         if (replaceableIds.includes(slot.id)) {
-          return { ...payload, status: "available" as const, bookedCount: slot.bookedCount - released };
+          return { ...pricedPayload, status: "available" as const, bookedCount: slot.bookedCount - released };
         }
         return payload.status === "available" && slot.bookedCount >= slot.capacity
-          ? { ...payload, status: "booked" as const }
-          : payload;
+          ? { ...pricedPayload, status: "booked" as const }
+          : pricedPayload;
       }),
       total,
       pagination
@@ -2233,6 +2276,9 @@ export class BookingRepository implements BookingRepositoryPort {
                 ...(input.technicianServiceId
                   ? { technicianServiceId: input.technicianServiceId }
                   : {}),
+                ...(input.nominatedTechnicianProfileId
+                  ? { technicianProfileId: input.nominatedTechnicianProfileId }
+                  : {}),
                 deletedAt: null,
                 startsAt: { gt: new Date() },
                 status: { in: ["AVAILABLE", "BOOKED"] },
@@ -2340,6 +2386,9 @@ export class BookingRepository implements BookingRepositoryPort {
                 ...(input.technicianServiceId
                   ? { technicianServiceId: input.technicianServiceId }
                   : {}),
+                ...(input.nominatedTechnicianProfileId
+                  ? { technicianProfileId: input.nominatedTechnicianProfileId }
+                  : {}),
                 deletedAt: null,
                 startsAt: { gt: new Date() },
                 status: "AVAILABLE",
@@ -2394,6 +2443,21 @@ export class BookingRepository implements BookingRepositoryPort {
               if (intelligenceSource) {
                 throw new BookingIntelligenceAbort("service_mismatch");
               }
+              if (supersededOrderIds.length > 0) {
+                throw new BookingPendingReplacementUnavailableError();
+              }
+              return null;
+            }
+            const nominatedTechnicianProfileId = resolveBookingNominatedTechnicianProfileId({
+              requestedTechnicianProfileId: input.nominatedTechnicianProfileId,
+              ...(input.technicianServiceId
+                ? { technicianServiceOwnerId: serviceSource.ownerId }
+                : {})
+            });
+            if (
+              nominatedTechnicianProfileId !== null &&
+              slot.technicianProfileId !== nominatedTechnicianProfileId
+            ) {
               if (supersededOrderIds.length > 0) {
                 throw new BookingPendingReplacementUnavailableError();
               }
@@ -2566,11 +2630,23 @@ export class BookingRepository implements BookingRepositoryPort {
             const originalPriceJpy = intelligenceSource
               ? intelligenceSource.campaignPriceJpy
               : Math.round(Number(serviceSource.priceAmount.toString()));
+            const nominationFeeJpy = nominatedTechnicianProfileId
+              ? await this.resolveNominationFeeJpy(
+                  tx,
+                  slot.shopId,
+                  nominatedTechnicianProfileId
+                )
+              : 0;
+            const nominationPricing = calculateBookingNominationPrice({
+              servicePriceJpy: originalPriceJpy,
+              nominationFeeJpy,
+              nominated: Boolean(nominatedTechnicianProfileId)
+            });
             if (
               input.expectedPriceAmountJpy !== undefined &&
-              input.expectedPriceAmountJpy !== originalPriceJpy
+              input.expectedPriceAmountJpy !== nominationPricing.totalPriceJpy
             ) {
-              throw new BookingPriceChangedError(originalPriceJpy);
+              throw new BookingPriceChangedError(nominationPricing.totalPriceJpy);
             }
             const affiliateContext: BookingCreateAffiliatePreparationContext = {
               transactionClient: tx,
@@ -2584,11 +2660,22 @@ export class BookingRepository implements BookingRepositoryPort {
               !intelligenceSource && options.prepareAffiliate
                 ? await options.prepareAffiliate(affiliateContext)
                 : null;
-            const finalPriceJpy = preparedAffiliate?.finalPriceJpy ?? originalPriceJpy;
+            const finalPriceJpy =
+              (preparedAffiliate?.finalPriceJpy ?? originalPriceJpy) +
+              nominationPricing.nominationFeeJpy;
+            const assignedTechnicianProfileId = nominatedTechnicianProfileId ??
+              await this.resolveAutomaticDispatchTechnician(tx, {
+                shopId: slot.shopId,
+                slotTechnicianProfileId: slot.technicianProfileId,
+                startsAt: slot.startsAt,
+                endsAt: slot.endsAt,
+                fulfillmentMode: input.fulfillmentMode,
+                travelDistanceMeters: travelEstimate?.distanceMeters ?? null
+              });
             const compensationBasisVersion = await this.resolveCompensationBasisVersion(
               tx,
               slot.shopId,
-              slot.technicianProfileId
+              assignedTechnicianProfileId
             );
 
             const nextBookedCount = slot.bookedCount + 1;
@@ -2624,7 +2711,7 @@ export class BookingRepository implements BookingRepositoryPort {
                 createIdempotencyKey: input.idempotencyKey ?? null,
                 createRequestFingerprint,
                 shopId: slot.shopId,
-                technicianProfileId: slot.technicianProfileId,
+                technicianProfileId: assignedTechnicianProfileId,
                 scheduleSlotId: slot.id,
                 status: "PENDING",
                 fulfillmentMode: input.fulfillmentMode,
@@ -2639,8 +2726,9 @@ export class BookingRepository implements BookingRepositoryPort {
                 serviceDurationSnapshot:
                   intelligenceSource?.durationMinutes ?? serviceSource.durationMinutes,
                 serviceSnapshotJson: appendCompensationBasis(
-                  intelligenceSource
-                    ? {
+                  {
+                    ...(intelligenceSource
+                      ? {
                         ...serviceSource.snapshot,
                         usageCount: sourceUsageCount,
                         name: intelligenceSource.serviceName,
@@ -2654,7 +2742,10 @@ export class BookingRepository implements BookingRepositoryPort {
                           campaignPriceJpy: intelligenceSource.campaignPriceJpy
                         }
                       }
-                    : { ...serviceSource.snapshot, usageCount: sourceUsageCount },
+                      : { ...serviceSource.snapshot, usageCount: sourceUsageCount }),
+                    wasTechnicianNominated: Boolean(input.nominatedTechnicianProfileId),
+                    nominationChargeAmountJpy: nominationPricing.nominationFeeJpy
+                  },
                   compensationBasisVersion
                 ) as Prisma.InputJsonValue,
                 ...(normalizedFulfillmentAddress
@@ -2841,6 +2932,195 @@ export class BookingRepository implements BookingRepositoryPort {
     }
   }
 
+  public async assignTechnician(
+    input: BookingAssignTechnicianInput
+  ): Promise<BookingAssignTechnicianResult> {
+    return this.client.$transaction(async (transaction) => {
+      const lockedOrder = await transaction.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+        SELECT id FROM booking_orders
+        WHERE id = ${input.orderId}
+          AND shop_id = ${input.shopId}
+          AND status IN ('PENDING', 'CONFIRMED')
+          AND deleted_at IS NULL
+        FOR UPDATE
+      `);
+      if (lockedOrder.length !== 1) return { outcome: "not_found" };
+      const order = await transaction.bookingOrder.findFirst({
+        where: {
+          id: input.orderId,
+          shopId: input.shopId,
+          deletedAt: null,
+          status: { in: ["PENDING", "CONFIRMED"] }
+        },
+        select: {
+          id: true,
+          technicianProfileId: true,
+          startsAt: true,
+          endsAt: true,
+          status: true
+        }
+      });
+      if (!order) return { outcome: "not_found" };
+      if (order.technicianProfileId) return { outcome: "already_assigned" };
+      const lockedTechnician = await transaction.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+        SELECT id FROM technician_profiles
+        WHERE id = ${input.technicianProfileId} AND deleted_at IS NULL
+        FOR UPDATE
+      `);
+      if (lockedTechnician.length !== 1) return { outcome: "technician_unavailable" };
+      const affiliation = await transaction.technicianShopAffiliation.findFirst({
+        where: {
+          shopId: input.shopId,
+          technicianProfileId: input.technicianProfileId,
+          workStatus: "ACTIVE",
+          activeKey: { not: null },
+          deletedAt: null,
+          startsAt: { lte: order.startsAt },
+          OR: [{ endsAt: null }, { endsAt: { gt: order.startsAt } }],
+          technicianProfile: {
+            is: {
+              deletedAt: null,
+              status: "published",
+              availabilities: {
+                some: {
+                  shopId: input.shopId,
+                  isActive: true,
+                  deletedAt: null,
+                  startsAt: { lte: order.startsAt },
+                  endsAt: { gte: order.endsAt }
+                }
+              },
+              bookingOrders: {
+                none: {
+                  id: { not: order.id },
+                  deletedAt: null,
+                  status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] },
+                  startsAt: { lt: order.endsAt },
+                  endsAt: { gt: order.startsAt }
+                }
+              }
+            }
+          }
+        },
+        select: { id: true }
+      });
+      if (!affiliation) return { outcome: "technician_unavailable" };
+      if (
+        await this.hasExchangeMatchParticipantOverlap(
+          transaction,
+          input.technicianProfileId,
+          order.startsAt,
+          order.endsAt
+        )
+      ) return { outcome: "technician_unavailable" };
+      const updated = await transaction.bookingOrder.updateMany({
+        where: {
+          id: order.id,
+          shopId: input.shopId,
+          technicianProfileId: null,
+          status: order.status,
+          deletedAt: null
+        },
+        data: { technicianProfileId: input.technicianProfileId }
+      });
+      if (updated.count !== 1) return { outcome: "already_assigned" };
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          actorId: input.actorUserId,
+          action: "merchant_admin.booking.technician.assign",
+          targetType: "booking_order",
+          targetId: order.id,
+          metadata: { shopId: input.shopId, technicianProfileId: input.technicianProfileId }
+        })
+      });
+      const result = await transaction.bookingOrder.findFirst({
+        where: { id: order.id, deletedAt: null },
+        include: this.orderInclude()
+      });
+      if (!result) return { outcome: "not_found" };
+      return { outcome: "ok", order: this.mapOrder(result) };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  }
+
+  public async editMerchantOrder(input: MerchantBookingEditInput): Promise<BookingOrderPayload | null> {
+    return this.client.$transaction(async (transaction) => {
+      const lockedOrder = await transaction.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+        SELECT id FROM booking_orders
+        WHERE id = ${input.orderId}
+          AND shop_id = ${input.shopId}
+          AND status IN ('PENDING', 'CONFIRMED')
+          AND deleted_at IS NULL
+        FOR UPDATE
+      `);
+      if (lockedOrder.length !== 1) return null;
+      const current = await transaction.bookingOrder.findFirst({
+        where: { id: input.orderId, shopId: input.shopId, deletedAt: null, status: { in: ["PENDING", "CONFIRMED"] } },
+        select: {
+          id: true,
+          status: true,
+          priceAmount: true,
+          paymentMethod: true,
+          paymentStatus: true,
+          paymentConfirmedAt: true,
+          paymentReference: true,
+          note: true,
+          updatedAt: true
+        }
+      });
+      if (!current) return null;
+      const changesFinancialTerms = input.priceAmountJpy !== undefined || input.paymentMethod !== undefined;
+      if (changesFinancialTerms) {
+        const [walletHold, financial, checkout, prepayment] = await Promise.all([
+          transaction.walletHold.findFirst({ where: { bookingOrderId: current.id, deletedAt: null }, select: { id: true } }),
+          transaction.orderFinancial.findFirst({ where: { bookingOrderId: current.id, deletedAt: null }, select: { id: true } }),
+          transaction.orderCheckout.findFirst({ where: { bookingOrderId: current.id, deletedAt: null }, select: { id: true } }),
+          transaction.servicePrepayment.findFirst({ where: { bookingOrderId: current.id, deletedAt: null }, select: { id: true } })
+        ]);
+        if (
+          current.paymentStatus !== "PENDING" ||
+          current.paymentConfirmedAt !== null ||
+          current.paymentReference !== null ||
+          walletHold ||
+          financial ||
+          checkout ||
+          prepayment
+        ) {
+          throw new MerchantOrderEditConflictError("financial_locked");
+        }
+      }
+      const updatedCount = await transaction.bookingOrder.updateMany({
+        where: {
+          id: current.id,
+          shopId: input.shopId,
+          status: current.status,
+          paymentStatus: current.paymentStatus,
+          updatedAt: current.updatedAt,
+          deletedAt: null
+        },
+        data: {
+          ...(input.priceAmountJpy === undefined ? {} : { priceAmount: input.priceAmountJpy, paymentAmountJpy: input.priceAmountJpy }),
+          ...(input.paymentMethod === undefined ? {} : { paymentMethod: servicePaymentMethodToDb(input.paymentMethod) }),
+          ...(input.note === undefined ? {} : { note: input.note?.trim() || null })
+        }
+      });
+      if (updatedCount.count !== 1) throw new MerchantOrderEditConflictError("concurrent_change");
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          actorId: input.actorUserId,
+          action: "merchant_admin.booking.edit",
+          targetType: "booking_order",
+          targetId: current.id,
+          metadata: {
+            previous: { priceAmountJpy: Number(current.priceAmount), paymentMethod: current.paymentMethod, note: current.note },
+            next: { priceAmountJpy: input.priceAmountJpy, paymentMethod: input.paymentMethod, note: input.note }
+          }
+        })
+      });
+      const updated = await transaction.bookingOrder.findFirst({ where: { id: current.id, deletedAt: null }, include: this.orderInclude() });
+      return updated ? this.mapOrder(updated) : null;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  }
+
   private bookingCreateRequestFingerprint(input: BookingCreateRepositoryInput): string {
     return createHash("sha256")
       .update(
@@ -2849,6 +3129,7 @@ export class BookingRepository implements BookingRepositoryPort {
           orderType: input.orderType ?? "booking",
           serviceId: input.serviceId ?? null,
           technicianServiceId: input.technicianServiceId ?? null,
+          nominatedTechnicianProfileId: input.nominatedTechnicianProfileId ?? null,
           scheduleSlotId: input.scheduleSlotId,
           fulfillmentMode: input.fulfillmentMode,
           paymentMethod: input.paymentMethod ?? "onsite",
@@ -6700,6 +6981,7 @@ export class BookingRepository implements BookingRepositoryPort {
       priceAmount: this.formatDecimal(priceAmount, 2),
       currency,
       durationMinutes,
+      nominationFeeJpy: 0,
       availabilitySourceType:
         slot.availability?.sourceType === "SHOP"
           ? "shop"
@@ -6707,6 +6989,281 @@ export class BookingRepository implements BookingRepositoryPort {
             ? "technician"
             : null
     };
+  }
+
+  private async resolveNominationFeeJpy(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    technicianProfileId: number,
+    at = new Date()
+  ): Promise<number> {
+    const technicianRule = await transaction.technicianCompensationProfile.findFirst({
+      where: {
+        shopId,
+        technicianProfileId,
+        status: "active",
+        deletedAt: null,
+        OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: at } }],
+        AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] }]
+      },
+      orderBy: [{ version: "desc" }, { id: "desc" }],
+      select: { nominationFeeJpy: true }
+    });
+    const shopRule = technicianRule
+      ? null
+      : await transaction.shopFinanceRuleSet.findFirst({
+          where: {
+            shopId,
+            status: "active",
+            deletedAt: null,
+            OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: at } }],
+            AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] }]
+          },
+          orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
+          select: { nominationFeeJpy: true }
+        });
+    const fee = technicianRule?.nominationFeeJpy ?? shopRule?.nominationFeeJpy ?? 0;
+    if (!Number.isSafeInteger(fee) || fee < 0) throw new Error("invalid_booking_nomination_price");
+    return fee;
+  }
+
+  private async resolveAutomaticDispatchTechnician(
+    transaction: Prisma.TransactionClient,
+    input: {
+      shopId: number;
+      slotTechnicianProfileId: number | null;
+      startsAt: Date;
+      endsAt: Date;
+      fulfillmentMode: BookingFulfillmentMode;
+      travelDistanceMeters: number | null;
+    }
+  ): Promise<number | null> {
+    const date = toTokyoCalendarDate(input.startsAt);
+    const dayStart = startOfTokyoCalendarDate(date);
+    const dayEnd = startOfTokyoCalendarDate(shiftCalendarDate(date, 1));
+    const minuteText = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Tokyo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).format(input.startsAt);
+    const [hour, minute] = minuteText.split(":").map(Number);
+    const startMinute = hour * 60 + minute;
+    const endDate = toTokyoCalendarDate(input.endsAt);
+    const endMinuteText = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Tokyo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).format(input.endsAt);
+    const [endHour, endMinutePart] = endMinuteText.split(":").map(Number);
+    const endMinute = endHour * 60 + endMinutePart;
+    const rule = await transaction.shopAutoDispatchRule.findFirst({
+      where: {
+        shopId: input.shopId,
+        enabled: true,
+        deletedAt: null,
+        AND: [
+          { OR: [{ startsOn: null }, { startsOn: { lte: new Date(`${date}T00:00:00.000Z`) } }] },
+          { OR: [{ endsOn: null }, { endsOn: { gte: new Date(`${date}T00:00:00.000Z`) } }] }
+        ]
+      }
+    });
+    if (
+      !rule ||
+      (input.fulfillmentMode === "store" ? !rule.allowStore : !rule.allowHome) ||
+      startMinute < rule.startMinute ||
+      startMinute > rule.endMinute ||
+      (rule.strictWindow && (endDate !== date || endMinute > rule.endMinute))
+    ) return null;
+
+    const travelBufferMinutes = input.fulfillmentMode === "home" && input.travelDistanceMeters
+      ? Math.ceil(input.travelDistanceMeters / 1_000 * rule.travelMinutesPerKm)
+      : 0;
+    const dispatchStartsAt = new Date(input.startsAt.getTime() - travelBufferMinutes * 60_000);
+    if (
+      rule.strictWindow &&
+      (toTokyoCalendarDate(dispatchStartsAt) !== date ||
+        dispatchStartsAt.getTime() < dayStart.getTime() + rule.startMinute * 60_000)
+    ) return null;
+
+    const affiliations = await transaction.technicianShopAffiliation.findMany({
+      where: {
+        shopId: input.shopId,
+        workStatus: "ACTIVE",
+        activeKey: { not: null },
+        deletedAt: null,
+        startsAt: { lte: input.startsAt },
+        OR: [{ endsAt: null }, { endsAt: { gt: input.startsAt } }],
+        ...(input.slotTechnicianProfileId
+          ? { technicianProfileId: input.slotTechnicianProfileId }
+          : {}),
+        technicianProfile: {
+          is: {
+            deletedAt: null,
+            status: "published",
+            availabilities: {
+              some: {
+                shopId: input.shopId,
+                isActive: true,
+                deletedAt: null,
+                startsAt: { lte: dispatchStartsAt },
+                endsAt: { gte: input.endsAt }
+              }
+            },
+            bookingOrders: {
+              none: {
+                deletedAt: null,
+                status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] },
+                startsAt: { lt: input.endsAt },
+                endsAt: { gt: dispatchStartsAt }
+              }
+            }
+          }
+        }
+      },
+      select: {
+        technicianProfile: {
+          select: {
+            id: true,
+            reviewSummary: { select: { ratingAverage: true } },
+            performanceSummary: {
+              select: {
+                acceptanceRateBps: true,
+                completedOrderCount: true,
+                accountableCancellationCount: true
+              }
+            },
+            bookingOrders: {
+              where: {
+                deletedAt: null,
+                status: { not: "CANCELLED" },
+                startsAt: { gte: dayStart, lt: dayEnd }
+              },
+              select: { id: true }
+            }
+          }
+        }
+      }
+    });
+    const preferredIds = Array.isArray(rule.preferredTechnicianIdsJson)
+      ? rule.preferredTechnicianIdsJson.filter((id): id is number => Number.isInteger(id) && Number(id) > 0)
+      : [];
+    const lastCompletedAtByTechnicianId = new Map<number, number>();
+    if (rule.strategy === "longest_idle" && affiliations.length > 0) {
+      const priorOrders = await transaction.bookingOrder.findMany({
+        where: {
+          technicianProfileId: { in: affiliations.map((row) => row.technicianProfile.id) },
+          deletedAt: null,
+          status: { not: "CANCELLED" },
+          endsAt: { lte: dispatchStartsAt }
+        },
+        orderBy: [{ endsAt: "desc" }, { id: "desc" }],
+        select: { technicianProfileId: true, endsAt: true }
+      });
+      for (const order of priorOrders) {
+        if (order.technicianProfileId && !lastCompletedAtByTechnicianId.has(order.technicianProfileId)) {
+          lastCompletedAtByTechnicianId.set(order.technicianProfileId, order.endsAt.getTime());
+        }
+      }
+    }
+    const preferredRank = new Map(preferredIds.map((id, index) => [id, index]));
+    const candidates = affiliations.map((row) => row.technicianProfile).filter((profile) => {
+      const rating = Number(profile.reviewSummary?.ratingAverage ?? 0);
+      const performance = profile.performanceSummary;
+      const acceptanceRate = (performance?.acceptanceRateBps ?? 0) / 100;
+      const accountable = performance?.accountableCancellationCount ?? 0;
+      const completed = performance?.completedOrderCount ?? 0;
+      const cancellationRate = completed + accountable === 0 ? 0 : accountable * 100 / (completed + accountable);
+      return (rule.minimumRating === null || rating >= Number(rule.minimumRating)) &&
+        (rule.minimumAcceptanceRate === null || acceptanceRate >= rule.minimumAcceptanceRate) &&
+        (rule.maximumCancellationRate === null || cancellationRate <= rule.maximumCancellationRate) &&
+        (rule.dailyTechnicianLimit === null || profile.bookingOrders.length < rule.dailyTechnicianLimit);
+    });
+    candidates.sort((left, right) => {
+      if (rule.strategy === "preferred") {
+        const leftRank = preferredRank.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+        const rightRank = preferredRank.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+      }
+      if (rule.strategy === "highest_rating") {
+        const ratingDifference = Number(right.reviewSummary?.ratingAverage ?? 0) - Number(left.reviewSummary?.ratingAverage ?? 0);
+        if (ratingDifference !== 0) return ratingDifference;
+      }
+      if (rule.strategy === "longest_idle") {
+        const idleDifference = (lastCompletedAtByTechnicianId.get(left.id) ?? 0) -
+          (lastCompletedAtByTechnicianId.get(right.id) ?? 0);
+        if (idleDifference !== 0) return idleDifference;
+      }
+      return left.bookingOrders.length - right.bookingOrders.length || left.id - right.id;
+    });
+    return candidates[0]?.id ?? null;
+  }
+
+  private async resolveNominationFeesForSlots(
+    transaction: Prisma.TransactionClient,
+    slots: Array<SlotRecord | ScheduleSlotListRecord>,
+    at: Date
+  ): Promise<Map<string, number>> {
+    const pairs = new Map<string, { shopId: number; technicianProfileId: number }>();
+    for (const slot of slots) {
+      if (slot.technicianProfileId) {
+        pairs.set(`${slot.shopId}:${slot.technicianProfileId}`, {
+          shopId: slot.shopId,
+          technicianProfileId: slot.technicianProfileId
+        });
+      }
+    }
+    if (pairs.size === 0) return new Map();
+    const pairValues = [...pairs.values()];
+    const shopIds = [...new Set(pairValues.map((pair) => pair.shopId))];
+    const [technicianRules, shopRules] = await Promise.all([
+      transaction.technicianCompensationProfile.findMany({
+        where: {
+          OR: pairValues.map((pair) => ({
+            shopId: pair.shopId,
+            technicianProfileId: pair.technicianProfileId
+          })),
+          status: "active",
+          deletedAt: null,
+          AND: [
+            { OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: at } }] },
+            { OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] }
+          ]
+        },
+        orderBy: [{ version: "desc" }, { id: "desc" }],
+        select: { shopId: true, technicianProfileId: true, nominationFeeJpy: true }
+      }),
+      transaction.shopFinanceRuleSet.findMany({
+        where: {
+          shopId: { in: shopIds },
+          status: "active",
+          deletedAt: null,
+          AND: [
+            { OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: at } }] },
+            { OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] }
+          ]
+        },
+        orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
+        select: { shopId: true, nominationFeeJpy: true }
+      })
+    ]);
+    const technicianFeeByPair = new Map<string, number>();
+    for (const rule of technicianRules) {
+      const key = `${rule.shopId}:${rule.technicianProfileId}`;
+      if (!technicianFeeByPair.has(key)) technicianFeeByPair.set(key, rule.nominationFeeJpy);
+    }
+    const shopFeeById = new Map<number, number>();
+    for (const rule of shopRules) {
+      if (!shopFeeById.has(rule.shopId)) shopFeeById.set(rule.shopId, rule.nominationFeeJpy);
+    }
+    const resolved = new Map<string, number>();
+    for (const [key, pair] of pairs) {
+      const fee = technicianFeeByPair.get(key) ?? shopFeeById.get(pair.shopId) ?? 0;
+      if (!Number.isSafeInteger(fee) || fee < 0) throw new Error("invalid_booking_nomination_price");
+      resolved.set(key, fee);
+    }
+    return resolved;
   }
 
   private mapAvailabilityWindow(record: AvailabilityWindowRecord): AvailabilityWindowPayload {

@@ -15,6 +15,11 @@ describe("formal realtime unread-count hook", () => {
     expect(source).toContain("!isRestoring");
   });
 
+  it("never starts protected realtime requests from a login route", () => {
+    expect(source).toContain("useLocation");
+    expect(source).toContain('!location.pathname.startsWith("/login")');
+  });
+
   it("does not contain a static demo bypass", () => {
     expect(source).not.toContain("isStaticDemoMode");
     expect(source).not.toContain("isFrontendBypassSession");
