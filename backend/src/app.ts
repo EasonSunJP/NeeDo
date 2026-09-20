@@ -55,6 +55,7 @@ import type {
   AffiliateAllianceService
 } from "./services/affiliate-alliance.service";
 import type { BookingRepositoryPort } from "./repositories/booking.repository";
+import type { ScheduleCycleRepositoryPort } from "./repositories/schedule-cycle.repository";
 import type { NdpExchangeRateRepositoryPort } from "./repositories/ndp-exchange-rate.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
@@ -274,6 +275,7 @@ import { createObservabilityRoutes } from "./routes/observability.routes";
 import { createOrderFinanceRoutes } from "./routes/order-finance.routes";
 import { createPayrollRoutes } from "./routes/payroll.routes";
 import { createPayrollSchedulePolicyRoutes } from "./routes/payroll-schedule-policy.routes";
+import { createScheduleCycleRoutes } from "./routes/schedule-cycle.routes";
 import { createPermissionRoutes } from "./routes/permission.routes";
 import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
 import { createShopVisibilityRoutes } from "./routes/shop-visibility.routes";
@@ -437,6 +439,7 @@ export interface AppDependencies {
   payrollSchedulePolicyRepository?: PayrollSchedulePolicyRepositoryPort;
   compensationProfileRepository?: CompensationProfileRepositoryPort;
   bookingRepository?: BookingRepositoryPort;
+  scheduleCycleRepository?: ScheduleCycleRepositoryPort;
   technicianAutomationRepository?: TechnicianAutomationRepositoryPort;
   technicianAutomationService?: TechnicianAutomationService;
   calendarEventRepository?: CalendarEventRepositoryPort;
@@ -830,6 +833,7 @@ export const createApp = (
   mount(["backoffice", "merchant-admin"], createOrderFinanceRoutes(config, resolvedDependencies));
   mount(["backoffice", "merchant-admin"], createPayrollRoutes(config, resolvedDependencies));
   mount("merchant-admin", createPayrollSchedulePolicyRoutes(config, resolvedDependencies));
+  mount(["shared", "backoffice", "merchant-admin"], createScheduleCycleRoutes(config, resolvedDependencies));
   mount("merchant-admin", createCompensationProfileRoutes(config, resolvedDependencies));
   mount(["shared", "backoffice"], createLedgerRoutes(config, resolvedDependencies));
   mount("shared", createEkycApplicationRoutes(config, resolvedDependencies));

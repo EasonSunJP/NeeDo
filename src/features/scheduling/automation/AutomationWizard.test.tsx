@@ -9,16 +9,34 @@ import { I18nProvider } from "../../../i18n/I18nProvider";
 import { translateText, type Language } from "../../../i18n/translations";
 import type { Technician } from "../../../types/domain";
 import {
+  cancelDispatchCycle,
+  closeDispatchFeedback,
   createDispatchCycleDraft,
   finalizeDispatchCycle,
   getDispatchCycleList,
   launchDispatchCycle,
   resetDispatchCenterStore,
+  runDispatchAutoConfirm,
   saveDispatchCycleDraft
 } from "../../dispatch-center/store";
 import { AutomationWizard } from "./AutomationWizard";
 
 const scheduleStyles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+
+const dispatchApi = vi.hoisted(() => ({
+  cancelCycle: vi.fn(),
+  closeFeedback: vi.fn(),
+  createCycleDraft: vi.fn(),
+  finalizeCycle: vi.fn(),
+  launchCycle: vi.fn(),
+  listCycles: vi.fn(),
+  runAutoConfirm: vi.fn(),
+  saveCycleDraft: vi.fn()
+}));
+
+vi.mock("../../dispatch-center/api", () => ({
+  createDispatchCenterApi: () => dispatchApi
+}));
 
 vi.mock("../../../components/scheduling/ScheduleCycleBoard", () => ({
   ScheduleCycleBoard: ({ drawerTitle }: { drawerTitle: string }) => (
@@ -33,7 +51,7 @@ const technicians: Technician[] = [
     acceptRate: 98,
     avatar: "/technician-one.png",
     cancelRate: 1,
-    id: "tech-1",
+    id: "1",
     income: 0,
     languages: ["日语"],
     name: "技师一",
@@ -53,7 +71,7 @@ const formalTechnicians: Technician[] = Array.from({ length: 26 }, (_, index) =>
   acceptRate: 95,
   avatar: `/formal-technician-${index + 1}.png`,
   cancelRate: 1,
-  id: `formal-tech-${index + 1}`,
+  id: String(index + 1),
   income: 0,
   languages: ["日语"],
   name: `正式技师${index + 1}`,
@@ -107,6 +125,48 @@ describe("merchant schedule planning home", () => {
     window.scrollTo = vi.fn();
     HTMLElement.prototype.scrollIntoView = vi.fn();
     resetDispatchCenterStore();
+    dispatchApi.listCycles.mockImplementation(async (storeId: string) => {
+      const list = getDispatchCycleList(storeId);
+      return { list, total: list.length, page: 1, page_size: 20 };
+    });
+    dispatchApi.createCycleDraft.mockImplementation(async (storeId: string, targetTechnicianIds: string[]) =>
+      createDispatchCycleDraft(storeId, targetTechnicianIds));
+    dispatchApi.saveCycleDraft.mockImplementation(async (cycle) => {
+      const result = saveDispatchCycleDraft(cycle);
+      if (!result.ok) throw new Error(result.message);
+      return getDispatchCycleList(cycle.storeId).find((item) => item.id === cycle.id) as typeof cycle;
+    });
+    dispatchApi.launchCycle.mockImplementation(async (cycleId: string) => {
+      const cycle = [...getDispatchCycleList("store-1"), ...getDispatchCycleList("another-store")]
+        .find((item) => item.id === cycleId);
+      if (!cycle) throw new Error("cycle missing");
+      const result = launchDispatchCycle(cycleId, cycle.storeId);
+      if (!result.ok || !result.cycle) throw new Error(result.message);
+      return result.cycle;
+    });
+    dispatchApi.closeFeedback.mockImplementation(async (cycleId: string) => {
+      const result = closeDispatchFeedback(cycleId, "store-1");
+      if (!result.ok || !result.cycle) throw new Error(result.message);
+      return result.cycle;
+    });
+    dispatchApi.runAutoConfirm.mockImplementation(async (cycleId: string) => {
+      const result = runDispatchAutoConfirm(cycleId, "store-1");
+      const cycle = getDispatchCycleList("store-1").find((item) => item.id === cycleId);
+      if (!result.ok || !cycle || !result.summary) throw new Error(result.message);
+      return { cycle, summary: result.summary };
+    });
+    dispatchApi.finalizeCycle.mockImplementation(async (cycleId: string) => {
+      const result = finalizeDispatchCycle(cycleId, "store-1");
+      if (!result.ok || !result.cycle) throw new Error(result.message);
+      return result.cycle;
+    });
+    dispatchApi.cancelCycle.mockImplementation(async (cycleId: string) => {
+      const cycle = getDispatchCycleList("store-1").find((item) => item.id === cycleId);
+      if (!cycle) throw new Error("cycle missing");
+      const result = cancelDispatchCycle(cycleId, "store-1");
+      if (!result.ok) throw new Error(result.message);
+      return { ...cycle, status: "cancelled" as const };
+    });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -133,6 +193,7 @@ describe("merchant schedule planning home", () => {
           </I18nProvider>
         </MemoryRouter>
       );
+      await Promise.resolve();
     });
   };
 
@@ -208,12 +269,10 @@ describe("merchant schedule planning home", () => {
     expect(container.textContent).toContain("商户直接排班");
     expect(container.textContent).toContain("技师反馈");
     expect(container.textContent).toContain("反馈截止：2026年4月27日 18:00");
-    expect(button("提醒未反馈")).toBeDefined();
     expect(button("提前结束收集")).toBeDefined();
 
     await act(async () => button("下一周期确认")?.click());
-    expect(container.querySelector('[data-testid="schedule-cycle-board"]')?.textContent)
-      .toBe("下一周期排班表");
+    expect(container.textContent).toContain("服务端周期班次");
 
     await act(async () => button("返回排班首页")?.click());
     await act(async () => button("新建周期")?.click());

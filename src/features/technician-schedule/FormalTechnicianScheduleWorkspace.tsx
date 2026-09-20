@@ -4,6 +4,7 @@ import {
   type UnifiedCalendarTechnician
 } from "../../components/scheduling/UnifiedUserCalendar";
 import { TechnicianAutomationSettingsPanel } from "./TechnicianAutomationSettingsPanel";
+import { TechnicianScheduleCycleInbox } from "./TechnicianScheduleCycleInbox";
 
 export type WorkspaceTab = "calendar" | "bookingSettings" | "requestSettings";
 
@@ -57,15 +58,18 @@ export function FormalTechnicianScheduleWorkspace({
             onDirtyChange={onDirtyChange}
           />
         ) : (
-          <UnifiedUserCalendar
-            currentTechnician={calendarTechnician}
-            displayMode="personal"
-            formalOnly
-            initialSelectedDate={initialSelectedDate}
-            scope="technician"
-            searchQuery={searchQuery}
-            showSourceDrawer
-          />
+          <>
+            <TechnicianScheduleCycleInbox profileId={profileId} />
+            <UnifiedUserCalendar
+              currentTechnician={calendarTechnician}
+              displayMode="personal"
+              formalOnly
+              initialSelectedDate={initialSelectedDate}
+              scope="technician"
+              searchQuery={searchQuery}
+              showSourceDrawer
+            />
+          </>
         )}
       </div>
     </div>

@@ -8,6 +8,10 @@ const entry = (zhHant: string, ja: string, en: string, ko: string): TranslationE
 });
 
 export const technicianAutomationTranslations: Record<string, TranslationEntry> = {
+  下一周期反馈: entry("下一週期回饋", "次周期の回答", "Next-cycle feedback", "다음 주기 피드백"),
+  "选择可以上班的日期并提交；反馈由服务端保存，同店铺商户端会读取同一份数据。": entry("選擇可以上班的日期並提交；回饋由伺服器儲存，同店鋪商戶端會讀取同一份資料。", "勤務可能な日を選択して送信します。回答はサーバーに保存され、同じ店舗の管理画面にも同じデータが表示されます。", "Select available work dates and submit. Feedback is stored on the server and shared with the same shop's merchant view.", "근무 가능한 날짜를 선택해 제출하세요. 피드백은 서버에 저장되며 같은 매장의 상점 화면과 공유됩니다."),
+  提交下一周期反馈: entry("提交下一週期回饋", "次周期の回答を送信", "Submit next-cycle feedback", "다음 주기 피드백 제출"),
+  "下一周期可上班时间已保存到服务端，商户端可立即查看。": entry("下一週期可上班時間已儲存到伺服器，商戶端可立即查看。", "次周期の勤務可能時間をサーバーに保存しました。店舗側ですぐに確認できます。", "Next-cycle availability was saved to the server and is now visible to the merchant.", "다음 주기 근무 가능 시간이 서버에 저장되어 상점에서 바로 확인할 수 있습니다."),
   下一周期确认: entry("下一週期確認", "次周期の確認", "Confirm next cycle", "다음 주기 확인"),
   返回排班首页: entry("返回排班首頁", "シフトホームに戻る", "Back to schedule home", "근무표 홈으로 돌아가기"),
   下一周期尚未创建: entry("下一週期尚未建立", "次周期はまだ作成されていません", "Next cycle has not been created", "다음 주기가 아직 생성되지 않았습니다"),

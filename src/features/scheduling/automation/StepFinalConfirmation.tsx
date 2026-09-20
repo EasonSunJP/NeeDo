@@ -1,13 +1,8 @@
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
-import { ScheduleCycleBoard } from "../../../components/scheduling/ScheduleCycleBoard";
 import { cn } from "../../../lib/utils";
-import {
-  finalizeDispatchCycle,
-  getDispatchCycleLimitSummary,
-  runDispatchAutoConfirm
-} from "../../dispatch-center/store";
 import type { DispatchCycle } from "../../dispatch-center/domain";
+import type { DispatchCycleLimitSummary } from "../../../lib/scheduling/cyclePromotion";
 import { ScheduleFloatingActions } from "./ScheduleFloatingActions";
 
 function formatCycleDate(dateKey: string) {
@@ -17,22 +12,19 @@ function formatCycleDate(dateKey: string) {
 
 export function StepFinalConfirmation({
   cycle,
-  hideBoard = false,
+  limitSummary,
   onMessage,
-  operatorId,
-  scheduleStickyTop,
-  storeId,
+  onFinalizeCycle,
+  onRunAutoConfirm,
   surface
 }: {
   cycle: DispatchCycle;
-  hideBoard?: boolean;
+  limitSummary: DispatchCycleLimitSummary;
   onMessage: (message: string) => void;
-  operatorId: string;
-  scheduleStickyTop?: string;
-  storeId: string;
+  onFinalizeCycle: (cycleId: string) => Promise<DispatchCycle>;
+  onRunAutoConfirm: (cycleId: string) => Promise<{ cycle: DispatchCycle; summary: NonNullable<DispatchCycle["autoConfirmSummary"]> }>;
   surface: "desktop" | "mobile";
 }) {
-  const limitSummary = getDispatchCycleLimitSummary(storeId);
   const isMobileSurface = surface === "mobile";
   const sectionClass = isMobileSurface
     ? "border-line bg-white/90 shadow-panel backdrop-blur-xl"
@@ -56,17 +48,21 @@ export function StepFinalConfirmation({
         </p>
       </section>
 
-      {hideBoard ? null : (
-        <ScheduleCycleBoard
-          cycle={cycle}
-          drawerTitle="人工微调班次"
-          onMessage={onMessage}
-          operatorId={operatorId}
-          scheduleStickyTop={scheduleStickyTop}
-          storeId={storeId}
-          surface={surface}
-        />
-      )}
+      <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)} data-server-final-shifts="true">
+        <h3 className="text-base font-black">服务端确认结果</h3>
+        <p className="mt-2 text-sm font-semibold leading-6 text-ink/60">
+          已确认 {cycle.autoConfirmSummary?.confirmedCount ?? 0} 格，缺人 {cycle.autoConfirmSummary?.shortageCount ?? 0} 处。
+          发布后将由服务端生成正式可预约时段。
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(cycle.finalShifts ?? []).slice(0, 24).map((shift) => (
+            <Badge key={shift.id} tone={shift.status === "confirmed" ? "green" : "yellow"}>
+              {shift.date} {String(shift.hour).padStart(2, "0")}:00 · #{shift.technicianId}
+            </Badge>
+          ))}
+          {(cycle.finalShifts?.length ?? 0) === 0 ? <span className="text-sm font-semibold text-ink/45">尚未运行自动确认。</span> : null}
+        </div>
+      </section>
 
       <ScheduleFloatingActions
         desktopClassName="flex flex-wrap items-center justify-center gap-3"
@@ -76,18 +72,26 @@ export function StepFinalConfirmation({
         <Button
           className={cn(secondaryButtonClass, isMobileSurface && "w-full min-w-0")}
           variant="secondary"
-          onClick={() => {
-            const result = runDispatchAutoConfirm(cycle.id, operatorId);
-            onMessage(result.ok ? `自动确认完成：${result.summary?.confirmedCount ?? 0} 格确认，${result.summary?.shortageCount ?? 0} 处缺人。` : result.message ?? "自动确认失败。");
+          onClick={async () => {
+            try {
+              const result = await onRunAutoConfirm(cycle.id);
+              onMessage(`自动确认完成：${result.summary.confirmedCount} 格确认，${result.summary.shortageCount} 处缺人。`);
+            } catch {
+              // The parent owns the formal API error message.
+            }
           }}
         >
           运行自动确认
         </Button>
         <Button
           className={cn(isMobileSurface && "schedule-wizard-primary-action w-full min-w-0")}
-          onClick={() => {
-            const result = finalizeDispatchCycle(cycle.id, operatorId);
-            onMessage(result.ok ? "最终班表已发布，用户端只会读取最终可预约时间。" : result.message ?? "发布失败。");
+          onClick={async () => {
+            try {
+              await onFinalizeCycle(cycle.id);
+              onMessage("最终班表已发布，用户端只会读取服务端最终可预约时间。");
+            } catch {
+              // The parent owns the formal API error message.
+            }
           }}
         >
           发布最终班表

@@ -33,6 +33,7 @@ describe("mobile scheduling mode actions", () => {
             cycle={cycle}
             onCycleChange={vi.fn()}
             onMessage={vi.fn()}
+            onSaveCycle={vi.fn(async (value) => value)}
             surface={surface}
           />
         );

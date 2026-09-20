@@ -31071,6 +31071,100 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/merchant-admin/schedule-cycles`]: {
+      get: {
+        tags: ["Schedule"], summary: "List authoritative schedule planning cycles for the authenticated shop",
+        security: [{ bearerAuth: [] }], "x-required-permission": "schedule:slots:list",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": { description: "Paginated schedule cycle state" } }
+      },
+      post: {
+        tags: ["Schedule"], summary: "Create a server-authoritative schedule cycle draft",
+        security: [{ bearerAuth: [] }], "x-required-permission": "schedule:slots:write",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { targetTechnicianIds: { type: "array", items: { type: "integer", minimum: 1 } } } } } } },
+        responses: { "201": { description: "Schedule cycle draft created" }, "403": { description: "A target technician is outside the authenticated shop" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/schedule-cycles/{cycleId}`]: {
+      put: {
+        tags: ["Schedule"], summary: "Update a schedule cycle draft with optimistic locking",
+        security: [{ bearerAuth: [] }], "x-required-permission": "schedule:slots:write",
+        parameters: [{ name: "cycleId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Schedule cycle draft updated" }, "409": { description: "Cycle state or version conflict" } }
+      },
+      delete: {
+        tags: ["Schedule"], summary: "Cancel a non-active schedule cycle",
+        security: [{ bearerAuth: [] }], "x-required-permission": "schedule:slots:write",
+        parameters: [{ name: "cycleId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Schedule cycle cancelled" }, "409": { description: "Active or terminal cycle cannot be cancelled" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/schedule-cycles/{cycleId}/launch`]: {
+      post: {
+        tags: ["Schedule"], summary: "Launch a schedule cycle idempotently",
+        security: [{ bearerAuth: [] }], "x-required-permission": "schedule:slots:write",
+        parameters: [{ name: "cycleId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Schedule cycle launched" }, "409": { description: "Cycle overlap, state, or idempotency conflict" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/schedule-cycles/{cycleId}/close-feedback`]: {
+      post: {
+        tags: ["Schedule"], summary: "Close technician feedback collection",
+        security: [{ bearerAuth: [] }], "x-required-permission": "schedule:slots:write",
+        parameters: [{ name: "cycleId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Feedback collection closed" }, "409": { description: "Cycle is not collecting feedback" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/schedule-cycles/{cycleId}/auto-confirm`]: {
+      post: {
+        tags: ["Schedule"], summary: "Build and persist a deterministic final shift proposal for the entire cycle",
+        security: [{ bearerAuth: [] }], "x-required-permission": "schedule:slots:write",
+        parameters: [{ name: "cycleId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Persisted shift proposal and shortage summary" }, "409": { description: "Cycle state or idempotency conflict" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/schedule-cycles/{cycleId}/finalize`]: {
+      post: {
+        tags: ["Schedule"], summary: "Publish final shifts into availability and bookable schedule slots atomically",
+        security: [{ bearerAuth: [] }], "x-required-permission": "schedule:slots:write",
+        parameters: [{ name: "cycleId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Final schedule published" }, "409": { description: "No confirmed shifts, offerings, or a schedule conflict" } }
+      }
+    },
+    [`${config.API_PREFIX}/technician/schedule-cycles`]: {
+      get: {
+        tags: ["Schedule"], summary: "List launched cycles targeting the authenticated technician",
+        security: [{ bearerAuth: [] }], "x-required-permission": "schedule:slots:list",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": { description: "Paginated targeted schedule cycles" } }
+      }
+    },
+    [`${config.API_PREFIX}/technician/schedule-cycles/{cycleId}/feedback`]: {
+      put: {
+        tags: ["Schedule"], summary: "Replace the authenticated technician's persisted cycle feedback",
+        security: [{ bearerAuth: [] }], "x-required-permission": "schedule:slots:write",
+        parameters: [{ name: "cycleId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Technician feedback persisted" }, "409": { description: "Cycle state or version conflict" } }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/schedule-cycles`]: {
+      get: {
+        tags: ["Schedule"], summary: "Read a shop's schedule cycles for operations reconciliation",
+        security: [{ bearerAuth: [] }], "x-required-permission": "backoffice:schedule:list",
+        parameters: [
+          { name: "shopId", in: "query", required: true, schema: { type: "integer", minimum: 1 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": { description: "Paginated schedule cycle reconciliation data" } }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/schedule/slots`]: {
       get: {
         tags: ["Schedule"],

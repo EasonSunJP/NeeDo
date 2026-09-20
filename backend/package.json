@@ -26,6 +26,7 @@
     "check:official-notice-flow": "tsx scripts/check-official-notice-flow.ts",
     "check:merchant-notice-flow": "tsx scripts/check-merchant-notice-flow.ts",
     "check:schedule-flow": "tsx scripts/check-schedule-flow.ts",
+    "check:schedule-cycle-flow": "ENV_FILE=${ENV_FILE:-.env.dev} tsx scripts/check-schedule-cycle-flow.ts",
     "check:manual-payment-flow": "tsx scripts/check-manual-payment-flow.ts",
     "check:wallet-adjustment-flow": "tsx scripts/check-wallet-adjustment-flow.ts",
     "check:affiliate-task-publishing-flow": "tsx scripts/check-affiliate-task-publishing-flow.ts",

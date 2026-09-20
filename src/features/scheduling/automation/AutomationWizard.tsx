@@ -1,7 +1,6 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
-import { ScheduleCycleBoard } from "../../../components/scheduling/ScheduleCycleBoard";
 import { ScheduleContactInfoPanel } from "../../../components/scheduling/ScheduleContactInfoPanel";
 import {
   isSchedulingLiveCycle,
@@ -11,14 +10,9 @@ import {
 } from "../../../components/scheduling/SchedulingCycleTabs";
 import { cn } from "../../../lib/utils";
 import type { Technician } from "../../../types/domain";
-import {
-  cancelDispatchCycle,
-  createDispatchCycleDraft,
-  getDispatchCycleLimitSummary,
-  getDispatchCycleList,
-  useDispatchCenterStore
-} from "../../dispatch-center/store";
+import { createDispatchCenterApi } from "../../dispatch-center/api";
 import { getDispatchTodayDateKey, getCycleModeLabel, getCycleStatusLabel, type DispatchCycle, type DispatchStep } from "../../dispatch-center/domain";
+import { summarizeCycleLimits, type DispatchCycleLimitSummary } from "../../../lib/scheduling/cyclePromotion";
 import { StepCreateCycle } from "./StepCreateCycle";
 import { StepFinalConfirmation } from "./StepFinalConfirmation";
 import { StepModeSelection } from "./StepModeSelection";
@@ -82,21 +76,25 @@ function CompactStepProgress({ cycle, surface }: { cycle: DispatchCycle; surface
 
 function CycleWorkflowPanel({
   cycle,
+  limitSummary,
   onDelete,
+  onFinalizeCycle,
+  onLaunchCycle,
   onMessage,
-  hideFinalConfirmationBoard = false,
-  operatorId,
-  scheduleStickyTop,
+  onRunAutoConfirm,
+  onSaveCycle,
   storeId,
   surface,
   technicians
 }: {
   cycle: DispatchCycle;
+  limitSummary: DispatchCycleLimitSummary;
   onDelete: (cycle: DispatchCycle) => void;
-  hideFinalConfirmationBoard?: boolean;
+  onFinalizeCycle: (cycleId: string) => Promise<DispatchCycle>;
+  onLaunchCycle: (cycle: DispatchCycle) => Promise<DispatchCycle>;
   onMessage: (message: string) => void;
-  operatorId: string;
-  scheduleStickyTop?: string;
+  onRunAutoConfirm: (cycleId: string) => Promise<{ cycle: DispatchCycle; summary: NonNullable<DispatchCycle["autoConfirmSummary"]> }>;
+  onSaveCycle: (cycle: DispatchCycle) => Promise<DispatchCycle>;
   storeId: string;
   surface: "desktop" | "mobile";
   technicians: Technician[];
@@ -123,7 +121,7 @@ function CycleWorkflowPanel({
       </div>
 
       {cycle.currentStep === 1 ? (
-        <StepModeSelection cycle={cycle} onCycleChange={() => undefined} onMessage={onMessage} surface={surface} />
+        <StepModeSelection cycle={cycle} onCycleChange={() => undefined} onMessage={onMessage} onSaveCycle={onSaveCycle} surface={surface} />
       ) : null}
       {cycle.currentStep === 2 ? (
         <StepCreateCycle
@@ -131,8 +129,9 @@ function CycleWorkflowPanel({
           cycle={cycle}
           onCycleChange={() => undefined}
           onMessage={onMessage}
+          onLaunchCycle={onLaunchCycle}
+          onSaveCycle={onSaveCycle}
           onCancelEditing={() => onDelete(cycle)}
-          operatorId={operatorId}
           storeId={storeId}
           surface={surface}
           technicians={technicians}
@@ -141,11 +140,10 @@ function CycleWorkflowPanel({
       {cycle.currentStep === finalStep ? (
         <StepFinalConfirmation
           cycle={cycle}
-          hideBoard={hideFinalConfirmationBoard}
+          limitSummary={limitSummary}
           onMessage={onMessage}
-          operatorId={operatorId}
-          scheduleStickyTop={scheduleStickyTop}
-          storeId={storeId}
+          onFinalizeCycle={onFinalizeCycle}
+          onRunAutoConfirm={onRunAutoConfirm}
           surface={surface}
         />
       ) : null}
@@ -155,7 +153,6 @@ function CycleWorkflowPanel({
 
 export function AutomationWizard({
   operatorId,
-  scheduleStickyTop,
   storeId,
   surface,
   technicians = []
@@ -167,21 +164,23 @@ export function AutomationWizard({
   technicians?: Technician[];
 }) {
   const [message, setMessage] = useState<string | null>(null);
+  const [cycles, setCycles] = useState<DispatchCycle[]>([]);
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState<PlanningView>("home");
   const [builderCycleId, setBuilderCycleId] = useState<string | null>(null);
-  const dispatchSnapshot = useDispatchCenterStore();
+  const api = useMemo(() => createDispatchCenterApi(operatorId), [operatorId]);
   const today = getDispatchTodayDateKey();
-  const cycles = useMemo(
-    () => getDispatchCycleList(storeId).filter((cycle) => isSchedulingLiveCycle(cycle) && cycle.periodEnd >= today).sort((left, right) => left.periodStart.localeCompare(right.periodStart)),
-    [dispatchSnapshot.revision, storeId, today]
+  const visibleCycles = useMemo(
+    () => cycles.filter((cycle) => isSchedulingLiveCycle(cycle) && cycle.periodEnd >= today).sort((left, right) => left.periodStart.localeCompare(right.periodStart)),
+    [cycles, today]
   );
-  const currentCycle = useMemo(() => resolveSchedulingCurrentCycle(cycles.filter(isScheduleBoardCycle)), [cycles]);
-  const { nextCycle, builderCycle } = useMemo(() => resolveSchedulingCycleSlots(cycles, currentCycle), [currentCycle, cycles]);
-  const limitSummary = getDispatchCycleLimitSummary(storeId);
+  const currentCycle = useMemo(() => resolveSchedulingCurrentCycle(visibleCycles.filter(isScheduleBoardCycle)), [visibleCycles]);
+  const { nextCycle, builderCycle } = useMemo(() => resolveSchedulingCycleSlots(visibleCycles, currentCycle), [currentCycle, visibleCycles]);
+  const limitSummary = useMemo(() => summarizeCycleLimits(visibleCycles, storeId), [storeId, visibleCycles]);
   const isMobileSurface = surface === "mobile";
   const alertClass = isMobileSurface ? "bg-lemon/25 text-[#795b00]" : "merchant-dispatch-alert";
   const overviewCycle = nextCycle ?? builderCycle ?? (currentCycle && currentCycle.status !== "active" ? currentCycle : null);
-  const builderViewCycle = cycles.find((cycle) => cycle.id === builderCycleId) ?? null;
+  const builderViewCycle = visibleCycles.find((cycle) => cycle.id === builderCycleId) ?? null;
   const contactExcludedRanges = useMemo(
     () => [currentCycle, nextCycle]
       .filter((item): item is DispatchCycle => Boolean(item))
@@ -189,7 +188,47 @@ export function AutomationWizard({
     [currentCycle, nextCycle]
   );
 
-  const createCycle = () => {
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    api.listCycles(storeId)
+      .then((page) => {
+        if (active) setCycles(page.list);
+      })
+      .catch((error: unknown) => {
+        if (active) setMessage(error instanceof Error ? error.message : "排班周期读取失败。");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [api, storeId]);
+
+  const upsertCycle = (cycle: DispatchCycle) => {
+    setCycles((current) => current.some((item) => item.id === cycle.id)
+      ? current.map((item) => item.id === cycle.id ? cycle : item)
+      : [...current, cycle]);
+    return cycle;
+  };
+
+  const runCycleCommand = async <T,>(command: () => Promise<T>, success: (value: T) => void) => {
+    try {
+      const value = await command();
+      success(value);
+      return value;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "排班周期操作失败。");
+      throw error;
+    }
+  };
+
+  const saveCycle = (cycle: DispatchCycle) => runCycleCommand(() => api.saveCycleDraft(cycle), upsertCycle);
+  const launchCycle = (cycle: DispatchCycle) => runCycleCommand(() => api.launchCycle(cycle.id), upsertCycle);
+  const closeFeedback = (cycleId: string) => runCycleCommand(() => api.closeFeedback(cycleId), upsertCycle);
+  const finalizeCycle = (cycleId: string) => runCycleCommand(() => api.finalizeCycle(cycleId), upsertCycle);
+  const runAutoConfirm = (cycleId: string) => runCycleCommand(() => api.runAutoConfirm(cycleId), (result) => upsertCycle(result.cycle));
+
+  const createCycle = async () => {
     if (builderCycle) {
       setBuilderCycleId(builderCycle.id);
       setView("builder");
@@ -201,23 +240,26 @@ export function AutomationWizard({
       return;
     }
 
-    const cycle = createDispatchCycleDraft(storeId, technicians.map((technician) => technician.id));
-    setBuilderCycleId(cycle.id);
-    setView("builder");
-    setMessage(`${cycle.name} 已创建。`);
+    const targetIds = technicians.map((technician) => technician.id).filter((id) => Number.isInteger(Number(id)) && Number(id) > 0);
+    try {
+      const cycle = await runCycleCommand(() => api.createCycleDraft(storeId, targetIds), upsertCycle);
+      setBuilderCycleId(cycle.id);
+      setView("builder");
+      setMessage(`${cycle.name} 已创建。`);
+    } catch {
+      // runCycleCommand has already exposed the formal API error.
+    }
   };
 
-  const deleteCycle = (cycle: DispatchCycle) => {
-    const result = cancelDispatchCycle(cycle.id, operatorId);
-
-    if (!result.ok) {
-      setMessage(result.message ?? "删除失败。");
-      return;
+  const deleteCycle = async (cycle: DispatchCycle) => {
+    try {
+      await runCycleCommand(() => api.cancelCycle(cycle.id), upsertCycle);
+      setBuilderCycleId(null);
+      setView("home");
+      setMessage("周期已删除，可以重新新建周期。");
+    } catch {
+      // runCycleCommand has already exposed the formal API error.
     }
-
-    setBuilderCycleId(null);
-    setView("home");
-    setMessage("周期已删除，可以重新新建周期。");
   };
 
   return (
@@ -226,11 +268,11 @@ export function AutomationWizard({
         <SchedulePlanningOverview
           cycle={overviewCycle}
           hasBuilderCycle={Boolean(builderCycle)}
+          limitSummary={limitSummary}
+          onCloseFeedback={closeFeedback}
           onMessage={setMessage}
           onOpenBuilder={createCycle}
           onOpenConfirmation={() => setView("confirmation")}
-          operatorId={operatorId}
-          storeId={storeId}
           surface={surface}
           technicians={technicians}
         />
@@ -246,15 +288,10 @@ export function AutomationWizard({
             <Button onClick={() => setView("home")} size="sm" variant="secondary">返回排班首页</Button>
           </div>
           {overviewCycle ? (
-            <ScheduleCycleBoard
-              cycle={overviewCycle}
-              drawerTitle="下一周期排班表"
-              onMessage={setMessage}
-              operatorId={operatorId}
-              scheduleStickyTop={scheduleStickyTop}
-              storeId={storeId}
-              surface={surface}
-            />
+            <div className={cn("rounded-[24px] border p-4", isMobileSurface ? "border-line bg-white/90 shadow-panel" : "merchant-dispatch-surface")}>
+              <h3 className="font-black">服务端周期班次</h3>
+              <p className="mt-2 text-sm font-semibold text-ink/55">已持久化班次 {(overviewCycle.finalShifts ?? []).length} 格；正式发布后用户端读取服务端可预约时段。</p>
+            </div>
           ) : (
             <p className="rounded-[20px] border border-line bg-white/80 px-4 py-3 text-sm font-semibold text-ink/55">下一周期尚未创建。</p>
           )}
@@ -273,10 +310,13 @@ export function AutomationWizard({
             </div>
             <CycleWorkflowPanel
               cycle={builderViewCycle}
+              limitSummary={limitSummary}
               onDelete={deleteCycle}
+              onFinalizeCycle={finalizeCycle}
+              onLaunchCycle={launchCycle}
               onMessage={setMessage}
-              operatorId={operatorId}
-              scheduleStickyTop={scheduleStickyTop}
+              onRunAutoConfirm={runAutoConfirm}
+              onSaveCycle={saveCycle}
               storeId={storeId}
               surface={surface}
               technicians={technicians}
@@ -300,7 +340,7 @@ export function AutomationWizard({
         ) : (
           <div className="rounded-[24px] border border-line bg-white/80 p-4">
             <h2 className="text-lg font-black">尚未新建周期</h2>
-            <Button className="mt-3" disabled={limitSummary.limitReached} onClick={createCycle}>新建周期</Button>
+            <Button className="mt-3" disabled={loading || limitSummary.limitReached} onClick={createCycle}>{loading ? "读取中…" : "新建周期"}</Button>
           </div>
         )
       ) : null}

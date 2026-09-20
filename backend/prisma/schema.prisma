@@ -218,6 +218,47 @@ enum AvailabilityVisibility {
   @@map("availability_visibility")
 }
 
+enum ScheduleCycleMode {
+  TECH_SELF_FINAL
+  STORE_ASSIGN_FINAL
+}
+
+enum ScheduleCycleStatus {
+  DRAFT
+  RULE_SETTING
+  FINAL_CONFIRMING
+  COLLECTING_FEEDBACK
+  FEEDBACK_CLOSED
+  CONFIRMED
+  ACTIVE
+  CANCELLED
+  COMPLETED
+  ARCHIVED
+}
+
+enum ScheduleCycleTemplateType {
+  DAY
+  WEEK
+  MONTH
+}
+
+enum ScheduleCycleFeedbackStatus {
+  AVAILABLE
+  UNAVAILABLE
+  UPDATED
+}
+
+enum ScheduleCycleFinalShiftStatus {
+  CONFIRMED
+  WAITLISTED
+  CANCELLED
+}
+
+enum ScheduleCycleFinalShiftSource {
+  AUTO
+  MANUAL
+}
+
 enum ShopPricingMode {
   MERCHANT   @map("merchant")
   TECHNICIAN @map("technician")
@@ -1832,6 +1873,7 @@ model Shop {
   reviewSummary              ReviewSummary?
   availabilities             Availability[]
   scheduleSlots              ScheduleSlot[]
+  scheduleCycles             ScheduleCycle[]
   bookingOrders              BookingOrder[]
   orderRefundCases           OrderRefundCase[]
   orderRefundDisputes        OrderRefundDispute[]
@@ -2279,6 +2321,9 @@ model TechnicianProfile {
   reviewSummary              ReviewSummary?
   availabilities             Availability[]
   scheduleSlots              ScheduleSlot[]
+  scheduleCycleTargets       ScheduleCycleTarget[]
+  scheduleCycleFeedbacks     ScheduleCycleFeedback[]
+  scheduleCycleFinalShifts   ScheduleCycleFinalShift[]
   bookingOrders              BookingOrder[]
   compensationProfiles       TechnicianCompensationProfile[]
   payslips                   Payslip[]
@@ -4238,6 +4283,7 @@ model Availability {
   shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
   scheduleSlots     ScheduleSlot[]
+  scheduleCycleFinalShifts ScheduleCycleFinalShift[]
 
   @@index([shopId])
   @@index([technicianProfileId])
@@ -4247,6 +4293,119 @@ model Availability {
   @@index([technicianProfileId, isScheduleControlWindow, startsAt, endsAt, deletedAt], map: "availability_schedule_control_window_idx")
   @@index([deletedAt])
   @@map("availabilities")
+}
+
+model ScheduleCycle {
+  id                        Int                       @id @default(autoincrement())
+  publicId                  String                    @unique @default(uuid()) @map("public_id") @db.Char(36)
+  shopId                    Int                       @map("shop_id")
+  name                      String                    @db.VarChar(160)
+  creationMethod            String                    @default("new") @map("creation_method") @db.VarChar(40)
+  mode                      ScheduleCycleMode         @default(TECH_SELF_FINAL)
+  status                    ScheduleCycleStatus       @default(DRAFT)
+  currentStep               Int                       @default(1) @map("current_step")
+  templateType              ScheduleCycleTemplateType @default(WEEK) @map("template_type")
+  periodStart               DateTime                  @map("period_start") @db.Date
+  periodEnd                 DateTime                  @map("period_end") @db.Date
+  feedbackDeadline          DateTime?                 @map("feedback_deadline")
+  templateMatrix            Json                      @map("template_matrix")
+  regularHolidayWeekdays    Json                      @map("regular_holiday_weekdays")
+  ruleSet                   Json                      @map("rule_set")
+  autoConfirmSummary        Json?                     @map("auto_confirm_summary")
+  launchIdempotencyKey      String?                   @map("launch_idempotency_key") @db.VarChar(160)
+  autoConfirmIdempotencyKey String?                   @map("auto_confirm_idempotency_key") @db.VarChar(160)
+  finalizeIdempotencyKey    String?                   @map("finalize_idempotency_key") @db.VarChar(160)
+  launchedAt                DateTime?                 @map("launched_at")
+  finalizedAt               DateTime?                 @map("finalized_at")
+  activeAt                  DateTime?                 @map("active_at")
+  cancelledAt               DateTime?                 @map("cancelled_at")
+  lastAutoConfirmAt         DateTime?                 @map("last_auto_confirm_at")
+  version                   Int                       @default(1)
+  createdById               Int                       @map("created_by_id")
+  updatedById               Int                       @map("updated_by_id")
+  createdAt                 DateTime                  @default(now()) @map("created_at")
+  updatedAt                 DateTime                  @updatedAt @map("updated_at")
+  deletedAt                 DateTime?                 @map("deleted_at")
+
+  shop        Shop                      @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  targets     ScheduleCycleTarget[]
+  feedbacks   ScheduleCycleFeedback[]
+  finalShifts ScheduleCycleFinalShift[]
+
+  @@index([shopId, status, periodStart, periodEnd, deletedAt], map: "schedule_cycles_shop_status_period_idx")
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([deletedAt])
+  @@map("schedule_cycles")
+}
+
+model ScheduleCycleTarget {
+  id                  Int       @id @default(autoincrement())
+  cycleId             Int       @map("cycle_id")
+  technicianProfileId Int       @map("technician_profile_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
+
+  cycle             ScheduleCycle     @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  technicianProfile TechnicianProfile @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
+
+  @@unique([cycleId, technicianProfileId], map: "schedule_cycle_targets_cycle_technician_key")
+  @@index([technicianProfileId, deletedAt], map: "schedule_cycle_targets_technician_deleted_idx")
+  @@index([deletedAt])
+  @@map("schedule_cycle_targets")
+}
+
+model ScheduleCycleFeedback {
+  id                  Int                         @id @default(autoincrement())
+  cycleId             Int                         @map("cycle_id")
+  technicianProfileId Int                         @map("technician_profile_id")
+  date                DateTime                    @db.Date
+  hour                Int
+  status              ScheduleCycleFeedbackStatus
+  note                String                      @default("") @db.VarChar(500)
+  submittedAt         DateTime                    @default(now()) @map("submitted_at")
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
+  deletedAt           DateTime?                   @map("deleted_at")
+
+  cycle             ScheduleCycle     @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  technicianProfile TechnicianProfile @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
+
+  @@unique([cycleId, technicianProfileId, date, hour], map: "schedule_cycle_feedbacks_cycle_technician_date_hour_key")
+  @@index([technicianProfileId, submittedAt, deletedAt], map: "schedule_cycle_feedbacks_technician_submitted_idx")
+  @@index([cycleId, date, hour, status, deletedAt], map: "schedule_cycle_feedbacks_cycle_slot_status_idx")
+  @@index([deletedAt])
+  @@map("schedule_cycle_feedbacks")
+}
+
+model ScheduleCycleFinalShift {
+  id                  Int                           @id @default(autoincrement())
+  cycleId             Int                           @map("cycle_id")
+  technicianProfileId Int                           @map("technician_profile_id")
+  availabilityId      Int?                          @map("availability_id")
+  date                DateTime                      @db.Date
+  hour                Int
+  status              ScheduleCycleFinalShiftStatus
+  source              ScheduleCycleFinalShiftSource @default(AUTO)
+  ruleSnapshot        Json                          @map("rule_snapshot")
+  confirmedAt         DateTime                      @map("confirmed_at")
+  confirmedById       Int                           @map("confirmed_by_id")
+  createdAt           DateTime                      @default(now()) @map("created_at")
+  updatedAt           DateTime                      @updatedAt @map("updated_at")
+  deletedAt           DateTime?                     @map("deleted_at")
+
+  cycle             ScheduleCycle     @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  technicianProfile TechnicianProfile @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
+  availability      Availability?      @relation(fields: [availabilityId], references: [id], onDelete: SetNull)
+
+  @@unique([cycleId, technicianProfileId, date, hour], map: "schedule_cycle_final_shifts_cycle_technician_date_hour_key")
+  @@index([technicianProfileId, date, hour, status, deletedAt], map: "schedule_cycle_final_shifts_technician_slot_idx")
+  @@index([cycleId, status, deletedAt], map: "schedule_cycle_final_shifts_cycle_status_idx")
+  @@index([availabilityId])
+  @@index([confirmedById])
+  @@index([deletedAt])
+  @@map("schedule_cycle_final_shifts")
 }
 
 model ScheduleSlot {

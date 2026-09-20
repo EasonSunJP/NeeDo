@@ -107,3 +107,12 @@ Codex 完成本步后，必须输出：
 - 24 小时内的加密 IndexedDB 排班缓存先显示，同时后台刷新。缓存显示期间在画面中央显示 50% 透明度的 12 点 Loading，`pointer-events: none`，不阻断查看、滚动和点击。
 - 关闭页面或 PWA 不会清空缓存；明确退出登录或切换到其他账号时，会物理删除该账号及其商户预览子作用域的持久缓存。排班写操作继续失效 `calendar:` 缓存。
 - 设计与执行边界见 [设计说明](superpowers/specs/2026-09-13-schedule-login-preload-design.md) 与 [实施计划](superpowers/plans/2026-09-13-schedule-login-preload.md)。
+
+## 2026-09-20 排班计划周期服务端权威
+
+- 排班周期、目标技师、技师反馈和最终班次以 MySQL 为唯一权威来源；浏览器 `localStorage` 不再承载这些生命周期状态。
+- 商户通过 `/api/v1/merchant-admin/schedule-cycles` 创建、保存、发起、提前结束反馈、自动确认、发布或取消周期。店铺作用域只从当前已认证商户身份解析，客户端不能指定其他店铺。
+- 技师通过 `/api/v1/technician/schedule-cycles` 读取本人被指派的已发起周期，并只可提交本人的反馈。运营通过 `/api/v1/backoffice/schedule-cycles` 分页只读查看周期。
+- 发起、自动确认与最终发布使用幂等键；生命周期写入、审计记录及班次/可预约时段投影在同一 `Serializable` 事务中完成。
+- 自动确认遍历整个周期，而不是按周模板截断到 7 天；发布时把已确认班次投影为正式 `Availability` 和 `ScheduleSlot`，用户端继续只读取服务端可预约时段。
+- 本地真实 MySQL 验收覆盖两个独立商户会话读取同一周期、技师反馈、非零自动确认、最终可预约投影及运营可见性，并在结束后清理测试数据。
