@@ -1717,12 +1717,13 @@ export class BookingRepository implements BookingRepositoryPort {
     from: Date,
     to: Date
   ): Promise<{ id: number; ruleSet: Prisma.JsonValue } | null> {
+    const dateBoundaryToleranceMs = 24 * 60 * 60_000;
     const cycles = await transaction.scheduleCycle.findMany({
       where: {
         shopId,
         status: { in: ["CONFIRMED", "ACTIVE"] },
-        periodStart: { lte: to },
-        periodEnd: { gte: from },
+        periodStart: { lte: new Date(to.getTime() + dateBoundaryToleranceMs) },
+        periodEnd: { gte: new Date(from.getTime() - dateBoundaryToleranceMs) },
         deletedAt: null
       },
       select: { id: true, ruleSet: true },
@@ -1798,7 +1799,7 @@ export class BookingRepository implements BookingRepositoryPort {
         },
         select: { id: true, name: true, pricingMode: true }
       }),
-      this.listShopsWithCurrentVerifiedServiceLocations(transaction, input)
+      this.listShopsWithCurrentVerifiedServiceLocations(transaction, input, false)
     ]);
     const source = service ?? technicianService;
     if (!source || !shop || !locationShopIds.includes(shop.id)) {
@@ -2022,7 +2023,8 @@ export class BookingRepository implements BookingRepositoryPort {
 
   private async listShopsWithCurrentVerifiedServiceLocations(
     transaction: Prisma.TransactionClient,
-    input: AvailabilityListInput
+    input: AvailabilityListInput,
+    requirePersistedSlot = true
   ): Promise<number[]> {
     const locations = await transaction.shopServiceLocation.findMany({
       where: {
@@ -2032,18 +2034,24 @@ export class BookingRepository implements BookingRepositoryPort {
         shop: {
           deletedAt: null,
           status: "published",
-          scheduleSlots: {
-            some: {
-              deletedAt: null,
-              startsAt: { gte: input.from, lt: input.to },
-              ...(input.shopId ? { shopId: input.shopId } : {}),
-              ...(input.serviceId ? { serviceId: input.serviceId } : {}),
-              ...(input.technicianServiceId
-                ? { technicianServiceId: input.technicianServiceId }
-                : {}),
-              ...(input.technicianId ? { technicianProfileId: input.technicianId } : {})
-            }
-          }
+          ...(requirePersistedSlot
+            ? {
+                scheduleSlots: {
+                  some: {
+                    deletedAt: null,
+                    startsAt: { gte: input.from, lt: input.to },
+                    ...(input.shopId ? { shopId: input.shopId } : {}),
+                    ...(input.serviceId ? { serviceId: input.serviceId } : {}),
+                    ...(input.technicianServiceId
+                      ? { technicianServiceId: input.technicianServiceId }
+                      : {}),
+                    ...(input.technicianId
+                      ? { technicianProfileId: input.technicianId }
+                      : {})
+                  }
+                }
+              }
+            : {})
         }
       },
       select: {

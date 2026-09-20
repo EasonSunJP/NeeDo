@@ -3,6 +3,7 @@ import { BookingRepository } from "../src/repositories/booking.repository";
 
 const availabilityClient = (delegates: Record<string, unknown>) => {
   const client: Record<string, unknown> = {
+    scheduleCycle: { findMany: jest.fn(async () => []) },
     ...delegates,
     $queryRaw: jest.fn(async () => []),
     $transaction: jest.fn(async (operation: (transaction: unknown) => unknown) => operation(client))
@@ -112,6 +113,63 @@ const makeTransitionOrderRecord = (
 });
 
 describe("schedule list projection", () => {
+  it("does not require persisted schedule slots when validating a dynamic shop location", async () => {
+    const findMany = jest.fn(async () => [currentShopServiceLocation(11)]);
+    const repository = new BookingRepository(
+      availabilityClient({ shopServiceLocation: { findMany } })
+    );
+    const locationReader = repository as unknown as {
+      listShopsWithCurrentVerifiedServiceLocations: (
+        transaction: unknown,
+        input: { shopId: number; from: Date; to: Date },
+        requirePersistedSlot: boolean
+      ) => Promise<number[]>;
+    };
+
+    await expect(locationReader.listShopsWithCurrentVerifiedServiceLocations(
+      { shopServiceLocation: { findMany } },
+      {
+        shopId: 11,
+        from: new Date("2026-09-21T00:00:00.000Z"),
+        to: new Date("2026-09-22T00:00:00.000Z")
+      },
+      false
+    )).resolves.toEqual([11]);
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        shop: expect.not.objectContaining({ scheduleSlots: expect.anything() })
+      })
+    }));
+  });
+
+  it("expands dynamic cycle date bounds so Tokyo midnight is not treated as UTC midnight", async () => {
+    const findMany = jest.fn(async () => []);
+    const repository = new BookingRepository({ scheduleCycle: { findMany } } as never);
+    const cycleReader = repository as unknown as {
+      findDynamicAvailabilityCycle: (
+        transaction: unknown,
+        shopId: number,
+        from: Date,
+        to: Date
+      ) => Promise<unknown>;
+    };
+
+    await cycleReader.findDynamicAvailabilityCycle(
+      { scheduleCycle: { findMany } },
+      11,
+      new Date("2026-09-20T15:00:00.000Z"),
+      new Date("2026-09-20T16:00:00.000Z")
+    );
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        periodStart: { lte: new Date("2026-09-21T16:00:00.000Z") },
+        periodEnd: { gte: new Date("2026-09-19T15:00:00.000Z") }
+      })
+    }));
+  });
+
   it("selects only fields needed by the schedule list payload", async () => {
     const row = {
       id: 1,
