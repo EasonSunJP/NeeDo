@@ -249,7 +249,11 @@ describe("shared client application width", () => {
       expect(source).toContain("client-app-gutter");
     }
 
-    for (const source of [socialProfileSource, technicianServicesSource, unifiedSocialSource]) {
+    expect(technicianServicesSource).toContain("<MobileFullscreenPage>");
+    expect(technicianServicesSource).toContain('className="client-app-gutter');
+    expect(technicianServicesSource).not.toContain("client-app-breakout");
+
+    for (const source of [socialProfileSource, unifiedSocialSource]) {
       expect(source).toContain("client-app-breakout");
       expect(source).not.toMatch(/-mx-4[^"\n]*sm:-mx-6/u);
     }

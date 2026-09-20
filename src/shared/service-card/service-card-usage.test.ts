@@ -104,8 +104,9 @@ describe("unified service-information-card usage", () => {
   });
 
   it("uses actual unified-card JSX for checkout, order, merchant, and technician-service consumers", () => {
-    expect(source.checkout).toContain(
-      "<UnifiedServiceInfoCard data={displayServiceInfo}",
+    expect(source.checkout).toContain("displayServiceInfos.map((serviceInfo, index) => (");
+    expect(source.checkout).toMatch(
+      /<UnifiedServiceInfoCard[\s\S]*data=\{serviceInfo\}/u,
     );
     expect(source.checkout).toContain(
       "mapCoreServiceCardToUnifiedData(serviceDetail)",
@@ -131,8 +132,9 @@ describe("unified service-information-card usage", () => {
       /services\.map\([\s\S]*<UnifiedServiceInfoCard[\s\S]*mapTechnicianServiceToUnifiedData\(service\)/u,
     );
     expect(source.technicianServices).toContain(
-      "buildTechnicianServiceCheckoutRoute(service.id",
+      "buildTechnicianServiceCheckoutRoute(selectedService.id",
     );
+    expect(source.technicianServices).toContain("serviceIds: selectedServiceIds");
   });
 
   it("uses the shared profile and service cards for Intelligence detail", () => {

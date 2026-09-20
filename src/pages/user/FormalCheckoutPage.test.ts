@@ -114,7 +114,8 @@ describe("formal customer checkout", () => {
   it("renders the formal package through the unified service information card", () => {
     expect(formalSource).toContain("UnifiedServiceInfoCard");
     expect(formalSource).toContain("const serviceInfo = mapCoreServiceCardToUnifiedData(serviceDetail)");
-    expect(formalSource).toContain("<UnifiedServiceInfoCard data={displayServiceInfo}");
+    expect(formalSource).toContain("displayServiceInfos.map((serviceInfo, index) => (");
+    expect(formalSource).toMatch(/<UnifiedServiceInfoCard[\s\S]*data=\{serviceInfo\}/u);
     expect(formalSource).toContain("mapExchangeIntelligenceServiceToUnifiedData");
     expect(formalSource).toContain("mapTechnicianBookingContextServiceToUnifiedData");
     expect(formalSource).not.toContain("mapCoreServiceToServiceItem");
