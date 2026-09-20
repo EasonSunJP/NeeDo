@@ -115,4 +115,16 @@ describe("StagingTest Chiba shop provisioning gate", () => {
     expect(source).toContain("postBufferMinutes: 30");
     expect(source).not.toContain("scheduleSlot.createMany");
   });
+
+  it("enables permissive booking and request automation for every affiliated technician", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/staging/staging-test-chiba-shop-provisioning.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain("TechnicianAutomationKind.BOOKING");
+    expect(source).toContain("TechnicianAutomationKind.REQUEST");
+    expect(source).toContain("technicianAutomationSetting.upsert");
+    expect(source).toContain("enabled: true");
+  });
 });

@@ -146,7 +146,7 @@ const toDateString = (date: Date): string =>
     day: "2-digit"
   }).format(date);
 
-const permissiveRules = (kind: "booking" | "request") => ({
+export const permissiveRules = (kind: "booking" | "request") => ({
   ...defaultTechnicianAutomationRules(kind),
   minLeadMinutes: 0,
   bufferMinutes: 0 as const,

@@ -1,12 +1,14 @@
 import {
   AvailabilitySourceType,
   AvailabilityVisibility,
+  TechnicianAutomationKind,
   type Prisma,
   type PrismaClient
 } from "@prisma/client";
 import { z } from "zod";
 import { PublicIdentifierRepository } from "../repositories/public-identifier.repository";
 import { IdentifierAllocator } from "../services/public-identifier.service";
+import { permissiveRules } from "./staging-test-operations-provisioning";
 
 const configSchema = z.object({
   NODE_ENV: z.literal("production"),
@@ -92,6 +94,7 @@ export interface StagingTestChibaShopResult {
   optionServiceCount: number;
   extensionServiceCount: number;
   availabilityCount: number;
+  automationSettingCount: number;
   scheduleSlotCount: number;
   createdScheduleSlotCount: number;
   serviceStartIntervalMinutes: number;
@@ -422,6 +425,31 @@ export class StagingTestChibaShopProvisioner {
     }
     const technicianProfileIds = sourceAffiliations.map((item) => item.technicianProfileId);
 
+    let automationSettingCount = 0;
+    for (const technicianProfileId of technicianProfileIds) {
+      for (const [kind, rules] of [
+        [TechnicianAutomationKind.BOOKING, permissiveRules("booking")],
+        [TechnicianAutomationKind.REQUEST, permissiveRules("request")]
+      ] as const) {
+        await tx.technicianAutomationSetting.upsert({
+          where: { technicianProfileId_kind: { technicianProfileId, kind } },
+          create: {
+            technicianProfileId,
+            kind,
+            enabled: true,
+            rules: rules as unknown as Prisma.InputJsonValue
+          },
+          update: {
+            enabled: true,
+            rules: rules as unknown as Prisma.InputJsonValue,
+            version: { increment: 1 },
+            deletedAt: null
+          }
+        });
+        automationSettingCount += 1;
+      }
+    }
+
     const massageCategory = await tx.category.findFirst({
       where: { code: "massage", isActive: true, deletedAt: null },
       select: { id: true }
@@ -670,6 +698,7 @@ export class StagingTestChibaShopProvisioner {
             serviceNames: STAGING_TEST_CHIBA_SERVICES.map((service) => service.name),
             serviceStartIntervalMinutes,
             availabilityCount: desiredShifts.length,
+            automationSettingCount,
             scheduleSlotCount,
             createdScheduleSlotCount
           }
@@ -695,6 +724,7 @@ export class StagingTestChibaShopProvisioner {
       optionServiceCount: STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "option").length,
       extensionServiceCount: STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "extension").length,
       availabilityCount: desiredShifts.length,
+      automationSettingCount,
       scheduleSlotCount,
       createdScheduleSlotCount,
       serviceStartIntervalMinutes
