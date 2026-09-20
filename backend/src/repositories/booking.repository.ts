@@ -67,6 +67,11 @@ import {
 } from "./administrative-region.repository";
 import { isCurrentVerifiedShopServiceLocation } from "./shop-service-location.repository";
 import type { LiveDashboardScope } from "../domain/live-dashboard";
+import {
+  decodeDynamicAvailabilityId,
+  encodeDynamicAvailabilityId,
+  enumerateDynamicBookingStarts
+} from "../domain/dynamic-booking-window";
 
 const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
 const HOME_ONLY_SERVICE_MODES = ["home", "home_visit", "onsite"] as const;
@@ -1539,6 +1544,18 @@ export class BookingRepository implements BookingRepositoryPort {
     }
 
     const scopedInput = { ...input, shopId: resolvedShopId };
+    const dynamicCycle = resolvedShopId
+      ? await this.findDynamicAvailabilityCycle(transaction, resolvedShopId, input.from, input.to)
+      : null;
+    if (dynamicCycle && resolvedShopId && (input.serviceId || input.technicianServiceId)) {
+      return this.readDynamicAvailableSlots(
+        transaction,
+        { ...scopedInput, shopId: resolvedShopId },
+        shopVisibilityWhere,
+        dynamicCycle,
+        customerUserId
+      );
+    }
     const currentLocationShopIds =
       await this.listShopsWithCurrentVerifiedServiceLocations(transaction, scopedInput);
     const prefilterOccupancy = input.includeUnavailable
@@ -1694,6 +1711,245 @@ export class BookingRepository implements BookingRepositoryPort {
     );
   }
 
+  private async findDynamicAvailabilityCycle(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    from: Date,
+    to: Date
+  ): Promise<{ id: number; ruleSet: Prisma.JsonValue } | null> {
+    const cycles = await transaction.scheduleCycle.findMany({
+      where: {
+        shopId,
+        status: { in: ["CONFIRMED", "ACTIVE"] },
+        periodStart: { lte: to },
+        periodEnd: { gte: from },
+        deletedAt: null
+      },
+      select: { id: true, ruleSet: true },
+      orderBy: [{ activeAt: "desc" }, { id: "desc" }]
+    });
+    return cycles.find((cycle) => {
+      const rule = cycle.ruleSet;
+      return Boolean(rule && typeof rule === "object" && !Array.isArray(rule)
+        && (rule as Record<string, unknown>).dynamicAvailability === true);
+    }) ?? null;
+  }
+
+  private dynamicRuleInteger(
+    ruleSet: Prisma.JsonValue,
+    key: "preBufferMinutes" | "postBufferMinutes" | "startIntervalMinutes",
+    fallback: number
+  ): number {
+    if (!ruleSet || typeof ruleSet !== "object" || Array.isArray(ruleSet)) return fallback;
+    const value = (ruleSet as Record<string, unknown>)[key];
+    return Number.isInteger(value) && Number(value) >= 0 ? Number(value) : fallback;
+  }
+
+  private async readDynamicAvailableSlots(
+    transaction: Prisma.TransactionClient,
+    input: AvailabilityListInput & { shopId: number },
+    shopVisibilityWhere: Record<string, unknown>,
+    cycle: { id: number; ruleSet: Prisma.JsonValue },
+    customerUserId?: number
+  ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
+    const pagination = toPrismaPagination(input);
+    const now = new Date();
+    const [service, technicianService, shop, locationShopIds] = await Promise.all([
+      input.serviceId
+        ? transaction.service.findFirst({
+            where: {
+              id: input.serviceId,
+              shopId: input.shopId,
+              status: "published",
+              deletedAt: null,
+              category: { is: { isActive: true, deletedAt: null } }
+            },
+            select: { id: true, name: true, durationMinutes: true, priceAmount: true, currency: true }
+          })
+        : null,
+      input.technicianServiceId
+        ? transaction.technicianService.findFirst({
+            where: {
+              id: input.technicianServiceId,
+              shopId: input.shopId,
+              isActive: true,
+              isBookable: true,
+              reviewStatus: "APPROVED",
+              deletedAt: null
+            },
+            select: {
+              id: true,
+              name: true,
+              durationMinutes: true,
+              priceAmount: true,
+              currency: true,
+              technicianId: true
+            }
+          })
+        : null,
+      transaction.shop.findFirst({
+        where: {
+          id: input.shopId,
+          status: "published",
+          deletedAt: null,
+          ...(shopVisibilityWhere as Prisma.ShopWhereInput),
+          publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } },
+          entitySuspensions: { none: { activeKey: { not: null }, status: "active", deletedAt: null } }
+        },
+        select: { id: true, name: true, pricingMode: true }
+      }),
+      this.listShopsWithCurrentVerifiedServiceLocations(transaction, input)
+    ]);
+    const source = service ?? technicianService;
+    if (!source || !shop || !locationShopIds.includes(shop.id)) {
+      return buildPaginatedResponse([], 0, pagination);
+    }
+    if (
+      (shop.pricingMode === "MERCHANT" && !service) ||
+      (shop.pricingMode === "TECHNICIAN" && !technicianService)
+    ) {
+      return buildPaginatedResponse([], 0, pagination);
+    }
+
+    const preBufferMinutes = this.dynamicRuleInteger(cycle.ruleSet, "preBufferMinutes", 0);
+    const postBufferMinutes = this.dynamicRuleInteger(cycle.ruleSet, "postBufferMinutes", 0);
+    const startIntervalMinutes = Math.max(
+      1,
+      this.dynamicRuleInteger(cycle.ruleSet, "startIntervalMinutes", 5)
+    );
+    const windows = await transaction.availability.findMany({
+      where: {
+        shopId: input.shopId,
+        isScheduleControlWindow: true,
+        isActive: true,
+        deletedAt: null,
+        startsAt: { lt: input.to },
+        endsAt: { gt: input.from },
+        technicianProfileId: technicianService
+          ? technicianService.technicianId
+          : input.technicianId,
+        technicianProfile: {
+          is: {
+            ...publicTechnicianProfileWhere(),
+            technicianShopAffiliations: {
+              some: {
+                shopId: input.shopId,
+                activeKey: { not: null },
+                workStatus: "ACTIVE",
+                startsAt: { lte: now },
+                OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+                deletedAt: null
+              }
+            }
+          }
+        }
+      },
+      include: { technicianProfile: true },
+      orderBy: [{ startsAt: "asc" }, { technicianProfileId: "asc" }, { id: "asc" }]
+    });
+    const technicianIds = [...new Set(windows.flatMap((window) =>
+      window.technicianProfileId ? [window.technicianProfileId] : []
+    ))];
+    const [orders, reservations, customer, nominationFeeEntries] = await Promise.all([
+      transaction.bookingOrder.findMany({
+        where: {
+          deletedAt: null,
+          status: { in: [...ACTIVE_ORDER_DB_STATUSES] },
+          technicianProfileId: { in: technicianIds },
+          startsAt: { lt: input.to },
+          endsAt: { gt: new Date(input.from.getTime() - 24 * 60 * 60_000) }
+        },
+        select: {
+          customerUserId: true,
+          status: true,
+          technicianProfileId: true,
+          startsAt: true,
+          endsAt: true,
+          scheduleSlot: { select: { occupiedStartsAt: true, occupiedEndsAt: true } }
+        }
+      }),
+      transaction.exchangeMatchParticipant.findMany({
+        where: {
+          technicianProfileId: { in: technicianIds },
+          estimatedStartsAt: { lt: input.to },
+          estimatedEndsAt: { gt: input.from },
+          activeReservationKey: { not: null },
+          deletedAt: null
+        },
+        select: { technicianProfileId: true, estimatedStartsAt: true, estimatedEndsAt: true }
+      }),
+      customerUserId
+        ? transaction.customerProfile.findFirst({
+            where: { userId: customerUserId, deletedAt: null },
+            select: { membershipLevel: true }
+          })
+        : null,
+      Promise.all(technicianIds.map(async (technicianProfileId) => [
+        technicianProfileId,
+        await this.resolveNominationFeeJpy(transaction, input.shopId, technicianProfileId, now)
+      ] as const))
+    ]);
+    const releasesOwnPending = customer?.membershipLevel.toLowerCase() !== "black";
+    const nominationFees = new Map(nominationFeeEntries);
+    const candidates: ScheduleSlotPayload[] = [];
+    for (const window of windows) {
+      if (!window.technicianProfileId) continue;
+      const nominationFeeJpy = nominationFees.get(window.technicianProfileId) ?? 0;
+      for (const candidate of enumerateDynamicBookingStarts({
+        windowStartsAt: window.startsAt,
+        windowEndsAt: window.endsAt,
+        serviceDurationMinutes: source.durationMinutes,
+        preBufferMinutes,
+        postBufferMinutes,
+        startIntervalMinutes
+      })) {
+        if (candidate.startsAt < input.from || candidate.startsAt >= input.to) continue;
+        const blocked = candidate.startsAt <= now || orders.some((order) => {
+          if (order.technicianProfileId !== window.technicianProfileId) return false;
+          if (
+            releasesOwnPending &&
+            customerUserId &&
+            order.customerUserId === customerUserId &&
+            order.status === "PENDING"
+          ) return false;
+          const occupiedStart = order.scheduleSlot.occupiedStartsAt ?? order.startsAt;
+          const occupiedEnd = order.scheduleSlot.occupiedEndsAt ?? order.endsAt;
+          return occupiedStart < candidate.occupiedEndsAt && occupiedEnd > candidate.occupiedStartsAt;
+        }) || reservations.some((reservation) =>
+          reservation.technicianProfileId === window.technicianProfileId &&
+          reservation.estimatedStartsAt < candidate.occupiedEndsAt &&
+          reservation.estimatedEndsAt > candidate.occupiedStartsAt
+        );
+        if (blocked && !input.includeUnavailable) continue;
+        candidates.push({
+          id: encodeDynamicAvailabilityId(window.id, candidate.offsetMinutes),
+          serviceId: service?.id ?? null,
+          technicianServiceId: technicianService?.id ?? null,
+          shopId: input.shopId,
+          technicianProfileId: window.technicianProfileId,
+          startsAt: candidate.startsAt,
+          endsAt: candidate.endsAt,
+          capacity: 1,
+          bookedCount: blocked ? 1 : 0,
+          status: blocked ? "blocked" : "available",
+          serviceName: source.name,
+          shopName: shop.name,
+          technicianName: window.technicianProfile?.displayName ?? null,
+          priceAmount: this.formatDecimal(source.priceAmount, 2),
+          currency: source.currency,
+          durationMinutes: source.durationMinutes,
+          nominationFeeJpy,
+          availabilitySourceType: window.sourceType === "SHOP" ? "shop" : "technician"
+        });
+      }
+    }
+    candidates.sort((left, right) =>
+      left.startsAt.getTime() - right.startsAt.getTime() || left.id - right.id
+    );
+    const list = candidates.slice(pagination.skip, pagination.skip + pagination.take);
+    return buildPaginatedResponse(list, candidates.length, pagination);
+  }
+
   private async listAvailabilityOccupancy(
     transaction: Prisma.TransactionClient,
     input: AvailabilityListInput,
@@ -1837,6 +2093,19 @@ export class BookingRepository implements BookingRepositoryPort {
   }
 
   public async findScheduleSlotShopId(scheduleSlotId: number): Promise<number | null> {
+    const dynamic = decodeDynamicAvailabilityId(scheduleSlotId);
+    if (dynamic) {
+      const availability = await this.client.availability.findFirst({
+        where: {
+          id: dynamic.availabilityId,
+          isActive: true,
+          isScheduleControlWindow: true,
+          deletedAt: null
+        },
+        select: { shopId: true }
+      });
+      return availability?.shopId ?? null;
+    }
     const slot = await this.client.scheduleSlot.findFirst({
       where: { id: scheduleSlotId, deletedAt: null },
       select: { shopId: true }
@@ -2367,6 +2636,155 @@ export class BookingRepository implements BookingRepositoryPort {
     );
   }
 
+  private async materializeDynamicScheduleSlot(
+    transaction: Prisma.TransactionClient,
+    input: BookingCreateRepositoryInput
+  ): Promise<number | null> {
+    const selector = decodeDynamicAvailabilityId(input.scheduleSlotId);
+    if (!selector || Boolean(input.serviceId) === Boolean(input.technicianServiceId)) return null;
+    const availability = await transaction.availability.findFirst({
+      where: {
+        id: selector.availabilityId,
+        isActive: true,
+        isScheduleControlWindow: true,
+        deletedAt: null,
+        technicianProfileId: { not: null }
+      },
+      select: {
+        id: true,
+        shopId: true,
+        technicianProfileId: true,
+        startsAt: true,
+        endsAt: true
+      }
+    });
+    if (!availability?.technicianProfileId) return null;
+    if (
+      input.nominatedTechnicianProfileId &&
+      input.nominatedTechnicianProfileId !== availability.technicianProfileId
+    ) return null;
+
+    const cycle = await this.findDynamicAvailabilityCycle(
+      transaction,
+      availability.shopId,
+      availability.startsAt,
+      availability.endsAt
+    );
+    if (!cycle) return null;
+    const [service, technicianService] = await Promise.all([
+      input.serviceId
+        ? transaction.service.findFirst({
+            where: {
+              id: input.serviceId,
+              shopId: availability.shopId,
+              status: "published",
+              deletedAt: null,
+              category: { is: { isActive: true, deletedAt: null } }
+            },
+            select: { id: true, durationMinutes: true }
+          })
+        : null,
+      input.technicianServiceId
+        ? transaction.technicianService.findFirst({
+            where: {
+              id: input.technicianServiceId,
+              shopId: availability.shopId,
+              technicianId: availability.technicianProfileId,
+              isActive: true,
+              isBookable: true,
+              reviewStatus: "APPROVED",
+              deletedAt: null
+            },
+            select: { id: true, durationMinutes: true }
+          })
+        : null
+    ]);
+    const source = service ?? technicianService;
+    if (!source) return null;
+
+    const preBufferMinutes = this.dynamicRuleInteger(cycle.ruleSet, "preBufferMinutes", 0);
+    const postBufferMinutes = this.dynamicRuleInteger(cycle.ruleSet, "postBufferMinutes", 0);
+    const startIntervalMinutes = Math.max(
+      1,
+      this.dynamicRuleInteger(cycle.ruleSet, "startIntervalMinutes", 5)
+    );
+    const candidate = enumerateDynamicBookingStarts({
+      windowStartsAt: availability.startsAt,
+      windowEndsAt: availability.endsAt,
+      serviceDurationMinutes: source.durationMinutes,
+      preBufferMinutes,
+      postBufferMinutes,
+      startIntervalMinutes
+    }).find((item) => item.offsetMinutes === selector.offsetMinutes);
+    if (!candidate || candidate.startsAt <= new Date()) return null;
+
+    await this.lockScheduleOwner(
+      transaction,
+      availability.shopId,
+      availability.technicianProfileId
+    );
+    const [bookingConflict, reservationConflict] = await Promise.all([
+      transaction.bookingOrder.findFirst({
+        where: {
+          technicianProfileId: availability.technicianProfileId,
+          OR: [
+            { status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] } },
+            { status: "PENDING", customerUserId: { not: input.customerUserId } }
+          ],
+          deletedAt: null,
+          scheduleSlot: {
+            is: {
+              OR: [
+                {
+                  occupiedStartsAt: { lt: candidate.occupiedEndsAt },
+                  occupiedEndsAt: { gt: candidate.occupiedStartsAt }
+                },
+                {
+                  occupiedStartsAt: null,
+                  startsAt: { lt: candidate.occupiedEndsAt },
+                  endsAt: { gt: candidate.occupiedStartsAt }
+                }
+              ]
+            }
+          }
+        },
+        select: { id: true }
+      }),
+      transaction.exchangeMatchParticipant.findFirst({
+        where: {
+          technicianProfileId: availability.technicianProfileId,
+          estimatedStartsAt: { lt: candidate.occupiedEndsAt },
+          estimatedEndsAt: { gt: candidate.occupiedStartsAt },
+          activeReservationKey: { not: null },
+          deletedAt: null
+        },
+        select: { id: true }
+      })
+    ]);
+    if (bookingConflict || reservationConflict) return null;
+
+    const slot = await transaction.scheduleSlot.create({
+      data: {
+        availabilityId: availability.id,
+        serviceId: service?.id ?? null,
+        technicianServiceId: technicianService?.id ?? null,
+        shopId: availability.shopId,
+        technicianProfileId: availability.technicianProfileId,
+        startsAt: candidate.startsAt,
+        endsAt: candidate.endsAt,
+        occupiedStartsAt: candidate.occupiedStartsAt,
+        occupiedEndsAt: candidate.occupiedEndsAt,
+        preBufferMinutes,
+        postBufferMinutes,
+        capacity: 1,
+        bookedCount: 0,
+        status: "AVAILABLE"
+      },
+      select: { id: true }
+    });
+    return slot.id;
+  }
+
   public async createBooking(
     input: BookingCreateRepositoryInput,
     options: BookingCreateRepositoryOptions = {}
@@ -2425,9 +2843,14 @@ export class BookingRepository implements BookingRepositoryPort {
               ? await this.resolveIntelligenceBookingSource(tx, input, new Date())
               : null;
 
+            const materializedSlotId = decodeDynamicAvailabilityId(input.scheduleSlotId)
+              ? await this.materializeDynamicScheduleSlot(tx, input)
+              : input.scheduleSlotId;
+            if (!materializedSlotId) return null;
+
             let slot = await tx.scheduleSlot.findFirst({
               where: {
-                id: input.scheduleSlotId,
+                id: materializedSlotId,
                 ...currentBookableScheduleSlotSourcesWhere(),
                 ...(input.serviceId ? { serviceId: input.serviceId } : {}),
                 ...(input.technicianServiceId
@@ -2542,7 +2965,7 @@ export class BookingRepository implements BookingRepositoryPort {
 
             slot = await tx.scheduleSlot.findFirst({
               where: {
-                id: input.scheduleSlotId,
+                id: materializedSlotId,
                 ...currentBookableScheduleSlotSourcesWhere(),
                 ...(input.serviceId ? { serviceId: input.serviceId } : {}),
                 ...(input.technicianServiceId

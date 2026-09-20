@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   STAGING_TEST_CHIBA_SERVICES,
-  buildNightlyServiceSlotRanges,
   buildNightlyShiftRanges,
   parseStagingTestChibaShopConfig
 } from "../src/staging/staging-test-chiba-shop-provisioning";
@@ -51,24 +50,6 @@ describe("StagingTest Chiba shop provisioning gate", () => {
     });
   });
 
-  it("uses the service duration as its default start interval and finishes by 01:00", () => {
-    const ranges = buildNightlyServiceSlotRanges({
-      startsAt: new Date("2026-09-21T08:00:00.000Z"),
-      endsAt: new Date("2026-09-21T16:00:00.000Z"),
-      durationMinutes: 60
-    });
-
-    expect(ranges).toHaveLength(8);
-    expect(ranges[0]).toEqual({
-      startsAt: new Date("2026-09-21T08:00:00.000Z"),
-      endsAt: new Date("2026-09-21T09:00:00.000Z")
-    });
-    expect(ranges.at(-1)).toEqual({
-      startsAt: new Date("2026-09-21T15:00:00.000Z"),
-      endsAt: new Date("2026-09-21T16:00:00.000Z")
-    });
-  });
-
   it("defines exactly three massages, two options and one extension with Japanese tax-inclusive pricing", () => {
     expect(STAGING_TEST_CHIBA_SERVICES).toHaveLength(6);
     expect(STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "massage")).toHaveLength(3);
@@ -103,5 +84,17 @@ describe("StagingTest Chiba shop provisioning gate", () => {
     expect(source).toMatch(
       /data: \{ status: "published", visibility: "public" \},[\s\S]*?tx\.auditLog\.create/u
     );
+  });
+
+  it("keeps continuous availability authoritative and does not pre-create service slots", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/staging/staging-test-chiba-shop-provisioning.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain("dynamicAvailability: true");
+    expect(source).toContain("startIntervalMinutes: 5");
+    expect(source).toContain("postBufferMinutes: 30");
+    expect(source).not.toContain("scheduleSlot.createMany");
   });
 });

@@ -110,11 +110,11 @@ function checkoutHistoryState(value: unknown) {
 
 function persistedCheckoutScheduleSlotId(value: unknown) {
   const slotId = checkoutHistoryState(value)[checkoutScheduleSlotStateKey];
-  return typeof slotId === "number" && Number.isInteger(slotId) && slotId > 0 ? slotId : null;
+  return typeof slotId === "number" && Number.isInteger(slotId) && slotId !== 0 ? slotId : null;
 }
 
 function requestedCheckoutScheduleSlotId(value: string | null) {
-  return value && /^[1-9]\d*$/u.test(value) ? Number(value) : null;
+  return value && /^-?[1-9]\d*$/u.test(value) ? Number(value) : null;
 }
 
 function describeCheckoutError(error: unknown): CheckoutTextKey {

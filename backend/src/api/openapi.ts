@@ -23042,7 +23042,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   technicianServiceId: { type: "integer", minimum: 1 },
                   nominatedTechnicianProfileId: { type: "integer", minimum: 1 },
                   exchangeIntelligencePostId: { type: "integer", minimum: 1 },
-                  scheduleSlotId: { type: "integer", minimum: 1 },
+                  scheduleSlotId: {
+                    type: "integer",
+                    not: { const: 0 },
+                    description: "Positive persisted slot id or negative dynamic store-availability selector."
+                  },
                   orderType: { type: "string", enum: ["booking", "request"] },
                   fulfillmentMode: { type: "string", enum: ["home", "store"] },
                   fulfillmentAddress: { $ref: "#/components/schemas/JapaneseRouteAddress" },
@@ -23078,7 +23082,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                         items: { type: "integer", minimum: 1 }
                       },
                       nominatedTechnicianProfileId: { type: "integer", minimum: 1 },
-                      scheduleSlotId: { type: "integer", minimum: 1 },
+                      scheduleSlotId: {
+                        type: "integer",
+                        not: { const: 0 },
+                        description: "Positive persisted slot id or negative dynamic availability selector."
+                      },
                       scheduleSlotIds: {
                         type: "array",
                         minItems: 2,

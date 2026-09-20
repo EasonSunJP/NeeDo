@@ -77,6 +77,31 @@ describe("availabilityListQuerySchema", () => {
 });
 
 describe("bookingCreateBodySchema", () => {
+  it("accepts a negative dynamic availability selector but never zero", () => {
+    const input = {
+      expectedPriceAmountJpy: 8_800,
+      serviceId: 1,
+      fulfillmentMode: "store" as const,
+      paymentMethod: "onsite" as const
+    };
+    expect(bookingCreateBodySchema.safeParse({ ...input, scheduleSlotId: -657504 }).success).toBe(true);
+    expect(bookingCreateBodySchema.safeParse({ ...input, scheduleSlotId: 0 }).success).toBe(false);
+    expect(bookingCreateBodySchema.safeParse({
+      ...input,
+      scheduleSlotId: -657504,
+      fulfillmentMode: "home",
+      serviceLocation: { countryCode: "JP", admin1Code: "12", admin2Code: "12100" },
+      fulfillmentAddress: {
+        countryCode: "JP",
+        postalCode: "260-0013",
+        prefecture: "千葉県",
+        city: "千葉市",
+        addressLine1: "中央区中央1-1"
+      },
+      travelEstimatePublicId: "00000000-0000-4000-8000-000000000001"
+    }).success).toBe(false);
+  });
+
   it("keeps store bookings server-authoritative for service location", () => {
     const parsed = bookingCreateBodySchema.parse({
       expectedPriceAmountJpy: 8_800,

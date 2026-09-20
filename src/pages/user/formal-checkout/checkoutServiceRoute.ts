@@ -30,7 +30,7 @@ export function buildTechnicianServiceCheckoutRoute(
   appendSelectionParam(params, "people", selection.people);
   appendSelectionParam(params, "time", selection.time);
   const slotId = String(selection.scheduleSlotId ?? "");
-  if (/^[1-9]\d*$/u.test(slotId)) params.set("scheduleSlotId", slotId);
+  if (/^-?[1-9]\d*$/u.test(slotId)) params.set("scheduleSlotId", slotId);
   const serviceIds = selection.serviceIds?.filter((id) => Number.isInteger(id) && id > 0);
   if (serviceIds && serviceIds.length > 1) params.set("serviceIds", serviceIds.join(","));
 

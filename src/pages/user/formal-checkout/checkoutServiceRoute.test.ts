@@ -51,6 +51,15 @@ describe("parseCheckoutServiceRoute", () => {
     );
   });
 
+  it("keeps a dynamic availability selector in the checkout route", () => {
+    expect(buildTechnicianServiceCheckoutRoute(202, {
+      scheduleSlotId: -657504,
+      time: "17:05"
+    })).toBe(
+      "/checkout/technician-service/202?mode=store&time=17%3A05&scheduleSlotId=-657504"
+    );
+  });
+
   it("keeps the ordered technician-service bundle in the checkout route", () => {
     expect(buildTechnicianServiceCheckoutRoute(202, {
       serviceIds: [202, 204, 203]

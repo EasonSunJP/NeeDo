@@ -7,7 +7,6 @@ import {
 import { z } from "zod";
 import { PublicIdentifierRepository } from "../repositories/public-identifier.repository";
 import { IdentifierAllocator } from "../services/public-identifier.service";
-import { deriveServiceStartIntervalMinutes } from "./staging-test-operations-provisioning";
 
 const configSchema = z.object({
   NODE_ENV: z.literal("production"),
@@ -18,7 +17,6 @@ const configSchema = z.object({
 
 const OWNER_EMAIL = "akiratest@lifedance.com";
 const SHOP_NAME = "StagingTest千葉店";
-const INSERT_BATCH_SIZE = 1_000;
 
 export const STAGING_TEST_CHIBA_SERVICES = [
   {
@@ -148,47 +146,11 @@ export const buildNightlyShiftRanges = (input: {
   return ranges;
 };
 
-export const buildNightlyServiceSlotRanges = (input: {
-  startsAt: Date;
-  endsAt: Date;
-  durationMinutes: number;
-  startIntervalMinutes?: number;
-}): Array<{ startsAt: Date; endsAt: Date }> => {
-  if (!Number.isInteger(input.durationMinutes) || input.durationMinutes <= 0) {
-    throw new Error("STAGING_TEST_CHIBA_SERVICE_DURATION_INVALID");
-  }
-  const startIntervalMinutes = input.startIntervalMinutes ?? input.durationMinutes;
-  if (!Number.isInteger(startIntervalMinutes) || startIntervalMinutes <= 0) {
-    throw new Error("STAGING_TEST_CHIBA_SERVICE_START_INTERVAL_INVALID");
-  }
-  const durationMs = input.durationMinutes * 60_000;
-  const startIntervalMs = startIntervalMinutes * 60_000;
-  const ranges: Array<{ startsAt: Date; endsAt: Date }> = [];
-  for (
-    let startsAtMs = input.startsAt.getTime();
-    startsAtMs + durationMs <= input.endsAt.getTime();
-    startsAtMs += startIntervalMs
-  ) {
-    ranges.push({
-      startsAt: new Date(startsAtMs),
-      endsAt: new Date(startsAtMs + durationMs)
-    });
-  }
-  return ranges;
-};
-
 const availabilityKey = (input: {
   technicianProfileId: number | null;
   startsAt: Date | string;
   endsAt: Date | string;
 }) => `${input.technicianProfileId}:${new Date(input.startsAt).toISOString()}:${new Date(input.endsAt).toISOString()}`;
-
-const scheduleSlotKey = (input: {
-  technicianProfileId: number | null;
-  serviceId: number | null;
-  startsAt: Date | string;
-  endsAt: Date | string;
-}) => `${input.technicianProfileId}:${input.serviceId}:${new Date(input.startsAt).toISOString()}:${new Date(input.endsAt).toISOString()}`;
 
 const assert: (condition: unknown, message: string) => asserts condition = (
   condition,
@@ -538,7 +500,14 @@ export class StagingTestChibaShopProvisioner {
             templateType: "MONTH",
             templateMatrix: { daily: { startsAt: "17:00", endsAt: "01:00", crossesMidnight: true } },
             regularHolidayWeekdays: [],
-            ruleSet: { timeZone: "Asia/Tokyo", shopAssigned: true },
+            ruleSet: {
+              timeZone: "Asia/Tokyo",
+              shopAssigned: true,
+              dynamicAvailability: true,
+              startIntervalMinutes: 5,
+              preBufferMinutes: 0,
+              postBufferMinutes: 30
+            },
             finalizedAt: new Date(),
             activeAt: new Date(),
             cancelledAt: null,
@@ -559,7 +528,14 @@ export class StagingTestChibaShopProvisioner {
             periodEnd,
             templateMatrix: { daily: { startsAt: "17:00", endsAt: "01:00", crossesMidnight: true } },
             regularHolidayWeekdays: [],
-            ruleSet: { timeZone: "Asia/Tokyo", shopAssigned: true },
+            ruleSet: {
+              timeZone: "Asia/Tokyo",
+              shopAssigned: true,
+              dynamicAvailability: true,
+              startIntervalMinutes: 5,
+              preBufferMinutes: 0,
+              postBufferMinutes: 30
+            },
             finalizedAt: new Date(),
             activeAt: new Date(),
             createdById: owner.id,
@@ -620,69 +596,19 @@ export class StagingTestChibaShopProvisioner {
       availabilityByKey.set(key, created);
     }
 
-    let scheduleSlotCount = 0;
-    let createdScheduleSlotCount = 0;
-    const serviceStartIntervalMinutes = deriveServiceStartIntervalMinutes(
-      services.map((service) => service.durationMinutes)
-    );
-    for (const technicianProfileId of technicianProfileIds) {
-      const technicianShifts = desiredShifts.filter(
-        (shift) => shift.technicianProfileId === technicianProfileId
-      );
-      for (const service of services) {
-        const existingSlots = await tx.scheduleSlot.findMany({
-          where: {
-            shopId: shop.id,
-            technicianProfileId,
-            serviceId: service.id,
-            startsAt: { gte: new Date(`${config.startDate}T17:00:00+09:00`) },
-            endsAt: { lte: new Date(`${config.endDate}T01:00:00+09:00`) },
-            deletedAt: null
-          },
-          select: { technicianProfileId: true, serviceId: true, startsAt: true, endsAt: true }
-        });
-        const existingSlotKeys = new Set(existingSlots.map(scheduleSlotKey));
-        let pendingBatch: Prisma.ScheduleSlotCreateManyInput[] = [];
-        for (const shift of technicianShifts) {
-          const availability = availabilityByKey.get(availabilityKey(shift));
-          assert(availability, "STAGING_TEST_CHIBA_AVAILABILITY_MISSING");
-          const ranges = buildNightlyServiceSlotRanges({
-            startsAt: shift.startsAt,
-            endsAt: shift.endsAt,
-            durationMinutes: service.durationMinutes,
-            startIntervalMinutes: serviceStartIntervalMinutes
-          });
-          scheduleSlotCount += ranges.length;
-          for (const range of ranges) {
-            const slot = {
-              availabilityId: availability.id,
-              serviceId: service.id,
-              technicianServiceId: null,
-              shopId: shop.id,
-              technicianProfileId,
-              startsAt: range.startsAt,
-              endsAt: range.endsAt,
-              capacity: 1,
-              bookedCount: 0,
-              status: "AVAILABLE" as const
-            };
-            const key = scheduleSlotKey(slot);
-            if (existingSlotKeys.has(key)) continue;
-            pendingBatch.push(slot);
-            existingSlotKeys.add(key);
-            if (pendingBatch.length === INSERT_BATCH_SIZE) {
-              await tx.scheduleSlot.createMany({ data: pendingBatch });
-              createdScheduleSlotCount += pendingBatch.length;
-              pendingBatch = [];
-            }
-          }
-        }
-        if (pendingBatch.length > 0) {
-          await tx.scheduleSlot.createMany({ data: pendingBatch });
-          createdScheduleSlotCount += pendingBatch.length;
-        }
-      }
-    }
+    const retiredAt = new Date();
+    await tx.scheduleSlot.updateMany({
+      where: {
+        shopId: shop.id,
+        bookedCount: 0,
+        deletedAt: null,
+        bookingOrders: { none: {} }
+      },
+      data: { status: "BLOCKED", deletedAt: retiredAt }
+    });
+    const scheduleSlotCount = 0;
+    const createdScheduleSlotCount = 0;
+    const serviceStartIntervalMinutes = 5;
 
     const admin1 = await tx.administrativeRegion.findFirst({
       where: { countryCode: "JP", officialCode: "12", level: "ADMIN1", deletedAt: null },

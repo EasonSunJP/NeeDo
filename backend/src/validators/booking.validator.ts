@@ -163,7 +163,9 @@ const bookingBaseSchema = z.object({
   technicianServiceIds: z.array(z.coerce.number().int().positive()).min(2).max(10).optional(),
   nominatedTechnicianProfileId: z.coerce.number().int().positive().optional(),
   exchangeIntelligencePostId: z.coerce.number().int().positive().optional(),
-  scheduleSlotId: z.coerce.number().int().positive(),
+  scheduleSlotId: z.coerce.number().int().refine((value) => value !== 0, {
+    message: "scheduleSlotId must be a persisted positive id or a dynamic negative selector"
+  }),
   scheduleSlotIds: z.array(z.coerce.number().int().positive()).min(2).max(10).optional(),
   orderType: z.enum(["booking", "request"]).optional(),
   paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
@@ -195,6 +197,13 @@ export const bookingCreateBodySchema = z
     path: ["serviceId"]
   })
   .superRefine((value, context) => {
+    if (value.fulfillmentMode === "home" && value.scheduleSlotId < 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Dynamic availability selectors are store-booking only",
+        path: ["scheduleSlotId"]
+      });
+    }
     const hasBundleSelectors = value.technicianServiceIds !== undefined || value.scheduleSlotIds !== undefined;
     if (hasBundleSelectors) {
       if (
