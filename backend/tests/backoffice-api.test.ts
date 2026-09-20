@@ -583,6 +583,7 @@ const createFixture = async (
     summarizeNdpByCurrency: jest.fn(async () => [
       {
         ndpCurrency: "NDP",
+        checkoutPaymentNdp: 5_000,
         bPlatformFeeActualNdp: 700,
         cRequestFeeActualNdp: 300,
         penaltyNdp: 10,
@@ -595,6 +596,7 @@ const createFixture = async (
       },
       {
         ndpCurrency: "TEST_NDP",
+        checkoutPaymentNdp: 17_600,
         bPlatformFeeActualNdp: 999,
         cRequestFeeActualNdp: 99,
         penaltyNdp: 2,
@@ -1611,7 +1613,7 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
 
     expect(response.body.data).toEqual({
       period: { date: "2026-05-25", timeZone: "Asia/Tokyo" },
-      todayNdpConsumption: { ndp: 1010, testNdp: 1100 },
+      todayNdpConsumption: { ndp: 5000, testNdp: 17600 },
       platformNetRevenue: { ndp: 860, testNdp: 1040 },
       requestFeeRevenue: { ndp: 300, testNdp: 99 },
       userRewardCost: { ndp: 100, testNdp: 50 },

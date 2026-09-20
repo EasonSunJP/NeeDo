@@ -48,6 +48,17 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     expect(source).not.toContain("needoId: `${marker}-technician`");
   });
 
+  it("covers the real Test NDP platform-fee and compensation settlement chain", () => {
+    const source = readFileSync(scriptPath, "utf8");
+
+    expect(source).not.toContain("platformFeeEnabledSnapshot: false");
+    expect(source).toContain("freezeBookingAcceptance");
+    expect(source).toContain("bPlatformFeeHoldNdp === 500");
+    expect(source).toContain("bPlatformFeeActualNdp === 500");
+    expect(source).toContain('event.type === "technician_income_estimated"');
+    expect(source).toContain("shopEstimatedGrossProfitJpy");
+  });
+
   it("keeps timing bypass isolated to rollback fixture rows instead of the shared platform setting", () => {
     const source = readFileSync(scriptPath, "utf8");
 
@@ -218,8 +229,10 @@ describe("rollback-only formal order fulfillment flow checker", () => {
         "order_status_histories",
         "order_financials",
         "wallets",
+        "wallet_holds",
         "ledger_transactions",
         "wallet_ledgers",
+        "fee_calculation_logs",
         "finance_reconciliations",
         "audit_logs",
         "review_summaries",
@@ -229,7 +242,8 @@ describe("rollback-only formal order fulfillment flow checker", () => {
         "order_add_ons",
         "order_checkouts",
         "order_reviews",
-        "order_review_tags"
+        "order_review_tags",
+        "technician_compensation_profiles"
       ],
       columns: [
         "order_service_sessions.verification_hash",
@@ -341,7 +355,7 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     );
   });
 
-  it("captures checkout-specific cash evidence and detects any wallet or ledger delta", async () => {
+  it("captures checkout-specific cash evidence, permits settlement rewards, and rejects debits", async () => {
     const transaction = {
       orderCheckout: {
         findUnique: jest.fn(async () => ({ id: 77 }))
@@ -373,6 +387,12 @@ describe("rollback-only formal order fulfillment flow checker", () => {
         Object.fromEntries(Object.entries(before).reverse()) as typeof before
       )
     ).not.toThrow();
+    expect(() =>
+      assertNoCashDebit(before, { ...before, walletAvailableBalance: 1_000 })
+    ).not.toThrow();
+    expect(() =>
+      assertNoCashDebit(before, { ...before, walletAvailableBalance: 899 })
+    ).toThrow("cash payment changed wallet or checkout ledger evidence");
     expect(() => assertNoCashDebit(before, { ...before, ledgerTransactionCount: 3 })).toThrow(
       "cash payment changed wallet or checkout ledger evidence"
     );

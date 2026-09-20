@@ -855,6 +855,7 @@ export interface BackofficeCsvExportPayload {
 
 export interface BackofficeNdpAggregate {
   ndpCurrency: LedgerCurrency;
+  checkoutPaymentNdp: number;
   bPlatformFeeActualNdp: number;
   cRequestFeeActualNdp: number;
   penaltyNdp: number;
@@ -1708,6 +1709,7 @@ export class BackofficeService {
     const byCurrency = new Map(aggregates.map((aggregate) => [aggregate.ndpCurrency, aggregate]));
     const empty: BackofficeNdpAggregate = {
       ndpCurrency: "NDP",
+      checkoutPaymentNdp: 0,
       bPlatformFeeActualNdp: 0,
       cRequestFeeActualNdp: 0,
       penaltyNdp: 0,
@@ -1725,9 +1727,13 @@ export class BackofficeService {
       testNdp: selector(test)
     });
     const consumption = (aggregate: BackofficeNdpAggregate): number =>
-      aggregate.bPlatformFeeActualNdp + aggregate.cRequestFeeActualNdp + aggregate.penaltyNdp;
+      aggregate.checkoutPaymentNdp;
     const netRevenue = (aggregate: BackofficeNdpAggregate): number =>
-      consumption(aggregate) - aggregate.userRewardNdp - aggregate.compensationToUserNdp;
+      aggregate.bPlatformFeeActualNdp +
+      aggregate.cRequestFeeActualNdp +
+      aggregate.penaltyNdp -
+      aggregate.userRewardNdp -
+      aggregate.compensationToUserNdp;
     const pendingHold = (aggregate: BackofficeNdpAggregate): number =>
       Math.max(
         0,

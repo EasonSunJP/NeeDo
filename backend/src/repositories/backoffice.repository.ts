@@ -22,7 +22,10 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError, createInternalError } from "../utils/app-error";
 import { assertShopServiceQuota } from "../services/shop-service-policy";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
-import { LedgerCurrencyService } from "../services/ledger-currency.service";
+import {
+  LedgerCurrencyService,
+  type LedgerCurrency
+} from "../services/ledger-currency.service";
 import {
   CompensationEngine,
   type CompensationAdjustmentRule,
@@ -95,6 +98,7 @@ import type {
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse } from "../utils/pagination";
 import { identifierNumberPartSchema } from "../validators/public-identifier.validator";
+import { formalConfirmedPaymentEvidence } from "./formal-confirmed-payment-evidence";
 
 const managedUserAuditWhere = (input: BackofficeScope & Partial<BackofficeManagedUserDetailQuery>, userId: number): Prisma.AuditLogWhereInput => ({
       deletedAt: null,
@@ -154,6 +158,11 @@ interface LockedShopRow {
   id: number;
   shop_no: string | null;
   deleted_at: Date | null;
+}
+
+interface ConfirmedCheckoutNdpAggregateRow {
+  ndpCurrency: string;
+  checkoutPaymentNdp: bigint | number | string | DecimalLike;
 }
 
 const PROFILE_DETAIL_SERVICE_LIMIT = 50;
@@ -984,40 +993,74 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     fromInclusive: Date;
     toExclusive: Date;
   }): Promise<BackofficeNdpAggregate[]> {
-    const rows = await this.client.orderFinancial.groupBy({
-      by: ["ndpCurrency"],
-      where: {
-        deletedAt: null,
-        createdAt: {
-          gte: input.fromInclusive,
-          lt: input.toExclusive
+    const [rows, checkoutPaymentRows] = await Promise.all([
+      this.client.orderFinancial.groupBy({
+        by: ["ndpCurrency"],
+        where: {
+          deletedAt: null,
+          createdAt: {
+            gte: input.fromInclusive,
+            lt: input.toExclusive
+          }
+        },
+        _sum: {
+          bPlatformFeeActualNdp: true,
+          cRequestFeeActualNdp: true,
+          penaltyNdp: true,
+          userRewardNdp: true,
+          compensationToUserNdp: true,
+          bPlatformFeeHoldNdp: true,
+          cRequestFeeHoldNdp: true,
+          releasedNdp: true,
+          campaignDiscountNdp: true
         }
-      },
-      _sum: {
-        bPlatformFeeActualNdp: true,
-        cRequestFeeActualNdp: true,
-        penaltyNdp: true,
-        userRewardNdp: true,
-        compensationToUserNdp: true,
-        bPlatformFeeHoldNdp: true,
-        cRequestFeeHoldNdp: true,
-        releasedNdp: true,
-        campaignDiscountNdp: true
-      }
-    });
+      }),
+      this.client.$queryRaw<ConfirmedCheckoutNdpAggregateRow[]>(Prisma.sql`
+        SELECT ledger.currency AS ndpCurrency,
+               COALESCE(SUM(checkout.payable_ndp), 0) AS checkoutPaymentNdp
+        FROM booking_orders AS booking
+        INNER JOIN order_checkouts AS checkout
+          ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
+        INNER JOIN ledger_transactions AS ledger
+          ON ledger.id = checkout.ledger_transaction_id AND ledger.deleted_at IS NULL
+        WHERE booking.payment_confirmed_at >= ${input.fromInclusive}
+          AND booking.payment_confirmed_at < ${input.toExclusive}
+          AND booking.deleted_at IS NULL
+          AND checkout.payment_method = ${"ndp"}
+          AND ${formalConfirmedPaymentEvidence()}
+        GROUP BY ledger.currency
+      `)
+    ]);
+    const paymentByCurrency = new Map(
+      checkoutPaymentRows.map((row) => [
+        LedgerCurrencyService.fromStored(row.ndpCurrency),
+        this.toNumber(row.checkoutPaymentNdp)
+      ])
+    );
+    const financialByCurrency = new Map(
+      rows.map((row) => [LedgerCurrencyService.fromStored(row.ndpCurrency), row])
+    );
+    const currencies = new Set<LedgerCurrency>([
+      ...financialByCurrency.keys(),
+      ...paymentByCurrency.keys()
+    ]);
 
-    return rows.map((row) => ({
-      ndpCurrency: LedgerCurrencyService.fromStored(row.ndpCurrency),
-      bPlatformFeeActualNdp: row._sum.bPlatformFeeActualNdp ?? 0,
-      cRequestFeeActualNdp: row._sum.cRequestFeeActualNdp ?? 0,
-      penaltyNdp: row._sum.penaltyNdp ?? 0,
-      userRewardNdp: row._sum.userRewardNdp ?? 0,
-      compensationToUserNdp: row._sum.compensationToUserNdp ?? 0,
-      bPlatformFeeHoldNdp: row._sum.bPlatformFeeHoldNdp ?? 0,
-      cRequestFeeHoldNdp: row._sum.cRequestFeeHoldNdp ?? 0,
-      releasedNdp: row._sum.releasedNdp ?? 0,
-      campaignDiscountNdp: row._sum.campaignDiscountNdp ?? 0
-    }));
+    return [...currencies].map((ndpCurrency) => {
+      const row = financialByCurrency.get(ndpCurrency);
+      return {
+        ndpCurrency,
+        checkoutPaymentNdp: paymentByCurrency.get(ndpCurrency) ?? 0,
+        bPlatformFeeActualNdp: row?._sum.bPlatformFeeActualNdp ?? 0,
+        cRequestFeeActualNdp: row?._sum.cRequestFeeActualNdp ?? 0,
+        penaltyNdp: row?._sum.penaltyNdp ?? 0,
+        userRewardNdp: row?._sum.userRewardNdp ?? 0,
+        compensationToUserNdp: row?._sum.compensationToUserNdp ?? 0,
+        bPlatformFeeHoldNdp: row?._sum.bPlatformFeeHoldNdp ?? 0,
+        cRequestFeeHoldNdp: row?._sum.cRequestFeeHoldNdp ?? 0,
+        releasedNdp: row?._sum.releasedNdp ?? 0,
+        campaignDiscountNdp: row?._sum.campaignDiscountNdp ?? 0
+      };
+    });
   }
 
   public async listTechnicians(
