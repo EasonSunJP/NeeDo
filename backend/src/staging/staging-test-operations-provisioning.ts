@@ -517,30 +517,8 @@ export class StagingTestOperationsProvisioner {
           data: { availabilityId: canonicalAvailabilityId }
         });
       }
-      const existingScheduleSlots = await transaction.scheduleSlot.findMany({
-        where: {
-          shopId: shop.id,
-          technicianProfileId: { in: technicianProfileIds },
-          status: { in: ["AVAILABLE", "BOOKED"] },
-          startsAt: { gte: periodStart, lt: periodEnd },
-          deletedAt: null
-        },
-        select: {
-          technicianProfileId: true,
-          technicianServiceId: true,
-          startsAt: true,
-          endsAt: true
-        }
-      });
-      const existingScheduleSlotKeys = new Set(
-        existingScheduleSlots.flatMap((slot) =>
-          slot.technicianProfileId === null || slot.technicianServiceId === null
-            ? []
-            : [scheduleSlotKey(slot)]
-        )
-      );
-      const missingScheduleSlots: Prisma.ScheduleSlotCreateManyInput[] = [];
       let scheduleSlotCount = 0;
+      let createdScheduleSlotCount = 0;
       for (const availability of desiredAvailabilities) {
         const technicianProfileId = availability.technicianProfileId;
         if (technicianProfileId === null || technicianProfileId === undefined) continue;
@@ -552,12 +530,30 @@ export class StagingTestOperationsProvisioner {
           throw new Error(`STAGING_TEST_SCHEDULE_SLOT_SOURCE_MISSING:${dayKey}`);
         }
         for (const technicianService of technicianServices) {
+          const existingScheduleSlots = await transaction.scheduleSlot.findMany({
+            where: {
+              shopId: shop.id,
+              technicianProfileId,
+              technicianServiceId: technicianService.id,
+              status: { in: ["AVAILABLE", "BOOKED"] },
+              startsAt: { gte: startsAt, lt: new Date(availability.endsAt) },
+              deletedAt: null
+            },
+            select: {
+              technicianProfileId: true,
+              technicianServiceId: true,
+              startsAt: true,
+              endsAt: true
+            }
+          });
+          const existingScheduleSlotKeys = new Set(existingScheduleSlots.map(scheduleSlotKey));
           const ranges = buildContinuousScheduleSlotRanges({
             startsAt,
             endsAt: new Date(availability.endsAt),
             durationMinutes: technicianService.durationMinutes
           });
           scheduleSlotCount += ranges.length;
+          let pendingBatch: Prisma.ScheduleSlotCreateManyInput[] = [];
           for (const range of ranges) {
             const slot = {
               availabilityId,
@@ -573,15 +569,19 @@ export class StagingTestOperationsProvisioner {
             };
             const key = scheduleSlotKey(slot);
             if (existingScheduleSlotKeys.has(key)) continue;
-            missingScheduleSlots.push(slot);
+            pendingBatch.push(slot);
             existingScheduleSlotKeys.add(key);
+            if (pendingBatch.length === SCHEDULE_SLOT_INSERT_BATCH_SIZE) {
+              await transaction.scheduleSlot.createMany({ data: pendingBatch });
+              createdScheduleSlotCount += pendingBatch.length;
+              pendingBatch = [];
+            }
+          }
+          if (pendingBatch.length > 0) {
+            await transaction.scheduleSlot.createMany({ data: pendingBatch });
+            createdScheduleSlotCount += pendingBatch.length;
           }
         }
-      }
-      for (let offset = 0; offset < missingScheduleSlots.length; offset += SCHEDULE_SLOT_INSERT_BATCH_SIZE) {
-        await transaction.scheduleSlot.createMany({
-          data: missingScheduleSlots.slice(offset, offset + SCHEDULE_SLOT_INSERT_BATCH_SIZE)
-        });
       }
 
       let automationSettingCount = 0;
@@ -625,7 +625,7 @@ export class StagingTestOperationsProvisioner {
             retiredScheduleModeAvailabilityCount: conflicting.length,
             createdTechnicianServiceCount: missingTechnicianServiceIds.length,
             scheduleSlotCount,
-            createdScheduleSlotCount: missingScheduleSlots.length,
+            createdScheduleSlotCount,
             slotIntervalMinutes: STAGING_SLOT_INTERVAL_MINUTES,
             continuousDailyCoverage: true,
             automationSettingCount,
@@ -644,7 +644,7 @@ export class StagingTestOperationsProvisioner {
         retiredScheduleModeAvailabilityCount: conflicting.length,
         createdTechnicianServiceCount: missingTechnicianServiceIds.length,
         scheduleSlotCount,
-        createdScheduleSlotCount: missingScheduleSlots.length,
+        createdScheduleSlotCount,
         automationSettingCount,
         scheduleCycleId: scheduleCycle.id
       };

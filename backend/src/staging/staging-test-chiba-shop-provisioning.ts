@@ -613,51 +613,64 @@ export class StagingTestChibaShopProvisioner {
         availabilityByKey.set(key, created);
       }
 
-      const existingSlots = await tx.scheduleSlot.findMany({
-        where: {
-          shopId: shop.id,
-          technicianProfileId: { in: technicianProfileIds },
-          serviceId: { in: services.map((service) => service.id) },
-          startsAt: { gte: new Date(`${config.startDate}T17:00:00+09:00`) },
-          endsAt: { lte: new Date(`${config.endDate}T01:00:00+09:00`) },
-          deletedAt: null
-        },
-        select: { technicianProfileId: true, serviceId: true, startsAt: true, endsAt: true }
-      });
-      const existingSlotKeys = new Set(existingSlots.map(scheduleSlotKey));
-      const missingSlots: Prisma.ScheduleSlotCreateManyInput[] = [];
       let scheduleSlotCount = 0;
-      for (const shift of desiredShifts) {
-        const availability = availabilityByKey.get(availabilityKey(shift));
-        assert(availability, "STAGING_TEST_CHIBA_AVAILABILITY_MISSING");
+      let createdScheduleSlotCount = 0;
+      for (const technicianProfileId of technicianProfileIds) {
+        const technicianShifts = desiredShifts.filter(
+          (shift) => shift.technicianProfileId === technicianProfileId
+        );
         for (const service of services) {
-          for (const range of buildNightlyServiceSlotRanges({
-            startsAt: shift.startsAt,
-            endsAt: shift.endsAt,
-            durationMinutes: service.durationMinutes
-          })) {
-            scheduleSlotCount += 1;
-            const slot = {
-              availabilityId: availability.id,
-              serviceId: service.id,
-              technicianServiceId: null,
+          const existingSlots = await tx.scheduleSlot.findMany({
+            where: {
               shopId: shop.id,
-              technicianProfileId: shift.technicianProfileId,
-              startsAt: range.startsAt,
-              endsAt: range.endsAt,
-              capacity: 1,
-              bookedCount: 0,
-              status: "AVAILABLE" as const
-            };
-            const key = scheduleSlotKey(slot);
-            if (existingSlotKeys.has(key)) continue;
-            missingSlots.push(slot);
-            existingSlotKeys.add(key);
+              technicianProfileId,
+              serviceId: service.id,
+              startsAt: { gte: new Date(`${config.startDate}T17:00:00+09:00`) },
+              endsAt: { lte: new Date(`${config.endDate}T01:00:00+09:00`) },
+              deletedAt: null
+            },
+            select: { technicianProfileId: true, serviceId: true, startsAt: true, endsAt: true }
+          });
+          const existingSlotKeys = new Set(existingSlots.map(scheduleSlotKey));
+          let pendingBatch: Prisma.ScheduleSlotCreateManyInput[] = [];
+          for (const shift of technicianShifts) {
+            const availability = availabilityByKey.get(availabilityKey(shift));
+            assert(availability, "STAGING_TEST_CHIBA_AVAILABILITY_MISSING");
+            const ranges = buildNightlyServiceSlotRanges({
+              startsAt: shift.startsAt,
+              endsAt: shift.endsAt,
+              durationMinutes: service.durationMinutes
+            });
+            scheduleSlotCount += ranges.length;
+            for (const range of ranges) {
+              const slot = {
+                availabilityId: availability.id,
+                serviceId: service.id,
+                technicianServiceId: null,
+                shopId: shop.id,
+                technicianProfileId,
+                startsAt: range.startsAt,
+                endsAt: range.endsAt,
+                capacity: 1,
+                bookedCount: 0,
+                status: "AVAILABLE" as const
+              };
+              const key = scheduleSlotKey(slot);
+              if (existingSlotKeys.has(key)) continue;
+              pendingBatch.push(slot);
+              existingSlotKeys.add(key);
+              if (pendingBatch.length === INSERT_BATCH_SIZE) {
+                await tx.scheduleSlot.createMany({ data: pendingBatch });
+                createdScheduleSlotCount += pendingBatch.length;
+                pendingBatch = [];
+              }
+            }
+          }
+          if (pendingBatch.length > 0) {
+            await tx.scheduleSlot.createMany({ data: pendingBatch });
+            createdScheduleSlotCount += pendingBatch.length;
           }
         }
-      }
-      for (let offset = 0; offset < missingSlots.length; offset += INSERT_BATCH_SIZE) {
-        await tx.scheduleSlot.createMany({ data: missingSlots.slice(offset, offset + INSERT_BATCH_SIZE) });
       }
 
       const admin1 = await tx.administrativeRegion.findFirst({
@@ -708,7 +721,7 @@ export class StagingTestChibaShopProvisioner {
             serviceNames: STAGING_TEST_CHIBA_SERVICES.map((service) => service.name),
             availabilityCount: desiredShifts.length,
             scheduleSlotCount,
-            createdScheduleSlotCount: missingSlots.length
+            createdScheduleSlotCount
           }
         }
       });
@@ -733,7 +746,7 @@ export class StagingTestChibaShopProvisioner {
         extensionServiceCount: STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "extension").length,
         availabilityCount: desiredShifts.length,
         scheduleSlotCount,
-        createdScheduleSlotCount: missingSlots.length
+        createdScheduleSlotCount
       };
     }, { timeout: 300_000 });
   }
