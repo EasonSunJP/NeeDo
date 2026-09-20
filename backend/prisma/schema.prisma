@@ -4441,6 +4441,8 @@ model ScheduleSlot {
   @@index([availabilityId])
   @@index([serviceId])
   @@index([technicianServiceId])
+  @@index([serviceId, deletedAt, startsAt, id], map: "schedule_slot_service_deleted_start_id_idx")
+  @@index([technicianServiceId, deletedAt, startsAt, id], map: "schedule_slot_technician_service_deleted_start_id_idx")
   @@index([shopId])
   @@index([technicianProfileId])
   @@index([technicianProfileId, shopId, startsAt, endsAt, deletedAt], map: "schedule_slot_technician_shop_range_deleted_idx")
