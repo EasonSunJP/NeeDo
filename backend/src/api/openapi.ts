@@ -11143,7 +11143,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "city",
           "bio",
           "avatarUrl",
+          "gender",
+          "age",
+          "heightCm",
+          "languages",
           "membershipLevel",
+          "level",
           "reviewSummary",
           "createdAt",
           "updatedAt"
@@ -11155,7 +11160,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           city: { type: ["string", "null"] },
           bio: { type: ["string", "null"] },
           avatarUrl: { type: ["string", "null"] },
+          gender: { type: "string", enum: ["female", "male", "private"] },
+          age: { type: ["integer", "null"], minimum: 0, maximum: 150 },
+          heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+          languages: { type: "array", items: { type: "string" } },
           membershipLevel: { type: "string" },
+          level: { type: "integer", minimum: 1, maximum: 100 },
           reviewSummary: { $ref: "#/components/schemas/ReviewSummary" },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
@@ -22648,7 +22658,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{}, { bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
-          "200": { description: "Customer profile without account credentials" },
+          "200": jsonDataResponse("Customer profile without account credentials", {
+            $ref: "#/components/schemas/CustomerProfile"
+          }),
           "404": { description: "Customer profile not found" }
         }
       }

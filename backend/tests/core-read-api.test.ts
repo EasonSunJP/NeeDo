@@ -208,7 +208,12 @@ describe("Step 08 core read API", () => {
         city: "Tokyo",
         bio: "Prefers evening appointments.",
         avatarUrl: "https://cdn.example.test/customers/aya.jpg",
+        gender: "female",
+        age: 33,
+        heightCm: 168,
+        languages: ["日本語", "English"],
         membershipLevel: "standard",
+        level: 27,
         reviewSummary,
         createdAt: nowIso,
         updatedAt: nowIso
@@ -490,12 +495,36 @@ describe("Step 08 core read API", () => {
       id: 1,
       publicId: "u3141592653",
       displayName: "Aya Customer",
-      membershipLevel: "standard"
+      gender: "female",
+      age: 33,
+      heightCm: 168,
+      languages: ["日本語", "English"],
+      membershipLevel: "standard",
+      level: 27,
+      reviewSummary
     });
     expect(JSON.stringify(customerResponse.body)).not.toContain("passwordHash");
     expect(JSON.stringify(customerResponse.body)).not.toContain("email");
     expect(JSON.stringify(customerResponse.body)).not.toContain("phone");
+    expect(JSON.stringify(customerResponse.body)).not.toContain("address");
+    expect(JSON.stringify(customerResponse.body)).not.toContain("identityId");
     expect(fixture.coreReadRepository.findCustomerProfile).toHaveBeenCalledWith(1, undefined);
+  });
+
+  it("keeps customer privacy isolated from the same account's shop and technician identities", async () => {
+    const fixture = createFixture();
+    fixture.coreReadRepository.findCustomerProfile.mockImplementationOnce(async () => null as never);
+
+    await request(fixture.app).get("/api/v1/profiles/customers/1").expect(404);
+    await request(fixture.app).get("/api/v1/technicians/1").expect(200);
+    await request(fixture.app).get("/api/v1/shops/1").expect(200);
+
+    expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenCalledWith(
+      1,
+      {},
+      undefined
+    );
+    expect(fixture.coreReadRepository.findShopDetail).toHaveBeenCalledWith(1, undefined, undefined);
   });
 
   it("resolves Service UUIDs to the same public detail while keeping numeric strings numeric", async () => {

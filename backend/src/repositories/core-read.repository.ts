@@ -235,7 +235,12 @@ export interface CustomerProfilePayload {
   city: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  gender: "female" | "male" | "private";
+  age: number | null;
+  heightCm: number | null;
+  languages: string[];
   membershipLevel: string;
+  level: number;
   reviewSummary: ReviewSummaryPayload;
   createdAt: Date;
   updatedAt: Date;
@@ -371,7 +376,12 @@ type TechnicianDetailRecord = TechnicianCardRecord & {
 type CustomerProfileRecord = CustomerProfile & {
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
-  user: { avatarBootstrapUrl: string | null; avatarUrl: string | null; needoId: string };
+  user: {
+    avatarBootstrapUrl: string | null;
+    avatarUrl: string | null;
+    experienceAccount: { currentLevel: number; deletedAt: Date | null } | null;
+    needoId: string;
+  };
 };
 
 type DecimalLike = {
@@ -957,7 +967,14 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       include: {
         mediaAssets: activeMediaArgs,
         reviewSummary: true,
-        user: { select: { avatarBootstrapUrl: true, avatarUrl: true, needoId: true } }
+        user: {
+          select: {
+            avatarBootstrapUrl: true,
+            avatarUrl: true,
+            experienceAccount: { select: { currentLevel: true, deletedAt: true } },
+            needoId: true
+          }
+        }
       }
     });
 
@@ -1859,7 +1876,18 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
         this.findMediaUrl(customer.mediaAssets, "avatar") ??
         customer.user.avatarUrl ??
         customer.user.avatarBootstrapUrl,
+      gender:
+        customer.gender === "female" || customer.gender === "male"
+          ? customer.gender
+          : "private",
+      age: customer.age,
+      heightCm: customer.heightCm === null ? null : Number(customer.heightCm),
+      languages: this.normalizeStringArray(customer.languages),
       membershipLevel: resolveEffectiveCustomerMembershipLevel(customer),
+      level:
+        customer.user.experienceAccount?.deletedAt === null
+          ? customer.user.experienceAccount.currentLevel
+          : 1,
       reviewSummary: this.mapReviewSummary(customer.reviewSummary),
       createdAt: customer.createdAt,
       updatedAt: customer.updatedAt

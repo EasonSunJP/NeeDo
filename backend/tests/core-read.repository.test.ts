@@ -955,6 +955,7 @@ describe("CoreReadRepository customer profile visibility", () => {
     user: {
       avatarBootstrapUrl: null,
       avatarUrl: "/private-avatar.jpg",
+      experienceAccount: { currentLevel: 27, deletedAt: null },
       needoId: "needo0000000002"
     }
   };
@@ -1004,8 +1005,29 @@ describe("CoreReadRepository customer profile visibility", () => {
       displayName: "CutGirl",
       bio: "private biography",
       avatarUrl: "/private-avatar.jpg",
-      publicId: "needo0000000002"
+      publicId: "needo0000000002",
+      gender: "private",
+      age: null,
+      heightCm: null,
+      languages: [],
+      membershipLevel: "standard",
+      level: 27,
+      reviewSummary: expect.objectContaining({ reviewCount: 0 })
     });
+    expect(client.customerProfile.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          user: {
+            select: expect.objectContaining({
+              avatarBootstrapUrl: true,
+              avatarUrl: true,
+              experienceAccount: { select: { currentLevel: true, deletedAt: true } },
+              needoId: true
+            })
+          }
+        })
+      })
+    );
   });
 });
 

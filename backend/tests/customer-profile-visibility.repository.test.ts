@@ -185,6 +185,17 @@ describe("CustomerProfileVisibilityRepository", () => {
       },
       select: { id: true }
     });
+    await expect(
+      merchantRepository.canView(
+        { ...target, visibility: "privateAll" },
+        {
+          ...viewer,
+          identityType: "merchant_owner",
+          identityScopeType: "shop",
+          identityScopeId: 21
+        }
+      )
+    ).resolves.toBe(false);
 
     const technicianClient = createClient();
     technicianClient.bookingOrder.findFirst.mockResolvedValue({ id: 91 });
@@ -207,6 +218,17 @@ describe("CustomerProfileVisibilityRepository", () => {
       },
       select: { id: true }
     });
+    await expect(
+      technicianRepository.canView(
+        { ...target, visibility: "privateAll" },
+        {
+          ...viewer,
+          identityType: "technician",
+          identityScopeType: "technician_profile",
+          identityScopeId: 134
+        }
+      )
+    ).resolves.toBe(false);
   });
 
   it("recognizes a selected shop for a formal merchant organization identity", async () => {
@@ -236,6 +258,24 @@ describe("CustomerProfileVisibilityRepository", () => {
         identityScopeId: 999
       })
     ).resolves.toBe(false);
+  });
+
+  it("denies an operations identity on a non-public customer profile without inheriting another account identity", async () => {
+    const client = createClient();
+    client.shopCustomerMembership.findFirst.mockResolvedValue({ id: 81 });
+    client.bookingOrder.findFirst.mockResolvedValue({ id: 91 });
+    const repository = new CustomerProfileVisibilityRepository(client as unknown as PrismaClient);
+
+    await expect(
+      repository.canView(target, {
+        ...viewer,
+        identityType: "platform_admin",
+        identityScopeType: "platform",
+        identityScopeId: null
+      })
+    ).resolves.toBe(false);
+    expect(client.shopCustomerMembership.findFirst).not.toHaveBeenCalled();
+    expect(client.bookingOrder.findFirst).not.toHaveBeenCalled();
   });
 
   it("resolves the selected viewer identity for directory callers before checking bookings", async () => {

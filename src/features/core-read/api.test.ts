@@ -384,7 +384,12 @@ describe("core read API adapter", () => {
       city: "Tokyo",
       bio: "Prefers evening appointments.",
       avatarUrl: "/images/generated/profile-customer-aya.jpg",
+      gender: "female",
+      age: 33,
+      heightCm: 168,
+      languages: ["日本語", "中文"],
       membershipLevel: "standard",
+      level: 27,
       reviewSummary,
       createdAt: coreService.createdAt,
       updatedAt: coreService.updatedAt
@@ -410,7 +415,18 @@ describe("core read API adapter", () => {
         durationMinutes: 60
       }
     });
-    expect(customer).toMatchObject({ id: "9", systemId: "u3141592653", name: "Aya Customer", memberLevel: "standard" });
+    expect(customer).toMatchObject({
+      id: "9",
+      systemId: "u3141592653",
+      name: "Aya Customer",
+      gender: "female",
+      age: "33",
+      height: "168cm",
+      languages: ["日本語", "中文"],
+      memberLevel: "standard",
+      experienceLevel: 27,
+      orderCount: reviewSummary.reviewCount
+    });
   });
 
   it("preserves an explicitly empty formal customer language list", () => {
@@ -421,8 +437,12 @@ describe("core read API adapter", () => {
       city: "Tokyo",
       bio: null,
       avatarUrl: null,
+      gender: "private",
+      age: null,
+      heightCm: null,
       languages: [],
       membershipLevel: "standard",
+      level: 1,
       reviewSummary,
       createdAt: coreService.createdAt,
       updatedAt: coreService.updatedAt

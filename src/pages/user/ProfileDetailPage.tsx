@@ -3,12 +3,17 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import { AppTopBar, EmptyStatePanel, PageScaffold, SurfacePanel } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { coreReadApi, coreReadIdFromRoute, mapCoreCustomerToCustomer, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
+import { coreReadApi, coreReadIdFromRoute, mapCoreCustomerToCustomer, mapCoreShopToStore, mapCoreTechnicianToTechnician, type CoreCustomerProfile } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi } from "../../features/pricing-mode/api";
 import { socialPaths } from "../../features/social/paths";
 import { SocialAccountProfilePage } from "../../features/social/route-pages";
+import { languageLocales } from "../../i18n/translations";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { UnifiedSimpleProfileCard } from "../../shared/profile-card";
+import { resolveCustomerMembership } from "../../shared/profile-card/customerMembership";
+import { formatCustomerGenderLabel } from "../../shared/profile-card/customerProfileLabels";
+import { normalizeProfileLanguageLabels } from "../../shared/profile-card/profileLanguages";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { TechnicianProfileInfoView, fromCoreTechnicianDetail } from "../../shared/technician-profile";
 
@@ -186,6 +191,7 @@ function ProfileStatus({
 }
 
 function CustomerApiProfilePage({ id }: { id: number }) {
+  const { language } = useOptionalI18n();
   const query = useCoreReadQuery(
     () => coreReadApi.getCustomerProfile(id),
     [id]
@@ -207,11 +213,88 @@ function CustomerApiProfilePage({ id }: { id: number }) {
     <PageScaffold contentClassName="space-y-5 pb-28">
       <AppTopBar subtitle="真实 API 数据源" title="用户资料" />
       <UnifiedSimpleProfileCard customer={mapCoreCustomerToCustomer(query.data)} entityType="user" variant="list" />
+      <CustomerProfileBasics profile={query.data} />
+      <CustomerCreditReview language={language} profile={query.data} />
       <SurfacePanel>
         <h2 className="text-lg font-black text-[color:var(--client-text)]">公开资料</h2>
         <p className="mt-2 text-sm leading-7 text-[color:var(--client-muted)]">{query.data.bio ?? "当前用户暂未填写公开简介。"}</p>
       </SurfacePanel>
     </PageScaffold>
+  );
+}
+
+function CustomerProfileBasics({ profile }: { profile: CoreCustomerProfile }) {
+  const languages = normalizeProfileLanguageLabels(profile.languages ?? []);
+  const membership = resolveCustomerMembership(profile.membershipLevel);
+  const items = [
+    ["性别", formatCustomerGenderLabel(profile.gender)],
+    ["年龄", profile.age === null || profile.age === undefined ? "未设置" : String(profile.age)],
+    ["身高（cm）", profile.heightCm === null || profile.heightCm === undefined ? "未设置" : `${profile.heightCm}cm`],
+    ["会员等级", membership.label],
+    ["等级", `Lv.${profile.level}`]
+  ];
+
+  return (
+    <SurfacePanel>
+      <h2 className="text-lg font-black text-[color:var(--client-text)]">基础信息</h2>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {items.map(([label, value]) => (
+          <div className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-bg-soft)] p-3" key={label}>
+            <p className="text-xs font-bold text-[color:var(--client-muted)]">{label}</p>
+            <p className="mt-1 font-black text-[color:var(--client-text)]">{value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-bg-soft)] p-3">
+        <p className="text-xs font-bold text-[color:var(--client-muted)]">语言能力</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {languages.length > 0 ? languages.map((item) => (
+            <span className="rounded-full border border-[color:var(--client-line)] px-3 py-1 text-xs font-black text-[color:var(--client-text)]" key={item}>{item}</span>
+          )) : <span className="text-sm text-[color:var(--client-muted)]">未设置</span>}
+        </div>
+      </div>
+    </SurfacePanel>
+  );
+}
+
+function CustomerCreditReview({
+  language,
+  profile
+}: {
+  language: keyof typeof languageLocales;
+  profile: CoreCustomerProfile;
+}) {
+  const review = profile.reviewSummary;
+  const hasReviews = review.reviewCount > 0;
+  const rating = Number.parseFloat(review.ratingAverage);
+  const latestReview = review.latestReviewAt
+    ? new Intl.DateTimeFormat(languageLocales[language], { dateStyle: "medium" }).format(new Date(review.latestReviewAt))
+    : "—";
+
+  return (
+    <SurfacePanel>
+      <h2 className="text-lg font-black text-[color:var(--client-text)]">信用评价</h2>
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {[
+          ["信用评分", hasReviews && Number.isFinite(rating) ? rating.toFixed(1) : "—"],
+          ["评价数量", String(review.reviewCount)],
+          ["最近评价", latestReview]
+        ].map(([label, value]) => (
+          <div className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-bg-soft)] p-3" key={label}>
+            <p className="text-xs font-bold text-[color:var(--client-muted)]">{label}</p>
+            <p className="mt-1 font-black text-[color:var(--client-text)]">{value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-bg-soft)] p-3">
+        <p className="text-xs font-bold text-[color:var(--client-muted)]">最近评价摘要</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {review.highlights.length > 0 ? review.highlights.map((item, index) => (
+            <span className="rounded-full border border-[color:var(--client-line)] px-3 py-1 text-xs font-black text-[color:var(--client-text)]" key={`${item}-${index}`}>{item}</span>
+          )) : <span className="text-sm text-[color:var(--client-muted)]">暂无评价</span>}
+        </div>
+      </div>
+    </SurfacePanel>
   );
 }
 

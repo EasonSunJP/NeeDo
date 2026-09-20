@@ -172,20 +172,21 @@ export type CoreCustomerProfile = {
   city: string | null;
   bio: string | null;
   avatarUrl: string | null;
-  gender?: "female" | "male" | "private";
-  age?: number | null;
-  heightCm?: number | null;
-  languages?: string[];
-  visibility?: "public" | "privateAll" | "limited" | "network";
+  gender: "female" | "male" | "private";
+  age: number | null;
+  heightCm: number | null;
+  languages: string[];
   membershipLevel: string;
+  level: number;
   reviewSummary: CoreReviewSummary;
   createdAt: string;
   updatedAt: string;
 };
 
-type CustomerProfileViewSource = Omit<CoreCustomerProfile, "reviewSummary"> & {
+type CustomerProfileViewSource = Omit<CoreCustomerProfile, "level" | "reviewSummary"> & {
   level?: number;
   reviewSummary?: CoreReviewSummary;
+  visibility?: "public" | "privateAll" | "limited" | "network";
 };
 
 export type CoreHomeRecommendations = {

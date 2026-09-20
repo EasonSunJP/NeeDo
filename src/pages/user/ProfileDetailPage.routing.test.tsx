@@ -34,8 +34,18 @@ const customer: CoreCustomerProfile = {
   city: "东京都",
   bio: "用户简介",
   avatarUrl: null,
-  membershipLevel: "regular",
-  reviewSummary,
+  gender: "female",
+  age: 33,
+  heightCm: 168,
+  languages: ["日本語", "中文"],
+  membershipLevel: "gold",
+  level: 27,
+  reviewSummary: {
+    ratingAverage: "4.7",
+    reviewCount: 18,
+    latestReviewAt: "2026-09-18T03:00:00.000Z",
+    highlights: ["守时", "沟通顺畅"]
+  },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z"
 };
@@ -122,6 +132,7 @@ async function renderRoute(path: string) {
         <MemoryRouter initialEntries={[path]} key={path}>
           <Routes>
             <Route element={<ProfileDetailPage />} path="/profiles/:entityType/:id" />
+            <Route element={<ProfileDetailPage />} path="/:portal/profiles/:entityType/:id" />
           </Routes>
           <LocationProbe />
         </MemoryRouter>
@@ -190,5 +201,34 @@ describe("ProfileDetailPage routing behavior", () => {
     await renderRoute("/profiles/shop/7");
     await waitFor(() => expect(getShopDetail).toHaveBeenCalledWith(7));
     expect(container.textContent).toContain("店铺资料");
+  });
+
+  it("shows relationship-scoped customer basics and credit review history to the technician portal", async () => {
+    const getCustomerProfile = vi.spyOn(coreReadApi, "getCustomerProfile").mockResolvedValue(customer);
+
+    await renderRoute("/technician/profiles/user/23");
+
+    await waitFor(() => expect(getCustomerProfile).toHaveBeenCalledWith(23));
+    for (const value of [
+      "基础信息",
+      "女",
+      "33",
+      "168cm",
+      "日本語",
+      "中文",
+      "黄金会员",
+      "Lv.27",
+      "信用评价",
+      "4.7",
+      "18",
+      "守时",
+      "沟通顺畅",
+      "2026"
+    ]) {
+      expect(container.textContent).toContain(value);
+    }
+    expect(container.textContent).not.toContain("邮箱");
+    expect(container.textContent).not.toContain("手机号");
+    expect(container.textContent).not.toContain("地址");
   });
 });

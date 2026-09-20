@@ -280,9 +280,12 @@ Both share commands require a UUID `idempotencyKey`. Replaying the same key and 
 
 `CustomerProfile`
 
-- `id`, `displayName`, `city`, `bio`, `avatarUrl`, `membershipLevel`, `reviewSummary`, `createdAt`, `updatedAt`
+- `id`, `publicId`, `displayName`, `city`, `bio`, `avatarUrl`, `gender`, `age`, `heightCm`, `languages`, `membershipLevel`, `level`, `reviewSummary`, `createdAt`, `updatedAt`
+- `reviewSummary` is the bounded credit-review aggregate (`ratingAverage`, `reviewCount`, `latestReviewAt`, and public `highlights`); it does not expose order, reviewer, or contact records.
 - Account credentials and private fields such as `email`, `phone`, `passwordHash`, tokens, and OTP values are never returned.
+- Addresses, internal user/identity IDs, and data belonging to the same account's technician, merchant, or operations identities are not part of this customer-identity projection.
 - `public` profiles are readable anonymously. `privateAll` profiles are readable only by the profile owner. `limited` additionally permits an active reciprocal friend contact. `network` additionally permits an active non-friend business contact, a qualifying affiliate relationship, the current merchant shop, or the current technician when a non-deleted booking establishes that relationship.
+- Operations identities do not bypass this core-read visibility policy; operations-only detail remains on the separately permission-protected backoffice API. Customer visibility also does not hide or broaden the same account's separately authorized technician or merchant public profile.
 - A supplied bearer token is validated and contributes only its selected identity and shop scope; an invalid supplied token returns `401`. Missing profiles and profiles hidden from the current viewer both return the same `404 error.customer_profile.not_found` response to avoid disclosing that a private profile exists.
 - Customer profile responses use `Cache-Control: no-store`. Clients must not place these relationship-scoped responses in a shared or public persistent cache.
 
