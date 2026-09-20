@@ -100,4 +100,119 @@ describe("BackofficeRepository compensation projection", () => {
       where: { id: { in: [73] }, shopId: { in: [12] } }
     });
   });
+
+  it("keeps a legacy unpaid cancelled booking out of revenue and compensation projections", async () => {
+    const settlement = {
+      id: 902,
+      bookingOrderId: 24_418,
+      orderType: "booking",
+      ndpCurrency: "TEST_NDP",
+      shopId: 11,
+      technicianProfileId: 42,
+      serviceAmountJpy: 8_800,
+      baseServiceAmountJpy: 8_800,
+      extensionAmountJpy: 0,
+      nominationChargeAmountJpy: 0,
+      wasTechnicianNominated: false,
+      compensationBasisVersion: "shop_default:73",
+      platformCollectedServiceAmountJpy: 0,
+      offlineReportedServiceAmountJpy: 0,
+      unknownOrUnreportedServiceAmountJpy: 8_800,
+      paymentChannel: "unknown",
+      serviceIncomeStatus: "unreported",
+      bPlatformFeeHoldNdp: 0,
+      bPlatformFeeActualNdp: 0,
+      cRequestFeeHoldNdp: 0,
+      cRequestFeeActualNdp: 0,
+      userRewardNdp: 0,
+      penaltyNdp: 0,
+      compensationToUserNdp: 0,
+      campaignDiscountNdp: 0,
+      releasedNdp: 0,
+      appliedFeeRuleIdsJson: [],
+      moneyTimelineJson: [
+        {
+          type: "technician_income_estimated",
+          amountJpy: 1_760,
+          metadata: { shopEstimatedGrossProfitJpy: 7_040 }
+        }
+      ],
+      settlementStatus: "compensated",
+      createdAt: new Date("2026-09-20T13:24:00.000Z"),
+      bookingOrder: {
+        id: 24_418,
+        orderNo: "ND202609200104226905",
+        shopId: 11,
+        technicianProfileId: 42,
+        status: "CANCELLED",
+        paymentStatus: "PENDING",
+        serviceSnapshotJson: { compensationBasisVersion: "shop_default:73" },
+        startsAt: new Date("2026-09-24T09:00:00.000Z"),
+        endsAt: new Date("2026-09-24T10:00:00.000Z"),
+        technicianProfile: { displayName: "技师 42" },
+        shop: { name: "StagingTest" },
+        checkout: null
+      }
+    };
+    const client = {
+      orderFinancial: {
+        findMany: jest.fn(async () => [settlement]),
+        count: jest.fn(async () => 1)
+      },
+      technicianCompensationProfile: { findMany: jest.fn(async () => []) },
+      shopFinanceRuleSet: { findMany: jest.fn(async () => []) }
+    };
+    const repository = new BackofficeRepository(client as never);
+
+    const result = await repository.listFinanceSettlements({
+      scope: "platform",
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(result.list[0]).toMatchObject({
+      status: "cancelled",
+      estimatedServiceGmvJpy: 0,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      serviceIncomeStatus: "cancelled",
+      technicianEstimatedIncomeJpy: 0,
+      shopEstimatedGrossProfitJpy: 0,
+      moneyTimelineStatus: "cancelled"
+    });
+    expect(result.list[0]?.moneyTimeline).toEqual([]);
+    expect(client.technicianCompensationProfile.findMany).not.toHaveBeenCalled();
+    expect(client.shopFinanceRuleSet.findMany).not.toHaveBeenCalled();
+
+    const exported = await repository.exportFinanceSettlements({
+      scope: "platform",
+      page: 1,
+      pageSize: 20
+    });
+    const [headerLine, rowLine] = exported.content.split("\n");
+    const header = headerLine!.split(",");
+    const row = rowLine!.split(",");
+    const value = (name: string) => row[header.indexOf(name)];
+    expect(value("status")).toBe("cancelled");
+    expect(value("serviceIncomeStatus")).toBe("cancelled");
+    expect(value("estimatedServiceGmvJpy")).toBe("0");
+    expect(value("unknownOrUnreportedServiceAmountJpy")).toBe("0");
+    expect(value("technicianEstimatedIncomeJpy")).toBe("0");
+    expect(value("shopEstimatedGrossProfitJpy")).toBe("0");
+    expect(value("moneyTimelineStatus")).toBe("cancelled");
+
+    settlement.penaltyNdp = 500;
+    settlement.compensationToUserNdp = 500;
+    const compensatedHistory = await repository.listFinanceSettlements({
+      scope: "platform",
+      page: 1,
+      pageSize: 20
+    });
+    expect(compensatedHistory.list[0]).toMatchObject({
+      status: "compensated",
+      estimatedServiceGmvJpy: 0,
+      serviceIncomeStatus: "cancelled",
+      penaltyNdp: 500,
+      compensationToUserNdp: 500
+    });
+  });
 });

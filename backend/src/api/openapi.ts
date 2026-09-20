@@ -13508,7 +13508,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "other"
             ]
           },
-          serviceIncomeStatus: { type: "string", enum: ["unreported", "reported", "confirmed"] },
+          serviceIncomeStatus: {
+            type: "string",
+            enum: ["cancelled", "unreported", "reported", "confirmed"]
+          },
           platformNdpRevenue: { type: "integer" },
           cRequestFeeHoldNdp: { type: "integer" },
           cRequestFeeActualNdp: { type: "integer" },

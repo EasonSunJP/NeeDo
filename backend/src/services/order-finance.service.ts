@@ -11,7 +11,7 @@ import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.serv
 import { assertMerchantShopId } from "./merchant-shop-scope";
 import type { LedgerCurrency } from "./ledger.service";
 
-export type ServiceIncomeStatus = "unreported" | "reported" | "confirmed";
+export type ServiceIncomeStatus = "cancelled" | "unreported" | "reported" | "confirmed";
 export type OrderFinanceType = "booking" | "request";
 export type ServicePaymentChannel =
   | "unknown"
@@ -74,6 +74,7 @@ export interface OrderFinanceRecord {
   orderType: OrderFinanceType;
   orderNo: string;
   orderStatus: string;
+  paymentStatus: string;
   customerUserId: number;
   shopId: number;
   shopName: string;
@@ -312,8 +313,28 @@ export class OrderFinanceService {
   }
 
   private buildDetail(record: OrderFinanceRecord): OrderFinanceDetailPayload {
-    const financial = record.financial ?? this.defaultFinancial(record);
-    const estimatedServiceGmvJpy = financial.serviceAmountJpy || record.priceAmountJpy;
+    const persistedFinancial = record.financial ?? this.defaultFinancial(record);
+    const unpaidCancellation = this.isUnpaidCancellation(record);
+    const financial = unpaidCancellation
+      ? {
+          ...persistedFinancial,
+          serviceAmountJpy: 0,
+          baseServiceAmountJpy: 0,
+          extensionAmountJpy: 0,
+          nominationChargeAmountJpy: 0,
+          wasTechnicianNominated: false,
+          platformCollectedServiceAmountJpy: 0,
+          offlineReportedServiceAmountJpy: 0,
+          unknownOrUnreportedServiceAmountJpy: 0,
+          paymentChannel: "unknown" as const,
+          serviceIncomeStatus: "cancelled" as const,
+          moneyTimeline: this.nonRevenueTimeline(persistedFinancial.moneyTimeline),
+          settlementStatus: "cancelled"
+        }
+      : persistedFinancial;
+    const estimatedServiceGmvJpy = unpaidCancellation
+      ? 0
+      : financial.serviceAmountJpy || record.priceAmountJpy;
     const requestFeeNdpRevenue = financial.cRequestFeeActualNdp;
     const platformNdpRevenue =
       financial.bPlatformFeeActualNdp + requestFeeNdpRevenue - financial.userRewardNdp;
@@ -329,7 +350,7 @@ export class OrderFinanceService {
       (event) => event.type === "technician_income_estimated"
     );
     const persistedWorkedMinutes = persistedProjection?.metadata?.workedMinutes;
-    const calculatedTechnicianIncomePreview = record.activeCompensationRule
+    const calculatedTechnicianIncomePreview = !unpaidCancellation && record.activeCompensationRule
       ? this.compensationEngine.calculate(record.activeCompensationRule, {
           ...(financial.baseServiceAmountJpy !== null &&
           financial.extensionAmountJpy !== null &&
@@ -573,6 +594,21 @@ export class OrderFinanceService {
     });
   }
 
+  private isUnpaidCancellation(record: OrderFinanceRecord): boolean {
+    return (
+      record.orderStatus.toLowerCase() === "cancelled" &&
+      record.paymentStatus.toLowerCase() === "pending"
+    );
+  }
+
+  private nonRevenueTimeline(value: unknown): MoneyTimelineEvent[] {
+    return this.sanitizeTimeline(value).filter(
+      (event) =>
+        event.type !== "service_income_unreported" &&
+        event.type !== "technician_income_estimated"
+    );
+  }
+
   private durationMinutes(startsAt: string, endsAt: string): number {
     const start = Date.parse(startsAt);
     const end = Date.parse(endsAt);
@@ -585,6 +621,9 @@ export class OrderFinanceService {
   }
 
   private moneyTimelineStatus(serviceIncomeStatus: ServiceIncomeStatus): string {
+    if (serviceIncomeStatus === "cancelled") {
+      return "cancelled";
+    }
     if (serviceIncomeStatus === "confirmed") {
       return "complete";
     }

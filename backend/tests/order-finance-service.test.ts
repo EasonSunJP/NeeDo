@@ -30,6 +30,7 @@ const orderFinanceRecord: OrderFinanceRecord = {
   orderType: "booking",
   orderNo: "BK-20260603-0001",
   orderStatus: "COMPLETED",
+  paymentStatus: "CONFIRMED",
   customerUserId: 4,
   shopId: 11,
   shopName: "GINZA Calm Body Lab",
@@ -157,6 +158,55 @@ describe("OrderFinanceService", () => {
         expect.objectContaining({ type: "user_reward_granted", amountNdp: 100 }),
         expect.objectContaining({ type: "service_income_unreported", amountJpy: 8800 }),
         expect.objectContaining({ type: "technician_income_estimated", amountJpy: 5250 })
+      ])
+    );
+  });
+
+  it("projects a legacy unpaid cancelled settlement as zero income without technician allocation", async () => {
+    const repository = createRepository();
+    repository.findOrderFinance.mockResolvedValueOnce({
+      ...orderFinanceRecord,
+      orderStatus: "CANCELLED",
+      paymentStatus: "PENDING",
+      financial: {
+        ...orderFinanceRecord.financial!,
+        serviceAmountJpy: 8_800,
+        unknownOrUnreportedServiceAmountJpy: 8_800,
+        serviceIncomeStatus: "unreported",
+        settlementStatus: "compensated",
+        penaltyNdp: 0,
+        compensationToUserNdp: 0,
+        moneyTimeline: [
+          {
+            type: "technician_income_estimated",
+            label: "技师收入预估",
+            amountJpy: 1_760,
+            actorType: "system",
+            occurredAt: now.toISOString(),
+            status: "estimated"
+          }
+        ]
+      }
+    });
+    const service = new OrderFinanceService(repository, { record: jest.fn() });
+
+    const detail = await service.getBackofficeOrderFinance(merchantActor, context, 101);
+
+    expect(detail).toMatchObject({
+      orderStatus: "cancelled",
+      estimatedServiceGmvJpy: 0,
+      platformCollectedServiceAmountJpy: 0,
+      offlineReportedServiceAmountJpy: 0,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      paymentChannel: "unknown",
+      serviceIncomeStatus: "cancelled",
+      moneyTimelineStatus: "cancelled",
+      technicianIncomePreview: null
+    });
+    expect(detail.moneyTimeline).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "service_income_unreported" }),
+        expect.objectContaining({ type: "technician_income_estimated" })
       ])
     );
   });
