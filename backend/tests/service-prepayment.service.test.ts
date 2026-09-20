@@ -178,6 +178,25 @@ describe("ServicePrepaymentService", () => {
     await expect(service.getEvidence(validInput.subject)).resolves.toMatchObject({ confirmed: false, confirmedAmountJpy: 0 });
   });
 
+  it("lets a terminal subject transition release the hold in the caller transaction", async () => {
+    const { service, ledger, repository } = fixture(record());
+    const transactionClient = { terminal: true };
+    await expect(service.releaseForTerminal({
+      subject: validInput.subject,
+      actorUserId: 4,
+      idempotencyKey: "booking:71:cancelled:service-prepayment-release",
+      transactionClient
+    })).resolves.toMatchObject({ status: "released", confirmedAmountJpy: 0 });
+    expect(repository.runInTransaction).toHaveBeenCalledWith(expect.any(Function), transactionClient);
+    expect(ledger.releaseServicePrepayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        walletHoldId: 19,
+        idempotencyKey: "booking:71:cancelled:service-prepayment-release"
+      }),
+      expect.objectContaining({ transactionClient: { transaction: true } })
+    );
+  });
+
   it("rejects a subject that is not owned by the actor identity", async () => {
     const { service, repository } = fixture();
     repository.subjectBelongsToIdentity.mockResolvedValue(false);

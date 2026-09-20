@@ -43,6 +43,13 @@ export interface ServicePrepaymentTransitionInput {
   idempotencyKey: string;
 }
 
+export interface ServicePrepaymentTerminalInput {
+  subject: ServicePrepaymentSubject;
+  actorUserId: number;
+  idempotencyKey: string;
+  transactionClient?: unknown;
+}
+
 interface ExchangeRateAuthority {
   resolveEffectiveRate(at: Date): Promise<EffectiveNdpExchangeRate>;
 }
@@ -193,6 +200,44 @@ export class ServicePrepaymentService {
       });
       return updated;
     });
+  }
+
+  public async releaseForTerminal(
+    input: ServicePrepaymentTerminalInput
+  ): Promise<ServicePrepaymentRecord | null> {
+    return this.repository.runInTransaction(async (repository, transactionClient) => {
+      const prepayment = await repository.findBySubjectForUpdate(input.subject);
+      if (!prepayment) return null;
+      if (prepayment.status === "released" || prepayment.status === "refunded") return prepayment;
+      if (prepayment.status !== "pending" && prepayment.status !== "confirmed") {
+        throw this.invalidState();
+      }
+      if (prepayment.walletHoldId !== null) {
+        await this.ledger.releaseServicePrepayment({
+          walletHoldId: prepayment.walletHoldId,
+          actorUserId: input.actorUserId,
+          idempotencyKey: input.idempotencyKey
+        }, { transactionClient: transactionClient as LedgerTransactionClient });
+      }
+      const updated = await repository.transition({
+        id: prepayment.id,
+        status: "released",
+        confirmedAmountJpy: 0,
+        occurredAt: this.now()
+      });
+      await repository.createAudit({
+        actorUserId: input.actorUserId,
+        action: "payment.service_prepayment.released",
+        targetId: updated.id,
+        metadata: {
+          subject: input.subject,
+          previousStatus: prepayment.status,
+          terminalAuthority: true,
+          idempotencyKey: input.idempotencyKey
+        }
+      });
+      return updated;
+    }, input.transactionClient);
   }
 
   public async refund(input: ServicePrepaymentTransitionInput): Promise<ServicePrepaymentRecord> {

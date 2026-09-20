@@ -32,6 +32,7 @@ import type {
   ExchangeIntelligenceServiceRef
 } from "../types/exchange-intelligence-booking.types";
 import { enforceExchangeRequestAddressPrivacy } from "../domain/exchange-address-privacy";
+import type { ServicePrepaymentService } from "./service-prepayment.service";
 
 export interface ExchangeActorLookup {
   userId: number;
@@ -259,7 +260,8 @@ export class ExchangeService {
     private readonly platformMembershipResolverService?: Pick<
       PlatformMembershipService,
       "resolveMembershipAt"
-    >
+    >,
+    private readonly servicePrepayments?: Pick<ServicePrepaymentService, "releaseForTerminal">
   ) {}
 
   public async getRequestPublicationContext(
@@ -538,6 +540,12 @@ export class ExchangeService {
           { transactionClient }
         );
       }
+      await this.servicePrepayments?.releaseForTerminal({
+        subject: { type: "exchange", id: locked.id },
+        actorUserId: actor.userId,
+        idempotencyKey: `exchange:${locked.id}:withdrawn:service-prepayment-release`,
+        transactionClient
+      });
       if (!(await repository.markWithdrawnIfPublished(locked.id, occurredAt))) {
         throw this.exchangeFinancialStateConflict();
       }
@@ -676,6 +684,12 @@ export class ExchangeService {
           { transactionClient }
         );
       }
+      await this.servicePrepayments?.releaseForTerminal({
+        subject: { type: "exchange", id: locked.id },
+        actorUserId: locked.authorUserId,
+        idempotencyKey: `exchange:${locked.id}:expired:service-prepayment-release`,
+        transactionClient
+      });
       if (!(await repository.markExpiredIfPublished(locked.id, now))) {
         throw this.exchangeFinancialStateConflict();
       }

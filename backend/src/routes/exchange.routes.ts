@@ -129,6 +129,14 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
   );
   const prepaymentLedger = dependencies.ledgerService ??
     new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository());
+  const servicePrepaymentService = new ServicePrepaymentService(
+    new ServicePrepaymentRepository(),
+    prepaymentLedger,
+    dependencies.ndpExchangeRateService ?? new NdpExchangeRateService(
+      dependencies.ndpExchangeRateRepository ?? new NdpExchangeRateRepository(),
+      new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    )
+  );
   const service =
     dependencies.exchangeService ??
     new ExchangeService(
@@ -139,7 +147,8 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
         new ExchangeRequestFeeService(new ExchangeRequestFeeRepository()),
       prepaymentLedger,
       dependencies.userPolicyEnforcementService,
-        dependencies.platformMembershipResolverService
+        dependencies.platformMembershipResolverService,
+        servicePrepaymentService
       );
   const actorRepository = new ExchangePostRepository();
   const claimService =
@@ -152,14 +161,7 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
       : createExchangeRequestAutomationProcessor(claimService));
   const controller = new ExchangeController(service, automationProcessor);
   const prepaymentController = new ServicePrepaymentController(
-    new ServicePrepaymentService(
-      new ServicePrepaymentRepository(),
-      prepaymentLedger,
-      dependencies.ndpExchangeRateService ?? new NdpExchangeRateService(
-        dependencies.ndpExchangeRateRepository ?? new NdpExchangeRateRepository(),
-        new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
-      )
-    ),
+    servicePrepaymentService,
     automationProcessor
   );
 

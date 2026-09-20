@@ -74,6 +74,7 @@ import { LiveDashboardOrderChangePublisher } from "./live-dashboard-order-change
 import { toShopVisibilityViewer, type ShopVisibilityRepositoryPort } from "./shop-visibility.service";
 import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
 import { readCompensationBasisVersion } from "./compensation-basis";
+import type { ServicePrepaymentService } from "./service-prepayment.service";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -195,7 +196,8 @@ export class BookingService {
     private readonly shopVisibility?: Pick<
       ShopVisibilityRepositoryPort,
       "canView" | "buildVisibilityWhere"
-    >
+    >,
+    private readonly servicePrepayments?: Pick<ServicePrepaymentService, "releaseForTerminal">
   ) {
     if (rateOrExperience && "resolveEffectiveRate" in rateOrExperience) {
       this.ndpExchangeRateService = rateOrExperience;
@@ -2019,6 +2021,16 @@ export class BookingService {
           actorUserId: actor.userId,
           transactionClient: context.transactionClient
         })
+      );
+    }
+    if (action === "cancel" && this.servicePrepayments) {
+      actions.push((context) =>
+        this.servicePrepayments!.releaseForTerminal({
+          subject: { type: "booking", id: order.id },
+          actorUserId: actor.userId,
+          idempotencyKey: `booking:${order.id}:cancelled:service-prepayment-release`,
+          transactionClient: context.transactionClient
+        }).then(() => undefined)
       );
     }
     return actions.length === 0

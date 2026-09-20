@@ -125,6 +125,11 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
   const bookingRepository =
     dependencies.bookingRepository ??
     new BookingRepository(undefined, dependencies.administrativeRegionRepository);
+  const servicePrepaymentService = new ServicePrepaymentService(
+    new ServicePrepaymentRepository(),
+    ledgerService ?? new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository()),
+    ndpExchangeRateService
+  );
   const bookingService = new BookingService(
     bookingRepository,
     ledgerService,
@@ -146,7 +151,8 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     dependencies.platformAccessPolicyService,
     dependencies.workStatusService??new WorkStatusService(undefined,undefined,dependencies.realtimeEventGateway),
     dependencies.liveDashboardEventGateway,
-    dependencies.shopVisibilityRepository ?? new ShopVisibilityRepository()
+    dependencies.shopVisibilityRepository ?? new ShopVisibilityRepository(),
+    servicePrepaymentService
   );
   const automationProcessor =
     dependencies.technicianBookingAutomationProcessor ??
@@ -181,11 +187,7 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
   );
   const controller = new BookingController(bookingService, automationProcessor, schedulePreloadService);
   const prepaymentController = new ServicePrepaymentController(
-    new ServicePrepaymentService(
-      new ServicePrepaymentRepository(),
-      ledgerService ?? new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository()),
-      ndpExchangeRateService
-    ),
+    servicePrepaymentService,
     automationProcessor
   );
 
