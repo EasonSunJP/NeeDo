@@ -28,7 +28,7 @@ describe("UserOrderDetailPage header", () => {
   });
 
   it("uses only formal server projections for fulfillment and checkout", () => {
-    expect(source).toContain("coreReadApi.listServices");
+    expect(source).toContain("bookingApi.listAddOnServices");
     expect(source).toContain("bookingApi.startService");
     expect(source).toContain("bookingApi.createAddOn");
     expect(source).toContain("bookingApi.acceptAddOn");

@@ -183,6 +183,18 @@ describe("legal document catalog routes", () => {
 });
 
 describe("production route chunk boundaries", () => {
+  it("loads the customer order detail only after entering its protected route", () => {
+    expect(appSource).not.toContain(
+      'import { UserOrderDetailPage } from "./pages/user/UserOrderDetailPage";'
+    );
+    expect(appSource).toContain(
+      'const UserOrderDetailPage = lazy(() => import("./pages/user/UserOrderDetailPage")'
+    );
+    expect(appSource).toContain(
+      'path="/orders/:orderId" element={protect("user", <Suspense fallback={null}><UserOrderDetailPage /></Suspense>)}'
+    );
+  });
+
   it("protects the formal NDP exchange-rate operations route with read permission", () => {
     expect(appSource).toContain(
       'import { NdpExchangeRatePage } from "./pages/admin/NdpExchangeRatePage";'
