@@ -332,7 +332,7 @@ function buildDefaultCycles(storeId: string): DispatchCycle[] {
     creationMethod: "copy_current",
     mode: "STORE_ASSIGN_FINAL",
     status: "active",
-    currentStep: 3,
+    currentStep: 4,
     templateType: "week",
     periodStart: "2026-04-14",
     periodEnd: "2026-04-27",
@@ -1620,13 +1620,21 @@ function normalizeUnsupportedCycleMode(cycle: DispatchCycle): DispatchCycle {
 
 function normalizeCycleStep(cycle: DispatchCycle): DispatchCycle {
   const normalizedCycle = normalizeCycleRuleSet(cycle);
+  const finalStep = normalizedCycle.mode === "STORE_ASSIGN_FINAL" ? 4 : 3;
 
   if (normalizedCycle.status === "rule_setting" || normalizedCycle.status === "rule_ready") {
     return { ...normalizedCycle, currentStep: 2 };
   }
 
   if (
-    normalizedCycle.status === "collecting_feedback" ||
+    normalizedCycle.status === "collecting_feedback"
+  ) {
+    return normalizedCycle.mode === "STORE_ASSIGN_FINAL"
+      ? { ...normalizedCycle, currentStep: 3 }
+      : { ...normalizedCycle, status: "final_confirming", currentStep: 3, feedbackDeadline: null };
+  }
+
+  if (
     normalizedCycle.status === "feedback_closed" ||
     normalizedCycle.status === "ready_to_confirm" ||
     normalizedCycle.status === "confirmed" ||
@@ -1639,7 +1647,11 @@ function normalizeCycleStep(cycle: DispatchCycle): DispatchCycle {
     normalizedCycle.status === "final_confirming" ||
     normalizedCycle.status === "manual_override"
   ) {
-    return { ...normalizedCycle, currentStep: 3, feedbackDeadline: null };
+    return {
+      ...normalizedCycle,
+      currentStep: finalStep,
+      feedbackDeadline: normalizedCycle.mode === "STORE_ASSIGN_FINAL" ? normalizedCycle.feedbackDeadline : null
+    };
   }
 
   if ((normalizedCycle.currentStep === 3 || normalizedCycle.currentStep === 4) && normalizedCycle.status === "draft") {
@@ -1669,6 +1681,10 @@ function validateDispatchCycleDraft(cycle: DispatchCycle) {
 
   if (cycle.targetTechnicianIds.length === 0) {
     return "排班对象不能为空。";
+  }
+
+  if (cycle.mode === "STORE_ASSIGN_FINAL" && !cycle.feedbackDeadline) {
+    return "请设置技师反馈截止时间。";
   }
 
   if (cycle.ruleSet.minStaff > cycle.ruleSet.targetStaff || cycle.ruleSet.targetStaff > cycle.ruleSet.maxStaff) {
@@ -2198,10 +2214,10 @@ export function launchDispatchCycle(cycleId: string, operatorId: string) {
   const storeDirectAssign = cycle.mode === "STORE_ASSIGN_FINAL";
   const nextCycle: DispatchCycle = {
     ...cycle,
-    status: "final_confirming",
+    status: storeDirectAssign ? "collecting_feedback" : "final_confirming",
     currentStep: 3,
     launchedAt: dispatchReferenceNow,
-    feedbackDeadline: null,
+    feedbackDeadline: storeDirectAssign ? cycle.feedbackDeadline : null,
     finalizedAt: null,
     activeAt: null,
     updatedAt: dispatchReferenceNow
@@ -2218,7 +2234,7 @@ export function launchDispatchCycle(cycleId: string, operatorId: string) {
     targetId: cycleId,
     before: JSON.stringify(cycle),
     after: JSON.stringify(nextCycle),
-    reason: storeDirectAssign ? "商户排班完成，进入最终确认" : "开启技师自主排班周期并进入最终确认"
+    reason: storeDirectAssign ? "商户排班完成，进入技师确认与请假调整反馈" : "开启技师自主排班周期并进入最终确认"
   });
   notify();
   return { ok: true, cycle: nextCycle };
@@ -2264,7 +2280,7 @@ export function closeDispatchFeedback(cycleId: string, operatorId: string) {
   const nextCycle = {
     ...cycle,
     status: "feedback_closed" as const,
-    currentStep: 3 as const,
+    currentStep: 4 as const,
     updatedAt: dispatchReferenceNow
   };
 
@@ -2372,7 +2388,7 @@ export function runDispatchAutoConfirm(cycleId: string, operatorId: string) {
   updateCycle({
     ...cycle,
     status: "final_confirming",
-    currentStep: 3,
+    currentStep: cycle.mode === "STORE_ASSIGN_FINAL" ? 4 : 3,
     lastAutoConfirmAt: dispatchReferenceNow,
     autoConfirmSummary: {
       confirmedCount,
@@ -2477,7 +2493,7 @@ export function finalizeDispatchCycle(cycleId: string, operatorId: string) {
   const nextCycle: DispatchCycle = {
     ...cycle,
     status: nextStatus,
-    currentStep: 3,
+    currentStep: cycle.mode === "STORE_ASSIGN_FINAL" ? 4 : 3,
     finalizedAt: dispatchReferenceNow,
     activeAt: nextStatus === "active" ? dispatchReferenceNow : cycle.activeAt,
     updatedAt: dispatchReferenceNow
@@ -2825,7 +2841,7 @@ export function confirmDispatchSmartSchedule(cycleId: string, operatorId: string
   const nextCycle: DispatchCycle = {
     ...cycle,
     status: nextStatus,
-    currentStep: 3,
+    currentStep: cycle.mode === "STORE_ASSIGN_FINAL" ? 4 : 3,
     finalizedAt: dispatchReferenceNow,
     activeAt: nextStatus === "active" ? dispatchReferenceNow : cycle.activeAt,
     updatedAt: dispatchReferenceNow

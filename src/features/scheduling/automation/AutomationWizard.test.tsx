@@ -81,7 +81,7 @@ function prepareNextCycle(mode: "TECH_SELF_FINAL" | "STORE_ASSIGN_FINAL") {
     currentStep: 2,
     periodStart: "2026-04-28",
     periodEnd: "2026-05-27",
-    feedbackDeadline: null
+    feedbackDeadline: mode === "STORE_ASSIGN_FINAL" ? "2026-04-27T18:00:00+09:00" : null
   });
   launchDispatchCycle(next.id, "store-1");
 }
@@ -146,11 +146,15 @@ describe("merchant schedule planning home", () => {
     expect(button("新建周期")).toBeDefined();
   });
 
-  it("opens the existing board and enters a builder without the duplicate next-cycle card", async () => {
+  it("keeps the merchant direct scheduling feedback step and controls", async () => {
     prepareNextCycle("STORE_ASSIGN_FINAL");
     await renderWizard();
 
-    expect(container.textContent).toContain("商户直接排班模式");
+    expect(container.textContent).toContain("商户直接排班");
+    expect(container.textContent).toContain("技师反馈");
+    expect(container.textContent).toContain("反馈截止：2026年4月27日 18:00");
+    expect(button("提醒未反馈")).toBeDefined();
+    expect(button("提前结束收集")).toBeDefined();
 
     await act(async () => button("下一周期确认")?.click());
     expect(container.querySelector('[data-testid="schedule-cycle-board"]')?.textContent)
@@ -162,6 +166,20 @@ describe("merchant schedule planning home", () => {
     expect(container.textContent).toContain("新建周期");
     expect(container.textContent).toContain("模式选择");
     expect(button("下一周期")).toBeUndefined();
+  });
+
+  it("offers both scheduling modes and restores the direct-mode feedback deadline", async () => {
+    await renderWizard(formalTechnicians);
+
+    await act(async () => button("新建周期")?.click());
+    expect(button("技师自主排班")).toBeDefined();
+    expect(button("商户直接排班")).toBeDefined();
+
+    await act(async () => button("商户直接排班")?.click());
+    await act(async () => button("下一步：规则设定")?.click());
+
+    expect(container.textContent).toContain("技师反馈截止");
+    expect(container.querySelector<HTMLInputElement>('input[type="datetime-local"]')).not.toBeNull();
   });
 
   it("keeps the new-cycle action available when it continues an existing builder at the cycle limit", async () => {

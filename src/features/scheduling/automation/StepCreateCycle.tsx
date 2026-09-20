@@ -162,6 +162,10 @@ function getCycleValidationMessage(cycle: DispatchCycle) {
     return "排班对象不能为空。";
   }
 
+  if (cycle.mode === "STORE_ASSIGN_FINAL" && !cycle.feedbackDeadline) {
+    return "请设置技师反馈截止时间。";
+  }
+
   return null;
 }
 
@@ -218,6 +222,7 @@ export function StepCreateCycle({
   const primaryButtonClass = isMobileSurface ? "schedule-wizard-primary-action" : undefined;
   const panelCardClass = isMobileSurface ? "border-line bg-white/80" : "merchant-dispatch-card";
   const noteClass = isMobileSurface ? "bg-paper/70 text-ink/60" : "merchant-dispatch-soft-note";
+  const isDirectScheduling = draft.mode === "STORE_ASSIGN_FINAL";
 
   useEffect(() => {
     setDraft(cycle);
@@ -442,7 +447,7 @@ export function StepCreateCycle({
               <div className={cn("mt-3 rounded-[22px] border px-4 py-4", panelCardClass)}>
                 <div className="flex flex-wrap items-center gap-2">
                   <strong className="text-base font-black">{getCycleModeLabel(draft.mode)}</strong>
-                  <Badge tone="green">规则完成后进入最终确认</Badge>
+                  <Badge tone="green">{isDirectScheduling ? "规则完成后进入技师反馈" : "规则完成后进入最终确认"}</Badge>
                 </div>
                 <p className={cn("mt-2 text-sm leading-6", quietTextClass)}>
                   {draft.mode === "STORE_ASSIGN_FINAL"
@@ -459,10 +464,10 @@ export function StepCreateCycle({
         <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="blue">2/10</Badge>
-            <Badge tone="neutral">时间区间</Badge>
+            <Badge tone="neutral">{isDirectScheduling ? "时间区间与截止" : "时间区间"}</Badge>
             <Badge tone="neutral">{getCycleModeLabel(draft.mode)}</Badge>
           </div>
-          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className={cn("mt-4 grid gap-4 md:grid-cols-2", isDirectScheduling ? "xl:grid-cols-4" : "xl:grid-cols-3")}>
             <label className="text-sm font-semibold text-ink">
               周期名称
               <input
@@ -489,6 +494,19 @@ export function StepCreateCycle({
                 value={draft.periodEnd}
               />
             </label>
+            {isDirectScheduling ? (
+              <label className="text-sm font-semibold text-ink">
+                技师反馈截止
+                <input
+                  className={inputClass}
+                  onChange={(event) => updateDraft({
+                    feedbackDeadline: event.target.value ? `${event.target.value}:00+09:00` : null
+                  })}
+                  type="datetime-local"
+                  value={draft.feedbackDeadline?.slice(0, 16) ?? ""}
+                />
+              </label>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -1122,7 +1140,7 @@ export function StepCreateCycle({
                 const launched = launchDispatchCycle(draft.id, operatorId);
                 onMessage(
                   launched.ok
-                    ? "已进入最终确认"
+                    ? isDirectScheduling ? "已进入技师反馈" : "已进入最终确认"
                     : launched.message ?? "发起失败。"
                 );
               }}

@@ -45,13 +45,13 @@ describe("dispatch center scheduling workflow", () => {
     expect(getDispatchCenterSnapshot().finalBookableSlots.some((slot) => slot.cycleId === cycle.id)).toBe(false);
   });
 
-  it("opens final confirmation directly after a store schedule is configured", () => {
+  it("preserves technician feedback before final confirmation for merchant direct scheduling", () => {
     const cycle = createDispatchCycleDraft("store-1");
     const saved = saveDispatchCycleDraft({
       ...cycle,
       currentStep: 2,
       mode: "STORE_ASSIGN_FINAL",
-      feedbackDeadline: cycle.feedbackDeadline
+      feedbackDeadline: `${cycle.periodStart}T18:00:00+09:00`
     });
 
     expect(saved.ok).toBe(true);
@@ -59,15 +59,30 @@ describe("dispatch center scheduling workflow", () => {
     const launched = launchDispatchCycle(cycle.id, "store-1");
     expect(launched.ok).toBe(true);
     expect(launched.cycle?.currentStep).toBe(3);
-    expect(launched.cycle?.status).toBe("final_confirming");
+    expect(launched.cycle?.status).toBe("collecting_feedback");
+    expect(launched.cycle?.feedbackDeadline).toBe(`${cycle.periodStart}T18:00:00+09:00`);
     expect(getDispatchCenterSnapshot().feedbacks.some((entry) => entry.cycleId === cycle.id)).toBe(false);
     expect(getDispatchCenterSnapshot().finalShifts.some((shift) => shift.cycleId === cycle.id)).toBe(true);
     expect(getDispatchCenterSnapshot().finalBookableSlots.some((slot) => slot.cycleId === cycle.id)).toBe(false);
+
+    const closed = closeDispatchFeedback(cycle.id, "store-1");
+    expect(closed.ok).toBe(true);
+    expect(closed.cycle?.currentStep).toBe(4);
 
     const finalized = finalizeDispatchCycle(cycle.id, "store-1");
     expect(finalized.ok).toBe(true);
     expect(finalized.cycle?.status).toBe("confirmed");
     expect(getDispatchCenterSnapshot().finalBookableSlots.filter((slot) => slot.cycleId === cycle.id && slot.status === "available").length).toBeGreaterThan(0);
+  });
+
+  it("requires a feedback deadline only for merchant direct scheduling", () => {
+    const cycle = createDispatchCycleDraft("store-1");
+    saveDispatchCycleDraft({ ...cycle, currentStep: 2, mode: "STORE_ASSIGN_FINAL", feedbackDeadline: null });
+
+    expect(launchDispatchCycle(cycle.id, "store-1")).toEqual({
+      ok: false,
+      message: "请设置技师反馈截止时间。"
+    });
   });
 
   it("rejects feedback actions outside the collection state", () => {

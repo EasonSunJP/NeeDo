@@ -3,7 +3,7 @@ import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { InfoTooltipTrigger } from "../../../components/ui/TitleWithInfo";
 import { cn } from "../../../lib/utils";
-import { getCycleModeLabel, type DispatchCycle, type DispatchCycleMode } from "../../dispatch-center/domain";
+import { addDays, getCycleModeLabel, type DispatchCycle, type DispatchCycleMode } from "../../dispatch-center/domain";
 import { saveDispatchCycleDraft } from "../../dispatch-center/store";
 import { ScheduleFloatingActions } from "./ScheduleFloatingActions";
 
@@ -66,7 +66,10 @@ export function StepModeSelection({
   const updateMode = (mode: DispatchCycleMode) => {
     const nextDraft = {
       ...draft,
-      mode
+      mode,
+      feedbackDeadline: mode === "STORE_ASSIGN_FINAL"
+        ? draft.feedbackDeadline ?? `${addDays(draft.periodStart, -2)}T18:00:00+09:00`
+        : null
     };
 
     setDraft(nextDraft);
@@ -102,6 +105,7 @@ export function StepModeSelection({
             return (
               <div className="relative" key={item.mode}>
                 <button
+                  aria-label={item.title}
                   className={cn(
                     "w-full rounded-[24px] border p-4 text-left transition",
                     cardClass,

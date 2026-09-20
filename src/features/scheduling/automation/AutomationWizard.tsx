@@ -26,18 +26,26 @@ import { SchedulePlanningOverview } from "./SchedulePlanningOverview";
 
 type PlanningView = "home" | "confirmation" | "builder";
 
-const stepItems: Array<{ step: DispatchStep; label: string }> = [
+const selfSchedulingStepItems: Array<{ step: DispatchStep; label: string }> = [
   { step: 1, label: "模式选择" },
   { step: 2, label: "规则设定" },
   { step: 3, label: "最终确认" }
+];
+
+const directSchedulingStepItems: Array<{ step: DispatchStep; label: string }> = [
+  { step: 1, label: "模式选择" },
+  { step: 2, label: "规则设定" },
+  { step: 3, label: "技师反馈" },
+  { step: 4, label: "最终确认" }
 ];
 
 function isScheduleBoardCycle(cycle: DispatchCycle) {
   return cycle.status === "active" || cycle.status === "confirmed" || cycle.status === "final_confirmed";
 }
 
-function CompactStepProgress({ currentStep, surface }: { currentStep: DispatchStep; surface: "desktop" | "mobile" }) {
+function CompactStepProgress({ cycle, surface }: { cycle: DispatchCycle; surface: "desktop" | "mobile" }) {
   const isMobileSurface = surface === "mobile";
+  const stepItems = cycle.mode === "STORE_ASSIGN_FINAL" ? directSchedulingStepItems : selfSchedulingStepItems;
   const activeDotClass = isMobileSurface
     ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
     : "border-[color:color-mix(in_srgb,var(--admin-accent)_42%,var(--admin-line))] bg-[color:var(--admin-accent)] text-[color:var(--merchant-dispatch-on-accent)]";
@@ -51,8 +59,8 @@ function CompactStepProgress({ currentStep, surface }: { currentStep: DispatchSt
     <div className="w-full">
       <div className={cn("flex w-full items-start", isMobileSurface ? "gap-1" : "gap-2")}>
         {stepItems.map((item, index) => {
-          const active = currentStep === item.step;
-          const done = currentStep > item.step;
+          const active = cycle.currentStep === item.step;
+          const done = cycle.currentStep > item.step;
 
           return (
             <div className="flex min-w-0 flex-1 items-start" key={item.step}>
@@ -108,16 +116,17 @@ function CycleWorkflowPanel({
 }) {
   const isMobileSurface = surface === "mobile";
   const secondaryButtonClass = isMobileSurface ? "bg-white/80" : undefined;
+  const finalStep = cycle.mode === "STORE_ASSIGN_FINAL" ? 4 : 3;
 
   return (
     <div className="space-y-4">
       <div className={cn("merchant-dispatch-cycle-cluster rounded-[28px] border p-3 sm:p-4", isMobileSurface ? "border-line bg-white/80" : "")}>
         <div>
-          <CompactStepProgress currentStep={cycle.currentStep} surface={surface} />
+          <CompactStepProgress cycle={cycle} surface={surface} />
           <div className="mt-4 flex flex-wrap gap-2">
             <Badge tone={resolveSchedulingCycleTone(cycle)}>{getCycleStatusLabel(cycle.status)}</Badge>
             <Badge tone="neutral">{getCycleModeLabel(cycle.mode)}</Badge>
-            {cycle.currentStep === 3 && cycle.status !== "active" ? (
+            {cycle.currentStep === finalStep && cycle.status !== "active" ? (
               <Button className={secondaryButtonClass} onClick={() => onDelete(cycle)} size="sm" variant="danger">
                 删除周期
               </Button>
@@ -141,7 +150,7 @@ function CycleWorkflowPanel({
           technicians={technicians}
         />
       ) : null}
-      {cycle.currentStep === 3 ? (
+      {cycle.currentStep === finalStep ? (
         <StepFinalConfirmation
           cycle={cycle}
           hideBoard={hideFinalConfirmationBoard}
@@ -228,10 +237,13 @@ export function AutomationWizard({
         <SchedulePlanningOverview
           cycle={overviewCycle}
           hasBuilderCycle={Boolean(builderCycle)}
+          onMessage={setMessage}
           onOpenBuilder={createCycle}
           onOpenConfirmation={() => setView("confirmation")}
+          operatorId={operatorId}
           storeId={storeId}
           surface={surface}
+          technicians={technicians}
         />
       ) : null}
 
@@ -280,6 +292,13 @@ export function AutomationWizard({
               surface={surface}
               technicians={technicians}
             />
+            {builderViewCycle.mode === "STORE_ASSIGN_FINAL" && builderViewCycle.currentStep === 3 ? (
+              <div className={cn("rounded-[24px] border p-4", isMobileSurface ? "border-line bg-white/90 shadow-panel" : "merchant-dispatch-surface")}>
+                <h3 className="text-base font-black">已进入技师反馈</h3>
+                <p className="mt-2 text-sm leading-6 text-ink/60">返回排班首页可查看确认、请假和调整反馈，并提醒未反馈技师。</p>
+                <Button className="mt-3" onClick={() => setView("home")} size="sm">查看反馈进度</Button>
+              </div>
+            ) : null}
             {isMobileSurface && !isScheduleBoardCycle(builderViewCycle) && builderViewCycle.currentStep !== 3 ? (
               <ScheduleContactInfoPanel
                 cycle={builderViewCycle}
