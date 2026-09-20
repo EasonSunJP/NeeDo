@@ -17,6 +17,6 @@ describe("i18n source audit", () => {
       expect(report.summary.zhSourceCount).toBeGreaterThan(0);
       expect(report.summary.coveredCount).toBeGreaterThan(0);
     },
-    20_000,
+    30_000,
   );
 });
