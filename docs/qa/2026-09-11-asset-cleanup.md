@@ -13,39 +13,16 @@
 | `public/icons/icon.psd` | 从公开资源移出 | `design/source-assets/2026-09-11/icon.psd`，Git保留 |
 | `public/icons/needo-nav-button-dark.psd` | 从公开资源移出 | `design/source-assets/2026-09-11/needo-nav-button-dark.psd`，Git保留 |
 | `public/icons/2026-09-11-needo-web-ios-android-execution.md` | 原样移动到正确文档目录 | `docs/superpowers/plans/2026-09-11-needo-web-ios-android-execution.md`，Git保留；另有本地副本 |
-| 根工作目录 `public` 中6个 `.DS_Store` | 从公开目录移出 | 本地备份，保留原相对路径 |
-| 根工作目录旧 `dist` 中3个 `.DS_Store` 和2个 PSD | 从旧产物移出，不重写其他产物 | 本地备份，保留原相对路径 |
+| 根工作目录 `public` 中6个 `.DS_Store` | 从公开目录移出 | 可丢弃的系统元数据，无需恢复 |
+| 根工作目录旧 `dist` 中3个 `.DS_Store` 和2个 PSD | 从旧产物移出，不重写其他产物 | `dist` 可重新构建，无需保留副本 |
 
 两份 PSD 合计 38,757,232 字节（36.96 MiB），只是退出公开产物，**没有销毁设计原件**。源件还在Git中，因此这不是仓库历史瘦身。
 
-完整路径、SHA-256、字节数、备份类型见 [机器可读清单](2026-09-11-asset-cleanup-manifest.json)。移动操作先复制、核对目标校验值、再次确认源文件未变化，才移除原位置。
-
-持久本地备份目录：
-
-```text
-/Users/eason/Documents/New project/.data/asset-cleanup-20260911/
-  manifest.json
-  main-before/public/icons/                  两份main原始PSD的额外副本
-  working-directory-before/public/          系统杂项和误放文档
-  working-directory-before/dist/            旧产物中的系统杂项和PSD
-```
-
-`.data` 由现有Git忽略规则排除，不推送GitHub，也不进入dist。上述本地备份不在系统临时目录，但仍依赖这台电脑的磁盘备份；两份PSD及正式文档还有Git版本化副本。
+需要长期保留的源文件路径、SHA-256、字节数和备份类型见 [机器可读清单](2026-09-11-asset-cleanup-manifest.json)。源文件移动前已核对目标校验值；`.DS_Store` 与旧 `dist` 产物不作为恢复资产保存。
 
 ## 有意保留，不冒险删除
 
-以下8张候选旧图仍在原位置，合计16,710,159字节：
-
-- `public/images/Backend Management System_bg.png`
-- `public/images/business_bg.png`
-- `public/images/error_bg.png`
-- `public/images/login_bg.png`
-- `public/images/management_bg.png`
-- `public/images/login.png`
-- `public/images/error-page.png`
-- `public/image.png`
-
-已检索源码直接引用，前5张的实际背景加载已使用JPG；但尚未完成持久化URL、动态路径及线上旧版本引用确认。因此不能将“源码没搜到”当作安全删除证明。匹配的 `src/assets/runtime` PNG也保留。
+机器清单中的8张候选旧图仍在原位置，合计16,710,159字节。虽然源码直接引用检索显示前5张的实际背景已使用JPG，但尚未排除持久化URL、动态路径及线上旧版本引用；匹配的 `src/assets/runtime` PNG也继续保留。
 
 有真实数据生成/业务引用的卡通头像、店铺图片、轮播/附近背景，以及兼容图标和重复图片均保留。未改动用户已删除的两个 `output/pdf` 预览图。
 
@@ -84,16 +61,12 @@ npm run verify:production-build
 
 这只恢复本批相关旧文件，不执行 reset、不回退整个main、不删除后续提交；会重新把PSD带入公开构建，须明确接受这个影响，再审查并提交。保留非公开备份不妨碍恢复。
 
-### 本地系统杂项或旧产物取证
-
-按JSON中的 `backup` 路径读取本地原件；仅在原位置不存在时复制回对应根工作目录路径。`.DS_Store` 不影响应用，无需为业务恢复它；旧dist PSD也不应被重新发布。开发文档正常保留在docs，不能为了“恢复位置”重新放入public。
-
 ## 验证记录
 
 - 原有审计基线：5/5通过。
 - 新增回归：修复前11项失败，准确复现递归资源漏检和符号链接漏检。
 - 最小修复后：18/18通过，包括合法资源保留、大小写后缀、嵌套目录和缺失目录。
-- 备份14条记录逐项SHA-256核对通过；两份PSD与基线Git对象一致。
+- 两份需长期保留的PSD与基线Git对象及机器清单中的SHA-256一致。
 - 清理分支 `npm run verify:production-build` 退出0；8个HTML入口、67个构建assets的审计通过。仍有原有大chunk、动态/静态混合导入和依赖注释警告，本批不为消除警告改动业务。
 - 所有343个保留的公开资源（77,800,211字节）与基线Git对象逐个一致，且与新dist对应文件SHA-256一致。因此没有改变现有背景/头像/图标的图片内容；这不是全业务或真机视觉验收。
 - 使用现有node_modules软链接完成构建，Node 22.15.0、Vite 7.3.2；不是重新npm ci的锁文件重装验收。发布任务仍须执行自己的完整发布门禁。

@@ -1,6 +1,5 @@
 {
   "baseline": "cc999f093ec9f49c428ef1f6ab8a35c61d2d3e91",
-  "localBackupRoot": "/Users/eason/Documents/New project/.data/asset-cleanup-20260911",
   "records": [
     {
       "original": "public/icons/icon.psd",
@@ -13,83 +12,6 @@
       "original": "public/icons/needo-nav-button-dark.psd",
       "backup": "design/source-assets/2026-09-11/needo-nav-button-dark.psd",
       "backupScope": "git-versioned",
-      "bytes": 10056692,
-      "sha256": "6bc2214fd325ee60c72d682c6a48cc83f23699669d0f11734aa6c0e58a96cf01"
-    },
-    {
-      "original": "public/.DS_Store",
-      "backup": ".data/asset-cleanup-20260911/working-directory-before/public/.DS_Store",
-      "backupScope": "local-only",
-      "bytes": 10244,
-      "sha256": "48dd56bba20a14c24cdec85b6cb8d371b2495d9768814931db2e31a0ca4031e4"
-    },
-    {
-      "original": "public/icons/.DS_Store",
-      "backup": ".data/asset-cleanup-20260911/working-directory-before/public/icons/.DS_Store",
-      "backupScope": "local-only",
-      "bytes": 8196,
-      "sha256": "ca8529d8302d6f389cea13cf434ae6d09da28e1fad70ffbca9b3438cbe968345"
-    },
-    {
-      "original": "public/images/.DS_Store",
-      "backup": ".data/asset-cleanup-20260911/working-directory-before/public/images/.DS_Store",
-      "backupScope": "local-only",
-      "bytes": 10244,
-      "sha256": "abfb8ef769c0e57076746b3cc54e55327c3a2a5b5aa2b036f5caa95b6ec3ee16"
-    },
-    {
-      "original": "public/maps/.DS_Store",
-      "backup": ".data/asset-cleanup-20260911/working-directory-before/public/maps/.DS_Store",
-      "backupScope": "local-only",
-      "bytes": 6148,
-      "sha256": "8a4ca7ac53ca2ec04cb730c7280ea079ec233432dca24a88a27d5209d39ca7b5"
-    },
-    {
-      "original": "public/maps/jp/.DS_Store",
-      "backup": ".data/asset-cleanup-20260911/working-directory-before/public/maps/jp/.DS_Store",
-      "backupScope": "local-only",
-      "bytes": 6148,
-      "sha256": "6117c1279ec50e1abda03d7e49186bea312582affefd147909c24aa846671c62"
-    },
-    {
-      "original": "public/maps/jp/2026/.DS_Store",
-      "backup": ".data/asset-cleanup-20260911/working-directory-before/public/maps/jp/2026/.DS_Store",
-      "backupScope": "local-only",
-      "bytes": 6148,
-      "sha256": "478e68ac2fb097b9275f26759c7b89cd550387605859a4f59b732f1e6b38207e"
-    },
-    {
-      "original": "dist/.DS_Store",
-      "backup": ".data/asset-cleanup-20260911/working-directory-before/dist/.DS_Store",
-      "backupScope": "local-only",
-      "bytes": 10244,
-      "sha256": "2677e8a02761dc52b7f0ca2ee9a11a883b698e5b41dfb126c9096840e6f1eba2"
-    },
-    {
-      "original": "dist/icons/.DS_Store",
-      "backup": ".data/asset-cleanup-20260911/working-directory-before/dist/icons/.DS_Store",
-      "backupScope": "local-only",
-      "bytes": 10244,
-      "sha256": "14af186ca3cfdba1a0d8bae8769f324744abdbe45e06fd6d592abcd607d50395"
-    },
-    {
-      "original": "dist/images/.DS_Store",
-      "backup": ".data/asset-cleanup-20260911/working-directory-before/dist/images/.DS_Store",
-      "backupScope": "local-only",
-      "bytes": 10244,
-      "sha256": "abfb8ef769c0e57076746b3cc54e55327c3a2a5b5aa2b036f5caa95b6ec3ee16"
-    },
-    {
-      "original": "dist/icons/icon.psd",
-      "backup": ".data/asset-cleanup-20260911/working-directory-before/dist/icons/icon.psd",
-      "backupScope": "local-only",
-      "bytes": 28700540,
-      "sha256": "8ba4b4a7b904657a1b80c193a8df79609b0551557fb5848d2abf64c95af6adc1"
-    },
-    {
-      "original": "dist/icons/needo-nav-button-dark.psd",
-      "backup": ".data/asset-cleanup-20260911/working-directory-before/dist/icons/needo-nav-button-dark.psd",
-      "backupScope": "local-only",
       "bytes": 10056692,
       "sha256": "6bc2214fd325ee60c72d682c6a48cc83f23699669d0f11734aa6c0e58a96cf01"
     },
