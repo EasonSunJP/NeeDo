@@ -1,10 +1,10 @@
 import {
   buildContinuousAvailabilityRanges,
-  buildContinuousScheduleSlotRanges,
-  deriveServiceStartIntervalMinutes,
   parseStagingTestOperationsConfig,
   planAvailabilityReconciliation
 } from "../src/staging/staging-test-operations-provisioning";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 describe("StagingTest operations provisioning gate", () => {
   const valid = {
@@ -19,6 +19,20 @@ describe("StagingTest operations provisioning gate", () => {
       startDate: "2026-09-20",
       endDate: "2026-12-20"
     });
+  });
+
+  it("accepts an explicit exclusive end date through January", () => {
+    expect(parseStagingTestOperationsConfig({
+      ...valid,
+      STAGING_TEST_SCHEDULE_END_DATE: "2027-02-01"
+    })).toEqual({ startDate: "2026-09-20", endDate: "2027-02-01" });
+  });
+
+  it("rejects an explicit end date that is not after the start", () => {
+    expect(() => parseStagingTestOperationsConfig({
+      ...valid,
+      STAGING_TEST_SCHEDULE_END_DATE: "2026-09-20"
+    })).toThrow("STAGING_TEST_SCHEDULE_PERIOD_INVALID");
   });
 
   it("uses the last valid target-month day when the three-month anchor does not exist", () => {
@@ -45,35 +59,6 @@ describe("StagingTest operations provisioning gate", () => {
         endsAt: new Date("2026-12-20T15:00:00.000Z")
       }
     ]);
-  });
-
-  it("uses the configured service duration when no separate start interval is supplied", () => {
-    const ranges = buildContinuousScheduleSlotRanges({
-      startsAt: new Date("2026-09-20T15:00:00.000Z"),
-      endsAt: new Date("2026-09-21T15:00:00.000Z"),
-      durationMinutes: 60
-    });
-
-    expect(ranges).toHaveLength(24);
-    expect(ranges[0]).toEqual({
-      startsAt: new Date("2026-09-20T15:00:00.000Z"),
-      endsAt: new Date("2026-09-20T16:00:00.000Z")
-    });
-    expect(ranges.at(-1)).toEqual({
-      startsAt: new Date("2026-09-21T14:00:00.000Z"),
-      endsAt: new Date("2026-09-21T15:00:00.000Z")
-    });
-    expect(ranges.every((range, index) => index === 0 || range.startsAt.getTime() - ranges[index - 1].startsAt.getTime() === 60 * 60_000)).toBe(true);
-  });
-
-  it("derives a shared start interval from the actual service durations", () => {
-    expect(deriveServiceStartIntervalMinutes([60, 90, 45, 20, 15, 10])).toBe(5);
-    expect(buildContinuousScheduleSlotRanges({
-      startsAt: new Date("2026-09-20T15:00:00.000Z"),
-      endsAt: new Date("2026-09-20T17:00:00.000Z"),
-      durationMinutes: 45,
-      startIntervalMinutes: 5
-    })).toHaveLength(16);
   });
 
   it.each([
@@ -125,5 +110,15 @@ describe("StagingTest operations provisioning gate", () => {
       duplicateIds: [],
       obsoleteIds: [20, 21]
     });
+  });
+
+  it("uses continuous availability and only materializes the selected booking", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/staging/staging-test-operations-provisioning.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain("dynamicAvailability: true");
+    expect(source).not.toContain("scheduleSlot.createMany");
   });
 });

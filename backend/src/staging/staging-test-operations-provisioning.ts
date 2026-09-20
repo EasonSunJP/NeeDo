@@ -12,10 +12,9 @@ const configSchema = z.object({
   NODE_ENV: z.literal("production"),
   DEPLOY_ENV: z.literal("staging"),
   ALLOW_STAGING_TEST_OPERATIONS_PROVISIONING: z.literal("true"),
-  STAGING_TEST_SCHEDULE_START_DATE: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+  STAGING_TEST_SCHEDULE_START_DATE: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  STAGING_TEST_SCHEDULE_END_DATE: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
 });
-
-const SCHEDULE_SLOT_INSERT_BATCH_SIZE = 1_000;
 
 export interface StagingTestOperationsConfig {
   startDate: string;
@@ -110,51 +109,6 @@ const addCalendarMonths = (date: string, months: number): string => {
   return candidate.toISOString().slice(0, 10);
 };
 
-export const buildContinuousScheduleSlotRanges = (input: {
-  startsAt: Date;
-  endsAt: Date;
-  durationMinutes: number;
-  startIntervalMinutes?: number;
-}): Array<{ startsAt: Date; endsAt: Date }> => {
-  if (!Number.isInteger(input.durationMinutes) || input.durationMinutes <= 0) {
-    throw new Error("STAGING_TEST_TECHNICIAN_SERVICE_DURATION_INVALID");
-  }
-  const startIntervalMinutes = input.startIntervalMinutes ?? input.durationMinutes;
-  if (!Number.isInteger(startIntervalMinutes) || startIntervalMinutes <= 0) {
-    throw new Error("STAGING_TEST_SERVICE_START_INTERVAL_INVALID");
-  }
-  const ranges: Array<{ startsAt: Date; endsAt: Date }> = [];
-  const durationMs = input.durationMinutes * 60_000;
-  const startIntervalMs = startIntervalMinutes * 60_000;
-  for (
-    let startsAtMs = input.startsAt.getTime();
-    startsAtMs + durationMs <= input.endsAt.getTime();
-    startsAtMs += startIntervalMs
-  ) {
-    ranges.push({
-      startsAt: new Date(startsAtMs),
-      endsAt: new Date(startsAtMs + durationMs)
-    });
-  }
-  return ranges;
-};
-
-export const deriveServiceStartIntervalMinutes = (durations: number[]): number => {
-  if (
-    durations.length === 0 ||
-    durations.some((duration) => !Number.isInteger(duration) || duration <= 0)
-  ) {
-    throw new Error("STAGING_TEST_SERVICE_DURATION_SET_INVALID");
-  }
-  const greatestCommonDivisor = (left: number, right: number): number => {
-    let a = left;
-    let b = right;
-    while (b !== 0) [a, b] = [b, a % b];
-    return a;
-  };
-  return durations.reduce(greatestCommonDivisor);
-};
-
 export const buildContinuousAvailabilityRanges = (input: {
   startsAt: Date;
   endsAt: Date;
@@ -166,14 +120,6 @@ export const buildContinuousAvailabilityRanges = (input: {
     endsAt: new Date(input.endsAt)
   }));
 
-const scheduleSlotKey = (item: {
-  technicianProfileId?: number | null;
-  technicianServiceId?: number | null;
-  startsAt: Date | string;
-  endsAt: Date | string;
-}): string =>
-  `${item.technicianProfileId}:${item.technicianServiceId}:${new Date(item.startsAt).toISOString()}:${new Date(item.endsAt).toISOString()}`;
-
 export const parseStagingTestOperationsConfig = (
   environment: NodeJS.ProcessEnv
 ): StagingTestOperationsConfig => {
@@ -182,10 +128,12 @@ export const parseStagingTestOperationsConfig = (
   if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) === "Invalid") {
     throw new Error("STAGING_TEST_SCHEDULE_START_DATE_INVALID");
   }
-  return {
-    startDate: parsed.STAGING_TEST_SCHEDULE_START_DATE,
-    endDate: addCalendarMonths(parsed.STAGING_TEST_SCHEDULE_START_DATE, 3)
-  };
+  const endDate = parsed.STAGING_TEST_SCHEDULE_END_DATE
+    ?? addCalendarMonths(parsed.STAGING_TEST_SCHEDULE_START_DATE, 3);
+  if (endDate <= parsed.STAGING_TEST_SCHEDULE_START_DATE) {
+    throw new Error("STAGING_TEST_SCHEDULE_PERIOD_INVALID");
+  }
+  return { startDate: parsed.STAGING_TEST_SCHEDULE_START_DATE, endDate };
 };
 
 const atTokyoMidnight = (date: string): Date => new Date(`${date}T00:00:00+09:00`);
@@ -287,9 +235,18 @@ export class StagingTestOperationsProvisioner {
       const scheduleCycle = existingSelfCycle
         ? await transaction.scheduleCycle.update({
             where: { id: existingSelfCycle.id },
-            data: {
-              status: "ACTIVE",
-              currentStep: 3,
+              data: {
+                name: `StagingTest 技师自主排班 ${config.startDate}–${config.endDate}`,
+                status: "ACTIVE",
+                currentStep: 3,
+                ruleSet: {
+                  continuousCoverage: true,
+                  timeZone: "Asia/Tokyo",
+                  dynamicAvailability: true,
+                  startIntervalMinutes: 5,
+                  preBufferMinutes: 0,
+                  postBufferMinutes: 0
+                },
               finalizedAt: new Date(),
               activeAt: new Date(),
               cancelledAt: null,
@@ -311,7 +268,14 @@ export class StagingTestOperationsProvisioner {
               feedbackDeadline: null,
               templateMatrix: {},
               regularHolidayWeekdays: [],
-              ruleSet: { continuousCoverage: true, timeZone: "Asia/Tokyo" },
+              ruleSet: {
+                continuousCoverage: true,
+                timeZone: "Asia/Tokyo",
+                dynamicAvailability: true,
+                startIntervalMinutes: 5,
+                preBufferMinutes: 0,
+                postBufferMinutes: 0
+              },
               finalizedAt: new Date(),
               activeAt: new Date(),
               createdById: ownerUserId,
@@ -537,76 +501,17 @@ export class StagingTestOperationsProvisioner {
           data: { availabilityId: canonicalAvailabilityId }
         });
       }
-      let scheduleSlotCount = 0;
-      let createdScheduleSlotCount = 0;
-      for (const availability of desiredAvailabilities) {
-        const technicianProfileId = availability.technicianProfileId;
-        if (technicianProfileId === null || technicianProfileId === undefined) continue;
-        const startsAt = new Date(availability.startsAt);
-        const dayKey = `${technicianProfileId}:${toDateString(startsAt)}`;
-        const technicianServices = servicesByTechnician.get(technicianProfileId);
-        const availabilityId = availabilityIdByKey.get(availabilityKey(availability));
-        if (!technicianServices || availabilityId === undefined) {
-          throw new Error(`STAGING_TEST_SCHEDULE_SLOT_SOURCE_MISSING:${dayKey}`);
-        }
-        const startIntervalMinutes = deriveServiceStartIntervalMinutes(
-          technicianServices.map((service) => service.durationMinutes)
-        );
-        for (const technicianService of technicianServices) {
-          const existingScheduleSlots = await transaction.scheduleSlot.findMany({
-            where: {
-              shopId: shop.id,
-              technicianProfileId,
-              technicianServiceId: technicianService.id,
-              status: { in: ["AVAILABLE", "BOOKED"] },
-              startsAt: { gte: startsAt, lt: new Date(availability.endsAt) },
-              deletedAt: null
-            },
-            select: {
-              technicianProfileId: true,
-              technicianServiceId: true,
-              startsAt: true,
-              endsAt: true
-            }
-          });
-          const existingScheduleSlotKeys = new Set(existingScheduleSlots.map(scheduleSlotKey));
-          const ranges = buildContinuousScheduleSlotRanges({
-            startsAt,
-            endsAt: new Date(availability.endsAt),
-            durationMinutes: technicianService.durationMinutes,
-            startIntervalMinutes
-          });
-          scheduleSlotCount += ranges.length;
-          let pendingBatch: Prisma.ScheduleSlotCreateManyInput[] = [];
-          for (const range of ranges) {
-            const slot = {
-              availabilityId,
-              serviceId: null,
-              technicianServiceId: technicianService.id,
-              shopId: shop.id,
-              technicianProfileId,
-              startsAt: range.startsAt,
-              endsAt: range.endsAt,
-              capacity: 1,
-              bookedCount: 0,
-              status: "AVAILABLE" as const
-            };
-            const key = scheduleSlotKey(slot);
-            if (existingScheduleSlotKeys.has(key)) continue;
-            pendingBatch.push(slot);
-            existingScheduleSlotKeys.add(key);
-            if (pendingBatch.length === SCHEDULE_SLOT_INSERT_BATCH_SIZE) {
-              await transaction.scheduleSlot.createMany({ data: pendingBatch });
-              createdScheduleSlotCount += pendingBatch.length;
-              pendingBatch = [];
-            }
-          }
-          if (pendingBatch.length > 0) {
-            await transaction.scheduleSlot.createMany({ data: pendingBatch });
-            createdScheduleSlotCount += pendingBatch.length;
-          }
-        }
-      }
+      await transaction.scheduleSlot.updateMany({
+        where: {
+          shopId: shop.id,
+          bookedCount: 0,
+          deletedAt: null,
+          bookingOrders: { none: {} }
+        },
+        data: { status: "BLOCKED", deletedAt: new Date() }
+      });
+      const scheduleSlotCount = 0;
+      const createdScheduleSlotCount = 0;
 
       let automationSettingCount = 0;
       for (const technicianProfileId of technicianProfileIds) {
@@ -650,7 +555,7 @@ export class StagingTestOperationsProvisioner {
             createdTechnicianServiceCount: missingTechnicianServiceIds.length,
             scheduleSlotCount,
             createdScheduleSlotCount,
-            serviceStartIntervalStrategy: "greatest_common_divisor_of_service_durations",
+            serviceStartIntervalStrategy: "dynamic_five_minute_projection",
             continuousDailyCoverage: true,
             automationSettingCount,
             scheduleCycleId: scheduleCycle.id

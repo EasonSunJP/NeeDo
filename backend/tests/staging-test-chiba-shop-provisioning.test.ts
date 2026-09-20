@@ -22,6 +22,24 @@ describe("StagingTest Chiba shop provisioning gate", () => {
     });
   });
 
+  it("accepts an explicit exclusive end date through January", () => {
+    expect(parseStagingTestChibaShopConfig({
+      ...valid,
+      STAGING_TEST_CHIBA_SCHEDULE_END_DATE: "2027-02-01"
+    })).toEqual({
+      ownerEmail: "akiratest@lifedance.com",
+      startDate: "2026-09-21",
+      endDate: "2027-02-01"
+    });
+  });
+
+  it("rejects an explicit end date that is not after the start", () => {
+    expect(() => parseStagingTestChibaShopConfig({
+      ...valid,
+      STAGING_TEST_CHIBA_SCHEDULE_END_DATE: "2026-09-21"
+    })).toThrow("STAGING_TEST_CHIBA_SCHEDULE_PERIOD_INVALID");
+  });
+
   it.each([
     ["NODE_ENV", "development"],
     ["DEPLOY_ENV", "production"],

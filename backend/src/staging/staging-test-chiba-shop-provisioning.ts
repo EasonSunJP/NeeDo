@@ -12,7 +12,8 @@ const configSchema = z.object({
   NODE_ENV: z.literal("production"),
   DEPLOY_ENV: z.literal("staging"),
   ALLOW_STAGING_TEST_CHIBA_PROVISIONING: z.literal("true"),
-  STAGING_TEST_CHIBA_SCHEDULE_START_DATE: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+  STAGING_TEST_CHIBA_SCHEDULE_START_DATE: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  STAGING_TEST_CHIBA_SCHEDULE_END_DATE: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
 });
 
 const OWNER_EMAIL = "akiratest@lifedance.com";
@@ -120,10 +121,15 @@ export const parseStagingTestChibaShopConfig = (
   if (Number.isNaN(start.getTime())) {
     throw new Error("STAGING_TEST_CHIBA_SCHEDULE_START_DATE_INVALID");
   }
+  const endDate = parsed.STAGING_TEST_CHIBA_SCHEDULE_END_DATE
+    ?? addCalendarMonths(parsed.STAGING_TEST_CHIBA_SCHEDULE_START_DATE, 3);
+  if (endDate <= parsed.STAGING_TEST_CHIBA_SCHEDULE_START_DATE) {
+    throw new Error("STAGING_TEST_CHIBA_SCHEDULE_PERIOD_INVALID");
+  }
   return {
     ownerEmail: OWNER_EMAIL,
     startDate: parsed.STAGING_TEST_CHIBA_SCHEDULE_START_DATE,
-    endDate: addCalendarMonths(parsed.STAGING_TEST_CHIBA_SCHEDULE_START_DATE, 3)
+    endDate
   };
 };
 
