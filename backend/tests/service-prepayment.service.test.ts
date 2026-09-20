@@ -40,7 +40,7 @@ function fixture(existing: ServicePrepaymentRecord | null = null) {
     findByIdempotencyKeyForUpdate: jest.fn(async (key) => stored?.idempotencyKey === key ? stored : null),
     findBySubjectForUpdate: jest.fn(async (subject: ServicePrepaymentSubject) =>
       stored?.subject.type === subject.type && stored.subject.id === subject.id ? stored : null),
-    subjectBelongsToIdentity: jest.fn(async (_subject: ServicePrepaymentSubject, _identityId: number) => true),
+    subjectBelongsToIdentity: jest.fn(async () => true),
     resolveSubjectContext: jest.fn(async () => ({ baseAmountJpy: 10_000, walletOwnerType: "user" as const, walletOwnerId: 4 })),
     create: jest.fn(async (input) => {
       stored = record({
@@ -69,7 +69,7 @@ function fixture(existing: ServicePrepaymentRecord | null = null) {
       });
       return stored;
     }),
-    createAudit: jest.fn(async (_input: { actorUserId: number; action: string; targetId: number; metadata: unknown }) => undefined)
+    createAudit: jest.fn(async () => undefined)
   } as unknown as jest.Mocked<ServicePrepaymentRepositoryPort>;
   const ledger = {
     freezeServicePrepayment: jest.fn(async () => ({ id: 19 })),

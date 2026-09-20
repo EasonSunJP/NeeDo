@@ -38,6 +38,7 @@ const rules: TechnicianAutomationRules = {
   serviceModes: ["store", "home"],
   paymentMethods: ["onsite", "card", "ndp", "bank_transfer", "other"],
   serviceIds: [],
+  minimumPrepaymentPercent: 0,
   onlyOnline: false,
   requestStartWindow: "any",
   requireMatchingTags: false,
@@ -137,4 +138,3 @@ describe("technician automation quick switches", () => {
     ).toBe(false);
   });
 });
-

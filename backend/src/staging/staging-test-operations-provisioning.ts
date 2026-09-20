@@ -1,8 +1,8 @@
 import {
   AvailabilitySourceType,
   AvailabilityVisibility,
-  Prisma,
   TechnicianAutomationKind,
+  type Prisma,
   type PrismaClient
 } from "@prisma/client";
 import { z } from "zod";
