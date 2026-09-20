@@ -4343,6 +4343,148 @@ html[data-needo-display-mode="standalone"] .client-shell .im-composer-input-shel
   --schedule-highlight-ink: var(--merchant-dispatch-on-accent, var(--client-primary-contrast, #07100d));
 }
 
+.schedule-stepper-track {
+  --schedule-step-arrow: clamp(9px, 2.5vw, 15px);
+  --schedule-step-accent: var(--admin-accent, #baff43);
+  --schedule-step-accent-strong: var(--admin-accent-strong, var(--schedule-step-accent));
+  --schedule-step-line: var(--admin-line, rgba(255, 255, 255, 0.16));
+  --schedule-step-muted: var(--admin-muted, rgba(255, 255, 255, 0.68));
+  --schedule-step-surface: var(--admin-surface, #10161a);
+  --schedule-step-text: var(--admin-text, #f7fbf7);
+  --schedule-step-on-accent: var(--merchant-dispatch-on-accent, #07100d);
+  display: grid;
+  grid-template-columns: repeat(var(--schedule-step-count), minmax(0, 1fr));
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  list-style: none;
+  isolation: isolate;
+}
+
+[data-schedule-stepper="true"][data-surface="mobile"] .schedule-stepper-track {
+  --schedule-step-accent: var(--client-primary);
+  --schedule-step-accent-strong: var(--client-primary-strong, var(--client-primary));
+  --schedule-step-line: var(--client-line);
+  --schedule-step-muted: var(--client-muted);
+  --schedule-step-surface: var(--client-surface);
+  --schedule-step-text: var(--client-text);
+  --schedule-step-on-accent: var(--client-primary-contrast);
+}
+
+.schedule-stepper-step {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  min-height: 58px;
+  place-items: center;
+  padding: 7px calc(var(--schedule-step-arrow) + 3px) 7px calc(var(--schedule-step-arrow) + 1px);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--schedule-step-arrow)) 0,
+    100% 50%,
+    calc(100% - var(--schedule-step-arrow)) 100%,
+    0 100%,
+    var(--schedule-step-arrow) 50%
+  );
+  background: color-mix(in srgb, var(--schedule-step-surface) 92%, var(--schedule-step-line) 8%);
+  color: var(--schedule-step-muted);
+  box-shadow: inset 0 0 0 1px var(--schedule-step-line);
+}
+
+.schedule-stepper-step:first-child {
+  padding-inline-start: 8px;
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--schedule-step-arrow)) 0,
+    100% 50%,
+    calc(100% - var(--schedule-step-arrow)) 100%,
+    0 100%
+  );
+}
+
+.schedule-stepper-step:not(:first-child) {
+  margin-inline-start: calc(-1 * var(--schedule-step-arrow));
+}
+
+.schedule-stepper-step[data-state="complete"] {
+  z-index: 2;
+  background: color-mix(in srgb, var(--schedule-step-accent) 28%, var(--schedule-step-surface) 72%);
+  color: var(--schedule-step-text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--schedule-step-accent) 58%, var(--schedule-step-line));
+}
+
+.schedule-stepper-step[data-state="current"] {
+  z-index: 3;
+  background: linear-gradient(135deg, var(--schedule-step-accent), var(--schedule-step-accent-strong));
+  color: var(--schedule-step-on-accent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--schedule-step-on-accent) 24%, transparent);
+}
+
+.schedule-stepper-content {
+  display: grid;
+  min-width: 0;
+  place-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.schedule-stepper-index {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.schedule-stepper-label {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: clamp(10px, 1.6vw, 13px);
+  font-weight: 900;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.schedule-stepper-track[data-step-count="4"] .schedule-stepper-step {
+  padding-inline: calc(var(--schedule-step-arrow) + 1px) calc(var(--schedule-step-arrow) / 2);
+}
+
+.schedule-stepper-track[data-step-count="4"] .schedule-stepper-step:first-child {
+  padding-inline-start: 6px;
+}
+
+.schedule-stepper-track[data-step-count="4"] .schedule-stepper-label {
+  overflow-wrap: normal;
+  font-size: clamp(9px, 1.55vw, 13px);
+  word-break: keep-all;
+}
+
+@media (min-width: 768px) {
+  .schedule-stepper-step {
+    min-height: 62px;
+  }
+
+  .schedule-stepper-content {
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 6px;
+    text-align: start;
+  }
+
+  .schedule-stepper-label {
+    font-size: 13px;
+  }
+}
+
 .client-shell .ui-badge.schedule-highlight-badge[data-tone],
 .merchant-admin-shell .ui-badge.schedule-highlight-badge[data-tone] {
   border: 1px solid color-mix(in srgb, var(--schedule-highlight-ink, #07100d) 28%, transparent) !important;

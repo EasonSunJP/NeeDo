@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../../i18n/I18nProvider";
+import { translateText, type Language } from "../../../i18n/translations";
 import type { Technician } from "../../../types/domain";
 import {
   createDispatchCycleDraft,
@@ -14,6 +17,8 @@ import {
   saveDispatchCycleDraft
 } from "../../dispatch-center/store";
 import { AutomationWizard } from "./AutomationWizard";
+
+const scheduleStyles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 vi.mock("../../../components/scheduling/ScheduleCycleBoard", () => ({
   ScheduleCycleBoard: ({ drawerTitle }: { drawerTitle: string }) => (
@@ -150,6 +155,50 @@ describe("merchant schedule planning home", () => {
     expect(container.textContent).not.toContain("技师反馈截止");
     expect(button("下一周期确认")).toBeDefined();
     expect(button("新建周期")).toBeDefined();
+  });
+
+  it("renders a directional ordered stepper with distinct progress semantics", async () => {
+    await renderWizard();
+    await act(async () => button("新建周期")?.click());
+
+    const progress = container.querySelector<HTMLElement>('[data-schedule-stepper="true"]');
+    const steps = [...(progress?.querySelectorAll<HTMLElement>("li") ?? [])];
+
+    expect(progress?.tagName).toBe("NAV");
+    expect(progress?.getAttribute("aria-label")).toBe("排班步骤");
+    expect(progress?.querySelector("ol")).not.toBeNull();
+    expect(steps).toHaveLength(3);
+    expect(steps.map((step) => step.dataset.state)).toEqual(["current", "upcoming", "upcoming"]);
+    expect(steps.map((step) => step.getAttribute("aria-current"))).toEqual(["step", null, null]);
+
+    await act(async () => button("技师自主排班")?.click());
+    await act(async () => button("下一步：规则设定")?.click());
+
+    const updatedSteps = [...container.querySelectorAll<HTMLElement>('[data-schedule-stepper="true"] li')];
+    expect(updatedSteps.map((step) => step.dataset.state)).toEqual(["complete", "current", "upcoming"]);
+    expect(updatedSteps.map((step) => step.getAttribute("aria-current"))).toEqual([null, "step", null]);
+  });
+
+  it("keeps the chevron track compact and safe for translated labels", () => {
+    expect(scheduleStyles).toMatch(/\.schedule-stepper-track\s*\{[^}]*display:\s*grid;/s);
+    expect(scheduleStyles).toMatch(/grid-template-columns:\s*repeat\(var\(--schedule-step-count\),\s*minmax\(0,\s*1fr\)\)/);
+    expect(scheduleStyles).toMatch(/\.schedule-stepper-step\s*\{[^}]*clip-path:\s*polygon/s);
+    expect(scheduleStyles).toMatch(/\.schedule-stepper-label\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+  });
+
+  it("provides concise stepper copy in every supported language", () => {
+    const sources = ["排班步骤", "模式选择", "规则设定", "技师反馈", "最终确认", "已完成", "当前步骤", "未开始"];
+    const expected: Record<Language, string[]> = {
+      zh: ["排班步骤", "模式选择", "规则设定", "技师反馈", "最终确认", "已完成", "当前步骤", "未开始"],
+      "zh-Hant": ["排班步驟", "模式選擇", "規則設定", "技師回饋", "最終確認", "已完成", "目前步驟", "未開始"],
+      ja: ["シフト作成ステップ", "モード選択", "ルール設定", "スタッフ回答", "最終確認", "完了", "現在のステップ", "未開始"],
+      en: ["Scheduling steps", "Mode selection", "Rule settings", "Staff feedback", "Final Confirmation", "Completed", "Current step", "Not started"],
+      ko: ["근무표 단계", "모드 선택", "규칙 설정", "스태프 피드백", "최종 확인", "완료됨", "현재 단계", "시작 전"]
+    };
+
+    (Object.keys(expected) as Language[]).forEach((language) => {
+      expect(sources.map((source) => translateText(source, language))).toEqual(expected[language]);
+    });
   });
 
   it("keeps the merchant direct scheduling feedback step and controls", async () => {
