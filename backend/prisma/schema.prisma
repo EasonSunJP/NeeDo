@@ -1082,6 +1082,17 @@ enum ExchangeRequestFinancialState {
   @@map("exchange_request_financial_state")
 }
 
+enum ServicePrepaymentStatus {
+  PENDING        @map("pending")
+  CONFIRMED      @map("confirmed")
+  CAPTURED       @map("captured")
+  RELEASED       @map("released")
+  REFUND_PENDING @map("refund_pending")
+  REFUNDED       @map("refunded")
+
+  @@map("service_prepayment_status")
+}
+
 enum ExchangeClaimStatus {
   ACTIVE            @map("active")
   WITHDRAWN         @map("withdrawn")
@@ -4304,6 +4315,7 @@ model BookingOrder {
   refundDisputes                 OrderRefundDispute[]
   refundDisputeRevisions         OrderRefundDisputeRevision[]
   serviceLocation                BookingServiceLocation?
+  servicePrepayment              ServicePrepayment?
 
   @@index([customerUserId])
   @@index([serviceId])
@@ -5883,6 +5895,7 @@ model UserIdentity {
   receivedEntityShareEvents  EntityShareEvent[]            @relation("EntityShareRecipientIdentity")
   merchantIdentityProfile    MerchantIdentityProfile?
   ownedCalendarEvents        CalendarEvent[]
+  createdServicePrepayments  ServicePrepayment[]
 
   @@index([userId])
   @@index([type])
@@ -5934,6 +5947,7 @@ model ExchangePost {
   claims             ExchangeClaim[]
   matching           ExchangeRequestMatching?
   matchParticipants  ExchangeMatchParticipant[]
+  servicePrepayment  ServicePrepayment?
 
   @@index([type, status, expiresAt, createdAt])
   @@index([authorUserId, createdAt])
@@ -6079,6 +6093,7 @@ model ExchangeMatchParticipant {
   scheduleSlot        ScheduleSlot            @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   bookingOrder        BookingOrder?           @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   cancellations       ExchangeBookingCancellation[]
+  servicePrepaymentAllocation ServicePrepaymentAllocation?
 
   @@unique([matchingId, technicianProfileId], map: "exchange_match_participants_matching_technician_key")
   @@index([exchangePostId, deletedAt], map: "exchange_match_participants_post_deleted_idx")
@@ -7103,7 +7118,7 @@ model WalletHold {
   ownerType         WalletOwnerType @map("owner_type")
   ownerId           Int             @map("owner_id")
   bookingOrderId    Int?            @map("booking_order_id")
-  exchangePostId    Int?            @unique @map("exchange_post_id")
+  exchangePostId    Int?            @map("exchange_post_id")
   feeType           String          @map("fee_type") @db.VarChar(60)
   holdAmountNdp     Int             @default(0) @map("hold_amount_ndp")
   capturedAmountNdp Int             @default(0) @map("captured_amount_ndp")
@@ -7122,14 +7137,74 @@ model WalletHold {
   bookingOrder             BookingOrder?             @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   exchangePost             ExchangePost?             @relation(fields: [exchangePostId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   exchangeRequestFinancial ExchangeRequestFinancial?
+  servicePrepayment        ServicePrepayment?
 
   @@index([ownerType, ownerId])
   @@index([bookingOrderId])
+  @@index([exchangePostId], map: "wallet_holds_exchange_post_id_idx")
   @@index([feeType])
   @@index([status])
   @@index([currency, status], map: "wallet_holds_currency_status_idx")
   @@index([deletedAt])
   @@map("wallet_holds")
+}
+
+model ServicePrepayment {
+  id                  Int                     @id @default(autoincrement())
+  bookingOrderId      Int?                    @unique(map: "service_prepayments_booking_order_key") @map("booking_order_id")
+  exchangePostId      Int?                    @unique(map: "service_prepayments_exchange_post_key") @map("exchange_post_id")
+  baseAmountJpy       Int                     @map("base_amount_jpy")
+  percent             Int
+  amountJpy           Int                     @map("amount_jpy")
+  confirmedAmountJpy  Int                     @default(0) @map("confirmed_amount_jpy")
+  currency            String                  @default("JPY") @db.VarChar(3)
+  paymentMethod       ServicePaymentMethod    @map("payment_method")
+  status              ServicePrepaymentStatus @default(PENDING)
+  walletHoldId        Int?                    @unique(map: "service_prepayments_wallet_hold_key") @map("wallet_hold_id")
+  externalReference   String?                 @map("external_reference") @db.VarChar(191)
+  idempotencyKey      String                  @unique(map: "service_prepayments_idempotency_key") @map("idempotency_key") @db.VarChar(191)
+  requestFingerprint  String                  @map("request_fingerprint") @db.Char(64)
+  createdByIdentityId Int                     @map("created_by_identity_id")
+  confirmedAt         DateTime?               @map("confirmed_at")
+  capturedAt          DateTime?               @map("captured_at")
+  releasedAt          DateTime?               @map("released_at")
+  refundPendingAt     DateTime?               @map("refund_pending_at")
+  refundedAt          DateTime?               @map("refunded_at")
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+  deletedAt           DateTime?               @map("deleted_at")
+
+  bookingOrder      BookingOrder?                 @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  exchangePost      ExchangePost?                 @relation(fields: [exchangePostId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  walletHold        WalletHold?                   @relation(fields: [walletHoldId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByIdentity UserIdentity                  @relation(fields: [createdByIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceAllocations ServicePrepaymentAllocation[] @relation("ServicePrepaymentAllocationSource")
+  bookingAllocation ServicePrepaymentAllocation?  @relation("ServicePrepaymentAllocationBooking")
+
+  @@index([createdByIdentityId, createdAt], map: "service_prepayments_creator_created_idx")
+  @@index([status, createdAt], map: "service_prepayments_status_created_idx")
+  @@index([deletedAt], map: "service_prepayments_deleted_idx")
+  @@map("service_prepayments")
+}
+
+model ServicePrepaymentAllocation {
+  id                         Int       @id @default(autoincrement())
+  sourcePrepaymentId         Int       @map("source_prepayment_id")
+  bookingPrepaymentId        Int       @unique(map: "service_prepayment_allocations_booking_key") @map("booking_prepayment_id")
+  exchangeMatchParticipantId Int       @unique(map: "service_prepayment_allocations_participant_key") @map("exchange_match_participant_id")
+  amountJpy                  Int       @map("amount_jpy")
+  idempotencyKey             String    @unique(map: "service_prepayment_allocations_idempotency_key") @map("idempotency_key") @db.VarChar(191)
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
+  deletedAt                  DateTime? @map("deleted_at")
+
+  sourcePrepayment         ServicePrepayment        @relation("ServicePrepaymentAllocationSource", fields: [sourcePrepaymentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  bookingPrepayment        ServicePrepayment        @relation("ServicePrepaymentAllocationBooking", fields: [bookingPrepaymentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  exchangeMatchParticipant ExchangeMatchParticipant @relation(fields: [exchangeMatchParticipantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([sourcePrepaymentId], map: "service_prepayment_allocations_source_idx")
+  @@index([deletedAt], map: "service_prepayment_allocations_deleted_idx")
+  @@map("service_prepayment_allocations")
 }
 
 model ExchangeRequestFinancial {

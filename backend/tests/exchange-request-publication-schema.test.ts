@@ -81,7 +81,9 @@ describe("Exchange Request publication schema", () => {
 
     const hold = modelBlock("WalletHold");
     expect(hold).toMatch(/bookingOrderId\s+Int\?/);
-    expect(hold).toMatch(/exchangePostId\s+Int\?\s+@unique/);
+    expect(hold).toMatch(/exchangePostId\s+Int\?\s+@map\("exchange_post_id"\)/);
+    expect(hold).not.toMatch(/exchangePostId\s+Int\?\s+@unique/);
+    expect(hold).toMatch(/@@index\(\[exchangePostId\], map: "wallet_holds_exchange_post_id_idx"\)/);
     expect(hold).toMatch(
       /bookingOrder\s+BookingOrder\?[\s\S]*onDelete:\s*Restrict,\s*onUpdate:\s*Restrict/
     );
