@@ -139,7 +139,7 @@ function fillDemandForm(container: ParentNode) {
     serviceEndDate: "2026-08-31",
     serviceEndTime: "14:00",
     expiresDate: "2026-08-31",
-    expiresTime: "14:00",
+    expiresTime: "14:01",
     targetProviderCount: "1",
     budgetMinJpy: "5000",
     budgetMaxJpy: "8000",

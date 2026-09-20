@@ -76,18 +76,26 @@ describe("evaluateTechnicianAutomationRules", () => {
     expect(result.failedReasons).toContain("customer:new_not_allowed");
   });
 
-  it("never auto-accepts Booking or auto-applies Request while the technician is off duty", () => {
-    expect(evaluateTechnicianAutomationRules("booking", defaultTechnicianAutomationRules("booking"), {
+  it("allows offline automation only when the technician disabled the online-only rule", () => {
+    expect(evaluateTechnicianAutomationRules("booking", {
+      ...defaultTechnicianAutomationRules("booking"),
+      onlyOnline: true
+    }, {
       ...context(),
       technicianOnline: false
     }).failedReasons).toContain("online:offline");
+
     expect(evaluateTechnicianAutomationRules("request", {
       ...defaultTechnicianAutomationRules("request"),
       onlyOnline: false
     }, {
       ...context(),
       technicianOnline: false
-    }).failedReasons).toContain("online:offline");
+    })).toMatchObject({
+      matched: true,
+      matchedConditions: expect.arrayContaining(["online:not_required"]),
+      failedReasons: []
+    });
   });
 
   it("applies Request online/start-window and specific-referrer rules without treating apply as a deal", () => {

@@ -110,7 +110,7 @@ describe("technician automation shop-affiliation gates", () => {
     expect(client.userIdentity.findFirst).not.toHaveBeenCalled();
   });
 
-  it("requires an active current shop before selecting request automation candidates", async () => {
+  it("requires an active current shop without discarding offline candidates before rule evaluation", async () => {
     const client = {
       exchangePost: {
         findFirst: jest.fn(async () => ({
@@ -122,16 +122,23 @@ describe("technician automation shop-affiliation gates", () => {
           demand: { budgetMaxJpy: 12000, serviceMode: "STORE" }
         }))
       },
-      scheduleSlot: { findMany: jest.fn(async () => []) }
+      scheduleSlot: {
+        findMany: jest.fn(async (input: unknown) => {
+          void input;
+          return [];
+        })
+      }
     };
 
     const repository = new TechnicianAutomationRepository(asClient(client));
     await expect(repository.loadRequestCandidates(601)).resolves.toEqual([]);
-    expect(client.scheduleSlot.findMany).toHaveBeenCalledWith(expect.objectContaining({
+    const query = client.scheduleSlot.findMany.mock.calls[0][0] as {
+      where: { technicianProfile: { is: Record<string, unknown> } };
+    };
+    expect(query).toEqual(expect.objectContaining({
       where: expect.objectContaining({
         technicianProfile: {
           is: expect.objectContaining({
-            workState: { is: { status: "on_duty", deletedAt: null } },
             technicianShopAffiliations: {
               some: expect.objectContaining({
                 workStatus: "ACTIVE", activeKey: { not: null }, deletedAt: null,
@@ -142,6 +149,7 @@ describe("technician automation shop-affiliation gates", () => {
         }
       })
     }));
+    expect(query.where.technicianProfile.is).not.toHaveProperty("workState");
   });
 
   it("returns an idempotent replay without issuing a duplicate decision insert", async () => {

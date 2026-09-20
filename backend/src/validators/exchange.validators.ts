@@ -105,10 +105,10 @@ export const publishExchangePostSchema = z
         path: ["serviceEndAt"]
       });
     }
-    if (value.serviceEndAt.getTime() > value.expiresAt.getTime()) {
+    if (value.serviceEndAt.getTime() >= value.expiresAt.getTime()) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "serviceEndAt must not be later than expiresAt",
+        message: "expiresAt must be later than serviceEndAt",
         path: ["expiresAt"]
       });
     }

@@ -349,6 +349,81 @@ integration("Request automation with real MySQL claims", () => {
     );
   });
 
+  it("reproduces Request 14 rules and applies while the technician is offline", async () => {
+    const f = fixture;
+    await client.exchangePost.update({
+      where: { id: f.post.id },
+      data: { title: "StagingTest 自动抢单集成测试" }
+    });
+    await client.exchangeDemand.update({
+      where: { postId: f.post.id },
+      data: {
+        matchMode: "QUICK",
+        budgetMinJpy: 8_000,
+        budgetMaxJpy: 12_000,
+        serviceMode: "STORE"
+      }
+    });
+    await client.technicianWorkState.update({
+      where: { technicianProfileId: f.profile.id },
+      data: { status: "off_duty" }
+    });
+    await client.technicianAutomationSetting.update({
+      where: { id: f.setting.id },
+      data: {
+        rules: {
+          ...rules,
+          onlyOnline: false,
+          minOrderAmountJpy: null,
+          minNetAmountJpy: null,
+          acceptNewCustomers: true,
+          minCompletedOrders: 0,
+          requireEkyc: false,
+          source: { mode: "any", contactIdentityIds: [] },
+          customerType: "all",
+          partyTypes: ["single"],
+          serviceModes: ["store", "home"],
+          paymentMethods: ["onsite", "card", "ndp", "bank_transfer", "other"]
+        }
+      }
+    });
+
+    await processor.processRequest(f.post.id);
+
+    expect(
+      await client.exchangeClaim.findFirst({ where: { exchangePostId: f.post.id } })
+    ).toMatchObject({
+      scheduleSlotId: f.slot.id,
+      quoteAmountJpy: 12_000,
+      status: "ACTIVE"
+    });
+    expect(
+      await client.technicianAutomationDecisionLog.findUnique({
+        where: { idempotencyKey: `request:${f.post.id}:${f.profile.id}:apply_request` }
+      })
+    ).toMatchObject({ outcome: "EXECUTED", failedReasons: [] });
+  });
+
+  it("keeps an offline online-only rule unmatched with an auditable reason", async () => {
+    const f = fixture;
+    await client.technicianWorkState.update({
+      where: { technicianProfileId: f.profile.id },
+      data: { status: "off_duty" }
+    });
+
+    await processor.processRequest(f.post.id);
+
+    expect(await client.exchangeClaim.count({ where: { exchangePostId: f.post.id } })).toBe(0);
+    expect(
+      await client.technicianAutomationDecisionLog.findUnique({
+        where: { idempotencyKey: `request:${f.post.id}:${f.profile.id}:apply_request` }
+      })
+    ).toMatchObject({
+      outcome: "NOT_MATCHED",
+      failedReasons: expect.arrayContaining(["online:offline"])
+    });
+  });
+
   it("skips a full earlier slot even if its status has not yet changed", async () => {
     await client.scheduleSlot.update({
       where: { id: fixture.legacySlot.id },
@@ -424,7 +499,6 @@ integration("Request automation with real MySQL claims", () => {
   });
 
   it.each([
-    "offline",
     "no availability",
     "outside request",
     "unbookable",
@@ -433,11 +507,6 @@ integration("Request automation with real MySQL claims", () => {
     "inactive identity"
   ])("does not apply with %s", async (condition) => {
     const f = fixture;
-    if (condition === "offline")
-      await client.technicianWorkState.update({
-        where: { technicianProfileId: f.profile.id },
-        data: { status: "off_duty" }
-      });
     if (condition === "no availability")
       await client.availability.update({
         where: { id: f.availability.id },
@@ -507,6 +576,9 @@ integration("Request automation with real MySQL claims", () => {
     expect(await client.scheduleSlot.findUnique({ where: { id: fixture.slot.id } })).toMatchObject({
       bookedCount: 0
     });
+    expect(
+      await client.walletHold.count({ where: { exchangePostId: fixture.post.id } })
+    ).toBe(0);
   });
 
   it("retries a failed transaction once after contention clears using the same decision key", async () => {

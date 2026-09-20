@@ -14,7 +14,7 @@ const validDraft: IntelligenceComposerDraft = {
   serviceEndDate: "2026-09-07",
   serviceEndTime: "11:00",
   expiresDate: "2026-09-07",
-  expiresTime: "11:00",
+  expiresTime: "11:01",
   campaignPriceJpy: "8800"
 };
 
@@ -54,6 +54,16 @@ describe("Intelligence composer authority boundary", () => {
     expect(normalizeIntelligenceDraft({ ...validDraft, campaignPriceJpy: "10001" }, 10_000)).toEqual({
       ok: false,
       errorKey: "invalidPrice"
+    });
+  });
+
+  it("rejects an expiry equal to the service end", () => {
+    expect(normalizeIntelligenceDraft({
+      ...validDraft,
+      expiresTime: validDraft.serviceEndTime
+    }, 10_000)).toEqual({
+      ok: false,
+      errorKey: "invalidWindow"
     });
   });
 });

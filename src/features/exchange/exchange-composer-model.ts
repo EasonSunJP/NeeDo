@@ -98,7 +98,7 @@ export function normalizeRequestDraft(
   ) {
     return { ok: false, errorKey: "targetProviderLimit" };
   }
-  if (!(serviceStartAt < serviceEndAt && serviceEndAt <= expiresAt)) {
+  if (!(serviceStartAt < serviceEndAt && serviceEndAt < expiresAt)) {
     return { ok: false, errorKey: "invalidWindow" };
   }
   if (budgetMinJpy !== null && budgetMinJpy > budgetMaxJpy) {
@@ -167,7 +167,7 @@ export function normalizeIntelligenceDraft(
   ) {
     return { ok: false, errorKey: "required" };
   }
-  if (!(serviceStartAt < serviceEndAt && serviceEndAt <= expiresAt)) {
+  if (!(serviceStartAt < serviceEndAt && serviceEndAt < expiresAt)) {
     return { ok: false, errorKey: "invalidWindow" };
   }
   if (catalogPriceJpy === null || campaignPriceJpy > catalogPriceJpy) {

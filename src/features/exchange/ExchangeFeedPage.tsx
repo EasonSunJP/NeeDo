@@ -17,8 +17,8 @@ import { useExchangeFeed, type ExchangeFeedError } from "./useExchangeFeed";
 
 const fallbackPublisherImage = "/icons/needo-nav-button-dark.png";
 
-export function getDefaultExchangePostType(_context: MessageCenterContext): ExchangePostType {
-  return "intelligence";
+export function getDefaultExchangePostType(context: MessageCenterContext): ExchangePostType {
+  return context === "technician" ? "demand" : "intelligence";
 }
 
 function exchangeBasePath(context: MessageCenterContext) {
