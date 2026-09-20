@@ -15,4 +15,13 @@ describe("NeedoPetRunningSprite", () => {
     expect(source).toContain('fallbackSrc={petSpriteSrc.running}');
     expect(source).toContain('src={sprite === "death" ? petSpriteSrc.grave : petSpriteSrc.idle}');
   });
+
+  it("removes fallback sprites after the transparent APNG has loaded", () => {
+    expect(source).toContain("const [loadedSrc, setLoadedSrc] = useState<string | null>(null)");
+    expect(source).toContain("{loadedSrc !== clip.src ? (");
+    expect(source).toContain("setLoadedSrc(clip.src)");
+    expect(source).toContain("const [loadedRunId, setLoadedRunId] = useState<number | null>(null)");
+    expect(source).toContain("{loadedRunId !== runId ? (");
+    expect(source).toContain("onLoad={() => setLoadedRunId(runId)}");
+  });
 });

@@ -581,6 +581,7 @@ function NeedoPetMotionSequence({
   sprite: "idle" | "running";
 }) {
   const [clipIndex, setClipIndex] = useState(() => Math.floor(Math.random() * clips.length));
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const [previousSrc, setPreviousSrc] = useState<string | null>(null);
   const clip = clips[clipIndex] ?? clips[0];
 
@@ -614,13 +615,18 @@ function NeedoPetMotionSequence({
 
   return (
     <span className={cn("needo-pet-sprite-shell is-motion", sprite === "idle" ? "is-idle-motion" : "is-running-motion")} data-sprite={sprite}>
-      <img alt="" className="needo-pet-motion-image is-fallback" draggable={false} src={previousSrc ?? fallbackSrc} />
+      {loadedSrc !== clip.src ? (
+        <img alt="" className="needo-pet-motion-image is-fallback" draggable={false} src={previousSrc ?? fallbackSrc} />
+      ) : null}
       <img
         key={clip.src}
         alt=""
         className="needo-pet-motion-image is-active"
         draggable={false}
-        onLoad={() => setPreviousSrc(null)}
+        onLoad={() => {
+          setLoadedSrc(clip.src);
+          setPreviousSrc(null);
+        }}
         src={clip.src}
       />
     </span>
@@ -628,21 +634,25 @@ function NeedoPetMotionSequence({
 }
 
 function NeedoPetOneShotMotion({ runId, sprite }: { runId: number; sprite: PetOneShotSpriteKey }) {
+  const [loadedRunId, setLoadedRunId] = useState<number | null>(null);
   const clip = xiaobaiOneShotClips[sprite];
 
   return (
     <span className={cn("needo-pet-sprite-shell is-motion is-one-shot-motion", `is-${sprite}-motion`)} data-sprite={sprite}>
-      <img
-        alt=""
-        className="needo-pet-motion-image is-fallback"
-        draggable={false}
-        src={sprite === "death" ? petSpriteSrc.grave : petSpriteSrc.idle}
-      />
+      {loadedRunId !== runId ? (
+        <img
+          alt=""
+          className="needo-pet-motion-image is-fallback"
+          draggable={false}
+          src={sprite === "death" ? petSpriteSrc.grave : petSpriteSrc.idle}
+        />
+      ) : null}
       <img
         key={`${clip.src}-${runId}`}
         alt=""
         className="needo-pet-motion-image is-active"
         draggable={false}
+        onLoad={() => setLoadedRunId(runId)}
         src={clip.src}
       />
     </span>
