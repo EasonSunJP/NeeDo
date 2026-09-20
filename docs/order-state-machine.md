@@ -149,6 +149,20 @@ Invalid transitions return:
 }
 ```
 
+Merchant order editing follows the same state boundary:
+
+- `PATCH /api/v1/orders/:id/merchant-edit` accepts only `pending` and `confirmed` orders.
+- `cancelled`, `inService`, checkout, and completed states return HTTP `409` with
+  `40906 error.order.invalid_transition`; another shop's order remains a non-leaking `404`.
+- The repository locks the shop-owned order before checking its current state. A cancellation or
+  other state transition that wins the lock cannot be overwritten by a stale edit.
+- Rejected state attempts do not update amount, payment method, or note. They create the audit action
+  `merchant_admin.booking.edit_rejected`; successful edits retain
+  `merchant_admin.booking.edit`.
+- The merchant detail UI shows the change entry only for editable states. A direct visit to a terminal
+  order's change route keeps every field and the save action disabled and displays a localized status
+  explanation.
+
 ## Conflict Rules
 
 公开 availability 在分页前应用同一套时间、占用和当前服务资格规则，并依据已认证顾客处理 pending 替换及会员差异；列表与总数使用一个数据库快照。返回值不预留容量，Booking 仍在原有锁定事务中重新校验。读取投影、回归证据与验收边界见 [2026-09-20 一致性修复](verification/2026-09-20-booking-availability-consistency.md)。

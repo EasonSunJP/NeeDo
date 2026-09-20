@@ -23336,7 +23336,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": { description: "Authentication required" },
           "403": { description: "Owning shop and order:confirm permission required" },
           "404": { description: "Order not found" },
-          "409": { description: "Order is no longer merchant-editable" }
+          "409": {
+            description:
+              "40906 error.order.invalid_transition — only pending or confirmed orders are merchant-editable; concurrent financial changes keep their dedicated conflict code"
+          }
         }
       }
     },

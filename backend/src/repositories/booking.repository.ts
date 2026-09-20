@@ -405,6 +405,11 @@ export type BookingAssignTechnicianResult =
   | { outcome: "ok"; order: BookingOrderPayload }
   | { outcome: "not_found" | "already_assigned" | "technician_unavailable" };
 
+export type MerchantBookingEditResult =
+  | { outcome: "ok"; order: BookingOrderPayload }
+  | { outcome: "not_found" }
+  | { outcome: "invalid_state" };
+
 export interface BookingCreateAffiliatePreparationContext {
   transactionClient: LedgerTransactionClient;
   customerUserId: number;
@@ -1145,7 +1150,7 @@ export interface BookingRepositoryPort {
     input: PaginationInput & { orderId: number }
   ) => Promise<PaginatedResponse<OrderAddOnServicePayload>>;
   assignTechnician?: (input: BookingAssignTechnicianInput) => Promise<BookingAssignTechnicianResult>;
-  editMerchantOrder?: (input: MerchantBookingEditInput) => Promise<BookingOrderPayload | null>;
+  editMerchantOrder?: (input: MerchantBookingEditInput) => Promise<MerchantBookingEditResult>;
   listCancellableOrdersForScheduleSlot?: (scheduleSlotId: number) => Promise<BookingOrderPayload[]>;
   findOrderRealtimeRecipients?: (
     id: number
@@ -3060,19 +3065,18 @@ export class BookingRepository implements BookingRepositoryPort {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
 
-  public async editMerchantOrder(input: MerchantBookingEditInput): Promise<BookingOrderPayload | null> {
+  public async editMerchantOrder(input: MerchantBookingEditInput): Promise<MerchantBookingEditResult> {
     return this.client.$transaction(async (transaction) => {
       const lockedOrder = await transaction.$queryRaw<Array<{ id: number }>>(Prisma.sql`
         SELECT id FROM booking_orders
         WHERE id = ${input.orderId}
           AND shop_id = ${input.shopId}
-          AND status IN ('PENDING', 'CONFIRMED')
           AND deleted_at IS NULL
         FOR UPDATE
       `);
-      if (lockedOrder.length !== 1) return null;
+      if (lockedOrder.length !== 1) return { outcome: "not_found" };
       const current = await transaction.bookingOrder.findFirst({
-        where: { id: input.orderId, shopId: input.shopId, deletedAt: null, status: { in: ["PENDING", "CONFIRMED"] } },
+        where: { id: input.orderId, shopId: input.shopId, deletedAt: null },
         select: {
           id: true,
           status: true,
@@ -3085,7 +3089,23 @@ export class BookingRepository implements BookingRepositoryPort {
           updatedAt: true
         }
       });
-      if (!current) return null;
+      if (!current) return { outcome: "not_found" };
+      if (current.status !== "PENDING" && current.status !== "CONFIRMED") {
+        await transaction.auditLog.create({
+          data: toAuditLogCreateData({
+            actorId: input.actorUserId,
+            action: "merchant_admin.booking.edit_rejected",
+            targetType: "booking_order",
+            targetId: current.id,
+            metadata: {
+              reason: "invalid_state",
+              shopId: input.shopId,
+              status: current.status
+            }
+          })
+        });
+        return { outcome: "invalid_state" };
+      }
       const changesFinancialTerms = input.priceAmountJpy !== undefined || input.paymentMethod !== undefined;
       if (changesFinancialTerms) {
         const [walletHold, financial, checkout, prepayment] = await Promise.all([
@@ -3135,7 +3155,9 @@ export class BookingRepository implements BookingRepositoryPort {
         })
       });
       const updated = await transaction.bookingOrder.findFirst({ where: { id: current.id, deletedAt: null }, include: this.orderInclude() });
-      return updated ? this.mapOrder(updated) : null;
+      return updated
+        ? { outcome: "ok", order: this.mapOrder(updated) }
+        : { outcome: "not_found" };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
 

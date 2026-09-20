@@ -762,7 +762,7 @@ export class BookingService {
     input: { priceAmountJpy?: number; paymentMethod?: "onsite" | "bank_transfer"; note?: string | null }
   ): Promise<BookingOrderPayload> {
     if (!this.repository.editMerchantOrder) throw this.dependencyUnavailableError();
-    const order = await this.repository.editMerchantOrder({
+    const result = await this.repository.editMerchantOrder({
       ...input,
       orderId: id,
       shopId: requireMerchantShopId(actor),
@@ -777,7 +777,9 @@ export class BookingService {
       }
       throw error;
     });
-    if (!order) throw this.notFoundError();
+    if (result.outcome === "not_found") throw this.notFoundError();
+    if (result.outcome === "invalid_state") throw this.invalidTransitionError();
+    const order = result.order;
     await this.notifyOrderChangedBestEffort(actor, order, "status");
     await this.publishLiveDashboardChangesBestEffort([order.id]);
     return order;
