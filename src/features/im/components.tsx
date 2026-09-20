@@ -2541,6 +2541,7 @@ export function ContactRow({
   avatarTo,
   onAvatarClick,
   avatarBadge,
+  trailing,
 }: {
   user: ImUser;
   contact?: ContactRelation;
@@ -2550,6 +2551,7 @@ export function ContactRow({
   avatarTo?: string;
   onAvatarClick?: () => void;
   avatarBadge?: ReactNode;
+  trailing?: ReactNode;
 }) {
   const summary = (
     <div className="relative min-w-0 flex-1">
@@ -2608,6 +2610,7 @@ export function ContactRow({
         ) : null}
       </div>
       {body}
+      {trailing ? <div className="shrink-0">{trailing}</div> : null}
     </div>
   );
 }

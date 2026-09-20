@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import source from "./SocialTimelinePage.tsx?raw";
 import { filterSocialTimelinePostsByQuery } from "./SocialTimelinePage";
+import { buildTimelineUpdateNotifications } from "../timeline-notifications";
 import type { SocialPost, SocialProfile } from "../types";
 
 describe("SocialTimelinePage", () => {
@@ -107,6 +108,32 @@ describe("SocialTimelinePage", () => {
     expect(filterSocialTimelinePostsByQuery(posts, profiles, "  ")).toEqual(posts);
   });
 
+  it("builds only friend and nearby post notices with working author media", () => {
+    expect(buildTimelineUpdateNotifications({
+      actorKey: "user:current-user",
+      friendPosts: [posts[0]],
+      nearbyPosts: [posts[0], posts[1]],
+      profiles,
+    })).toEqual([
+      expect.objectContaining({
+        actorKey: "user:customer-other",
+        content: "附近发布了新动态",
+        postId: "post-schedule",
+      }),
+      expect.objectContaining({
+        actorKey: "user:customer-mia",
+        content: "好友发布了新动态",
+        postId: "post-layout",
+      }),
+    ]);
+  });
+
+  it("links timeline notices to their post and does not mix in system notifications", () => {
+    expect(source).toContain('to={socialPaths.post(scope, item.postId)}');
+    expect(source).toContain('title="附近与好友新动态"');
+    expect(source).not.toContain("getNotifications(actorKey)");
+  });
+
   it("renders the timeline header search as an inline form instead of a navigation link", () => {
     expect(source).toMatch(/function SocialTimelineHeaderSearch\(\{\s*value,\s*onChange,\s*onSubmit/);
     expect(source).toContain("value={value}");
@@ -127,7 +154,9 @@ describe("SocialTimelinePage", () => {
     expect(headerSource).toContain('getSocialProfileTextField(actor, "memberLevel")');
     expect(headerSource).toContain("locationCaption=\"当前服务区域\"");
     expect(headerSource).toContain("locationLabel={selectedHomeLocation?.label ?? \"当前服务区域\"}");
-    expect(headerSource).toContain("settingsTo={portalConfig.settingsPath}");
+    expect(headerSource).toContain("secondaryActionTo={socialPaths.notifications(scope)}");
+    expect(headerSource).toContain('secondaryActionLabel="动态通知"');
+    expect(headerSource).not.toContain("settingsTo={portalConfig.settingsPath}");
     expect(headerSource).not.toContain("<AvatarImage");
     expect(headerSource).not.toContain("<SocialMembershipStatusBadge");
   });

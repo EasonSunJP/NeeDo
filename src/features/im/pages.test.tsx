@@ -237,6 +237,7 @@ function buildForwardPageStore({
     currentUserId: "current-user",
     ensureDirectConversation: ensureDirectConversation ?? vi.fn().mockImplementation((userId: string) => Promise.resolve({ id: userId === secondUser.id ? "second-conversation" : conversationId })),
     forwardSelectedMessages,
+    friendRequests: [],
     members: [],
     pendingChatRecordForward: pending
       ? { sourceConversationId: "source-conversation", messageIds }
@@ -551,6 +552,48 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(friendModeSource).toContain("点击账号查看资料并发送好友申请");
     expect(friendModeSource).not.toContain("addFriendAndOpen");
     expect(friendModeSource).not.toContain("ensureDirectConversation");
+  });
+
+  it("keeps an existing friend in directory results and labels the relationship", async () => {
+    const store = buildForwardPageStore();
+    const friend = store.users[0];
+    store.searchDirectory = vi.fn().mockResolvedValue([friend]);
+    const view = await renderForwardPage(store, ["/messages/new?mode=friend&q=partner-user"]);
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 320));
+    });
+
+    expect(view.container.textContent).toContain("测试好友");
+    expect(view.container.textContent).toContain("已添加");
+    expect(view.container.textContent).not.toContain("没有找到可添加的好友");
+    await act(async () => view.root.unmount());
+  });
+
+  it("labels an active outgoing friend request as verifying", async () => {
+    const store = buildForwardPageStore();
+    const candidate = store.users[0];
+    store.contacts = [];
+    store.friendRequests = [{
+      id: "request-1",
+      fromUserId: "current-user",
+      toUserId: candidate.id,
+      source: "directory",
+      requestMessage: "",
+      status: "pending",
+      createdAt: "2026-09-20T00:00:00.000Z",
+      expiresAt: "2099-09-23T00:00:00.000Z",
+    }];
+    store.searchDirectory = vi.fn().mockResolvedValue([candidate]);
+    const view = await renderForwardPage(store, ["/messages/new?mode=friend&q=partner-user"]);
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 320));
+    });
+
+    expect(view.container.textContent).toContain("测试好友");
+    expect(view.container.textContent).toContain("验证中");
+    await act(async () => view.root.unmount());
   });
 
   it("uses the shared fullscreen detail header for the directory profile", () => {

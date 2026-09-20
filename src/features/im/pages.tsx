@@ -259,6 +259,39 @@ export function getFriendRequestLabel(
   return outgoing ? "等待对方验证" : "待处理";
 }
 
+export function getAddFriendCandidateStatusLabel(
+  userId: string,
+  currentUserId: string,
+  contacts: ContactRelation[],
+  requests: FriendRequest[],
+  nowMs: number = Date.now(),
+) {
+  const activeFriend = contacts.some(
+    (contact) =>
+      contact.targetUserId === userId &&
+      contact.relationStatus === "active" &&
+      !contact.isBlocked,
+  );
+
+  if (activeFriend) {
+    return "已添加";
+  }
+
+  const latestRequest = selectLatestFriendRequestsByCounterpart(
+    requests,
+    currentUserId,
+  ).find(
+    (request) =>
+      request.fromUserId === userId || request.toUserId === userId,
+  );
+
+  if (isActiveFriendRequest(latestRequest, nowMs)) {
+    return latestRequest?.toUserId === currentUserId ? "待确认" : "验证中";
+  }
+
+  return "可添加";
+}
+
 export type DirectoryProfileAction =
   | "cancel"
   | "send_request"
@@ -8790,10 +8823,6 @@ export function ImNewConversationPage() {
     () => buildContactSections({ users: store.users, contacts }),
     [contacts, store.users]
   );
-  const activeContactUserIds = useMemo(
-    () => new Set(store.contacts.filter((contact) => contact.relationStatus === "active" && !contact.isBlocked).map((contact) => contact.targetUserId)),
-    [store.contacts]
-  );
   const selectableGroupContactUserIds = useMemo(() => {
     return new Set(
       store.contacts
@@ -8814,8 +8843,8 @@ export function ImNewConversationPage() {
       return false;
     }
 
-    return !activeContactUserIds.has(user.id);
-  }), [activeContactUserIds, directoryCandidates, scope, store.currentUserId]);
+    return true;
+  }), [directoryCandidates, scope, store.currentUserId]);
   const filteredFriendCandidates = availableFriendCandidates;
 
   useEffect(() => {
@@ -9240,6 +9269,16 @@ export function ImNewConversationPage() {
                     caption={user.signature ?? user.region ?? user.bio ?? user.userIdLabel}
                     key={user.id}
                     onClick={() => navigate(config.routes.directoryProfile(user.id))}
+                    trailing={(
+                      <span className="whitespace-nowrap rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1.5 text-xs font-black text-[color:var(--client-primary)]">
+                        {getAddFriendCandidateStatusLabel(
+                          user.id,
+                          store.currentUserId ?? "",
+                          store.contacts,
+                          store.friendRequests,
+                        )}
+                      </span>
+                    )}
                     user={user}
                   />
                 ))}
