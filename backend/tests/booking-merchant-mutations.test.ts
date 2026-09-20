@@ -15,6 +15,7 @@ const transactionClient = (overrides: Record<string, unknown> = {}) => ({
   orderFinancial: { findFirst: jest.fn().mockResolvedValue(null) },
   orderCheckout: { findFirst: jest.fn().mockResolvedValue(null) },
   servicePrepayment: { findFirst: jest.fn().mockResolvedValue(null) },
+  auditLog: { create: jest.fn().mockResolvedValue({}) },
   ...overrides
 });
 
@@ -23,6 +24,43 @@ const repositoryWith = (transaction: ReturnType<typeof transactionClient>) => ne
 } as never);
 
 describe("merchant booking mutations", () => {
+  it("rejects cancelled edits under the order lock, audits the denial, and never mutates business data", async () => {
+    const transaction = transactionClient();
+    transaction.bookingOrder.findFirst.mockResolvedValue({
+      id: 700,
+      status: "CANCELLED",
+      priceAmount: 10_000,
+      paymentMethod: "ONSITE",
+      paymentStatus: "PENDING",
+      paymentConfirmedAt: null,
+      paymentReference: null,
+      note: null,
+      updatedAt: new Date("2026-09-20T10:00:00.000Z")
+    });
+    const repository = repositoryWith(transaction);
+    const command = {
+      orderId: 700,
+      shopId: 16,
+      actorUserId: 7,
+      priceAmountJpy: 13_000,
+      paymentMethod: "bank_transfer" as const,
+      note: "must stay unchanged"
+    };
+
+    await expect(repository.editMerchantOrder(command)).resolves.toEqual({ outcome: "invalid_state" });
+    await expect(repository.editMerchantOrder(command)).resolves.toEqual({ outcome: "invalid_state" });
+
+    expect(transaction.bookingOrder.updateMany).not.toHaveBeenCalled();
+    expect(transaction.auditLog.create).toHaveBeenCalledTimes(2);
+    expect(transaction.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "merchant_admin.booking.edit_rejected",
+        targetId: 700,
+        metadata: expect.objectContaining({ reason: "invalid_state", status: "CANCELLED" })
+      })
+    });
+  });
+
   it("rejects price changes after prepayment evidence exists", async () => {
     const transaction = transactionClient();
     transaction.bookingOrder.findFirst.mockResolvedValue({

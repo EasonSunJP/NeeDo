@@ -1037,6 +1037,18 @@ function formalMerchantOrderStatusLabel(status: BookingOrder["status"]) {
   return statusLabel(status);
 }
 
+function isFormalMerchantOrderEditable(status: BookingOrder["status"]) {
+  return status === "pending" || status === "confirmed";
+}
+
+function formalMerchantOrderReadOnlyMessage(status: BookingOrder["status"]) {
+  if (status === "cancelled") {
+    return "已取消订单不可变更业务数据。金额、支付手段和备注保持只读。";
+  }
+
+  return "当前订单状态不可变更业务数据。仅待确认或已确认订单可编辑。";
+}
+
 function formalCheckoutEvidenceLabel(evidence: OrderCheckout["paymentEvidence"]) {
   if (evidence === "ndp_ledger") return "NDP 账本已结算";
   if (evidence === "technician_receipt_confirmation") return "技师已确认收款";
@@ -1294,7 +1306,9 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
           >
             联系用户
           </Button>
-          <Button to={`/merchant/orders/${order.id}/change`} variant="secondary">变更</Button>
+          {isFormalMerchantOrderEditable(order.status) ? (
+            <Button to={`/merchant/orders/${order.id}/change`} variant="secondary">变更</Button>
+          ) : null}
           {technician
             ? <Button to={getMessagePath("merchant", getMerchantTechnicianConversationId(technician.id), `/merchant/orders/${order.id}`)}>联系技师</Button>
             : <Button to={`/merchant/orders/${order.id}/dispatch`}>派单</Button>}
@@ -1892,6 +1906,7 @@ function FormalMerchantOrderChangeContent({ orderId }: { orderId: number }) {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const editable = order ? isFormalMerchantOrderEditable(order.status) : false;
 
   useEffect(() => {
     let active = true;
@@ -1906,8 +1921,9 @@ function FormalMerchantOrderChangeContent({ orderId }: { orderId: number }) {
   }, [orderId]);
 
   const save = async () => {
+    if (!order || !editable || saving) return;
     const numericAmount = Number(amount);
-    if (!Number.isSafeInteger(numericAmount) || numericAmount < 0 || saving) {
+    if (!Number.isSafeInteger(numericAmount) || numericAmount < 0) {
       setError("金额必须是 0 以上的整数。");
       return;
     }
@@ -1916,8 +1932,12 @@ function FormalMerchantOrderChangeContent({ orderId }: { orderId: number }) {
     try {
       await bookingApi.editMerchantOrder(orderId, { priceAmountJpy: numericAmount, paymentMethod, note: note.trim() || null });
       navigate(`/merchant/orders/${orderId}`, { replace: true });
-    } catch {
-      setError("订单变更保存失败，请确认订单仍可编辑。");
+    } catch (caught) {
+      setError(
+        caught instanceof ApiClientError && caught.code === 40906
+          ? "当前订单状态不可变更业务数据。仅待确认或已确认订单可编辑。"
+          : "订单变更保存失败，请确认订单仍可编辑。"
+      );
       setSaving(false);
     }
   };
@@ -1927,13 +1947,18 @@ function FormalMerchantOrderChangeContent({ orderId }: { orderId: number }) {
     <main className="client-app-gutter min-h-0 flex-1 space-y-4 overflow-y-auto py-4 pb-28">
       <section className="space-y-4 rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5 shadow-panel">
         <div><p className="text-xs font-black text-[color:var(--client-muted)]">服务</p><p className="mt-1 text-lg font-black">{order?.serviceName ?? "正在读取…"}</p></div>
-        <label className="block text-sm font-black">金额<input className={orderChangeInputClassName} inputMode="numeric" onChange={(event) => setAmount(event.target.value.replace(/\D/gu, ""))} value={amount} /></label>
-        <label className="block text-sm font-black">支付手段<select className={orderChangeInputClassName} onChange={(event) => setPaymentMethod(event.target.value as "onsite" | "bank_transfer")} value={paymentMethod}><option value="onsite">现场支付</option><option value="bank_transfer">银行转账</option></select></label>
-        <label className="block text-sm font-black">备注<textarea className={`${orderChangeInputClassName} min-h-32 py-3`} maxLength={500} onChange={(event) => setNote(event.target.value)} value={note} /></label>
+        {order && !editable ? (
+          <p className="rounded-2xl bg-amber-500/10 p-4 text-sm font-black text-amber-700" role="status">
+            {formalMerchantOrderReadOnlyMessage(order.status)}
+          </p>
+        ) : null}
+        <label className="block text-sm font-black">金额<input className={orderChangeInputClassName} disabled={!editable} inputMode="numeric" onChange={(event) => setAmount(event.target.value.replace(/\D/gu, ""))} value={amount} /></label>
+        <label className="block text-sm font-black">支付手段<select className={orderChangeInputClassName} disabled={!editable} onChange={(event) => setPaymentMethod(event.target.value as "onsite" | "bank_transfer")} value={paymentMethod}><option value="onsite">现场支付</option><option value="bank_transfer">银行转账</option></select></label>
+        <label className="block text-sm font-black">备注<textarea className={`${orderChangeInputClassName} min-h-32 py-3`} disabled={!editable} maxLength={500} onChange={(event) => setNote(event.target.value)} value={note} /></label>
       </section>
       {error ? <p className="rounded-2xl bg-red-500/10 p-4 text-sm font-black text-red-500" role="alert">{error}</p> : null}
     </main>
-    <MobileBottomActionBar contentClassName="grid grid-cols-2 gap-2"><Button onClick={() => navigate(-1)} variant="secondary">取消</Button><Button disabled={!order || saving} onClick={() => void save()}>{saving ? "保存中…" : "保存变更"}</Button></MobileBottomActionBar>
+    <MobileBottomActionBar contentClassName="grid grid-cols-2 gap-2"><Button onClick={() => navigate(-1)} variant="secondary">取消</Button><Button disabled={!editable || saving} onClick={() => void save()}>{saving ? "保存中…" : "保存变更"}</Button></MobileBottomActionBar>
   </MobileFullscreenPage>;
 }
 

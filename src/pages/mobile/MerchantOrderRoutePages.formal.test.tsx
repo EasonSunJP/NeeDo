@@ -9,6 +9,7 @@ import type { CoreServiceDetail } from "../../features/core-read/api";
 
 const mocks = vi.hoisted(() => ({
   cancelOrder: vi.fn(),
+  editMerchantOrder: vi.fn(),
   exchangeLinked: false,
   getCheckout: vi.fn(),
   getCustomerProfile: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock("../../features/booking/api", async () => {
     ...actual,
     bookingApi: {
       cancelOrder: mocks.cancelOrder,
+      editMerchantOrder: mocks.editMerchantOrder,
       getCheckout: mocks.getCheckout,
       getOrder: mocks.getOrder
     }
@@ -92,7 +94,7 @@ vi.mock("../../features/exchange/ExchangeOrderCancellationPanel", () => ({
   }
 }));
 vi.mock("../../components/ui/Button", () => ({
-  Button: ({ children, disabled, to }: { children: React.ReactNode; disabled?: boolean; to?: string }) => to && !disabled ? <a href={to}>{children}</a> : <button disabled={disabled} type="button">{children}</button>
+  Button: ({ children, disabled, onClick, to, variant: _variant }: { children: React.ReactNode; disabled?: boolean; onClick?: () => void; to?: string; variant?: string }) => to && !disabled ? <a href={to}>{children}</a> : <button disabled={disabled} onClick={onClick} type="button">{children}</button>
 }));
 vi.mock("../../shared/order-detail/OrderDynamicStatusCard", () => ({ OrderDynamicStatusCard: ({ order }: { order: { status: string } }) => <div>{order.status}</div> }));
 vi.mock("../../shared/profile-card", () => ({
@@ -103,7 +105,7 @@ vi.mock("../../shared/profile-card", () => ({
   getScopedTechnicianDynamicPath: (scope: string, technician: { id: string; systemId?: string }) => `/${scope}/profiles/technician/${technician.systemId ?? technician.id}`
 }));
 
-import { buildFormalOrderPersonCard, MerchantOrderDetailRoutePage } from "./MerchantOrderRoutePages";
+import { buildFormalOrderPersonCard, MerchantOrderChangeRoutePage, MerchantOrderDetailRoutePage } from "./MerchantOrderRoutePages";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -223,6 +225,7 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     mocks.getOrder.mockResolvedValue(order);
+    mocks.editMerchantOrder.mockResolvedValue(order);
     mocks.cancelOrder.mockImplementation(async () => ({ ...order, status: "cancelled" }));
     mocks.exchangeLinked = false;
     mocks.getCheckout.mockResolvedValue(checkout);
@@ -418,5 +421,80 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
     expect(container.textContent).toContain("LifeDance 管理员");
     expect(container.textContent).not.toContain("本店订单加载失败");
     expect(container.textContent).not.toContain("正式结算");
+  });
+
+  it("hides the merchant change entry after an order is cancelled", async () => {
+    mocks.getOrder.mockResolvedValue({ ...order, status: "cancelled" });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/merchant/orders/46397"]}>
+          <Routes>
+            <Route path="/merchant/orders/:orderId" element={<MerchantOrderDetailRoutePage />} />
+          </Routes>
+        </MemoryRouter>
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(Array.from(container.querySelectorAll("a")).some((item) => item.textContent === "变更")).toBe(false);
+  });
+
+  it("keeps a cancelled order read-only when the merchant opens the change URL directly", async () => {
+    mocks.getOrder.mockResolvedValue({ ...order, status: "cancelled" });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/merchant/orders/46397/change"]}>
+          <Routes>
+            <Route path="/merchant/orders/:orderId/change" element={<MerchantOrderChangeRoutePage />} />
+          </Routes>
+        </MemoryRouter>
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("已取消订单不可变更业务数据");
+    expect(Array.from(container.querySelectorAll("input, select, textarea")).every((field) => field.hasAttribute("disabled"))).toBe(true);
+    const saveButton = Array.from(container.querySelectorAll("button")).find((item) => item.textContent === "保存变更");
+    expect(saveButton?.disabled).toBe(true);
+    await act(async () => saveButton?.click());
+    expect(mocks.editMerchantOrder).not.toHaveBeenCalled();
+  });
+
+  it("keeps confirmed orders editable under the existing merchant rule", async () => {
+    const confirmed = {
+      ...order,
+      status: "confirmed" as const,
+      paymentMethod: "onsite" as const,
+      paymentStatus: "pending" as const
+    };
+    mocks.getOrder.mockResolvedValue(confirmed);
+    mocks.editMerchantOrder.mockResolvedValue(confirmed);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/merchant/orders/46397/change"]}>
+          <Routes>
+            <Route path="/merchant/orders/:orderId/change" element={<MerchantOrderChangeRoutePage />} />
+            <Route path="/merchant/orders/:orderId" element={<p>saved</p>} />
+          </Routes>
+        </MemoryRouter>
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(Array.from(container.querySelectorAll("input, select, textarea")).every((field) => !field.hasAttribute("disabled"))).toBe(true);
+    const saveButton = Array.from(container.querySelectorAll("button")).find((item) => item.textContent === "保存变更");
+    expect(saveButton?.disabled).toBe(false);
+    await act(async () => saveButton?.click());
+    expect(mocks.editMerchantOrder).toHaveBeenCalledWith(order.id, {
+      priceAmountJpy: order.paymentAmountJpy,
+      paymentMethod: "onsite",
+      note: null
+    });
   });
 });

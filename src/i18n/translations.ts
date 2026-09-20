@@ -64,6 +64,18 @@ export function getAnalyticsMetricInfoLabel(title: string, language: Language) {
 
 
 export const translations: TranslationMap = {
+  "已取消订单不可变更业务数据。金额、支付手段和备注保持只读。": fourLanguageTranslation(
+    "已取消訂單不可變更業務資料。金額、付款方式與備註保持唯讀。",
+    "キャンセル済みの注文では業務データを変更できません。金額、支払方法、備考は読み取り専用です。",
+    "Cancelled orders cannot be changed. The amount, payment method, and note are read-only.",
+    "취소된 주문의 업무 데이터는 변경할 수 없습니다. 금액, 결제 수단 및 메모는 읽기 전용입니다."
+  ),
+  "当前订单状态不可变更业务数据。仅待确认或已确认订单可编辑。": fourLanguageTranslation(
+    "目前訂單狀態不可變更業務資料。僅待確認或已確認訂單可編輯。",
+    "現在の注文状態では業務データを変更できません。保留中または確認済みの注文のみ編集できます。",
+    "This order state cannot be changed. Only pending or confirmed orders are editable.",
+    "현재 주문 상태에서는 업무 데이터를 변경할 수 없습니다. 대기 중이거나 확정된 주문만 편집할 수 있습니다."
+  ),
   ...platformReviewTranslations,
   "顾客支付总额": fourLanguageTranslation("顧客支付總額", "お客様支払総額", "Customer payment total", "고객 결제 총액"),
   "基础服务金额": fourLanguageTranslation("基礎服務金額", "基本サービス料金", "Base service amount", "기본 서비스 금액"),

@@ -34,6 +34,10 @@ describe("booking nomination and merchant dispatch OpenAPI", () => {
         responses: expect.objectContaining({ "401": expect.any(Object), "403": expect.any(Object) })
       });
     }
+
+    expect(document.paths["/api/v1/orders/{id}/merchant-edit"]?.patch.responses?.["409"]).toEqual({
+      description: "40906 error.order.invalid_transition — only pending or confirmed orders are merchant-editable; concurrent financial changes keep their dedicated conflict code"
+    });
   });
 
   it("documents forwarding an existing immutable chat record", () => {

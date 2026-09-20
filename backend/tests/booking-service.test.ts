@@ -234,6 +234,46 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
+  it("returns the stable invalid-transition error when merchant editing loses the state race", async () => {
+    const repository = createRepository(makeOrder("cancelled"));
+    repository.editMerchantOrder = jest.fn(async () => ({ outcome: "invalid_state" as const }));
+    const service = new BookingService(repository);
+    const merchant = {
+      userId: 7,
+      roles: ["merchant_owner"],
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop" as const,
+      currentIdentityScopeId: 1
+    };
+
+    await expect(service.editMerchantOrder(merchant, 1, { note: "late edit" })).rejects.toMatchObject({
+      code: ERROR_CODES.ORDER_INVALID_TRANSITION,
+      message: "error.order.invalid_transition",
+      statusCode: 409
+    });
+  });
+
+  it("keeps confirmed merchant orders editable", async () => {
+    const confirmed = makeOrder("confirmed");
+    const repository = createRepository(confirmed);
+    repository.editMerchantOrder = jest.fn(async () => ({ outcome: "ok" as const, order: confirmed }));
+    const service = new BookingService(repository);
+    const merchant = {
+      userId: 7,
+      roles: ["merchant_owner"],
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop" as const,
+      currentIdentityScopeId: 1
+    };
+
+    await expect(service.editMerchantOrder(merchant, 1, { note: "confirmed edit" })).resolves.toBe(confirmed);
+    expect(repository.editMerchantOrder).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: 7,
+      orderId: 1,
+      shopId: 1
+    }));
+  });
+
   it("rejects direct booking when the selected identity cannot view the slot shop", async () => {
     const order = makeOrder("pending");
     const repository = createRepository(order);
