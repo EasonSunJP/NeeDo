@@ -662,6 +662,70 @@ describe("formal checkout technician-card round trip", () => {
     expect(createBooking.mock.calls[0]?.[0]).not.toHaveProperty("serviceId");
   });
 
+  it("keeps a store-selected technician service, date, time, price, and owner on direct checkout reload", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    const getContext = vi.spyOn(bookingApi, "getTechnicianServiceBookingContext")
+      .mockResolvedValue(technicianBookingContext);
+    const listAvailability = vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
+      list: [{ ...technicianSlot, nominationFeeJpy: 1_200 }],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
+    const createBooking = vi.spyOn(bookingApi, "createBooking").mockResolvedValue({
+      ...createdOrder,
+      serviceId: null,
+      technicianServiceId: 51,
+      scheduleSlotId: 151,
+      technicianProfileId: 17,
+      serviceName: "技师限定肩颈调理",
+      paymentAmountJpy: 10_200,
+      priceAmount: "10200.00"
+    });
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={[
+            "/checkout/technician-service/51?mode=store&date=2026-09-03&time=11%3A30"
+          ]}>
+            <Routes>
+              <Route element={<CheckoutPage />} path="/checkout/technician-service/:technicianServiceId" />
+              <Route element={<LocationProbe />} path="/orders/:orderId" />
+            </Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+
+    await waitFor(() => expect(container.textContent).toContain("技师限定肩颈调理"));
+    expect(getContext).toHaveBeenCalledWith(51);
+    expect(listAvailability).toHaveBeenCalledWith(expect.objectContaining({
+      technicianServiceId: 51,
+      serviceId: undefined,
+      includeUnavailable: true
+    }));
+    expect(container.textContent).toContain("2026年9月3日");
+    expect(container.textContent).toContain("11:30");
+    expect(container.textContent).toContain("Misaki");
+    expect(container.textContent).not.toContain("由店铺安排技师");
+    expect(container.textContent).toContain("￥10,200");
+
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确定预约"))!;
+    expect(confirm.disabled).toBe(false);
+    await click(confirm);
+
+    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({
+      expectedPriceAmountJpy: 10_200,
+      fulfillmentMode: "store",
+      nominatedTechnicianProfileId: 17,
+      scheduleSlotId: 151,
+      technicianServiceId: 51
+    })));
+    expect(createBooking.mock.calls[0]?.[0]).not.toHaveProperty("serviceId");
+  });
+
   it("reuses the same Intelligence idempotency key after an uncertain network failure", async () => {
     vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
     vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
