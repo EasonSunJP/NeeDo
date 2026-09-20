@@ -114,7 +114,8 @@ describe("merchant unified data dashboard", () => {
     expect(source).toContain("membership.completedCustomerCount");
     expect(source).toContain("dashboard.series.buckets");
     expect(source).toContain('key: "shopEstimatedGrossProfitJpy"');
-    expect(source).toContain('key: "scheduleTotalHours"');
+    expect(source).toContain("ScheduleStatusChart");
+    expect(source).not.toContain('key: "scheduleTotalHours"');
     expect(source).toContain("const cost = dashboard.finance.shopNdpCost");
     expect(source).toContain("formatDashboardNumber(cost.totalNdp, language)");
     expect(source).toContain("dashboard.finance.frozen.ndp");

@@ -33,6 +33,12 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
     expect(source).toContain("<ScheduleCacheRefreshIndicator");
   });
 
+  it("uses the preload cache identity and keeps cold loading interactive", () => {
+    expect(source).toContain("getFormalMerchantScheduleCacheResourceKey(formalStore.id)");
+    expect(source).toContain("formalScheduleLoading || formalScheduleRefreshingCachedData");
+    expect(source).not.toContain("disabled={formalScheduleLoading ||");
+  });
+
   it("keeps the formal board override during loading and errors", () => {
     const start = source.indexOf("const formalScheduleBoard = useMemo");
     const guard = source.slice(start, source.indexOf("return buildFormalMerchantScheduleBoard", start));
@@ -84,7 +90,7 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
     expect(source).toContain('data-testid="merchant-current-schedule-detail-action"');
     expect(source).toContain('className="safe-bottom client-app-frame client-app-gutter fixed inset-x-0 bottom-0 z-[80]');
     expect(source).toContain('onClick={() => setScheduleDetailOpen(true)}');
-    expect(source).toContain('{formalScheduleLoading ? t("加载正式排班中") : t("查看详细排班表")}');
+    expect(source).toContain('{t("查看详细排班表")}');
   });
 
   it("keeps schedule content aligned under the shared glass header without a local solid wrapper", () => {

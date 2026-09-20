@@ -4,6 +4,7 @@ import storeSource from "../../dispatch-center/store.ts?raw";
 import automationWizardSource from "./AutomationWizard.tsx?raw";
 import stepCreateCycleSource from "./StepCreateCycle.tsx?raw";
 import stepModeSelectionSource from "./StepModeSelection.tsx?raw";
+import stepProgressSource from "./ScheduleStepProgress.tsx?raw";
 import legacyTypesSource from "../../../types/shiftPlanning.ts?raw";
 import legacyDomainSource from "../../../lib/shiftPlanning.ts?raw";
 import legacyStoreSource from "../../../state/shiftPlanningStore.ts?raw";
@@ -29,9 +30,9 @@ describe("merchant scheduling mode retirement", () => {
     expect(stepCreateCycleSource).toContain('type="datetime-local"');
     expect(stepCreateCycleSource).toContain("技师反馈截止");
     expect(stepCreateCycleSource).toContain("已进入最终确认");
-    expect(automationWizardSource).toContain('{ step: 3, label: "最终确认" }');
-    expect(automationWizardSource).toContain('{ step: 3, label: "技师反馈" }');
-    expect(automationWizardSource).toContain('{ step: 4, label: "最终确认" }');
+    expect(stepProgressSource).toContain('{ step: 3, label: "最终确认" }');
+    expect(stepProgressSource).toContain('{ step: 3, label: "技师反馈" }');
+    expect(stepProgressSource).toContain('{ step: 4, label: "最终确认" }');
   });
 
   it("uses a generic unsupported-mode fallback without restoring the retired mode", () => {

@@ -20,6 +20,7 @@ export interface DashboardBucketPayload {
   scheduleTotalHours: number;
   scheduleAvailableHours: number;
   scheduleBookedHours: number;
+  scheduleAttendanceCount: number;
 }
 
 export interface DashboardAggregateInput {
@@ -144,6 +145,7 @@ export interface DashboardActivityFacts {
       | "scheduleTotalHours"
       | "scheduleAvailableHours"
       | "scheduleBookedHours"
+      | "scheduleAttendanceCount"
     >
   >;
 }

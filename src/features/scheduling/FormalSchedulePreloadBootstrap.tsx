@@ -5,7 +5,7 @@ import { getFormalMerchantScheduleCycleRange } from "../../components/scheduling
 import { addDays, getTodayDateKey, parseDateKey } from "../technician-schedule/model";
 import type { BookingScheduleSlot } from "../booking/api";
 import { schedulingApi, type SchedulePreloadResource } from "./api";
-import { writeFormalScheduleWindow } from "./formalScheduleWindowCache";
+import { getFormalMerchantScheduleCacheResourceKey, writeFormalScheduleWindow } from "./formalScheduleWindowCache";
 
 const pageSize = 100;
 const maxConcurrentPageLoads = 4;
@@ -102,13 +102,13 @@ export async function preloadFormalSchedulesForSession(session: AuthSession) {
     writes.push(writeFormalScheduleWindow({
       cacheScope,
       ...cycleWindow,
-      resourceKey: `store-${first.merchant.shopId}`,
+      resourceKey: getFormalMerchantScheduleCacheResourceKey(first.merchant.shopId),
       scheduleScope: "merchant-admin"
     }, merchantSlots, first.fetchedAt));
     writes.push(writeFormalScheduleWindow({
       cacheScope,
       ...dayWindow,
-      resourceKey: `store-${first.merchant.shopId}`,
+      resourceKey: getFormalMerchantScheduleCacheResourceKey(first.merchant.shopId),
       scheduleScope: "merchant-admin"
     }, merchantSlots.filter((slot) => {
       const startsAt = new Date(slot.startsAt);

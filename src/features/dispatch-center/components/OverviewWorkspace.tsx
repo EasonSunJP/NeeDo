@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MobileFullscreenHeader } from "../../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../../components/mobile/MobileFullscreenPage";
@@ -24,7 +24,7 @@ import { buildFormalMerchantScheduleBoard, getFormalMerchantScheduleCycleRange }
 import { emptyOrders as orders } from "../../../data/formalRuntimeFallbacks";
 import { loadCoreReadWithTransientRetry } from "../../core-read/transientRetry";
 import { loadManagedScheduleWindow } from "../../scheduling/window-loader";
-import { readFormalScheduleWindow, refreshFormalScheduleWindow } from "../../scheduling/formalScheduleWindowCache";
+import { getFormalMerchantScheduleCacheResourceKey, readFormalScheduleWindow, refreshFormalScheduleWindow } from "../../scheduling/formalScheduleWindowCache";
 import { getAuthenticatedPersistentCacheScope } from "../../../lib/persistentCacheScope";
 import { getMerchantStaffDetailPath } from "../../../lib/merchantStaffRoute";
 import { getMerchantCustomerConversationId, getMessagePath } from "../../../lib/messageCenter";
@@ -56,24 +56,16 @@ import {
 } from "../store";
 
 function formatCompactPeriodLabel(periodLabel: string) {
-  if (periodLabel === "-") {
-    return periodLabel;
-  }
-
   const [start = "", end = ""] = periodLabel.split(" - ");
   const [startYear = "", startMonth = "", startDay = ""] = start.split("-");
   const [endYear = "", endMonth = "", endDay = ""] = end.split("-");
-
-  if (!(startMonth && startDay && endMonth && endDay)) {
-    return periodLabel;
-  }
-
-  if (startYear === endYear) {
-    return `${startMonth}.${startDay} - ${endMonth}.${endDay}`;
-  }
-
-  return `${startYear.slice(2)}.${startMonth}.${startDay} - ${endYear.slice(2)}.${endMonth}.${endDay}`;
+  if (!(startMonth && startDay && endMonth && endDay)) return periodLabel;
+  return startYear === endYear
+    ? `${startMonth}.${startDay} - ${endMonth}.${endDay}`
+    : `${startYear.slice(2)}.${startMonth}.${startDay} - ${endYear.slice(2)}.${endMonth}.${endDay}`;
 }
+
+const FormalScheduleOverviewMetrics = lazy(() => import("./FormalScheduleOverviewMetrics"));
 
 function ComputerAvatarIcon() {
   return (
@@ -871,7 +863,7 @@ export function DispatchOverviewWorkspace({
     const to = new Date(`${formalCycleRange.periodEnd}T23:59:59.999+09:00`);
     const cacheScope = getAuthenticatedPersistentCacheScope();
     const cacheInput = cacheScope && formalStore
-      ? { cacheScope, from, resourceKey: formalStore.id, scheduleScope: "merchant-admin" as const, to }
+      ? { cacheScope, from, resourceKey: getFormalMerchantScheduleCacheResourceKey(formalStore.id), scheduleScope: "merchant-admin" as const, to }
       : null;
     setFormalScheduleResult({
       scopeKey: formalScheduleScopeKey,
@@ -1004,39 +996,6 @@ export function DispatchOverviewWorkspace({
     setSelectedCell(cell);
   };
 
-  const overviewCards: Array<{
-    label: string;
-    value: string;
-    tone: BadgeTone;
-  }> = [
-    {
-      label: "排班人员",
-      value: formalScheduleLoading
-        ? t("加载中")
-        : formalScheduleBoard
-          ? `${formalScheduleBoard.summary.scheduledTechnicianCount}/${formalScheduleBoard.summary.technicianCount}`
-          : rangeSummary.technicianCountLabel,
-      tone: "neutral"
-    },
-    {
-      label: "确定天数",
-      value: formalScheduleLoading
-        ? t("加载中")
-        : formalScheduleBoard
-          ? `${formalScheduleBoard.summary.scheduledDayCount}/14 天`
-          : rangeSummary.confirmedDayLabel,
-      tone: "blue"
-    },
-    {
-      label: usesFormalMerchantSchedule ? "有预约时段" : "确定订单",
-      value: formalScheduleLoading
-        ? t("加载中")
-        : formalScheduleBoard
-          ? `${formalScheduleBoard.summary.bookedCount}`
-          : rangeSummary.confirmedOrderLabel,
-      tone: "green"
-    }
-  ];
   const mobileContactStatusItems = useMemo<MobileContactStatusItem[]>(() => {
     if (!isMobileSurface || !rangeSummary.effectiveStartDate || !rangeSummary.effectiveEndDate) {
       return [];
@@ -1784,7 +1743,7 @@ export function DispatchOverviewWorkspace({
 
   return (
     <>
-      {formalScheduleRefreshingCachedData ? (
+      {formalScheduleLoading || formalScheduleRefreshingCachedData ? (
         <ScheduleCacheRefreshIndicator label={t("加载正式排班中")} />
       ) : null}
       {!isMobileSurface ? (
@@ -1821,25 +1780,24 @@ export function DispatchOverviewWorkspace({
 
         {isMobileSurface ? (
           <div className="mt-4 grid gap-3">
-            <div className="grid grid-cols-2 gap-2 text-sm font-black text-ink">
-              <div className={cn("rounded-[18px] border px-3 py-2.5", cardClass)}>
-                <p className={cn("text-[10px] uppercase tracking-[0.14em]", labelTextClass)}>周期</p>
-                <p className="mt-1 text-[15px]">{formalScheduleLoading ? t("加载中") : formatCompactPeriodLabel(schedulePeriodLabel)}</p>
-              </div>
-              <div className={cn("rounded-[18px] border px-3 py-2.5", cardClass)}>
-                <p className={cn("text-[10px] uppercase tracking-[0.14em]", labelTextClass)}>模式</p>
-                <p className="mt-1 truncate text-[15px]">{summary.currentModeLabel}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              {overviewCards.map((card) => (
-                <article className="min-w-0 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-3 py-2.5" key={card.label}>
-                  <p className={cn("truncate text-[10px] font-black leading-none", labelTextClass)}>{card.label}</p>
-                  <strong className="mt-2 block truncate text-[14px] font-black leading-none text-ink">{card.value}</strong>
-                </article>
-              ))}
-            </div>
+            <Suspense fallback={null}>
+              <FormalScheduleOverviewMetrics
+                cardClass={cardClass}
+                cycleRange={formalCycleRange}
+                dateKey={dateKey}
+                fallbackConfirmedDayLabel={rangeSummary.confirmedDayLabel}
+                fallbackConfirmedOrderLabel={rangeSummary.confirmedOrderLabel}
+                fallbackTechnicianCountLabel={rangeSummary.technicianCountLabel}
+                formalScheduleAvailable={Boolean(formalScheduleBoard)}
+                labelTextClass={labelTextClass}
+                loading={formalScheduleLoading}
+                modeLabel={summary.currentModeLabel}
+                slots={formalScheduleSlots}
+                technicianCount={formalScheduleBoard?.summary.technicianCount ?? 0}
+                usesFormalMerchantSchedule={usesFormalMerchantSchedule}
+                view={overviewRangeView}
+              />
+            </Suspense>
 
             {formalScheduleError ? (
               <div className="rounded-[18px] border border-red-500/35 bg-red-500/10 px-3 py-3" role="alert">
@@ -1897,10 +1855,10 @@ export function DispatchOverviewWorkspace({
         >
           <Button
             className="h-14 w-full text-[15px] font-black shadow-[0_18px_46px_color-mix(in_srgb,var(--client-primary)_28%,rgba(0,0,0,0.28))]"
-            disabled={formalScheduleLoading || (Boolean(formalScheduleError) && !formalScheduleHasFallbackCache)}
+            disabled={Boolean(formalScheduleError) && !formalScheduleHasFallbackCache}
             onClick={() => setScheduleDetailOpen(true)}
           >
-            {formalScheduleLoading ? t("加载正式排班中") : t("查看详细排班表")}
+            {t("查看详细排班表")}
           </Button>
         </div>
       ) : null}

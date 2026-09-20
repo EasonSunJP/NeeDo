@@ -58,6 +58,7 @@ const aggregateFacts = (): DashboardAggregateFacts => ({
       registeredTechnicianCount: 17,
       scheduleTotalHours: 6,
       scheduleAvailableHours: 4,
+      scheduleAttendanceCount: 1,
       scheduleBookedHours: 2
     }
   ],
@@ -163,6 +164,7 @@ describe("BackofficeService named dashboard contract", () => {
             shopEstimatedGrossProfitJpy: 3_500,
             scheduleTotalHours: 6,
             scheduleAvailableHours: 4,
+            scheduleAttendanceCount: 1,
             scheduleBookedHours: 2
           }
         ]

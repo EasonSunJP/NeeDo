@@ -405,6 +405,7 @@ const createFixture = async (
           registeredTechnicianCount: 10,
           scheduleTotalHours: 0,
           scheduleAvailableHours: 0,
+          scheduleAttendanceCount: 0,
           scheduleBookedHours: 0
         })),
         finance: {

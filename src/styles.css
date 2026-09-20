@@ -4410,6 +4410,17 @@ html[data-needo-display-mode="standalone"] .client-shell .im-composer-input-shel
   margin-inline-start: calc(-1 * var(--schedule-step-arrow));
 }
 
+.schedule-stepper-step:last-child {
+  padding-inline-end: 8px;
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% 100%,
+    0 100%,
+    var(--schedule-step-arrow) 50%
+  );
+}
+
 .schedule-stepper-step[data-state="complete"] {
   z-index: 2;
   background: color-mix(in srgb, var(--schedule-step-accent) 28%, var(--schedule-step-surface) 72%);
@@ -9747,11 +9758,21 @@ html.im-conversation-scroll-lock #root {
   50% { opacity: 1; transform: scale(1); }
 }
 
+@keyframes schedule-cache-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
 .schedule-cache-refresh-ring {
   position: relative;
   width: 112px;
   height: 112px;
   color: var(--client-primary, #765df6);
+}
+
+.schedule-cache-refresh-dots {
+  position: absolute;
+  inset: 0;
+  animation: schedule-cache-refresh-spin 1.1s linear infinite;
 }
 
 .schedule-cache-refresh-dot {
@@ -9791,5 +9812,6 @@ html.im-conversation-scroll-lock #root {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .schedule-cache-refresh-dots { animation-duration: 2.4s; }
   .schedule-cache-refresh-dot::after { animation: none; opacity: 0.72; }
 }
