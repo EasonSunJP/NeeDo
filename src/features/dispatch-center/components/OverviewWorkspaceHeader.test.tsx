@@ -30,6 +30,8 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
     expect(source).toContain("formalScheduleReloadKey, formalScheduleScopeKey, formalStore?.id, usesFormalMerchantSchedule]");
     expect(source).toContain("readFormalScheduleWindow(cacheInput)");
     expect(source).toContain("refreshFormalScheduleWindow(cacheInput, load)");
+    expect(source).toContain('availabilityWindowApi.listAll("merchant-admin", { from, to })');
+    expect(source).toContain("availabilityWindows: formalAvailabilityWindows");
     expect(source).toContain("<ScheduleCacheRefreshIndicator");
   });
 

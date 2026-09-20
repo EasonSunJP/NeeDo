@@ -18,8 +18,9 @@ const employeeRecord = (overrides: Record<string, unknown> = {}) => ({
     status: "published",
     verifiedAt: new Date("2026-05-25T00:00:00.000Z"),
     updatedAt: new Date("2026-08-28T00:00:00.000Z"),
+    mediaAssets: [{ url: "/technician-identity-avatar.png" }],
     user: {
-      avatarUrl: "/avatar.png",
+      avatarBootstrapUrl: "/account-bootstrap-avatar.png",
       email: "staff@example.com",
       phone: "+81-90-0000-0000",
       isActive: true,
@@ -95,6 +96,7 @@ describe("TechnicianShopAffiliationRepository", () => {
         {
           needoId: "s0000000086",
           displayName: "斋藤 健太",
+          avatarUrl: "/technician-identity-avatar.png",
           affiliation: {
             relationshipType: "partner",
             workStatus: "active",
@@ -368,6 +370,12 @@ describe("TechnicianShopAffiliationRepository", () => {
           endsAt: new Date("2026-08-29T15:00:00.000Z")
         }
       ]);
+    const availabilityFindMany = jest.fn().mockResolvedValue([
+      {
+        startsAt: new Date("2026-08-29T12:00:00.000Z"),
+        endsAt: new Date("2026-08-29T16:00:00.000Z")
+      }
+    ]);
     const repository = new TechnicianShopAffiliationRepository({
       userIdentity: {
         findFirst: jest.fn().mockResolvedValue({
@@ -380,12 +388,7 @@ describe("TechnicianShopAffiliationRepository", () => {
       scheduleSlot: { findMany: jest.fn().mockResolvedValue([]) },
       bookingOrder: { findMany: bookingFindMany },
       availability: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            startsAt: new Date("2026-08-29T12:00:00.000Z"),
-            endsAt: new Date("2026-08-29T16:00:00.000Z")
-          }
-        ])
+        findMany: availabilityFindMany
       }
     } as unknown as PrismaClient);
 
@@ -417,6 +420,16 @@ describe("TechnicianShopAffiliationRepository", () => {
     ]);
     const serialized = JSON.stringify(result?.find((event) => event.kind === "busy_redacted"));
     expect(serialized).not.toMatch(/shop|order|service|customer|price|address|note|participant/i);
+    expect(availabilityFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          technicianProfileId: 47,
+          sourceType: "TECHNICIAN",
+          visibility: "TECHNICIAN_SHOPS"
+        })
+      })
+    );
+    expect(availabilityFindMany.mock.calls[0]?.[0]?.where).not.toHaveProperty("shopId");
   });
 
   it("updates only a profile with a current affiliation in the requested shop", async () => {

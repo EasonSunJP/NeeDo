@@ -24,6 +24,7 @@ import { buildFormalMerchantScheduleBoard, getFormalMerchantScheduleCycleRange }
 import { emptyOrders as orders } from "../../../data/formalRuntimeFallbacks";
 import { loadCoreReadWithTransientRetry } from "../../core-read/transientRetry";
 import { loadManagedScheduleWindow } from "../../scheduling/window-loader";
+import { availabilityWindowApi, type AvailabilityWindow } from "../../scheduling/availability-window-api";
 import { getFormalMerchantScheduleCacheResourceKey, readFormalScheduleWindow, refreshFormalScheduleWindow } from "../../scheduling/formalScheduleWindowCache";
 import { getAuthenticatedPersistentCacheScope } from "../../../lib/persistentCacheScope";
 import { getMerchantStaffDetailPath } from "../../../lib/merchantStaffRoute";
@@ -773,13 +774,14 @@ export function DispatchOverviewWorkspace({
   const [selectedCell, setSelectedCell] = useState<DispatchScheduleCell | null>(null);
   const [selectedContactStatusItem, setSelectedContactStatusItem] = useState<MobileContactStatusItem | null>(null);
   const [formalScheduleResult, setFormalScheduleResult] = useState<{
+    availabilityWindows: AvailabilityWindow[];
     scopeKey: string;
     slots: Awaited<ReturnType<typeof loadManagedScheduleWindow>>;
     loading: boolean;
     refreshingCachedData: boolean;
     hasFallbackCache: boolean;
     error: string;
-  }>({ scopeKey: "", slots: [], loading: false, refreshingCachedData: false, hasFallbackCache: false, error: "" });
+  }>({ availabilityWindows: [], scopeKey: "", slots: [], loading: false, refreshingCachedData: false, hasFallbackCache: false, error: "" });
   const [formalScheduleReloadKey, setFormalScheduleReloadKey] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
@@ -792,6 +794,9 @@ export function DispatchOverviewWorkspace({
   const formalScheduleScopeKey = `${formalStore?.id ?? storeId}:${formalCycleRange.periodStart}:${formalCycleRange.periodEnd}`;
   const formalScheduleMatchesScope = formalScheduleResult.scopeKey === formalScheduleScopeKey;
   const formalScheduleSlots = formalScheduleMatchesScope ? formalScheduleResult.slots : [];
+  const formalAvailabilityWindows = formalScheduleMatchesScope
+    ? formalScheduleResult.availabilityWindows
+    : [];
   const formalScheduleLoading = usesFormalMerchantSchedule && (!formalScheduleMatchesScope || formalScheduleResult.loading);
   const formalScheduleError = formalScheduleMatchesScope ? formalScheduleResult.error : "";
   const formalScheduleRefreshingCachedData =
@@ -804,6 +809,7 @@ export function DispatchOverviewWorkspace({
     }
 
     return buildFormalMerchantScheduleBoard({
+      availabilityWindows: formalAvailabilityWindows,
       dateKey,
       range: formalCycleRange,
       shop: { cover: formalStore.cover, id: formalStore.id, name: formalStore.name },
@@ -817,7 +823,7 @@ export function DispatchOverviewWorkspace({
         publicNeedoId: technician.systemId
       }))
     });
-  }, [dateKey, formalCycleRange, formalScheduleSlots, formalStore, formalTechnicians, usesFormalMerchantSchedule]);
+  }, [dateKey, formalAvailabilityWindows, formalCycleRange, formalScheduleSlots, formalStore, formalTechnicians, usesFormalMerchantSchedule]);
   const schedulePeriodLabel = formalScheduleBoard?.periodLabel ?? summary.activePeriodLabel;
   const scheduleDetailStickyTop = "var(--client-mobile-schedule-detail-grid-header-top, calc(env(safe-area-inset-top, 0px) + 58px))";
   const overviewRangeView: ScheduleViewSegmentedValue = view === "agenda" || view === "threeDay" ? "day" : view;
@@ -866,6 +872,7 @@ export function DispatchOverviewWorkspace({
       ? { cacheScope, from, resourceKey: getFormalMerchantScheduleCacheResourceKey(formalStore.id), scheduleScope: "merchant-admin" as const, to }
       : null;
     setFormalScheduleResult({
+      availabilityWindows: [],
       scopeKey: formalScheduleScopeKey,
       slots: [],
       loading: true,
@@ -879,6 +886,7 @@ export function DispatchOverviewWorkspace({
         cachedSlots = await readFormalScheduleWindow(cacheInput).catch(() => null);
         if (active && cachedSlots) {
           setFormalScheduleResult({
+            availabilityWindows: [],
             scopeKey: formalScheduleScopeKey,
             slots: cachedSlots,
             loading: false,
@@ -893,11 +901,17 @@ export function DispatchOverviewWorkspace({
           "merchant-admin",
           { from, to }
         ));
-        const slots = cacheInput
-          ? await refreshFormalScheduleWindow(cacheInput, load)
-          : await load();
+        const [slots, availabilityWindows] = await Promise.all([
+          cacheInput
+            ? refreshFormalScheduleWindow(cacheInput, load)
+            : load(),
+          loadCoreReadWithTransientRetry(() =>
+            availabilityWindowApi.listAll("merchant-admin", { from, to })
+          )
+        ]);
         if (active) {
           setFormalScheduleResult({
+            availabilityWindows,
             scopeKey: formalScheduleScopeKey,
             slots,
             loading: false,
@@ -909,6 +923,7 @@ export function DispatchOverviewWorkspace({
       } catch (error: unknown) {
         if (active) {
           setFormalScheduleResult({
+            availabilityWindows: [],
             scopeKey: formalScheduleScopeKey,
             slots: cachedSlots ?? [],
             loading: false,

@@ -1,4 +1,5 @@
 import type { BookingScheduleSlot } from "../../features/booking/api";
+import type { AvailabilityWindow } from "../../features/scheduling/availability-window-api";
 import { addDays, getTodayDateKey, getWeekdayLabel } from "../../features/technician-schedule/model";
 import type { DispatchScheduleCell, DispatchScheduleGridData, DispatchScheduleRow } from "../../features/dispatch-center/store";
 import type { Technician } from "../../types/domain";
@@ -11,6 +12,7 @@ type FormalMerchantScheduleCycleRange = {
 };
 
 type FormalMerchantScheduleBoardInput = {
+  availabilityWindows?: AvailabilityWindow[];
   dateKey: string;
   range: FormalMerchantScheduleCycleRange;
   shop: { cover: string; id: string; name: string };
@@ -159,6 +161,19 @@ function buildFormalScheduleLanes(input: FormalMerchantScheduleBoardInput): Form
     });
   });
 
+  (input.availabilityWindows ?? []).forEach((window) => {
+    if (knownTechnicianIds.has(window.technicianProfileId)) return;
+    knownTechnicianIds.add(window.technicianProfileId);
+    lanes.push({
+      avatar: "",
+      caption: "正式可排班记录",
+      detailPath: undefined,
+      id: String(window.technicianProfileId),
+      label: `技师 ${window.technicianProfileId}`,
+      technicianProfileId: window.technicianProfileId
+    });
+  });
+
   if (input.slots.some((slot) => slot.technicianProfileId == null)) {
     lanes.push({
       avatar: input.shop.cover,
@@ -173,7 +188,13 @@ function buildFormalScheduleLanes(input: FormalMerchantScheduleBoardInput): Form
   return lanes;
 }
 
-function buildScheduleCell(date: string, hour: number, lane: FormalScheduleLane, slots: BookingScheduleSlot[]): DispatchScheduleCell {
+function buildScheduleCell(
+  date: string,
+  hour: number,
+  lane: FormalScheduleLane,
+  slots: BookingScheduleSlot[],
+  availabilityWindows: AvailabilityWindow[]
+): DispatchScheduleCell {
   const cellStartsAt = new Date(`${date}T${String(hour).padStart(2, "0")}:00:00+09:00`).getTime();
   const cellEndsAt = cellStartsAt + 60 * 60 * 1000;
   const overlappingSlots = slots
@@ -185,12 +206,25 @@ function buildScheduleCell(date: string, hour: number, lane: FormalScheduleLane,
     })
     .sort((left, right) => getSlotPriority(right) - getSlotPriority(left) || left.id - right.id);
   const slot = overlappingSlots[0];
-  const status = slot ? getSlotStatus(slot) : "idle";
+  const availabilityWindow = availabilityWindows.find((window) =>
+    window.isActive &&
+    window.technicianProfileId === lane.technicianProfileId &&
+    new Date(window.startsAt).getTime() < cellEndsAt &&
+    new Date(window.endsAt).getTime() > cellStartsAt
+  );
+  const status = slot ? getSlotStatus(slot) : availabilityWindow ? "open" : "idle";
+  const availabilityTitle = availabilityWindow
+    ? availabilityWindow.sourceType === "shop" ? "店铺排班" : "自由排班"
+    : null;
 
   return {
     darkened: false,
     date,
-    detail: slot ? getSlotDetail(slot) : "暂无正式排班",
+    detail: slot
+      ? getSlotDetail(slot)
+      : availabilityWindow
+        ? `${availabilityWindow.shopName} · 可排班 ${availabilityWindow.capacity} 人`
+        : "暂无正式排班",
     hour,
     id: `formal-${lane.id}-${date}-${hour}`,
     isClickable: false,
@@ -198,12 +232,20 @@ function buildScheduleCell(date: string, hour: number, lane: FormalScheduleLane,
     status,
     technicianId: lane.id,
     technicianName: lane.label,
-    title: slot?.serviceName ?? "未排班"
+    title: slot?.serviceName ?? availabilityTitle ?? "未排班"
   };
 }
 
-function buildScheduleRow(date: string, lane: FormalScheduleLane, slots: BookingScheduleSlot[]): DispatchScheduleRow {
-  const cells = Array.from({ length: 24 }, (_, hour) => buildScheduleCell(date, hour, lane, slots));
+function buildScheduleRow(
+  date: string,
+  lane: FormalScheduleLane,
+  slots: BookingScheduleSlot[],
+  availabilityWindows: AvailabilityWindow[]
+): DispatchScheduleRow {
+  const cells = Array.from(
+    { length: 24 },
+    (_, hour) => buildScheduleCell(date, hour, lane, slots, availabilityWindows)
+  );
 
   return {
     cells,
@@ -230,6 +272,7 @@ export function getFormalMerchantScheduleCycleRange(dateKey: string): FormalMerc
 
 export function buildFormalMerchantScheduleBoard(input: FormalMerchantScheduleBoardInput): FormalMerchantScheduleBoardResult {
   const dates = enumerateDateKeys(input.range.periodStart, input.range.periodEnd);
+  const availabilityWindows = input.availabilityWindows ?? [];
   const scheduleLanes = buildFormalScheduleLanes(input);
   const lanes: UnifiedCalendarLane[] = scheduleLanes.map((lane, index) => ({
     accent: laneAccents[index % laneAccents.length] ?? "var(--client-primary)",
@@ -244,10 +287,10 @@ export function buildFormalMerchantScheduleBoard(input: FormalMerchantScheduleBo
     dates: [date],
     headers: [{ key: date, label: date.slice(5), sublabel: getWeekdayLabel(date) }],
     nowHour: new Date().getHours(),
-    rows: scheduleLanes.map((lane) => buildScheduleRow(date, lane, input.slots))
+    rows: scheduleLanes.map((lane) => buildScheduleRow(date, lane, input.slots, availabilityWindows))
   }));
   const cellByEventId = new Map<string, DispatchScheduleCell>();
-  const events = input.slots.flatMap((slot): UnifiedCalendarEvent[] => {
+  const slotEvents = input.slots.flatMap((slot): UnifiedCalendarEvent[] => {
     const lane = resolveLaneForSlot(slot, scheduleLanes);
     if (!lane) return [];
     const slotStart = new Date(slot.startsAt).getTime();
@@ -294,8 +337,62 @@ export function buildFormalMerchantScheduleBoard(input: FormalMerchantScheduleBo
         title: slot.serviceName
       }];
     });
-  }).sort((left, right) => `${left.date} ${left.startTime} ${left.id}`.localeCompare(`${right.date} ${right.startTime} ${right.id}`));
-  const scheduledTechnicianIds = new Set(input.slots.map((slot) => slot.technicianProfileId).filter((id): id is number => id != null));
+  });
+  const availabilityEvents = availabilityWindows.flatMap((window): UnifiedCalendarEvent[] => {
+    const lane = scheduleLanes.find(
+      (candidate) => candidate.technicianProfileId === window.technicianProfileId
+    );
+    if (!lane || !window.isActive) return [];
+    const windowStart = new Date(window.startsAt).getTime();
+    const windowEnd = new Date(window.endsAt).getTime();
+    return dates.flatMap((date): UnifiedCalendarEvent[] => {
+      const dayStart = new Date(`${date}T00:00:00+09:00`).getTime();
+      const dayEnd = new Date(`${addDays(date, 1)}T00:00:00+09:00`).getTime();
+      if (windowStart >= dayEnd || windowEnd <= dayStart) return [];
+      const start = getJstDateTimeParts(new Date(Math.max(windowStart, dayStart)).toISOString());
+      const end = windowEnd >= dayEnd
+        ? { date, time: "24:00" }
+        : getJstDateTimeParts(window.endsAt);
+      const eventId = `formal-availability-${window.id}-${date}`;
+      const eventHour = Number(start.time.slice(0, 2));
+      const eventCell = dayGrids
+        .find((grid) => grid.dates[0] === start.date)
+        ?.rows.find((row) => row.technicianId === lane.id)
+        ?.cells.find((cell) => cell.hour === eventHour);
+      if (eventCell) cellByEventId.set(eventId, eventCell);
+      const title = window.sourceType === "shop" ? "店铺排班" : "自由排班";
+      return [{
+        availabilitySourceType: window.sourceType,
+        availabilityWindowId: window.id,
+        badge: "可排班",
+        calendarId: `technician:${lane.id}`,
+        calendarLabel: title,
+        creatorEntityId: window.sourceType === "shop" ? input.shop.id : lane.id,
+        creatorEntityType: window.sourceType === "shop" ? "shop" : "technician",
+        creatorLabel: window.sourceType === "shop" ? input.shop.name : lane.label,
+        date: start.date,
+        endDate: end.date,
+        endTime: end.time,
+        id: eventId,
+        participants: [
+          { avatar: lane.avatar, id: `technician:${lane.id}`, meta: lane.caption, name: lane.label, role: "参加者", to: lane.detailPath },
+          { avatar: input.shop.cover, id: `store:${input.shop.id}`, name: input.shop.name, role: "所属店铺" }
+        ],
+        readOnly: true,
+        sourceId: window.sourceType === "shop" ? "merchant" : "technician",
+        startTime: start.time,
+        subtitle: `${lane.label} · 可排班 ${window.capacity} 人`,
+        title
+      }];
+    });
+  });
+  const events = [...availabilityEvents, ...slotEvents].sort((left, right) =>
+    `${left.date} ${left.startTime} ${left.id}`.localeCompare(`${right.date} ${right.startTime} ${right.id}`)
+  );
+  const scheduledTechnicianIds = new Set([
+    ...input.slots.map((slot) => slot.technicianProfileId).filter((id): id is number => id != null),
+    ...availabilityWindows.map((window) => window.technicianProfileId)
+  ]);
   const scheduledDates = new Set(events.map((event) => event.date));
 
   return {

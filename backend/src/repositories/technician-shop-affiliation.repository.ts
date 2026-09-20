@@ -121,9 +121,15 @@ const employeeAffiliationSelect = Prisma.validator<Prisma.TechnicianShopAffiliat
       status: true,
       verifiedAt: true,
       updatedAt: true,
+      mediaAssets: {
+        where: { usageType: "avatar", isActive: true, deletedAt: null },
+        orderBy: { id: "desc" },
+        take: 1,
+        select: { url: true }
+      },
       user: {
         select: {
-          avatarUrl: true,
+          avatarBootstrapUrl: true,
           email: true,
           phone: true,
           isActive: true,
@@ -343,7 +349,6 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       }),
       this.client.availability.findMany({
         where: {
-          shopId: { not: input.shopId },
           technicianProfileId,
           sourceType: "TECHNICIAN",
           visibility: "TECHNICIAN_SHOPS",
@@ -760,7 +765,9 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
             : "unsynced") as WorkStatus),
       needoId: technicianIdentifier.publicId,
       displayName: record.technicianProfile.displayName,
-      avatarUrl: record.technicianProfile.user.avatarUrl,
+      avatarUrl:
+        record.technicianProfile.mediaAssets[0]?.url ??
+        record.technicianProfile.user.avatarBootstrapUrl,
       email: record.technicianProfile.user.email,
       phone: record.technicianProfile.user.phone,
       profileStatus: record.technicianProfile.status,

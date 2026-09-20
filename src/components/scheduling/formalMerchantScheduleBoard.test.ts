@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BookingScheduleSlot } from "../../features/booking/api";
+import type { AvailabilityWindow } from "../../features/scheduling/availability-window-api";
 import { buildFormalMerchantScheduleBoard, getFormalMerchantScheduleCycleRange } from "./formalMerchantScheduleBoard";
 
 const technicians = [
@@ -41,6 +42,54 @@ const slot = (input: Partial<BookingScheduleSlot> = {}): BookingScheduleSlot => 
 });
 
 describe("formal merchant schedule board", () => {
+  it("projects a technician continuous availability window without materialized slots", () => {
+    const availabilityWindow: AvailabilityWindow = {
+      capacity: 1,
+      createdAt: "2026-09-01T00:00:00.000Z",
+      endsAt: "2026-12-21T00:00:00+09:00",
+      id: 901,
+      isActive: true,
+      shopId: 16,
+      shopName: "LifeDance",
+      sourceType: "technician",
+      startsAt: "2026-09-21T00:00:00+09:00",
+      technicianProfileId: 31,
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      visibility: "technician_shops"
+    };
+    const result = buildFormalMerchantScheduleBoard({
+      availabilityWindows: [availabilityWindow],
+      dateKey: "2026-09-24",
+      range: { periodStart: "2026-09-24", periodEnd: "2026-09-26" },
+      shop: { cover: "/media/shops/lifedance.webp", id: "16", name: "LifeDance" },
+      slots: [],
+      technicians
+    });
+
+    expect(result.dataOverride.dayGrids[0]?.rows[0]?.cells).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ hour: 0, status: "open", title: "自由排班" }),
+        expect.objectContaining({ hour: 23, status: "open", title: "自由排班" })
+      ])
+    );
+    expect(result.dataOverride.events).toContainEqual(
+      expect.objectContaining({
+        availabilityWindowId: 901,
+        calendarId: "technician:31",
+        date: "2026-09-24",
+        endTime: "24:00",
+        startTime: "00:00",
+        title: "自由排班"
+      })
+    );
+    expect(result.summary).toEqual({
+      bookedCount: 0,
+      scheduledDayCount: 3,
+      scheduledTechnicianCount: 1,
+      technicianCount: 2
+    });
+  });
+
   it("keeps every formal shop technician as an avatar lane and maps persisted slots into the day grid", () => {
     const range = getFormalMerchantScheduleCycleRange("2026-09-02");
     const result = buildFormalMerchantScheduleBoard({
