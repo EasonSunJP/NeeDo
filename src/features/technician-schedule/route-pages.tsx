@@ -1223,7 +1223,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
             <div className="shrink-0 text-right">
               <span className="block text-[10px] font-bold text-[color:var(--client-muted)]">
                 {orderTimelineText(
-                  order.amountSource === "checkout" || order.amountSource === "order_payment"
+                  order.amountSource === "checkout" || order.amountSource === "order_payment" || order.amountSource === "accepted_add_ons"
                     ? "顾客支付总额"
                     : "订单金额",
                   language

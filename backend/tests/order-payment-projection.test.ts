@@ -1,4 +1,7 @@
-import { projectOrderPayment } from "../src/domain/order-payment-projection";
+import {
+  projectOrderPayment,
+  sumAcceptedOrderAddOnAmountJpy
+} from "../src/domain/order-payment-projection";
 
 describe("projectOrderPayment", () => {
   it("uses the persisted payment total before checkout", () => {
@@ -20,10 +23,45 @@ describe("projectOrderPayment", () => {
     });
   });
 
+  it("adds accepted add-on snapshots to the live payable total before checkout", () => {
+    expect(projectOrderPayment({
+      orderPriceAmountJpy: 8_800,
+      orderPaymentAmountJpy: 8_800,
+      acceptedAddOnAmountJpy: 8_800,
+      orderPaymentMethod: "ONSITE",
+      checkout: null,
+      financial: null
+    })).toMatchObject({
+      totalAmountJpy: 17_600,
+      amountSource: "accepted_add_ons"
+    });
+  });
+
+  it("sums only active accepted JPY add-on snapshots", () => {
+    expect(sumAcceptedOrderAddOnAmountJpy([
+      { status: "ACCEPTED", priceAmountJpy: 8_800, currency: "JPY", deletedAt: null },
+      { status: "PROPOSED", priceAmountJpy: 4_000, currency: "JPY", deletedAt: null },
+      { status: "REJECTED", priceAmountJpy: 3_000, currency: "JPY", deletedAt: null },
+      {
+        status: "ACCEPTED",
+        priceAmountJpy: 2_000,
+        currency: "JPY",
+        deletedAt: new Date("2026-09-20T00:00:00.000Z")
+      }
+    ])).toBe(8_800);
+  });
+
+  it("fails closed when an accepted add-on snapshot is not a valid JPY integer", () => {
+    expect(() => sumAcceptedOrderAddOnAmountJpy([
+      { status: "ACCEPTED", priceAmountJpy: 8_800, currency: "USD", deletedAt: null }
+    ])).toThrow("error.order.payment_projection_invalid");
+  });
+
   it("does not report the order default while checkout payment selection is pending", () => {
     expect(projectOrderPayment({
       orderPriceAmountJpy: 8_000,
       orderPaymentAmountJpy: 8_000,
+      acceptedAddOnAmountJpy: 6_500,
       orderPaymentMethod: "ONSITE",
       checkout: {
         checkoutAmountJpy: 14_500,
@@ -36,6 +74,8 @@ describe("projectOrderPayment", () => {
       },
       financial: null
     })).toMatchObject({
+      totalAmountJpy: 14_500,
+      amountSource: "checkout",
       paymentMethod: "ONSITE",
       effectivePaymentMethod: null,
       otherMethodCode: null,

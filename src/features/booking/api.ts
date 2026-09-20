@@ -239,7 +239,7 @@ export type BookingOrder = {
   paymentMethod: ManualPaymentMethod | CheckoutPaymentMethod;
   paymentStatus: ManualPaymentStatus;
   paymentAmountJpy: number;
-  amountSource?: "order_payment" | "order_price" | "checkout";
+  amountSource?: "order_payment" | "order_price" | "accepted_add_ons" | "checkout";
   effectivePaymentMethod?: ManualPaymentMethod | CheckoutPaymentMethod | null;
   otherMethodCode?: string | null;
   otherMethodLabel?: string | null;

@@ -765,10 +765,12 @@ FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev LIVE_DASHBOARD_CHECK_ROLLBACK
 
 本微步骤没有新增 API、schema 或 migration，没有修改退款、支付、账本、RBAC 或审计后端契约，也没有新增 mock/fake/placeholder 数据。
 
-## 订单金额历史兼容与跨端一致性（2026-09-13）
+## 订单金额历史兼容与跨端一致性（2026-09-13，2026-09-20 加项补充）
 
-运营与商户订单接口继续共用 `projectOrderPayment`。存在有效 checkout 时，`checkoutAmountJpy` 始终是最终金额；无 checkout 时优先使用 `BookingOrder.paymentAmountJpy`。对于历史数据中 `paymentAmountJpy = 0`、但持久化 `priceAmount > 0` 的订单，接口读取同一订单的 `priceAmount` 作为兼容金额，并以 `amountSource = order_price` 明确标记来源，避免把兼容值伪装成已保存的支付金额。
+运营、商户、用户与技师订单接口共用 `projectOrderPayment`。服务中尚未生成 checkout 时，实时应收金额由 `BookingOrder.paymentAmountJpy` 加全部未删除且已接受的 `OrderAddOn.priceAmountJpy` 快照组成，并以 `amountSource = accepted_add_ons` 标记；提议中、已拒绝或已删除的加项不得计入。运营和商户详情继续从同一服务事件读取加项提议、接受、拒绝记录，列表、详情和确认收款显示因此使用同一个金额来源。
+
+存在有效 checkout 时，`checkoutAmountJpy` 始终覆盖结账前投影并成为最终金额；结算仍使用 checkout 保存的 base/add-on 拆分，不从目录现价或界面金额反推。对于历史数据中 `paymentAmountJpy = 0`、但持久化 `priceAmount > 0` 的订单，无 checkout 时以同一订单的 `priceAmount` 作为基础金额兼容值，再合并已接受加项；没有已接受加项时以 `amountSource = order_price` 明确标记来源，避免把兼容值伪装成已保存的支付金额。
 
 新的正式 Booking 创建路径仍同时写入 `priceAmount` 与 `paymentAmountJpy`。未来六个月运营数据生成器也改为写入相同的持久化价格，并由独立 checker 对 `priceAmount`、`paymentAmountJpy` 和计划金额三方一致性进行核对。前端只格式化 API 返回的 `totalAmountJpy`，不使用常量、服务目录现价或浏览器 mock 兜底。
 
-本微步骤没有 schema 或 migration 变化，没有改动支付状态机、RBAC、审计或金额写接口，也没有直接修订 staging/production 历史记录。
+本微步骤没有 schema 或 migration 变化，没有改动支付、退款、佣金或结算写入状态机，也没有直接修订 staging/production 历史记录。
