@@ -201,519 +201,527 @@ export class StagingTestChibaShopProvisioner {
   public constructor(private readonly client: PrismaClient) {}
 
   public async provision(config: StagingTestChibaShopConfig): Promise<StagingTestChibaShopResult> {
-    return this.client.$transaction(async (tx) => {
-      const owner = await tx.user.findFirst({
-        where: {
-          email: config.ownerEmail,
-          isActive: true,
-          isTestAccount: true,
-          deletedAt: null
-        },
-        select: { id: true, username: true }
-      });
-      assert(owner, "STAGING_TEST_CHIBA_OWNER_NOT_FOUND");
+    const tx = this.client;
+    const owner = await tx.user.findFirst({
+      where: {
+        email: config.ownerEmail,
+        isActive: true,
+        isTestAccount: true,
+        deletedAt: null
+      },
+      select: { id: true, username: true }
+    });
+    assert(owner, "STAGING_TEST_CHIBA_OWNER_NOT_FOUND");
 
-      const existingShops = await tx.shop.findMany({
-        where: { name: SHOP_NAME, deletedAt: null },
-        select: { id: true }
-      });
-      assert(existingShops.length <= 1, "STAGING_TEST_CHIBA_SHOP_NOT_UNIQUE");
-      const shop = existingShops[0]
-        ? await tx.shop.update({
-            where: { id: existingShops[0].id },
-            data: {
-              ownerUserId: owner.id,
-              createdById: owner.id,
-              description: "千葉駅近くの完全予約制リラクゼーションサロン。仕事帰りにも利用しやすい深夜1時まで営業しています。",
-              city: "千葉市",
-              address: "千葉県千葉市中央区富士見2-7-9",
-              latitude: "35.6110000",
-              longitude: "140.1180000",
-              phone: "043-000-8800",
-              status: "published",
-              visibility: "public",
-              pricingMode: "MERCHANT",
-              technicianPricingRatePercent: 100,
-              pricingModeUpdatedAt: new Date(),
-              pricingModeUpdatedBy: owner.id,
-              deletedAt: null
-            }
-          })
-        : await tx.shop.create({
-            data: {
-              ownerUserId: owner.id,
-              createdById: owner.id,
-              name: SHOP_NAME,
-              description: "千葉駅近くの完全予約制リラクゼーションサロン。仕事帰りにも利用しやすい深夜1時まで営業しています。",
-              city: "千葉市",
-              address: "千葉県千葉市中央区富士見2-7-9",
-              latitude: "35.6110000",
-              longitude: "140.1180000",
-              phone: "043-000-8800",
-              status: "published",
-              visibility: "public",
-              pricingMode: "MERCHANT",
-              technicianPricingRatePercent: 100,
-              pricingModeUpdatedAt: new Date(),
-              pricingModeUpdatedBy: owner.id
-            }
-          });
+    const existingShops = await tx.shop.findMany({
+      where: { name: SHOP_NAME, deletedAt: null },
+      select: { id: true, status: true, visibility: true }
+    });
+    assert(existingShops.length <= 1, "STAGING_TEST_CHIBA_SHOP_NOT_UNIQUE");
+    const wasPublished =
+      existingShops[0]?.status === "published" && existingShops[0]?.visibility === "public";
+    const shop = existingShops[0]
+      ? await tx.shop.update({
+          where: { id: existingShops[0].id },
+          data: {
+            ownerUserId: owner.id,
+            createdById: owner.id,
+            description: "千葉駅近くの完全予約制リラクゼーションサロン。仕事帰りにも利用しやすい深夜1時まで営業しています。",
+            city: "千葉市",
+            address: "千葉県千葉市中央区富士見2-7-9",
+            latitude: "35.6110000",
+            longitude: "140.1180000",
+            phone: "043-000-8800",
+            status: wasPublished ? "published" : "draft",
+            visibility: wasPublished ? "public" : "privateAll",
+            pricingMode: "MERCHANT",
+            technicianPricingRatePercent: 100,
+            pricingModeUpdatedAt: new Date(),
+            pricingModeUpdatedBy: owner.id,
+            deletedAt: null
+          }
+        })
+      : await tx.shop.create({
+          data: {
+            ownerUserId: owner.id,
+            createdById: owner.id,
+            name: SHOP_NAME,
+            description: "千葉駅近くの完全予約制リラクゼーションサロン。仕事帰りにも利用しやすい深夜1時まで営業しています。",
+            city: "千葉市",
+            address: "千葉県千葉市中央区富士見2-7-9",
+            latitude: "35.6110000",
+            longitude: "140.1180000",
+            phone: "043-000-8800",
+            status: wasPublished ? "published" : "draft",
+            visibility: wasPublished ? "public" : "privateAll",
+            pricingMode: "MERCHANT",
+            technicianPricingRatePercent: 100,
+            pricingModeUpdatedAt: new Date(),
+            pricingModeUpdatedBy: owner.id
+          }
+        });
 
-      const supportAccount = await tx.customerSupportAccount.upsert({
-        where: { shopId: shop.id },
-        create: { shopId: shop.id, type: "SHOP", displayName: `${SHOP_NAME} カスタマーサポート` },
-        update: { displayName: `${SHOP_NAME} カスタマーサポート`, isActive: true, deletedAt: null },
-        include: { publicIdentifier: true }
-      });
-      const persistedShop = await tx.shop.findUniqueOrThrow({
+    const supportAccount = await tx.customerSupportAccount.upsert({
+      where: { shopId: shop.id },
+      create: { shopId: shop.id, type: "SHOP", displayName: `${SHOP_NAME} カスタマーサポート` },
+      update: { displayName: `${SHOP_NAME} カスタマーサポート`, isActive: true, deletedAt: null },
+      include: { publicIdentifier: true }
+    });
+    const persistedShop = await tx.shop.findUniqueOrThrow({
+      where: { id: shop.id },
+      include: { publicIdentifier: true }
+    });
+    if (!persistedShop.publicIdentifier && !supportAccount.publicIdentifier) {
+      const pair = await new IdentifierAllocator(
+        new PublicIdentifierRepository(tx)
+      ).allocateShopSupportPair({ shopId: shop.id, customerSupportAccountId: supportAccount.id });
+      await tx.shop.update({
         where: { id: shop.id },
-        include: { publicIdentifier: true }
+        data: { shopNo: pair.shopIdentifier.numberPart }
       });
-      if (!persistedShop.publicIdentifier && !supportAccount.publicIdentifier) {
-        const pair = await new IdentifierAllocator(
-          new PublicIdentifierRepository(tx)
-        ).allocateShopSupportPair({ shopId: shop.id, customerSupportAccountId: supportAccount.id });
-        await tx.shop.update({
-          where: { id: shop.id },
-          data: { shopNo: pair.shopIdentifier.numberPart }
-        });
-      } else {
-        assert(
-          persistedShop.publicIdentifier?.kind === "SHOP" &&
-            supportAccount.publicIdentifier?.kind === "CUSTOMER_SUPPORT" &&
-            persistedShop.publicIdentifier.numberPart === supportAccount.publicIdentifier.numberPart,
-          "STAGING_TEST_CHIBA_PUBLIC_IDENTIFIER_PAIR_INVALID"
-        );
-        await tx.shop.update({
-          where: { id: shop.id },
-          data: { shopNo: persistedShop.publicIdentifier.numberPart }
-        });
-      }
+    } else {
+      assert(
+        persistedShop.publicIdentifier?.kind === "SHOP" &&
+          supportAccount.publicIdentifier?.kind === "CUSTOMER_SUPPORT" &&
+          persistedShop.publicIdentifier.numberPart === supportAccount.publicIdentifier.numberPart,
+        "STAGING_TEST_CHIBA_PUBLIC_IDENTIFIER_PAIR_INVALID"
+      );
+      await tx.shop.update({
+        where: { id: shop.id },
+        data: { shopNo: persistedShop.publicIdentifier.numberPart }
+      });
+    }
 
-      const merchantAccount = await tx.merchantAccount.upsert({
-        where: { code: "staging-test-chiba-akira" },
-        create: {
-          code: "staging-test-chiba-akira",
-          ownerUserId: owner.id,
-          name: "StagingTest 千葉運営",
-          status: "active",
-          paymentResponsibility: "group_consolidated"
-        },
-        update: {
-          ownerUserId: owner.id,
-          name: "StagingTest 千葉運営",
-          status: "active",
-          paymentResponsibility: "group_consolidated",
-          deletedAt: null
-        },
-        include: { publicIdentifier: true }
+    const merchantAccount = await tx.merchantAccount.upsert({
+      where: { code: "staging-test-chiba-akira" },
+      create: {
+        code: "staging-test-chiba-akira",
+        ownerUserId: owner.id,
+        name: "StagingTest 千葉運営",
+        status: "active",
+        paymentResponsibility: "group_consolidated"
+      },
+      update: {
+        ownerUserId: owner.id,
+        name: "StagingTest 千葉運営",
+        status: "active",
+        paymentResponsibility: "group_consolidated",
+        deletedAt: null
+      },
+      include: { publicIdentifier: true }
+    });
+    if (!merchantAccount.publicIdentifier) {
+      await new IdentifierAllocator(new PublicIdentifierRepository(tx)).allocate({
+        kind: "OWNER",
+        merchantAccountId: merchantAccount.id
       });
-      if (!merchantAccount.publicIdentifier) {
-        await new IdentifierAllocator(new PublicIdentifierRepository(tx)).allocate({
-          kind: "OWNER",
-          merchantAccountId: merchantAccount.id
-        });
-      }
-      await tx.merchantShopMembership.upsert({
-        where: { activeKey: `staging-test-chiba:${merchantAccount.id}:${shop.id}` },
-        create: {
-          merchantAccountId: merchantAccount.id,
-          shopId: shop.id,
-          activeKey: `staging-test-chiba:${merchantAccount.id}:${shop.id}`,
-          startsAt: new Date(`${config.startDate}T00:00:00+09:00`),
-          createdById: owner.id
-        },
-        update: { endsAt: null, removedReason: null, removedById: null, deletedAt: null }
-      });
+    }
+    await tx.merchantShopMembership.upsert({
+      where: { activeKey: `staging-test-chiba:${merchantAccount.id}:${shop.id}` },
+      create: {
+        merchantAccountId: merchantAccount.id,
+        shopId: shop.id,
+        activeKey: `staging-test-chiba:${merchantAccount.id}:${shop.id}`,
+        startsAt: new Date(`${config.startDate}T00:00:00+09:00`),
+        createdById: owner.id
+      },
+      update: { endsAt: null, removedReason: null, removedById: null, deletedAt: null }
+    });
 
-      const merchantStaffIdentity = await tx.userIdentity.upsert({
-        where: { activeKey: `staging-test-chiba:${owner.id}:merchant_staff:${shop.id}` },
-        create: {
-          userId: owner.id,
-          type: "merchant_staff",
-          scopeType: "shop",
-          scopeId: shop.id,
-          displayName: owner.username,
-          isDefault: false,
-          isActive: true,
-          activeKey: `staging-test-chiba:${owner.id}:merchant_staff:${shop.id}`
-        },
-        update: {
-          displayName: owner.username,
-          isActive: true,
-          deletedAt: null
-        }
-      });
-      await tx.merchantIdentityProfile.upsert({
-        where: { identityId: merchantStaffIdentity.id },
-        create: {
-          userId: owner.id,
-          identityId: merchantStaffIdentity.id,
-          displayName: owner.username,
-          languages: ["ja"]
-        },
-        update: { displayName: owner.username, languages: ["ja"], deletedAt: null }
-      });
-      const merchantStaffRole = await tx.role.findFirst({
-        where: { code: "merchant_staff", deletedAt: null },
-        select: { id: true }
-      });
-      assert(merchantStaffRole, "STAGING_TEST_CHIBA_MERCHANT_STAFF_ROLE_MISSING");
-      const existingRole = await tx.userRole.findFirst({
-        where: {
+    const merchantStaffIdentity = await tx.userIdentity.upsert({
+      where: { activeKey: `staging-test-chiba:${owner.id}:merchant_staff:${shop.id}` },
+      create: {
+        userId: owner.id,
+        type: "merchant_staff",
+        scopeType: "shop",
+        scopeId: shop.id,
+        displayName: owner.username,
+        isDefault: false,
+        isActive: true,
+        activeKey: `staging-test-chiba:${owner.id}:merchant_staff:${shop.id}`
+      },
+      update: {
+        displayName: owner.username,
+        isActive: true,
+        deletedAt: null
+      }
+    });
+    await tx.merchantIdentityProfile.upsert({
+      where: { identityId: merchantStaffIdentity.id },
+      create: {
+        userId: owner.id,
+        identityId: merchantStaffIdentity.id,
+        displayName: owner.username,
+        languages: ["ja"]
+      },
+      update: { displayName: owner.username, languages: ["ja"], deletedAt: null }
+    });
+    const merchantStaffRole = await tx.role.findFirst({
+      where: { code: "merchant_staff", deletedAt: null },
+      select: { id: true }
+    });
+    assert(merchantStaffRole, "STAGING_TEST_CHIBA_MERCHANT_STAFF_ROLE_MISSING");
+    const existingRole = await tx.userRole.findFirst({
+      where: {
+        userId: owner.id,
+        roleId: merchantStaffRole.id,
+        scopeType: "shop",
+        scopeId: shop.id
+      }
+    });
+    if (existingRole) {
+      await tx.userRole.update({ where: { id: existingRole.id }, data: { deletedAt: null } });
+    } else {
+      await tx.userRole.create({
+        data: {
           userId: owner.id,
           roleId: merchantStaffRole.id,
           scopeType: "shop",
           scopeId: shop.id
         }
       });
-      if (existingRole) {
-        await tx.userRole.update({ where: { id: existingRole.id }, data: { deletedAt: null } });
-      } else {
-        await tx.userRole.create({
-          data: {
-            userId: owner.id,
-            roleId: merchantStaffRole.id,
-            scopeType: "shop",
-            scopeId: shop.id
-          }
-        });
-      }
+    }
 
-      const sourceShop = await tx.shop.findFirst({
-        where: { name: "StagingTest", deletedAt: null },
-        select: { id: true }
-      });
-      assert(sourceShop, "STAGING_TEST_CHIBA_SOURCE_SHOP_MISSING");
-      const sourceAffiliations = await tx.technicianShopAffiliation.findMany({
-        where: {
-          shopId: sourceShop.id,
+    const sourceShop = await tx.shop.findFirst({
+      where: { name: "StagingTest", deletedAt: null },
+      select: { id: true }
+    });
+    assert(sourceShop, "STAGING_TEST_CHIBA_SOURCE_SHOP_MISSING");
+    const sourceAffiliations = await tx.technicianShopAffiliation.findMany({
+      where: {
+        shopId: sourceShop.id,
+        workStatus: "ACTIVE",
+        deletedAt: null,
+        technicianProfile: {
+          is: {
+            status: "published",
+            verifiedAt: { not: null },
+            deletedAt: null,
+            user: { is: { isActive: true, deletedAt: null } }
+          }
+        }
+      },
+      select: {
+        technicianProfileId: true,
+        technicianProfile: { select: { userId: true } }
+      },
+      distinct: ["technicianProfileId"],
+      orderBy: { technicianProfileId: "asc" },
+      take: 10
+    });
+    assert(sourceAffiliations.length === 10, `STAGING_TEST_CHIBA_TECHNICIAN_COUNT:${sourceAffiliations.length}`);
+    for (const source of sourceAffiliations) {
+      const affiliation = await tx.technicianShopAffiliation.upsert({
+        where: { activeKey: `staging-test-chiba:${shop.id}:technician:${source.technicianProfileId}` },
+        create: {
+          technicianProfileId: source.technicianProfileId,
+          shopId: shop.id,
+          relationshipType: "PARTNER",
           workStatus: "ACTIVE",
-          deletedAt: null,
-          technicianProfile: {
-            is: {
-              status: "published",
-              verifiedAt: { not: null },
-              deletedAt: null,
-              user: { is: { isActive: true, deletedAt: null } }
-            }
-          }
+          startsAt: new Date(`${config.startDate}T00:00:00+09:00`),
+          activeKey: `staging-test-chiba:${shop.id}:technician:${source.technicianProfileId}`,
+          createdById: owner.id,
+          updatedById: owner.id
         },
-        select: {
-          technicianProfileId: true,
-          technicianProfile: { select: { userId: true } }
-        },
-        distinct: ["technicianProfileId"],
-        orderBy: { technicianProfileId: "asc" },
-        take: 10
+        update: {
+          relationshipType: "PARTNER",
+          workStatus: "ACTIVE",
+          endsAt: null,
+          updatedById: owner.id,
+          deletedAt: null
+        }
       });
-      assert(sourceAffiliations.length === 10, `STAGING_TEST_CHIBA_TECHNICIAN_COUNT:${sourceAffiliations.length}`);
-      for (const source of sourceAffiliations) {
-        const affiliation = await tx.technicianShopAffiliation.upsert({
-          where: { activeKey: `staging-test-chiba:${shop.id}:technician:${source.technicianProfileId}` },
-          create: {
-            technicianProfileId: source.technicianProfileId,
-            shopId: shop.id,
-            relationshipType: "PARTNER",
-            workStatus: "ACTIVE",
-            startsAt: new Date(`${config.startDate}T00:00:00+09:00`),
-            activeKey: `staging-test-chiba:${shop.id}:technician:${source.technicianProfileId}`,
-            createdById: owner.id,
-            updatedById: owner.id
-          },
-          update: {
-            relationshipType: "PARTNER",
-            workStatus: "ACTIVE",
-            endsAt: null,
-            updatedById: owner.id,
-            deletedAt: null
-          }
-        });
-        await tx.shopEmployee.upsert({
-          where: { activeKey: `staging-test-chiba:${shop.id}:employee:${source.technicianProfile.userId}` },
-          create: {
-            shopId: shop.id,
-            userId: source.technicianProfile.userId,
-            status: "ACTIVE",
-            startsAt: new Date(`${config.startDate}T00:00:00+09:00`),
-            technicianShopAffiliationId: affiliation.id,
-            activeKey: `staging-test-chiba:${shop.id}:employee:${source.technicianProfile.userId}`,
-            createdById: owner.id,
-            updatedById: owner.id
-          },
-          update: {
-            status: "ACTIVE",
-            endsAt: null,
-            technicianShopAffiliationId: affiliation.id,
-            updatedById: owner.id,
-            deletedAt: null
-          }
-        });
-      }
-      const technicianProfileIds = sourceAffiliations.map((item) => item.technicianProfileId);
+      await tx.shopEmployee.upsert({
+        where: { activeKey: `staging-test-chiba:${shop.id}:employee:${source.technicianProfile.userId}` },
+        create: {
+          shopId: shop.id,
+          userId: source.technicianProfile.userId,
+          status: "ACTIVE",
+          startsAt: new Date(`${config.startDate}T00:00:00+09:00`),
+          technicianShopAffiliationId: affiliation.id,
+          activeKey: `staging-test-chiba:${shop.id}:employee:${source.technicianProfile.userId}`,
+          createdById: owner.id,
+          updatedById: owner.id
+        },
+        update: {
+          status: "ACTIVE",
+          endsAt: null,
+          technicianShopAffiliationId: affiliation.id,
+          updatedById: owner.id,
+          deletedAt: null
+        }
+      });
+    }
+    const technicianProfileIds = sourceAffiliations.map((item) => item.technicianProfileId);
 
-      const massageCategory = await tx.category.findFirst({
-        where: { code: "massage", isActive: true, deletedAt: null },
+    const massageCategory = await tx.category.findFirst({
+      where: { code: "massage", isActive: true, deletedAt: null },
+      select: { id: true }
+    });
+    assert(massageCategory, "STAGING_TEST_CHIBA_MASSAGE_CATEGORY_MISSING");
+    const taxonomySelection = await tx.shopServiceCategory.findFirst({
+      where: { shopId: shop.id, categoryId: massageCategory.id }
+    });
+    if (taxonomySelection) {
+      await tx.shopServiceCategory.update({
+        where: { id: taxonomySelection.id },
+        data: { selectedByUserId: owner.id, deletedAt: null }
+      });
+    } else {
+      await tx.shopServiceCategory.create({
+        data: {
+          shopId: shop.id,
+          categoryId: massageCategory.id,
+          selectedByUserId: owner.id
+        }
+      });
+    }
+
+    const services: Array<{ id: number; durationMinutes: number }> = [];
+    for (const [index, definition] of STAGING_TEST_CHIBA_SERVICES.entries()) {
+      const existing = await tx.service.findFirst({
+        where: { shopId: shop.id, name: definition.name },
         select: { id: true }
       });
-      assert(massageCategory, "STAGING_TEST_CHIBA_MASSAGE_CATEGORY_MISSING");
-      const taxonomySelection = await tx.shopServiceCategory.findFirst({
-        where: { shopId: shop.id, categoryId: massageCategory.id }
-      });
-      if (taxonomySelection) {
-        await tx.shopServiceCategory.update({
-          where: { id: taxonomySelection.id },
-          data: { selectedByUserId: owner.id, deletedAt: null }
-        });
-      } else {
-        await tx.shopServiceCategory.create({
+      const data = {
+        categoryId: massageCategory.id,
+        shopId: shop.id,
+        technicianProfileId: null,
+        name: definition.name,
+        description: definition.description,
+        city: "千葉市",
+        serviceMode: "store",
+        priceAmount: definition.priceAmountJpy,
+        currency: definition.currency,
+        durationMinutes: definition.durationMinutes,
+        status: "published",
+        isRecommended: definition.kind === "massage" && index === 0,
+        sortOrder: index,
+        deletedAt: null
+      } satisfies Prisma.ServiceUncheckedUpdateInput;
+      const service = existing
+        ? await tx.service.update({ where: { id: existing.id }, data, select: { id: true, durationMinutes: true } })
+        : await tx.service.create({ data, select: { id: true, durationMinutes: true } });
+      services.push(service);
+    }
+
+    const periodStart = new Date(`${config.startDate}T00:00:00.000Z`);
+    const periodEnd = new Date(`${config.endDate}T00:00:00.000Z`);
+    await tx.scheduleCycle.updateMany({
+      where: {
+        shopId: shop.id,
+        mode: "TECH_SELF_FINAL",
+        status: { notIn: ["CANCELLED", "COMPLETED", "ARCHIVED"] },
+        periodStart: { lt: periodEnd },
+        periodEnd: { gt: periodStart },
+        deletedAt: null
+      },
+      data: { status: "CANCELLED", cancelledAt: new Date(), updatedById: owner.id }
+    });
+    const existingCycle = await tx.scheduleCycle.findFirst({
+      where: {
+        shopId: shop.id,
+        mode: "STORE_ASSIGN_FINAL",
+        periodStart,
+        periodEnd,
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    const scheduleCycle = existingCycle
+      ? await tx.scheduleCycle.update({
+          where: { id: existingCycle.id },
+          data: {
+            name: `StagingTest千葉店 店铺排班 ${config.startDate}–${config.endDate}`,
+            status: "ACTIVE",
+            currentStep: 3,
+            templateType: "MONTH",
+            templateMatrix: { daily: { startsAt: "17:00", endsAt: "01:00", crossesMidnight: true } },
+            regularHolidayWeekdays: [],
+            ruleSet: { timeZone: "Asia/Tokyo", shopAssigned: true },
+            finalizedAt: new Date(),
+            activeAt: new Date(),
+            cancelledAt: null,
+            updatedById: owner.id
+          },
+          select: { id: true }
+        })
+      : await tx.scheduleCycle.create({
           data: {
             shopId: shop.id,
-            categoryId: massageCategory.id,
-            selectedByUserId: owner.id
-          }
-        });
-      }
-
-      const services: Array<{ id: number; durationMinutes: number }> = [];
-      for (const [index, definition] of STAGING_TEST_CHIBA_SERVICES.entries()) {
-        const existing = await tx.service.findFirst({
-          where: { shopId: shop.id, name: definition.name },
+            name: `StagingTest千葉店 店铺排班 ${config.startDate}–${config.endDate}`,
+            creationMethod: "new",
+            mode: "STORE_ASSIGN_FINAL",
+            status: "ACTIVE",
+            currentStep: 3,
+            templateType: "MONTH",
+            periodStart,
+            periodEnd,
+            templateMatrix: { daily: { startsAt: "17:00", endsAt: "01:00", crossesMidnight: true } },
+            regularHolidayWeekdays: [],
+            ruleSet: { timeZone: "Asia/Tokyo", shopAssigned: true },
+            finalizedAt: new Date(),
+            activeAt: new Date(),
+            createdById: owner.id,
+            updatedById: owner.id
+          },
           select: { id: true }
         });
-        const data = {
-          categoryId: massageCategory.id,
-          shopId: shop.id,
-          technicianProfileId: null,
-          name: definition.name,
-          description: definition.description,
-          city: "千葉市",
-          serviceMode: "store",
-          priceAmount: definition.priceAmountJpy,
-          currency: definition.currency,
-          durationMinutes: definition.durationMinutes,
-          status: "published",
-          isRecommended: definition.kind === "massage" && index === 0,
-          sortOrder: index,
-          deletedAt: null
-        } satisfies Prisma.ServiceUncheckedUpdateInput;
-        const service = existing
-          ? await tx.service.update({ where: { id: existing.id }, data, select: { id: true, durationMinutes: true } })
-          : await tx.service.create({ data, select: { id: true, durationMinutes: true } });
-        services.push(service);
+    await tx.scheduleCycleTarget.createMany({
+      data: technicianProfileIds.map((technicianProfileId) => ({
+        cycleId: scheduleCycle.id,
+        technicianProfileId
+      })),
+      skipDuplicates: true
+    });
+
+    const desiredShifts = buildNightlyShiftRanges({
+      startDate: config.startDate,
+      endDate: config.endDate,
+      technicianProfileIds
+    });
+    const existingAvailabilities = await tx.availability.findMany({
+      where: {
+        shopId: shop.id,
+        technicianProfileId: { in: technicianProfileIds },
+        sourceType: AvailabilitySourceType.SHOP,
+        visibility: AvailabilityVisibility.SHOP_ONLY,
+        isScheduleControlWindow: true,
+        startsAt: { lt: new Date(`${config.endDate}T17:00:00+09:00`) },
+        endsAt: { gt: new Date(`${config.startDate}T17:00:00+09:00`) },
+        deletedAt: null
+      },
+      select: { id: true, technicianProfileId: true, startsAt: true, endsAt: true, isActive: true }
+    });
+    const availabilityByKey = new Map(existingAvailabilities.map((row) => [availabilityKey(row), row]));
+    for (const shift of desiredShifts) {
+      const key = availabilityKey(shift);
+      const existing = availabilityByKey.get(key);
+      if (existing) {
+        if (!existing.isActive) {
+          await tx.availability.update({ where: { id: existing.id }, data: { isActive: true } });
+        }
+        continue;
       }
-
-      const periodStart = new Date(`${config.startDate}T00:00:00.000Z`);
-      const periodEnd = new Date(`${config.endDate}T00:00:00.000Z`);
-      await tx.scheduleCycle.updateMany({
-        where: {
+      const created = await tx.availability.create({
+        data: {
           shopId: shop.id,
-          mode: "TECH_SELF_FINAL",
-          status: { notIn: ["CANCELLED", "COMPLETED", "ARCHIVED"] },
-          periodStart: { lt: periodEnd },
-          periodEnd: { gt: periodStart },
-          deletedAt: null
-        },
-        data: { status: "CANCELLED", cancelledAt: new Date(), updatedById: owner.id }
-      });
-      const existingCycle = await tx.scheduleCycle.findFirst({
-        where: {
-          shopId: shop.id,
-          mode: "STORE_ASSIGN_FINAL",
-          periodStart,
-          periodEnd,
-          deletedAt: null
-        },
-        select: { id: true }
-      });
-      const scheduleCycle = existingCycle
-        ? await tx.scheduleCycle.update({
-            where: { id: existingCycle.id },
-            data: {
-              name: `StagingTest千葉店 店铺排班 ${config.startDate}–${config.endDate}`,
-              status: "ACTIVE",
-              currentStep: 3,
-              templateType: "MONTH",
-              templateMatrix: { daily: { startsAt: "17:00", endsAt: "01:00", crossesMidnight: true } },
-              regularHolidayWeekdays: [],
-              ruleSet: { timeZone: "Asia/Tokyo", shopAssigned: true },
-              finalizedAt: new Date(),
-              activeAt: new Date(),
-              cancelledAt: null,
-              updatedById: owner.id
-            },
-            select: { id: true }
-          })
-        : await tx.scheduleCycle.create({
-            data: {
-              shopId: shop.id,
-              name: `StagingTest千葉店 店铺排班 ${config.startDate}–${config.endDate}`,
-              creationMethod: "new",
-              mode: "STORE_ASSIGN_FINAL",
-              status: "ACTIVE",
-              currentStep: 3,
-              templateType: "MONTH",
-              periodStart,
-              periodEnd,
-              templateMatrix: { daily: { startsAt: "17:00", endsAt: "01:00", crossesMidnight: true } },
-              regularHolidayWeekdays: [],
-              ruleSet: { timeZone: "Asia/Tokyo", shopAssigned: true },
-              finalizedAt: new Date(),
-              activeAt: new Date(),
-              createdById: owner.id,
-              updatedById: owner.id
-            },
-            select: { id: true }
-          });
-      await tx.scheduleCycleTarget.createMany({
-        data: technicianProfileIds.map((technicianProfileId) => ({
-          cycleId: scheduleCycle.id,
-          technicianProfileId
-        })),
-        skipDuplicates: true
-      });
-
-      const desiredShifts = buildNightlyShiftRanges({
-        startDate: config.startDate,
-        endDate: config.endDate,
-        technicianProfileIds
-      });
-      const existingAvailabilities = await tx.availability.findMany({
-        where: {
-          shopId: shop.id,
-          technicianProfileId: { in: technicianProfileIds },
+          technicianProfileId: shift.technicianProfileId,
           sourceType: AvailabilitySourceType.SHOP,
           visibility: AvailabilityVisibility.SHOP_ONLY,
-          isScheduleControlWindow: true,
-          startsAt: { lt: new Date(`${config.endDate}T17:00:00+09:00`) },
-          endsAt: { gt: new Date(`${config.startDate}T17:00:00+09:00`) },
-          deletedAt: null
+          startsAt: shift.startsAt,
+          endsAt: shift.endsAt,
+          capacity: 1,
+          isActive: true,
+          isScheduleControlWindow: true
         },
         select: { id: true, technicianProfileId: true, startsAt: true, endsAt: true, isActive: true }
       });
-      const availabilityByKey = new Map(existingAvailabilities.map((row) => [availabilityKey(row), row]));
-      for (const shift of desiredShifts) {
-        const key = availabilityKey(shift);
-        const existing = availabilityByKey.get(key);
-        if (existing) {
-          if (!existing.isActive) {
-            await tx.availability.update({ where: { id: existing.id }, data: { isActive: true } });
-          }
-          continue;
-        }
-        const created = await tx.availability.create({
-          data: {
+      availabilityByKey.set(key, created);
+    }
+
+    let scheduleSlotCount = 0;
+    let createdScheduleSlotCount = 0;
+    const serviceStartIntervalMinutes = deriveServiceStartIntervalMinutes(
+      services.map((service) => service.durationMinutes)
+    );
+    for (const technicianProfileId of technicianProfileIds) {
+      const technicianShifts = desiredShifts.filter(
+        (shift) => shift.technicianProfileId === technicianProfileId
+      );
+      for (const service of services) {
+        const existingSlots = await tx.scheduleSlot.findMany({
+          where: {
             shopId: shop.id,
-            technicianProfileId: shift.technicianProfileId,
-            sourceType: AvailabilitySourceType.SHOP,
-            visibility: AvailabilityVisibility.SHOP_ONLY,
+            technicianProfileId,
+            serviceId: service.id,
+            startsAt: { gte: new Date(`${config.startDate}T17:00:00+09:00`) },
+            endsAt: { lte: new Date(`${config.endDate}T01:00:00+09:00`) },
+            deletedAt: null
+          },
+          select: { technicianProfileId: true, serviceId: true, startsAt: true, endsAt: true }
+        });
+        const existingSlotKeys = new Set(existingSlots.map(scheduleSlotKey));
+        let pendingBatch: Prisma.ScheduleSlotCreateManyInput[] = [];
+        for (const shift of technicianShifts) {
+          const availability = availabilityByKey.get(availabilityKey(shift));
+          assert(availability, "STAGING_TEST_CHIBA_AVAILABILITY_MISSING");
+          const ranges = buildNightlyServiceSlotRanges({
             startsAt: shift.startsAt,
             endsAt: shift.endsAt,
-            capacity: 1,
-            isActive: true,
-            isScheduleControlWindow: true
-          },
-          select: { id: true, technicianProfileId: true, startsAt: true, endsAt: true, isActive: true }
-        });
-        availabilityByKey.set(key, created);
-      }
-
-      let scheduleSlotCount = 0;
-      let createdScheduleSlotCount = 0;
-      const serviceStartIntervalMinutes = deriveServiceStartIntervalMinutes(
-        services.map((service) => service.durationMinutes)
-      );
-      for (const technicianProfileId of technicianProfileIds) {
-        const technicianShifts = desiredShifts.filter(
-          (shift) => shift.technicianProfileId === technicianProfileId
-        );
-        for (const service of services) {
-          const existingSlots = await tx.scheduleSlot.findMany({
-            where: {
+            durationMinutes: service.durationMinutes,
+            startIntervalMinutes: serviceStartIntervalMinutes
+          });
+          scheduleSlotCount += ranges.length;
+          for (const range of ranges) {
+            const slot = {
+              availabilityId: availability.id,
+              serviceId: service.id,
+              technicianServiceId: null,
               shopId: shop.id,
               technicianProfileId,
-              serviceId: service.id,
-              startsAt: { gte: new Date(`${config.startDate}T17:00:00+09:00`) },
-              endsAt: { lte: new Date(`${config.endDate}T01:00:00+09:00`) },
-              deletedAt: null
-            },
-            select: { technicianProfileId: true, serviceId: true, startsAt: true, endsAt: true }
-          });
-          const existingSlotKeys = new Set(existingSlots.map(scheduleSlotKey));
-          let pendingBatch: Prisma.ScheduleSlotCreateManyInput[] = [];
-          for (const shift of technicianShifts) {
-            const availability = availabilityByKey.get(availabilityKey(shift));
-            assert(availability, "STAGING_TEST_CHIBA_AVAILABILITY_MISSING");
-            const ranges = buildNightlyServiceSlotRanges({
-              startsAt: shift.startsAt,
-              endsAt: shift.endsAt,
-              durationMinutes: service.durationMinutes,
-              startIntervalMinutes: serviceStartIntervalMinutes
-            });
-            scheduleSlotCount += ranges.length;
-            for (const range of ranges) {
-              const slot = {
-                availabilityId: availability.id,
-                serviceId: service.id,
-                technicianServiceId: null,
-                shopId: shop.id,
-                technicianProfileId,
-                startsAt: range.startsAt,
-                endsAt: range.endsAt,
-                capacity: 1,
-                bookedCount: 0,
-                status: "AVAILABLE" as const
-              };
-              const key = scheduleSlotKey(slot);
-              if (existingSlotKeys.has(key)) continue;
-              pendingBatch.push(slot);
-              existingSlotKeys.add(key);
-              if (pendingBatch.length === INSERT_BATCH_SIZE) {
-                await tx.scheduleSlot.createMany({ data: pendingBatch });
-                createdScheduleSlotCount += pendingBatch.length;
-                pendingBatch = [];
-              }
+              startsAt: range.startsAt,
+              endsAt: range.endsAt,
+              capacity: 1,
+              bookedCount: 0,
+              status: "AVAILABLE" as const
+            };
+            const key = scheduleSlotKey(slot);
+            if (existingSlotKeys.has(key)) continue;
+            pendingBatch.push(slot);
+            existingSlotKeys.add(key);
+            if (pendingBatch.length === INSERT_BATCH_SIZE) {
+              await tx.scheduleSlot.createMany({ data: pendingBatch });
+              createdScheduleSlotCount += pendingBatch.length;
+              pendingBatch = [];
             }
           }
-          if (pendingBatch.length > 0) {
-            await tx.scheduleSlot.createMany({ data: pendingBatch });
-            createdScheduleSlotCount += pendingBatch.length;
-          }
+        }
+        if (pendingBatch.length > 0) {
+          await tx.scheduleSlot.createMany({ data: pendingBatch });
+          createdScheduleSlotCount += pendingBatch.length;
         }
       }
+    }
 
-      const admin1 = await tx.administrativeRegion.findFirst({
-        where: { countryCode: "JP", officialCode: "12", level: "ADMIN1", deletedAt: null },
-        select: { id: true, sourceVersion: true }
-      });
-      const admin2 = await tx.administrativeRegion.findFirst({
-        where: { countryCode: "JP", officialCode: "12100", level: "ADMIN2", deletedAt: null },
-        select: { id: true, sourceVersion: true }
-      });
-      assert(admin1 && admin2, "STAGING_TEST_CHIBA_ADMINISTRATIVE_REGION_MISSING");
-      await tx.shopServiceLocation.upsert({
-        where: { shopId: shop.id },
-        create: {
-          shopId: shop.id,
-          countryCode: "JP",
-          admin1RegionId: admin1.id,
-          admin2RegionId: admin2.id,
-          datasetVersion: admin2.sourceVersion,
-          verifiedAt: new Date(),
-          verifiedById: owner.id
-        },
-        update: {
-          countryCode: "JP",
-          admin1RegionId: admin1.id,
-          admin2RegionId: admin2.id,
-          datasetVersion: admin2.sourceVersion,
-          verifiedAt: new Date(),
-          verifiedById: owner.id,
-          deletedAt: null
-        }
-      });
+    const admin1 = await tx.administrativeRegion.findFirst({
+      where: { countryCode: "JP", officialCode: "12", level: "ADMIN1", deletedAt: null },
+      select: { id: true, sourceVersion: true }
+    });
+    const admin2 = await tx.administrativeRegion.findFirst({
+      where: { countryCode: "JP", officialCode: "12100", level: "ADMIN2", deletedAt: null },
+      select: { id: true, sourceVersion: true }
+    });
+    assert(admin1 && admin2, "STAGING_TEST_CHIBA_ADMINISTRATIVE_REGION_MISSING");
+    await tx.shopServiceLocation.upsert({
+      where: { shopId: shop.id },
+      create: {
+        shopId: shop.id,
+        countryCode: "JP",
+        admin1RegionId: admin1.id,
+        admin2RegionId: admin2.id,
+        datasetVersion: admin2.sourceVersion,
+        verifiedAt: new Date(),
+        verifiedById: owner.id
+      },
+      update: {
+        countryCode: "JP",
+        admin1RegionId: admin1.id,
+        admin2RegionId: admin2.id,
+        datasetVersion: admin2.sourceVersion,
+        verifiedAt: new Date(),
+        verifiedById: owner.id,
+        deletedAt: null
+      }
+    });
 
-      await tx.auditLog.create({
+    const [finalShop] = await this.client.$transaction([
+      tx.shop.update({
+        where: { id: shop.id },
+        data: { status: "published", visibility: "public" },
+        select: { shopNo: true }
+      }),
+      tx.auditLog.create({
         data: {
           actorId: owner.id,
           action: "staging.test_chiba_shop.provision",
@@ -734,31 +742,30 @@ export class StagingTestChibaShopProvisioner {
             createdScheduleSlotCount
           }
         }
-      });
+      })
+    ]);
 
-      const finalShop = await tx.shop.findUniqueOrThrow({ where: { id: shop.id }, select: { shopNo: true } });
-      assert(finalShop.shopNo, "STAGING_TEST_CHIBA_SHOP_NO_MISSING");
-      const shopNo = finalShop.shopNo;
-      return {
-        shopId: shop.id,
-        shopNo,
-        ownerEmail: config.ownerEmail,
-        merchantAccountId: merchantAccount.id,
-        scheduleCycleId: scheduleCycle.id,
-        scheduleMode: "STORE_ASSIGN_FINAL",
-        pricingMode: "MERCHANT",
-        startDate: config.startDate,
-        endDate: config.endDate,
-        technicianCount: technicianProfileIds.length,
-        serviceCount: services.length,
-        massageServiceCount: STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "massage").length,
-        optionServiceCount: STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "option").length,
-        extensionServiceCount: STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "extension").length,
-        availabilityCount: desiredShifts.length,
-        scheduleSlotCount,
-        createdScheduleSlotCount,
-        serviceStartIntervalMinutes
-      };
-    }, { timeout: 300_000 });
+    assert(finalShop.shopNo, "STAGING_TEST_CHIBA_SHOP_NO_MISSING");
+    const shopNo = finalShop.shopNo;
+    return {
+      shopId: shop.id,
+      shopNo,
+      ownerEmail: config.ownerEmail,
+      merchantAccountId: merchantAccount.id,
+      scheduleCycleId: scheduleCycle.id,
+      scheduleMode: "STORE_ASSIGN_FINAL",
+      pricingMode: "MERCHANT",
+      startDate: config.startDate,
+      endDate: config.endDate,
+      technicianCount: technicianProfileIds.length,
+      serviceCount: services.length,
+      massageServiceCount: STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "massage").length,
+      optionServiceCount: STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "option").length,
+      extensionServiceCount: STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "extension").length,
+      availabilityCount: desiredShifts.length,
+      scheduleSlotCount,
+      createdScheduleSlotCount,
+      serviceStartIntervalMinutes
+    };
   }
 }

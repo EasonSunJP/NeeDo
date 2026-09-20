@@ -89,4 +89,19 @@ describe("StagingTest Chiba shop provisioning gate", () => {
     expect(taxonomyWriteBlock).toBeDefined();
     expect(taxonomyWriteBlock).not.toContain("activeKey");
   });
+
+  it("keeps the shop unpublished until resumable provisioning is complete", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/staging/staging-test-chiba-shop-provisioning.ts"),
+      "utf8"
+    );
+
+    expect(source).not.toContain("return this.client.$transaction(async (tx)");
+    expect(source).toContain('status: wasPublished ? "published" : "draft"');
+    expect(source).toContain('visibility: wasPublished ? "public" : "privateAll"');
+    expect(source).toContain("const [finalShop] = await this.client.$transaction([");
+    expect(source).toMatch(
+      /data: \{ status: "published", visibility: "public" \},[\s\S]*?tx\.auditLog\.create/u
+    );
+  });
 });
