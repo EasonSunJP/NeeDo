@@ -27,6 +27,9 @@ export interface StagingTestOperationsResult {
   endDate: string;
   availabilityCount: number;
   deduplicatedAvailabilityCount: number;
+  createdTechnicianServiceCount: number;
+  scheduleSlotCount: number;
+  createdScheduleSlotCount: number;
   automationSettingCount: number;
 }
 
@@ -231,6 +234,164 @@ export class StagingTestOperationsProvisioner {
       }
       const availabilityCount = desiredAvailabilities.length;
 
+      const sourceService = await transaction.service.findFirst({
+        where: {
+          shopId: shop.id,
+          status: "published",
+          deletedAt: null,
+          category: { is: { isActive: true, deletedAt: null } }
+        },
+        orderBy: [{ isRecommended: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          categoryId: true,
+          priceAmount: true,
+          currency: true,
+          durationMinutes: true
+        }
+      });
+      if (!sourceService) {
+        throw new Error("STAGING_TEST_PUBLISHED_SERVICE_MISSING");
+      }
+
+      const technicianServiceWhere: Prisma.TechnicianServiceWhereInput = {
+        technicianId: { in: technicianProfileIds },
+        isActive: true,
+        isBookable: true,
+        reviewStatus: "APPROVED",
+        deletedAt: null,
+        category: { is: { isActive: true, deletedAt: null } },
+        OR: [
+          { shopId: shop.id },
+          { sourceShopService: { is: { shopId: shop.id, status: "published", deletedAt: null } } }
+        ]
+      };
+      const existingTechnicianServices = await transaction.technicianService.findMany({
+        where: technicianServiceWhere,
+        orderBy: [{ isRecommended: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+        select: { id: true, technicianId: true, durationMinutes: true }
+      });
+      const techniciansWithService = new Set(
+        existingTechnicianServices.map((item) => item.technicianId)
+      );
+      const missingTechnicianServiceIds = technicianProfileIds.filter(
+        (technicianProfileId) => !techniciansWithService.has(technicianProfileId)
+      );
+      if (missingTechnicianServiceIds.length > 0) {
+        await transaction.technicianService.createMany({
+          data: missingTechnicianServiceIds.map((technicianId) => ({
+            shopId: shop.id,
+            technicianId,
+            sourceShopServiceId: sourceService.id,
+            name: sourceService.name,
+            description: sourceService.description,
+            categoryId: sourceService.categoryId,
+            priceAmount: Math.round(Number(sourceService.priceAmount)),
+            currency: sourceService.currency,
+            durationMinutes: sourceService.durationMinutes,
+            isActive: true,
+            isBookable: true,
+            isRecommended: false,
+            sortOrder: 0,
+            reviewStatus: "APPROVED",
+            createdBy: shop.ownerUserId,
+            updatedBy: shop.ownerUserId
+          }))
+        });
+      }
+      const technicianServices = await transaction.technicianService.findMany({
+        where: technicianServiceWhere,
+        orderBy: [{ isRecommended: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+        select: { id: true, technicianId: true, durationMinutes: true }
+      });
+      const serviceByTechnician = new Map<
+        number,
+        { id: number; durationMinutes: number }
+      >();
+      for (const service of technicianServices) {
+        if (!serviceByTechnician.has(service.technicianId)) {
+          serviceByTechnician.set(service.technicianId, {
+            id: service.id,
+            durationMinutes: service.durationMinutes
+          });
+        }
+      }
+      if (serviceByTechnician.size !== technicianProfileIds.length) {
+        throw new Error(
+          `STAGING_TEST_TECHNICIAN_SERVICE_COUNT_MISMATCH:${serviceByTechnician.size}`
+        );
+      }
+
+      const canonicalAvailabilities = await transaction.availability.findMany({
+        where: {
+          shopId: shop.id,
+          technicianProfileId: { in: technicianProfileIds },
+          sourceType: AvailabilitySourceType.TECHNICIAN,
+          visibility: AvailabilityVisibility.AFFILIATED_SHOPS,
+          startsAt: { gte: periodStart, lte: inclusiveEnd },
+          endsAt: { gt: periodStart, lte: periodEnd },
+          isActive: true,
+          isScheduleControlWindow: true,
+          deletedAt: null
+        },
+        select: { id: true, technicianProfileId: true, startsAt: true, endsAt: true }
+      });
+      const availabilityIdByKey = new Map(
+        canonicalAvailabilities.map((item) => [availabilityKey(item), item.id])
+      );
+      const existingScheduleSlots = await transaction.scheduleSlot.findMany({
+        where: {
+          shopId: shop.id,
+          technicianProfileId: { in: technicianProfileIds },
+          status: { in: ["AVAILABLE", "BOOKED"] },
+          startsAt: { gte: periodStart, lt: periodEnd },
+          deletedAt: null
+        },
+        select: { technicianProfileId: true, startsAt: true }
+      });
+      const scheduledTechnicianDays = new Set(
+        existingScheduleSlots.flatMap((slot) =>
+          slot.technicianProfileId === null
+            ? []
+            : [`${slot.technicianProfileId}:${toDateString(slot.startsAt)}`]
+        )
+      );
+      const missingScheduleSlots: Prisma.ScheduleSlotCreateManyInput[] = [];
+      for (const availability of desiredAvailabilities) {
+        const technicianProfileId = availability.technicianProfileId;
+        if (technicianProfileId === null || technicianProfileId === undefined) continue;
+        const startsAt = new Date(availability.startsAt);
+        const dayKey = `${technicianProfileId}:${toDateString(startsAt)}`;
+        if (scheduledTechnicianDays.has(dayKey)) continue;
+        const technicianService = serviceByTechnician.get(technicianProfileId);
+        const availabilityId = availabilityIdByKey.get(availabilityKey(availability));
+        if (!technicianService || availabilityId === undefined) {
+          throw new Error(`STAGING_TEST_SCHEDULE_SLOT_SOURCE_MISSING:${dayKey}`);
+        }
+        const slotStartsAt = new Date(startsAt.getTime() + 10 * 60 * 60 * 1000);
+        missingScheduleSlots.push({
+          availabilityId,
+          serviceId: null,
+          technicianServiceId: technicianService.id,
+          shopId: shop.id,
+          technicianProfileId,
+          startsAt: slotStartsAt,
+          endsAt: new Date(
+            slotStartsAt.getTime() + technicianService.durationMinutes * 60 * 1000
+          ),
+          capacity: 1,
+          bookedCount: 0,
+          status: "AVAILABLE"
+        });
+        scheduledTechnicianDays.add(dayKey);
+      }
+      if (missingScheduleSlots.length > 0) {
+        await transaction.scheduleSlot.createMany({ data: missingScheduleSlots });
+      }
+      const scheduleSlotCount = availabilityCount;
+
       let automationSettingCount = 0;
       for (const technicianProfileId of technicianProfileIds) {
         for (const [kind, rules] of [
@@ -269,6 +430,9 @@ export class StagingTestOperationsProvisioner {
             technicianProfileIds,
             availabilityCount,
             deduplicatedAvailabilityCount: duplicateIds.length,
+            createdTechnicianServiceCount: missingTechnicianServiceIds.length,
+            scheduleSlotCount,
+            createdScheduleSlotCount: missingScheduleSlots.length,
             automationSettingCount
           }
         }
@@ -281,6 +445,9 @@ export class StagingTestOperationsProvisioner {
         endDate: toDateString(inclusiveEnd),
         availabilityCount,
         deduplicatedAvailabilityCount: duplicateIds.length,
+        createdTechnicianServiceCount: missingTechnicianServiceIds.length,
+        scheduleSlotCount,
+        createdScheduleSlotCount: missingScheduleSlots.length,
         automationSettingCount
       };
     }, { timeout: 120_000 });
