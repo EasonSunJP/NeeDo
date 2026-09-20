@@ -333,6 +333,7 @@ export type BackofficeOrderTimelineEvent =
       publicReason: string | null;
       addOnId: number;
       serviceId: number;
+      serviceType: "shop_service" | "technician_service";
       serviceName: string;
       priceAmountJpy: number;
       currency: "JPY";

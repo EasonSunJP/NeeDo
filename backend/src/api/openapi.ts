@@ -12438,6 +12438,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "id",
           "serviceId",
+          "serviceType",
           "status",
           "serviceNameSnapshot",
           "priceAmountJpy",
@@ -12453,13 +12454,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           id: { type: "integer", minimum: 1 },
           serviceId: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+          serviceType: {
+            type: "string",
+            enum: ["shop_service", "technician_service"]
+          },
           status: { type: "string", enum: ["proposed", "accepted", "rejected"] },
           serviceNameSnapshot: { type: "string", minLength: 1 },
           priceAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           currency: { type: "string", enum: ["JPY"] },
           durationMinutes: { type: "integer", minimum: 1 },
           serviceSnapshot: {
-            description: "Immutable published same-shop service snapshot used for this proposal"
+            description:
+              "Immutable eligible shop or assigned-technician service snapshot used for this proposal"
           },
           proposedBy: {
             type: ["string", "null"],
@@ -12472,6 +12478,47 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           resolvedAt: { type: ["string", "null"], format: "date-time" },
           resolutionReason: { type: ["string", "null"] }
+        }
+      },
+      OrderAddOnService: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "sourceType",
+          "name",
+          "description",
+          "priceAmountJpy",
+          "currency",
+          "durationMinutes",
+          "coverUrl"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+          sourceType: {
+            type: "string",
+            enum: ["shop_service", "technician_service"]
+          },
+          name: { type: "string", minLength: 1 },
+          description: { type: ["string", "null"] },
+          priceAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          currency: { type: "string", enum: ["JPY"] },
+          durationMinutes: { type: "integer", minimum: 1 },
+          coverUrl: { type: ["string", "null"] }
+        }
+      },
+      OrderAddOnServicePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OrderAddOnService" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
       OrderServiceSession: {
@@ -23497,13 +23544,41 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/orders/{id}/add-on-services`]: {
+      get: {
+        operationId: "listOrderAddOnServices",
+        tags: ["Booking Fulfillment"],
+        summary: "List eligible add-on services for an in-service order",
+        description:
+          "The server selects the catalog from the order pricing-mode snapshot. Merchant-priced orders expose eligible services from the order shop; technician-priced orders expose eligible services owned by the assigned technician and valid for the order shop.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:read",
+        parameters: [
+          idPathParameter(),
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Order-scoped eligible add-on service catalog", {
+            $ref: "#/components/schemas/OrderAddOnServicePage"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "403": fulfillmentForbiddenResponse,
+          "409": fulfillmentConflictResponse
+        }
+      }
+    },
     [`${config.API_PREFIX}/orders/{id}/add-ons`]: {
       post: {
         operationId: "proposeOrderAddOn",
         tags: ["Booking Fulfillment"],
-        summary: "Propose a published same-shop service add-on",
+        summary: "Propose an eligible order-scoped service add-on",
         description:
-          "The server resolves the formal Service and persists immutable name, JPY price, duration and service snapshots; client price or duration is never authoritative.",
+          "The server resolves the service from the catalog selected by the order pricing-mode snapshot and assigned technician, then persists immutable name, JPY price, duration and service snapshots; client price or duration is never authoritative.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:add-on:write",
         parameters: [idPathParameter()],
@@ -23522,7 +23597,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           ...formalOrderCommonErrorResponses,
           "400": jsonErrorResponse(
-            "40001 error.validation — strict request validation failed; 40001 error.order.add_on_service_invalid — service is not an eligible published same-shop add-on"
+            "40001 error.validation — strict request validation failed; 40001 error.order.add_on_service_invalid — service is not eligible for the order pricing mode and assigned technician"
           ),
           "403": fulfillmentForbiddenResponse,
           "409": fulfillmentConflictResponse

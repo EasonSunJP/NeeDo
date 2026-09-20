@@ -657,6 +657,7 @@ export type FulfillmentCommandActor = FulfillmentParticipant | "merchant";
 export interface OrderAddOnPayload {
   id: number;
   serviceId: number;
+  serviceType: "shop_service" | "technician_service";
   status: OrderAddOnStatusPayload;
   serviceNameSnapshot: string;
   priceAmountJpy: number;
@@ -668,6 +669,17 @@ export interface OrderAddOnPayload {
   resolvedBy: FulfillmentParticipant | null;
   resolvedAt: Date | null;
   resolutionReason: string | null;
+}
+
+export interface OrderAddOnServicePayload {
+  id: number;
+  sourceType: "shop_service" | "technician_service";
+  name: string;
+  description: string | null;
+  priceAmountJpy: number;
+  currency: "JPY";
+  durationMinutes: number;
+  coverUrl: string | null;
 }
 
 export interface OrderServiceSessionPayload {
@@ -1126,6 +1138,9 @@ export interface BookingRepositoryPort {
   isShopSuspended?: (shopId: number) => Promise<boolean>;
   listOrders: (input: OrderListInput) => Promise<PaginatedResponse<BookingOrderPayload>>;
   findOrderById: (id: number) => Promise<BookingOrderPayload | null>;
+  listOrderAddOnServices: (
+    input: PaginationInput & { orderId: number }
+  ) => Promise<PaginatedResponse<OrderAddOnServicePayload>>;
   assignTechnician?: (input: BookingAssignTechnicianInput) => Promise<BookingAssignTechnicianResult>;
   editMerchantOrder?: (input: MerchantBookingEditInput) => Promise<BookingOrderPayload | null>;
   listCancellableOrdersForScheduleSlot?: (scheduleSlotId: number) => Promise<BookingOrderPayload[]>;
@@ -4026,6 +4041,136 @@ export class BookingRepository implements BookingRepositoryPort {
     }
   }
 
+  public async listOrderAddOnServices(
+    input: PaginationInput & { orderId: number }
+  ): Promise<PaginatedResponse<OrderAddOnServicePayload>> {
+    const pagination = toPrismaPagination(input);
+    const order = await this.client.bookingOrder.findFirst({
+      where: {
+        id: input.orderId,
+        status: DatabaseBookingOrderStatus.IN_SERVICE,
+        deletedAt: null
+      },
+      select: {
+        shopId: true,
+        technicianProfileId: true,
+        pricingModeSnapshot: true,
+        serviceSession: { select: { endedAt: true, deletedAt: true } }
+      }
+    });
+    if (!order?.serviceSession || order.serviceSession.endedAt || order.serviceSession.deletedAt) {
+      return buildPaginatedResponse([], 0, input);
+    }
+
+    if (order.pricingModeSnapshot === "TECHNICIAN") {
+      if (!order.technicianProfileId) return buildPaginatedResponse([], 0, input);
+      const now = new Date();
+      const where: Prisma.TechnicianServiceWhereInput = {
+        technicianId: order.technicianProfileId,
+        OR: [{ shopId: null }, { shopId: order.shopId }],
+        isActive: true,
+        isBookable: true,
+        reviewStatus: "APPROVED",
+        currency: "JPY",
+        priceAmount: { gte: 0 },
+        durationMinutes: { gt: 0 },
+        deletedAt: null,
+        category: { isActive: true, deletedAt: null },
+        technicianProfile: {
+          status: "published",
+          deletedAt: null,
+          OR: [
+            { shopId: order.shopId },
+            {
+              technicianShopAffiliations: {
+                some: {
+                  shopId: order.shopId,
+                  workStatus: "ACTIVE",
+                  startsAt: { lte: now },
+                  OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+                  deletedAt: null
+                }
+              }
+            }
+          ]
+        }
+      };
+      const [list, total] = await Promise.all([
+        this.client.technicianService.findMany({
+          where,
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            priceAmount: true,
+            currency: true,
+            durationMinutes: true,
+            coverImageUrl: true
+          },
+          skip: pagination.skip,
+          take: pagination.take,
+          orderBy: [{ isRecommended: "desc" }, { sortOrder: "asc" }, { id: "asc" }]
+        }),
+        this.client.technicianService.count({ where })
+      ]);
+      return buildPaginatedResponse(
+        list.map((service) => ({
+          id: service.id,
+          sourceType: "technician_service" as const,
+          name: service.name,
+          description: service.description,
+          priceAmountJpy: service.priceAmount,
+          currency: "JPY" as const,
+          durationMinutes: service.durationMinutes,
+          coverUrl: service.coverImageUrl
+        })),
+        total,
+        input
+      );
+    }
+
+    const where: Prisma.ServiceWhereInput = {
+      shopId: order.shopId,
+      status: "published",
+      currency: "JPY",
+      priceAmount: { gte: 0 },
+      durationMinutes: { gt: 0 },
+      deletedAt: null,
+      category: { isActive: true, deletedAt: null }
+    };
+    const [list, total] = await Promise.all([
+      this.client.service.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          priceAmount: true,
+          currency: true,
+          durationMinutes: true
+        },
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ isRecommended: "desc" }, { sortOrder: "asc" }, { id: "asc" }]
+      }),
+      this.client.service.count({ where })
+    ]);
+    return buildPaginatedResponse(
+      list.map((service) => ({
+        id: service.id,
+        sourceType: "shop_service" as const,
+        name: service.name,
+        description: service.description,
+        priceAmountJpy: Number(service.priceAmount.toString()),
+        currency: "JPY" as const,
+        durationMinutes: service.durationMinutes,
+        coverUrl: null
+      })),
+      total,
+      input
+    );
+  }
+
   public createOrderAddOn(
     input: CreateOrderAddOnRepositoryInput
   ): Promise<FulfillmentMutationResult> {
@@ -4051,25 +4196,71 @@ export class BookingRepository implements BookingRepositoryPort {
         return { outcome: "invalid_transition" };
       }
 
-      const service = await tx.service.findFirst({
-        where: {
-          id: input.serviceId,
-          shopId: current.shopId,
-          status: "published",
-          deletedAt: null
-        },
-        select: {
-          id: true,
-          publicId: true,
-          categoryId: true,
-          name: true,
-          description: true,
-          priceAmount: true,
-          currency: true,
-          durationMinutes: true,
-          createdAt: true
-        }
-      });
+      const service = current.pricingModeSnapshot === "TECHNICIAN"
+        ? current.technicianProfileId
+          ? await tx.technicianService.findFirst({
+              where: {
+                id: input.serviceId,
+                technicianId: current.technicianProfileId,
+                OR: [{ shopId: null }, { shopId: current.shopId }],
+                isActive: true,
+                isBookable: true,
+                reviewStatus: "APPROVED",
+                deletedAt: null,
+                category: { isActive: true, deletedAt: null },
+                technicianProfile: {
+                  status: "published",
+                  deletedAt: null,
+                  OR: [
+                    { shopId: current.shopId },
+                    {
+                      technicianShopAffiliations: {
+                        some: {
+                          shopId: current.shopId,
+                          workStatus: "ACTIVE",
+                          startsAt: { lte: now },
+                          OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+                          deletedAt: null
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              select: {
+                id: true,
+                publicId: true,
+                categoryId: true,
+                name: true,
+                description: true,
+                priceAmount: true,
+                currency: true,
+                durationMinutes: true,
+                technicianId: true,
+                createdAt: true
+              }
+            })
+          : null
+        : await tx.service.findFirst({
+            where: {
+              id: input.serviceId,
+              shopId: current.shopId,
+              status: "published",
+              deletedAt: null,
+              category: { isActive: true, deletedAt: null }
+            },
+            select: {
+              id: true,
+              publicId: true,
+              categoryId: true,
+              name: true,
+              description: true,
+              priceAmount: true,
+              currency: true,
+              durationMinutes: true,
+              createdAt: true
+            }
+          });
       const priceAmountJpy = service ? Number(service.priceAmount.toString()) : Number.NaN;
       if (
         !service ||
@@ -4086,16 +4277,19 @@ export class BookingRepository implements BookingRepositoryPort {
         data: {
           bookingOrderId: current.id,
           serviceSessionId: session.id,
-          serviceId: service.id,
+          serviceId: current.pricingModeSnapshot === "MERCHANT" ? service.id : null,
+          technicianServiceId: current.pricingModeSnapshot === "TECHNICIAN" ? service.id : null,
           status: "PROPOSED",
           serviceNameSnapshot: service.name,
           priceAmountJpy,
           currency: "JPY",
           durationMinutes: service.durationMinutes,
           serviceSnapshotJson: {
-            entityType: "service",
+            entityType: current.pricingModeSnapshot === "TECHNICIAN" ? "technician_service" : "service",
             entityNumericId: service.id,
-            serviceId: service.id,
+            ...(current.pricingModeSnapshot === "TECHNICIAN"
+              ? { technicianServiceId: service.id, technicianId: current.technicianProfileId }
+              : { serviceId: service.id }),
             publicId: service.publicId,
             categoryId: service.categoryId,
             name: service.name,
@@ -6364,9 +6558,9 @@ export class BookingRepository implements BookingRepositoryPort {
           bookingOrderId: event.bookingOrderId,
           deletedAt: null
         },
-        select: { serviceId: true }
+        select: { serviceId: true, technicianServiceId: true }
       });
-      if (!addOn || addOn.serviceId !== expectation.serviceId) {
+      if (!addOn || (addOn.serviceId ?? addOn.technicianServiceId) !== expectation.serviceId) {
         return { outcome: "conflict" };
       }
     }
@@ -7421,7 +7615,8 @@ export class BookingRepository implements BookingRepositoryPort {
                   : null;
               return {
                 id: addOn.id,
-                serviceId: addOn.serviceId,
+                serviceId: (addOn.serviceId ?? addOn.technicianServiceId)!,
+                serviceType: addOn.technicianServiceId === null ? "shop_service" : "technician_service",
                 status: addOn.status.toLowerCase() as OrderAddOnStatusPayload,
                 serviceNameSnapshot: addOn.serviceNameSnapshot,
                 priceAmountJpy: addOn.priceAmountJpy,

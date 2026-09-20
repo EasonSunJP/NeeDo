@@ -107,6 +107,9 @@ describe("AnalyticsRankingRepository", () => {
       "audit_logs",
       "calculation_snapshot_json",
       "JOIN ranking_candidate_orders AS candidate_add_on",
+      "add_on.technician_service_id",
+      "LEFT JOIN technician_services AS technician_service",
+      "COALESCE(add_on.service_id, add_on.technician_service_id)",
       "ORDER BY add_on.proposed_at ASC, add_on.id ASC",
       "BINARY entity_type"
     ])

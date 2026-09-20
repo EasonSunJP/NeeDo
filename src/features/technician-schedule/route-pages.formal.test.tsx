@@ -325,6 +325,7 @@ function makeOrder(status: BookingOrderStatus, id = 29): BookingOrder {
       addOns: [{
         id: 301,
         serviceId: 45,
+        serviceType: "shop_service",
         status: "proposed",
         serviceNameSnapshot: "延长 30 分钟",
         priceAmountJpy: 3000,
@@ -913,6 +914,7 @@ describe("formal technician order detail route", () => {
         addOns: [{
           id: 301,
           serviceId: 45,
+          serviceType: "shop_service" as const,
           status: "accepted" as const,
           serviceNameSnapshot: "加钟 30 分钟",
           priceAmountJpy: 6_500,

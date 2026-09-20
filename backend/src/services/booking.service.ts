@@ -22,6 +22,7 @@ import type {
   FulfillmentMutationResult,
   ManualPaymentMutationResult,
   ManualPaymentScope,
+  OrderAddOnServicePayload,
   OrderAcceptancePausedResult,
   OrderTransitionRepositoryInput,
   OrderTransitionRepositoryOptions,
@@ -58,7 +59,7 @@ import type {
   OrderStatusNotificationPort
 } from "./realtime.service";
 import { AppError } from "../utils/app-error";
-import type { PaginatedResponse } from "../utils/pagination";
+import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import {
   selectAffiliatePromotion,
   type AffiliateCheckoutService,
@@ -709,6 +710,23 @@ export class BookingService {
     }
 
     return order;
+  }
+
+  public async listOrderAddOnServices(
+    actor: AuthenticatedBookingActor,
+    id: number,
+    input: PaginationInput
+  ): Promise<PaginatedResponse<OrderAddOnServicePayload>> {
+    const order = await this.repository.findOrderById(id);
+    if (!order || !this.canAccessOrder(actor, order)) throw this.notFoundError();
+    if (order.status !== "inService" || !order.serviceSession || order.serviceSession.endedAt) {
+      throw new AppError({
+        code: ERROR_CODES.ORDER_INVALID_TRANSITION,
+        message: "error.order.invalid_transition",
+        statusCode: 409
+      });
+    }
+    return this.repository.listOrderAddOnServices({ ...input, orderId: id });
   }
 
   public async assignOrderTechnician(

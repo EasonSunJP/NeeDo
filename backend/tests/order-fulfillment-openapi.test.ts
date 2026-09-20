@@ -33,6 +33,7 @@ const schemas = document.components.schemas as Record<string, Schema>;
 
 const operations = [
   ["post", "/api/v1/orders/{id}/service/start", "order:service:start", "200"],
+  ["get", "/api/v1/orders/{id}/add-on-services", "order:read", "200"],
   ["post", "/api/v1/orders/{id}/add-ons", "order:add-on:write", "200"],
   ["post", "/api/v1/orders/{id}/add-ons/{addOnId}/accept", "order:add-on:write", "200"],
   ["post", "/api/v1/orders/{id}/add-ons/{addOnId}/reject", "order:add-on:write", "200"],
@@ -91,7 +92,7 @@ describe("formal order fulfillment OpenAPI contract", () => {
     ).toContain("error.order.service_end_too_early");
   });
 
-  it("documents all 15 authenticated operations with exact permissions and unique operation IDs", () => {
+  it("documents all 16 authenticated operations with exact permissions and unique operation IDs", () => {
     const operationIds: string[] = [];
     for (const [method, path, permission, success] of operations) {
       const operation = paths[path]?.[method];
@@ -105,6 +106,26 @@ describe("formal order fulfillment OpenAPI contract", () => {
     expect(new Set(operationIds).size).toBe(operationIds.length);
     expect(paths).not.toHaveProperty("/api/v1/orders/{id}/start");
     expect(paths).not.toHaveProperty("/api/v1/orders/{id}/complete");
+  });
+
+  it("documents an order-scoped add-on catalog with an explicit service source", () => {
+    const operation = paths["/api/v1/orders/{id}/add-on-services"].get;
+    expect(operation.parameters.map((parameter) => parameter.name)).toEqual(["id", "page", "pageSize"]);
+    expect(schemas.OrderAddOnService).toMatchObject({
+      additionalProperties: false,
+      required: expect.arrayContaining([
+        "id",
+        "sourceType",
+        "name",
+        "priceAmountJpy",
+        "currency",
+        "durationMinutes"
+      ]),
+      properties: {
+        sourceType: { type: "string", enum: ["shop_service", "technician_service"] },
+        priceAmountJpy: { type: "integer", minimum: 0 }
+      }
+    });
   });
 
   it("matches strict fulfillment request unions, limits and path identifiers", () => {
@@ -545,7 +566,7 @@ describe("formal order fulfillment OpenAPI contract", () => {
         "400",
         [
           "40001 error.validation — strict request validation failed",
-          "40001 error.order.add_on_service_invalid — service is not an eligible published same-shop add-on"
+          "40001 error.order.add_on_service_invalid — service is not eligible for the order pricing mode and assigned technician"
         ]
       ],
       [

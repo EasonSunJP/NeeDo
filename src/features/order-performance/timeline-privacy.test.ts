@@ -134,6 +134,7 @@ describe("order timeline display privacy", () => {
       addOns: [{
         id: 6501,
         serviceId: 81,
+        serviceType: "shop_service",
         status: "accepted",
         serviceNameSnapshot: "加钟 30 分钟",
         priceAmountJpy: 6_500,
@@ -249,6 +250,7 @@ describe("order timeline display privacy", () => {
       publicReason: `debug_${type}`,
       addOnId: 7,
       serviceId: 8,
+      serviceType: "shop_service",
       serviceName: "延长护理",
       priceAmountJpy: 1200,
       currency: "JPY",
@@ -283,6 +285,7 @@ describe("order timeline display privacy", () => {
         publicReason: "QA-20260910-RQ-003 add-on completed",
         addOnId: 7,
         serviceId: 8,
+        serviceType: "shop_service",
         serviceName: "延长护理",
         priceAmountJpy: 1200,
         currency: "JPY",

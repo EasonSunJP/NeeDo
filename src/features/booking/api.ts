@@ -29,6 +29,7 @@ export type FulfillmentParticipant = "customer" | "technician";
 export type BookingOrderAddOn = {
   id: number;
   serviceId: number;
+  serviceType: "shop_service" | "technician_service";
   status: "proposed" | "accepted" | "rejected";
   serviceNameSnapshot: string;
   priceAmountJpy: number;
@@ -40,6 +41,17 @@ export type BookingOrderAddOn = {
   resolvedBy: FulfillmentParticipant | null;
   resolvedAt: string | null;
   resolutionReason: string | null;
+};
+
+export type OrderAddOnService = {
+  id: number;
+  sourceType: "shop_service" | "technician_service";
+  name: string;
+  description: string | null;
+  priceAmountJpy: number;
+  currency: "JPY";
+  durationMinutes: number;
+  coverUrl: string | null;
 };
 
 export type BookingOrderServiceSession = {
@@ -569,6 +581,12 @@ export const bookingApi = {
       body: input,
       method: "POST"
     });
+  },
+  listAddOnServices(id: number, query: { page?: number; pageSize?: number } = {}) {
+    return httpClient.request<PaginatedBookingData<OrderAddOnService>>(
+      `/orders/${id}/add-on-services`,
+      { query }
+    );
   },
   acceptAddOn(id: number, addOnId: number, input: BookingIdempotencyInput) {
     return httpClient.request<BookingOrder>(`/orders/${id}/add-ons/${addOnId}/accept`, {

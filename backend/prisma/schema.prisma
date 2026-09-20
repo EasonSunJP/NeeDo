@@ -3736,6 +3736,7 @@ model TechnicianService {
   updater                   User?                      @relation("TechnicianServiceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   scheduleSlots             ScheduleSlot[]
   bookingOrders             BookingOrder[]
+  orderAddOns               OrderAddOn[]
   exchangeClaims            ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
   exchangeIntelligences ExchangeIntelligence[]
@@ -4705,7 +4706,8 @@ model OrderAddOn {
   id                  Int              @id @default(autoincrement())
   bookingOrderId      Int              @map("booking_order_id")
   serviceSessionId    Int              @map("service_session_id")
-  serviceId           Int              @map("service_id")
+  serviceId           Int?             @map("service_id")
+  technicianServiceId Int?             @map("technician_service_id")
   status              OrderAddOnStatus @default(PROPOSED)
   serviceNameSnapshot String           @map("service_name_snapshot") @db.VarChar(160)
   priceAmountJpy      Int              @map("price_amount_jpy")
@@ -4725,7 +4727,8 @@ model OrderAddOn {
 
   bookingOrder   BookingOrder        @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_order_fkey")
   serviceSession OrderServiceSession @relation(fields: [serviceSessionId, bookingOrderId], references: [id, bookingOrderId], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_session_fkey")
-  service        Service             @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_service_fkey")
+  service        Service?            @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_service_fkey")
+  technicianService TechnicianService? @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_technician_service_fkey")
   proposedBy     User                @relation("OrderAddOnProposedBy", fields: [proposedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_proposed_by_fkey")
   acceptedBy     User?               @relation("OrderAddOnAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_accepted_by_fkey")
   rejectedBy     User?               @relation("OrderAddOnRejectedBy", fields: [rejectedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_rejected_by_fkey")
@@ -4736,6 +4739,7 @@ model OrderAddOn {
   @@index([bookingOrderId, status, deletedAt], map: "order_add_ons_order_status_idx")
   @@index([serviceSessionId, status, deletedAt], map: "order_add_ons_session_status_idx")
   @@index([serviceId], map: "order_add_ons_service_idx")
+  @@index([technicianServiceId], map: "order_add_ons_technician_service_idx")
   @@index([proposedByUserId], map: "order_add_ons_proposed_by_idx")
   @@index([acceptedByUserId], map: "order_add_ons_accepted_by_idx")
   @@index([rejectedByUserId], map: "order_add_ons_rejected_by_idx")

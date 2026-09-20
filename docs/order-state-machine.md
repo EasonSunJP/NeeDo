@@ -14,6 +14,7 @@ Implemented:
 - Slot capacity and active-order conflict checks to prevent oversell.
 - Order status history records for every creation and transition.
 - Operations order detail projects persisted add-on proposal, acceptance, and rejection events into the auditable order timeline with immutable service name, price, and duration snapshots.
+- In-service add-on candidates come from the order's immutable pricing-mode snapshot: merchant-priced orders use eligible published services from the order shop, while technician-priced orders use only active, bookable, approved services owned by the assigned technician and valid for the order shop. Proposal validation repeats the same scope inside the transaction, and the add-on stores exactly one shop-service or technician-service reference plus immutable name, amount, duration, and source snapshots.
 - Order list/detail/transition access is scoped from the active authenticated identity: customers by `customer_user_id`, merchants by `shop_id`, technicians by `technician_profile_id`, and platform identities by their global operations role. Client-supplied filters cannot widen this scope. Out-of-scope detail or transition attempts return `error.order.not_found`.
 - Frontend checkout/orders API lane for numeric backend ids, with legacy local demo ids left intact.
 - Merchant and technician schedule portals create, block, restore, and soft-delete formal slots; the shared calendar reads the same backend records.
@@ -37,6 +38,7 @@ Migration:
 
 ```text
 backend/prisma/migrations/20260525090000_step10_booking_schedule_order/migration.sql
+backend/prisma/migrations/20260920210000_order_add_on_catalog_source/migration.sql
 ```
 
 Tables:

@@ -132,6 +132,10 @@ export const availabilityWindowListQuerySchema = z.object({
   }
 });
 
+export const orderAddOnServiceListQuerySchema = z.object({
+  ...paginationQuerySchema
+}).strict();
+
 export const availabilityWindowCreateBodySchema = z.object({
   technicianProfileId: z.coerce.number().int().positive().optional(),
   startsAt: isoDateSchema,

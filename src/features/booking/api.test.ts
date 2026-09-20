@@ -574,6 +574,11 @@ describe("bookingApi", () => {
 
     vi.mocked(fetch)
       .mockResolvedValueOnce(jsonResponse(orderEnvelope))
+      .mockResolvedValueOnce(jsonResponse({
+        code: 0,
+        message: "success",
+        data: { list: [], total: 0, page: 1, page_size: 100 }
+      }))
       .mockResolvedValueOnce(jsonResponse(orderEnvelope))
       .mockResolvedValueOnce(jsonResponse(orderEnvelope))
       .mockResolvedValueOnce(jsonResponse(orderEnvelope))
@@ -584,6 +589,7 @@ describe("bookingApi", () => {
       .mockResolvedValueOnce(jsonResponse(orderEnvelope));
 
     await bookingApi.startService(88, { actor: "technician", verificationCode: "482931", idempotencyKey: "idem-start-0000001" });
+    await bookingApi.listAddOnServices(88, { page: 1, pageSize: 100 });
     await bookingApi.createAddOn(88, { serviceId: 45, idempotencyKey: "idem-addon-0000001" });
     await bookingApi.acceptAddOn(88, 301, { idempotencyKey: "idem-accept-000001" });
     await bookingApi.rejectAddOn(88, 302, { idempotencyKey: "idem-reject-000001" });
@@ -595,6 +601,7 @@ describe("bookingApi", () => {
 
     expect(vi.mocked(fetch).mock.calls.map(([url, init]) => [url, (init as RequestInit).method])).toEqual([
       ["/api/v1/orders/88/service/start", "POST"],
+      ["/api/v1/orders/88/add-on-services?page=1&pageSize=100", "GET"],
       ["/api/v1/orders/88/add-ons", "POST"],
       ["/api/v1/orders/88/add-ons/301/accept", "POST"],
       ["/api/v1/orders/88/add-ons/302/reject", "POST"],
@@ -605,14 +612,15 @@ describe("bookingApi", () => {
       ["/api/v1/orders/88/checkout/confirm-receipt", "POST"]
     ]);
     expect(requestBodyAt(0)).toEqual({ actor: "technician", verificationCode: "482931", idempotencyKey: "idem-start-0000001" });
-    expect(requestBodyAt(1)).toEqual({ serviceId: 45, idempotencyKey: "idem-addon-0000001" });
-    expect(requestBodyAt(2)).toEqual({ idempotencyKey: "idem-accept-000001" });
-    expect(requestBodyAt(3)).toEqual({ idempotencyKey: "idem-reject-000001" });
-    expect(requestBodyAt(4)).toEqual({ reason: "客户确认提前结束服务", idempotencyKey: "idem-ending-000001" });
-    expect(requestBodyAt(5)).toEqual({});
-    expect(requestBodyAt(6)).toEqual({ method: "cash", idempotencyKey: "idem-method-000001" });
-    expect(requestBodyAt(7)).toEqual({ idempotencyKey: "idem-ndp-pay-00001" });
-    expect(requestBodyAt(8)).toEqual({ reason: "已当面确认收到现金", idempotencyKey: "idem-receipt-000001" });
+    expect(requestBodyAt(1)).toEqual({});
+    expect(requestBodyAt(2)).toEqual({ serviceId: 45, idempotencyKey: "idem-addon-0000001" });
+    expect(requestBodyAt(3)).toEqual({ idempotencyKey: "idem-accept-000001" });
+    expect(requestBodyAt(4)).toEqual({ idempotencyKey: "idem-reject-000001" });
+    expect(requestBodyAt(5)).toEqual({ reason: "客户确认提前结束服务", idempotencyKey: "idem-ending-000001" });
+    expect(requestBodyAt(6)).toEqual({});
+    expect(requestBodyAt(7)).toEqual({ method: "cash", idempotencyKey: "idem-method-000001" });
+    expect(requestBodyAt(8)).toEqual({ idempotencyKey: "idem-ndp-pay-00001" });
+    expect(requestBodyAt(9)).toEqual({ reason: "已当面确认收到现金", idempotencyKey: "idem-receipt-000001" });
   });
 
   it("starts service for a merchant through the formal route and strict provider body", async () => {
