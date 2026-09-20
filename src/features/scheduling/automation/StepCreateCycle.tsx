@@ -13,7 +13,7 @@ import {
   getTemplateRowWeekday,
   type DispatchCycle
 } from "../../dispatch-center/domain";
-import { getDispatchContactGroup, getDispatchHolidayRules, saveDispatchCycleDraft, launchDispatchCycle } from "../../dispatch-center/store";
+import { getDispatchContactGroup, getDispatchHolidayRules } from "../../dispatch-center/store";
 import { ScheduleFloatingActions } from "./ScheduleFloatingActions";
 
 function NumberStepper({
@@ -174,7 +174,8 @@ export function StepCreateCycle({
   onCancelEditing,
   onCycleChange,
   onMessage,
-  operatorId,
+  onLaunchCycle,
+  onSaveCycle,
   storeId,
   surface,
   technicians
@@ -183,7 +184,8 @@ export function StepCreateCycle({
   onCancelEditing: () => void;
   onCycleChange: (cycle: DispatchCycle) => void;
   onMessage: (message: string) => void;
-  operatorId: string;
+  onLaunchCycle: (cycle: DispatchCycle) => Promise<DispatchCycle>;
+  onSaveCycle: (cycle: DispatchCycle) => Promise<DispatchCycle>;
   storeId: string;
   surface: "desktop" | "mobile";
   technicians: Technician[];
@@ -320,7 +322,7 @@ export function StepCreateCycle({
     });
   };
 
-  const saveNotificationTemplate = () => {
+  const saveNotificationTemplate = async () => {
     const title = notificationTemplateTitle.trim() || "排班通知模板";
     const body = notificationTemplateBody.trim();
 
@@ -353,12 +355,15 @@ export function StepCreateCycle({
       },
       updatedAt: "2026-04-20T10:30:00+09:00"
     };
-    const result = saveDispatchCycleDraft(nextDraft);
-
-    setSelectedNotificationTemplateId(templateId);
-    setDraft(nextDraft);
-    onCycleChange(nextDraft);
-    onMessage(result.ok ? "通知模板已保存，可在本周期继续复用。" : result.message ?? "通知模板保存失败。");
+    try {
+      const saved = await onSaveCycle(nextDraft);
+      setSelectedNotificationTemplateId(templateId);
+      setDraft(saved);
+      onCycleChange(saved);
+      onMessage("通知模板已保存，可在本周期继续复用。");
+    } catch {
+      // The parent owns the formal API error message.
+    }
   };
 
   const selectNotificationTemplate = (templateId: string) => {
@@ -1105,9 +1110,13 @@ export function StepCreateCycle({
           <Button
             className={cn(secondaryButtonClass, "w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm")}
             variant="secondary"
-            onClick={() => {
-              const result = saveDispatchCycleDraft(draft);
-              onMessage(result.ok ? "排班草稿已保存，后台和商户端都可继续接着编辑。" : result.message ?? "保存失败。");
+            onClick={async () => {
+              try {
+                await onSaveCycle(draft);
+                onMessage("排班草稿已保存，后台和商户端都可继续接着编辑。");
+              } catch {
+                // The parent owns the formal API error message.
+              }
             }}
           >
             保存草稿
@@ -1123,20 +1132,14 @@ export function StepCreateCycle({
             <Button
               className={cn(primaryButtonClass, "w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm")}
               disabled={!canSaveCycle}
-              onClick={() => {
-                const saved = saveDispatchCycleDraft(draft);
-
-                if (!saved.ok) {
-                  onMessage(saved.message ?? "保存失败。");
-                  return;
+              onClick={async () => {
+                try {
+                  const saved = await onSaveCycle(draft);
+                  await onLaunchCycle(saved);
+                  onMessage(isDirectScheduling ? "已进入技师反馈" : "已进入最终确认");
+                } catch {
+                  // The parent owns the formal API error message.
                 }
-
-                const launched = launchDispatchCycle(draft.id, operatorId);
-                onMessage(
-                  launched.ok
-                    ? isDirectScheduling ? "已进入技师反馈" : "已进入最终确认"
-                    : launched.message ?? "发起失败。"
-                );
               }}
             >
               发起

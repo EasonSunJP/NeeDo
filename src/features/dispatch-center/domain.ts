@@ -105,6 +105,9 @@ export type DispatchCycle = {
   cancelledAt: string | null;
   lastAutoConfirmAt: string | null;
   autoConfirmSummary: DispatchAutoConfirmSummary | null;
+  feedbackRows?: DispatchFeedbackEntry[];
+  finalShifts?: DispatchFinalShift[];
+  version?: number;
   updatedAt: string;
 };
 

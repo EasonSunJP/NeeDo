@@ -5,18 +5,38 @@ import { Button } from "../../../components/ui/Button";
 import { useI18n } from "../../../i18n/I18nProvider";
 import { cn } from "../../../lib/utils";
 import type { Technician } from "../../../types/domain";
+import type { DispatchCycleLimitSummary } from "../../../lib/scheduling/cyclePromotion";
 import {
   getCycleModeLabel,
   getCycleStatusLabel,
   type DispatchCycle
 } from "../../dispatch-center/domain";
-import {
-  closeDispatchFeedback,
-  getDispatchCycleLimitSummary,
-  getPlanningFeedbackRowsForCycle,
-  sendDispatchFeedbackReminder
-} from "../../dispatch-center/store";
 import { ScheduleFloatingActions } from "./ScheduleFloatingActions";
+
+type PlanningFeedbackRow = {
+  technicianId: string;
+  hasSubmitted: boolean;
+  hasUpdated: boolean;
+  hasException: boolean;
+  note: string;
+  unavailableHours: number;
+};
+
+function getPlanningFeedbackRowsForCycle(cycle: DispatchCycle): PlanningFeedbackRow[] {
+  return cycle.targetTechnicianIds.map((technicianId) => {
+    const entries = (cycle.feedbackRows ?? []).filter((entry) => entry.technicianId === technicianId);
+    const note = entries.find((entry) => entry.note.trim())?.note.trim() ?? "";
+    const unavailableHours = entries.filter((entry) => entry.status === "unavailable").length;
+    return {
+      technicianId,
+      hasSubmitted: entries.some((entry) => Boolean(entry.submittedAt)),
+      hasUpdated: entries.some((entry) => entry.status === "updated"),
+      hasException: unavailableHours > 0 || Boolean(note),
+      note,
+      unavailableHours
+    };
+  });
+}
 
 type FeedbackFilter = "submitted" | "updated" | "pending" | "exception";
 
@@ -65,7 +85,7 @@ function technicianIdentityLabel(technician: Technician | undefined) {
 
 function feedbackStatusCopy(
   cycle: DispatchCycle,
-  row: ReturnType<typeof getPlanningFeedbackRowsForCycle>[number],
+  row: PlanningFeedbackRow,
   filter: FeedbackFilter
 ) {
   if (filter === "exception") {
@@ -97,39 +117,37 @@ function feedbackStatusCopy(
 export function SchedulePlanningOverview({
   cycle,
   hasBuilderCycle,
+  limitSummary,
   onMessage,
+  onCloseFeedback,
   onOpenBuilder,
   onOpenConfirmation,
-  operatorId,
-  storeId,
   surface,
   technicians
 }: {
   cycle: DispatchCycle | null;
   hasBuilderCycle: boolean;
+  limitSummary: DispatchCycleLimitSummary;
   onMessage: (message: string) => void;
+  onCloseFeedback: (cycleId: string) => Promise<DispatchCycle>;
   onOpenBuilder: () => void;
   onOpenConfirmation: () => void;
-  operatorId: string;
-  storeId: string;
   surface: "desktop" | "mobile";
   technicians: Technician[];
 }) {
   const { language } = useI18n();
   const [selectedFilter, setSelectedFilter] = useState<FeedbackFilter>("pending");
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
-  const [reminderSentForCycleId, setReminderSentForCycleId] = useState<string | null>(null);
   const isMobileSurface = surface === "mobile";
   const sectionClass = isMobileSurface
     ? "border-line bg-white/90 shadow-panel backdrop-blur-xl"
     : "merchant-dispatch-surface";
   const cardClass = isMobileSurface ? "border-line bg-white/80" : "merchant-dispatch-card";
-  const cycleRows = cycle ? getPlanningFeedbackRowsForCycle(cycle.id) : [];
+  const cycleRows = cycle ? getPlanningFeedbackRowsForCycle(cycle) : [];
   const technicianMap = useMemo(
     () => new Map(technicians.map((technician) => [technician.id, technician])),
     [technicians]
   );
-  const limitSummary = getDispatchCycleLimitSummary(storeId);
   const counts: Record<FeedbackFilter, number> = {
     submitted: cycleRows.filter((row) => row.hasSubmitted && !row.hasUpdated).length,
     updated: cycleRows.filter((row) => row.hasUpdated).length,
@@ -143,7 +161,6 @@ export function SchedulePlanningOverview({
     return row.hasException;
   });
   const canCollectFeedback = cycle?.status === "collecting_feedback";
-  const canRemind = Boolean(canCollectFeedback && counts.pending > 0 && reminderSentForCycleId !== cycle?.id);
   const canCreateCycle = hasBuilderCycle || !limitSummary.limitReached;
   const isDirectScheduling = cycle?.mode === "STORE_ASSIGN_FINAL";
   const lifecycleSteps = isDirectScheduling ? directSchedulingSteps : selfSchedulingSteps;
@@ -151,29 +168,20 @@ export function SchedulePlanningOverview({
   useEffect(() => {
     setSelectedFilter("pending");
     setConfirmCloseOpen(false);
-    setReminderSentForCycleId(null);
   }, [cycle?.id]);
 
-  const runReminder = () => {
-    if (!cycle || !canRemind) {
-      return;
-    }
-
-    const result = sendDispatchFeedbackReminder(cycle.id, operatorId);
-    if (result.ok) {
-      setReminderSentForCycleId(cycle.id);
-    }
-    onMessage(result.ok ? "已提醒未反馈技师。" : result.message ?? "提醒失败。");
-  };
-
-  const confirmClose = () => {
+  const confirmClose = async () => {
     if (!cycle || !canCollectFeedback) {
       return;
     }
 
-    const result = closeDispatchFeedback(cycle.id, operatorId);
-    setConfirmCloseOpen(false);
-    onMessage(result.ok ? "已提前结束反馈并进入最终确认。" : result.message ?? "无法结束反馈收集。");
+    try {
+      await onCloseFeedback(cycle.id);
+      setConfirmCloseOpen(false);
+      onMessage("已提前结束反馈并进入最终确认。");
+    } catch {
+      // The parent owns the formal API error message.
+    }
   };
 
   return (
@@ -231,10 +239,7 @@ export function SchedulePlanningOverview({
               反馈截止：{formatDeadline(cycle?.feedbackDeadline ?? null, language)}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Button disabled={!canRemind} onClick={runReminder} size="sm">
-              {reminderSentForCycleId === cycle?.id ? "已发送提醒" : "提醒未反馈"}
-            </Button>
+          <div>
             <Button
               disabled={!canCollectFeedback}
               onClick={() => setConfirmCloseOpen(true)}

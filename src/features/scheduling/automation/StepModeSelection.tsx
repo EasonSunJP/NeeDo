@@ -4,7 +4,6 @@ import { Button } from "../../../components/ui/Button";
 import { InfoTooltipTrigger } from "../../../components/ui/TitleWithInfo";
 import { cn } from "../../../lib/utils";
 import { addDays, getCycleModeLabel, type DispatchCycle, type DispatchCycleMode } from "../../dispatch-center/domain";
-import { saveDispatchCycleDraft } from "../../dispatch-center/store";
 import { ScheduleFloatingActions } from "./ScheduleFloatingActions";
 
 const modeOptions: Array<{
@@ -39,11 +38,13 @@ export function StepModeSelection({
   cycle,
   onCycleChange,
   onMessage,
+  onSaveCycle,
   surface
 }: {
   cycle: DispatchCycle;
   onCycleChange: (cycle: DispatchCycle) => void;
   onMessage: (message: string) => void;
+  onSaveCycle: (cycle: DispatchCycle) => Promise<DispatchCycle>;
   surface: "desktop" | "mobile";
 }) {
   const [draft, setDraft] = useState(cycle);
@@ -171,9 +172,13 @@ export function StepModeSelection({
             isMobileSurface ? "w-full min-w-0" : "min-w-[132px]"
           )}
           variant="secondary"
-          onClick={() => {
-            const result = saveDispatchCycleDraft(draft);
-            onMessage(result.ok ? "模式草稿已保存。" : result.message ?? "保存失败。");
+          onClick={async () => {
+            try {
+              await onSaveCycle(draft);
+              onMessage("模式草稿已保存。");
+            } catch {
+              // The parent owns the formal API error message.
+            }
           }}
         >
           保存草稿
@@ -183,17 +188,15 @@ export function StepModeSelection({
             primaryButtonClass,
             isMobileSurface ? "w-full min-w-0" : "min-w-[196px]"
           )}
-          onClick={() => {
+          onClick={async () => {
             const nextDraft = { ...draft, currentStep: 2 as const };
-            const result = saveDispatchCycleDraft(nextDraft);
-
-            if (!result.ok) {
-              onMessage(result.message ?? "保存失败。");
-              return;
+            try {
+              const saved = await onSaveCycle(nextDraft);
+              onCycleChange(saved);
+              onMessage("模式已确认，继续进入规则设定。");
+            } catch {
+              // The parent owns the formal API error message.
             }
-
-            onCycleChange(nextDraft);
-            onMessage("模式已确认，继续进入规则设定。");
           }}
         >
           下一步：规则设定

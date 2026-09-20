@@ -17,6 +17,9 @@ vi.mock("../../components/scheduling/UnifiedUserCalendar", () => ({
 vi.mock("./TechnicianAutomationSettingsPanel", () => ({
   TechnicianAutomationSettingsPanel: ({ kind }: { kind: "booking" | "request" }) => <div data-kind={kind} data-testid="automation-settings-panel">自动设置</div>
 }));
+vi.mock("./TechnicianScheduleCycleInbox", () => ({
+  TechnicianScheduleCycleInbox: ({ profileId }: { profileId: number }) => <div data-profile-id={profileId} data-testid="cycle-inbox" />
+}));
 vi.mock("../../components/mobile/FloatingHomeHeader", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../components/mobile/FloatingHomeHeader")>();
   return {
