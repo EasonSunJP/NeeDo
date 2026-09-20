@@ -284,8 +284,11 @@ describe("UnifiedUserCalendar formal-only mode", () => {
       translateText("已排预约", "ja"),
       translateText("未排预约", "ja")
     ]).toEqual(["すべて", "手配済み", "手配待ち"]);
-    expect(filter?.className).toContain("grid-cols-3");
+    expect((filter as HTMLElement | null)?.style.gridTemplateColumns).toBe("repeat(3, minmax(0, 1fr))");
+    expect(filter?.className).toContain("w-full");
+    expect(filter?.className).toContain("overflow-hidden");
     buttons.forEach((button) => {
+      expect(button.className).toContain("w-full");
       expect(button.className).toContain("whitespace-nowrap");
     });
   });

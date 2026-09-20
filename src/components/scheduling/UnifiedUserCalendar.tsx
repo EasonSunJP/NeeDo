@@ -6357,13 +6357,14 @@ export function UnifiedUserCalendar({
 
       {isMerchantAppointmentStatusMode ? (
         <div
-          className="mt-3 grid grid-cols-3 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,transparent)] p-1"
+          className="mt-3 grid w-full overflow-hidden rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,transparent)] p-1"
           data-testid="merchant-appointment-status-filter"
+          style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}
         >
           {merchantAppointmentStatusFilterOptions.map((option) => (
             <button
               className={cn(
-                "focus-ring h-9 min-w-0 overflow-hidden whitespace-nowrap rounded-full px-1 text-[12px] font-black transition",
+                "focus-ring h-9 min-w-0 w-full overflow-hidden whitespace-nowrap rounded-full px-1 text-[12px] font-black transition",
                 appointmentStatusFilter === option.value
                   ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_20px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]"
                   : "text-[color:var(--client-muted)]"
