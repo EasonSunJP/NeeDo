@@ -193,11 +193,12 @@ export function StepCreateCycle({
   const storeTechnicians = useMemo(() => technicians.filter((technician) => technician.storeId === storeId), [storeId, technicians]);
   const tempStaffGroup = getDispatchContactGroup(storeId);
   const [draft, setDraft] = useState<DispatchCycle>(cycle);
+  const initialTemplate = cycle.ruleSet.notificationRules.templates?.find((template) => template.id === cycle.ruleSet.notificationRules.activeTemplateId);
   const [rulePhase, setRulePhase] = useState<RulePhase>("period");
   const [slideDirection, setSlideDirection] = useState<"next" | "previous">("next");
   const [notificationPreview, setNotificationPreview] = useState("");
-  const [notificationTemplateTitle, setNotificationTemplateTitle] = useState("反馈提醒模板");
-  const [notificationTemplateBody, setNotificationTemplateBody] = useState(cycle.ruleSet.notificationRules.discountTemplate);
+  const [notificationTemplateTitle, setNotificationTemplateTitle] = useState(initialTemplate?.title ?? "反馈提醒模板");
+  const [notificationTemplateBody, setNotificationTemplateBody] = useState(initialTemplate?.body ?? cycle.ruleSet.notificationRules.discountTemplate);
   const [selectedNotificationTemplateId, setSelectedNotificationTemplateId] = useState(cycle.ruleSet.notificationRules.activeTemplateId ?? "");
   const notificationBodyRef = useRef<HTMLTextAreaElement>(null);
   const pageTopRef = useRef<HTMLDivElement>(null);
@@ -224,14 +225,7 @@ export function StepCreateCycle({
   const noteClass = isMobileSurface ? "bg-paper/70 text-ink/60" : "merchant-dispatch-soft-note";
   const isDirectScheduling = draft.mode === "STORE_ASSIGN_FINAL";
 
-  useEffect(() => {
-    setDraft(cycle);
-    const activeTemplate = cycle.ruleSet.notificationRules.templates?.find((template) => template.id === cycle.ruleSet.notificationRules.activeTemplateId);
-    setSelectedNotificationTemplateId(activeTemplate?.id ?? cycle.ruleSet.notificationRules.activeTemplateId ?? "");
-    setNotificationTemplateTitle(activeTemplate?.title ?? "反馈提醒模板");
-    setNotificationTemplateBody(activeTemplate?.body ?? cycle.ruleSet.notificationRules.discountTemplate);
-  }, [cycle]);
-
+  // The editor is keyed by cycle ID. Store refreshes must not replace unsaved input.
   useEffect(() => {
     setNotificationPreview("");
   }, [draft.periodStart]);

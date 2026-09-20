@@ -18,7 +18,7 @@ import {
   getDispatchCycleList,
   useDispatchCenterStore
 } from "../../dispatch-center/store";
-import { getCycleModeLabel, getCycleStatusLabel, type DispatchCycle, type DispatchStep } from "../../dispatch-center/domain";
+import { getDispatchTodayDateKey, getCycleModeLabel, getCycleStatusLabel, type DispatchCycle, type DispatchStep } from "../../dispatch-center/domain";
 import { StepCreateCycle } from "./StepCreateCycle";
 import { StepFinalConfirmation } from "./StepFinalConfirmation";
 import { StepModeSelection } from "./StepModeSelection";
@@ -140,6 +140,7 @@ function CycleWorkflowPanel({
       ) : null}
       {cycle.currentStep === 2 ? (
         <StepCreateCycle
+          key={cycle.id}
           cycle={cycle}
           onCycleChange={() => undefined}
           onMessage={onMessage}
@@ -182,17 +183,18 @@ export function AutomationWizard({
   const [view, setView] = useState<PlanningView>("home");
   const [builderCycleId, setBuilderCycleId] = useState<string | null>(null);
   const dispatchSnapshot = useDispatchCenterStore();
+  const today = getDispatchTodayDateKey();
   const cycles = useMemo(
-    () => getDispatchCycleList(storeId).filter(isSchedulingLiveCycle).sort((left, right) => left.periodStart.localeCompare(right.periodStart)),
-    [dispatchSnapshot.revision, storeId]
+    () => getDispatchCycleList(storeId).filter((cycle) => isSchedulingLiveCycle(cycle) && cycle.periodEnd >= today).sort((left, right) => left.periodStart.localeCompare(right.periodStart)),
+    [dispatchSnapshot.revision, storeId, today]
   );
-  const currentCycle = useMemo(() => resolveSchedulingCurrentCycle(cycles), [cycles]);
+  const currentCycle = useMemo(() => resolveSchedulingCurrentCycle(cycles.filter(isScheduleBoardCycle)), [cycles]);
   const { nextCycle, builderCycle } = useMemo(() => resolveSchedulingCycleSlots(cycles, currentCycle), [currentCycle, cycles]);
   const limitSummary = getDispatchCycleLimitSummary(storeId);
   const isMobileSurface = surface === "mobile";
   const alertClass = isMobileSurface ? "bg-lemon/25 text-[#795b00]" : "merchant-dispatch-alert";
   const overviewCycle = nextCycle ?? builderCycle ?? (currentCycle && currentCycle.status !== "active" ? currentCycle : null);
-  const builderViewCycle = cycles.find((cycle) => cycle.id === builderCycleId) ?? builderCycle;
+  const builderViewCycle = cycles.find((cycle) => cycle.id === builderCycleId) ?? null;
   const contactExcludedRanges = useMemo(
     () => [currentCycle, nextCycle]
       .filter((item): item is DispatchCycle => Boolean(item))

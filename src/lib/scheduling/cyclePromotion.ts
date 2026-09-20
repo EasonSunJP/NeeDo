@@ -1,4 +1,4 @@
-import { dispatchReferenceDateKey, type DispatchCycle } from "../../features/dispatch-center/domain";
+import { dispatchReferenceDateKey, getDispatchTodayDateKey, type DispatchCycle } from "../../features/dispatch-center/domain";
 
 export type DispatchCycleLimitSummary = {
   activeCount: number;
@@ -7,7 +7,8 @@ export type DispatchCycleLimitSummary = {
 };
 
 export function summarizeCycleLimits(cycles: DispatchCycle[], storeId: string): DispatchCycleLimitSummary {
-  const scoped = cycles.filter((cycle) => cycle.storeId === storeId && cycle.status !== "completed" && cycle.status !== "archived" && cycle.status !== "cancelled");
+  const today = getDispatchTodayDateKey();
+  const scoped = cycles.filter((cycle) => cycle.storeId === storeId && cycle.periodEnd >= today && cycle.status !== "completed" && cycle.status !== "archived" && cycle.status !== "cancelled");
   const activeCount = scoped.filter((cycle) => cycle.status === "active").length;
   const pendingCount = scoped.filter((cycle) => cycle.status !== "active").length;
 

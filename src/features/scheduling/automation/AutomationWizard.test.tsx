@@ -8,6 +8,7 @@ import type { Technician } from "../../../types/domain";
 import {
   createDispatchCycleDraft,
   finalizeDispatchCycle,
+  getDispatchCycleList,
   launchDispatchCycle,
   resetDispatchCenterStore,
   saveDispatchCycleDraft
@@ -63,6 +64,8 @@ const formalTechnicians: Technician[] = Array.from({ length: 26 }, (_, index) =>
 }));
 
 function prepareNextCycle(mode: "TECH_SELF_FINAL" | "STORE_ASSIGN_FINAL") {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-04-20T10:00:00+09:00"));
   const current = createDispatchCycleDraft("store-1");
   saveDispatchCycleDraft({
     ...current,
@@ -91,6 +94,8 @@ describe("merchant schedule planning home", () => {
   let root: Root;
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-20T10:00:00+09:00"));
     window.localStorage.clear();
     window.localStorage.setItem("needo.language", "zh");
     window.localStorage.setItem("needo.language.mode", "manual");
@@ -106,6 +111,7 @@ describe("merchant schedule planning home", () => {
     await act(async () => root.unmount());
     container.remove();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   const renderWizard = async (technicianList = technicians) => {
@@ -227,6 +233,105 @@ describe("merchant schedule planning home", () => {
     expect(container.textContent).toContain("26 人");
     expect(container.textContent).toContain("正式技师1");
     expect(container.textContent).toContain("正式技师26");
+  });
+
+  it("creates and confirms this input without reopening either expired draft", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-20T10:00:00+09:00"));
+    const historicalIds = ["2026-04-27", "2026-05-27"].map((start, index) => {
+      const old = createDispatchCycleDraft("store-1", ["former-tech"]);
+      saveDispatchCycleDraft({ ...old, name: `旧草稿${index}`, periodStart: start,
+        periodEnd: index === 0 ? "2026-05-26" : "2026-06-25", currentStep: 2 });
+      return old.id;
+    });
+    const before = getDispatchCycleList("store-1");
+    await renderWizard(formalTechnicians);
+    await act(async () => button("新建周期")?.click());
+    expect(button("下一步：规则设定")).toBeDefined();
+    await act(async () => button("下一步：规则设定")?.click());
+    const inputs = [...container.querySelectorAll<HTMLInputElement>("input")];
+    for (const [input, value] of inputs.slice(0, 3).map((input, i) => [input,
+      ["本次三个月周期", "2026-09-20", "2026-12-20"][i]] as const)) {
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    await act(async () => button("下一步")?.click());
+    await act(async () => button("下一步")?.click());
+    await act(async () => button("全选")?.click());
+    for (let index = 0; index < 6; index += 1) {
+      await act(async () => button("下一步")?.click());
+    }
+    await act(async () => { createDispatchCycleDraft("another-store"); });
+    await act(async () => button("发起")?.click());
+
+    expect(container.textContent).toContain("2026年9月20日~2026年12月20日");
+    expect(container.textContent).toContain("本次三个月周期");
+    const created = getDispatchCycleList("store-1").find((cycle) => !historicalIds.includes(cycle.id));
+    expect(created).toMatchObject({ name: "本次三个月周期", periodStart: "2026-09-20",
+      periodEnd: "2026-12-20", currentStep: 3, status: "final_confirming",
+      targetTechnicianIds: formalTechnicians.map((tech) => tech.id) });
+    expect(created?.templateMatrix.every((row) => row.every(Boolean))).toBe(true);
+    expect(getDispatchCycleList("store-1").filter((cycle) => historicalIds.includes(cycle.id))).toEqual(before);
+    await act(async () => button("删除周期")?.click());
+    expect(container.textContent).not.toContain("旧草稿");
+    await act(async () => button("新建周期")?.click());
+    expect(button("下一步：规则设定")).toBeDefined();
+    vi.useRealTimers();
+  });
+
+  it("keeps unsaved period inputs when another cycle updates the shared store", async () => {
+    await renderWizard(formalTechnicians);
+    await act(async () => button("新建周期")?.click());
+    await act(async () => button("下一步：规则设定")?.click());
+    const end = container.querySelectorAll<HTMLInputElement>('input[type="date"]')[1];
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(end, "2026-12-20");
+      end.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => { createDispatchCycleDraft("another-store"); });
+    expect(end.value).toBe("2026-12-20");
+  });
+
+  it("continues the only current draft after returning to the planning home", async () => {
+    await renderWizard(formalTechnicians);
+    await act(async () => button("新建周期")?.click());
+    await act(async () => button("下一步：规则设定")?.click());
+    const [created] = getDispatchCycleList("store-1");
+    await act(async () => button("返回排班首页")?.click());
+    await act(async () => button("新建周期")?.click());
+    expect(getDispatchCycleList("store-1").map((cycle) => cycle.id)).toEqual([created.id]);
+    expect(container.querySelector('input[type="date"]')).not.toBeNull();
+  });
+
+  it("does not let an expired active cycle and expired drafts block creation", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-20T10:00:00+09:00"));
+    for (const status of ["active", "draft", "rule_setting"] as const) {
+      const old = createDispatchCycleDraft("store-1", ["former-tech"]);
+      saveDispatchCycleDraft({ ...old, status, periodStart: "2026-04-14", periodEnd: "2026-05-26" });
+    }
+    await renderWizard(formalTechnicians);
+    expect(button("新建周期")?.disabled).toBe(false);
+    await act(async () => button("新建周期")?.click());
+    expect(button("下一步：规则设定")).toBeDefined();
+  });
+
+  it("preserves persisted technician choices when a storage refresh arrives before entities load", async () => {
+    const chosen = formalTechnicians.map((tech) => tech.id);
+    const selected = createDispatchCycleDraft("store-1", chosen);
+    const empty = createDispatchCycleDraft("another-store", []);
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent("storage", {
+        key: "needo.dispatch-center.formal-state.v1",
+        storageArea: window.localStorage
+      }));
+    });
+    expect(getDispatchCycleList("store-1").find((cycle) => cycle.id === selected.id)?.targetTechnicianIds).toEqual(chosen);
+    expect(getDispatchCycleList("another-store").find((cycle) => cycle.id === empty.id)?.targetTechnicianIds).toEqual([]);
+    expect(launchDispatchCycle(empty.id, "another-store").ok).toBe(false);
   });
 
   it("recomputes holidays and notification preview after the cycle period changes", async () => {

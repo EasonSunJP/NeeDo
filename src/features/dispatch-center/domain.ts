@@ -527,6 +527,10 @@ export const dispatchReferenceNow = "2026-04-20T10:30:00+09:00";
 export const dispatchWeekdayLabels = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 export const dispatchLanguageOptions = ["日语", "中文", "英语", "韩语"];
 
+export function getDispatchTodayDateKey() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
 export function createDispatchId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 }

@@ -19,6 +19,7 @@ import {
   formatDateKey,
   getArrangementStatusLabel,
   getCycleModeLabel,
+  getDispatchTodayDateKey,
   getCycleStatusLabel,
   getFeedbackStatusLabel,
   getFinalShiftStatusLabel,
@@ -307,20 +308,6 @@ function getStoreTechnicianIdsForDispatch(storeId: string) {
     .map((technician) => technician.id);
 
   return ids.length > 0 ? ids : ["tech-1"];
-}
-
-function ensureCycleDisplayTechnicians(cycle: DispatchCycle) {
-  const storeTechnicianIds = getStoreTechnicianIdsForDispatch(cycle.storeId);
-  const visibleTargetCount = cycle.targetTechnicianIds.filter((technicianId) => storeTechnicianIds.includes(technicianId)).length;
-
-  if (cycle.targetTechnicianIds.length > 0 && visibleTargetCount === cycle.targetTechnicianIds.length) {
-    return cycle;
-  }
-
-  return {
-    ...cycle,
-    targetTechnicianIds: storeTechnicianIds
-  };
 }
 
 function buildDefaultCycles(storeId: string): DispatchCycle[] {
@@ -1017,7 +1004,7 @@ function hydrate() {
     Object.assign(state, cloneValue(defaultState));
   }
 
-  state.cycles = state.cycles.map((cycle) => ensureCycleDisplayTechnicians(normalizeCycleStep(cycle)));
+  state.cycles = state.cycles.map(normalizeCycleStep);
   ensureCycleDisplayData();
   rebuildStateAfterHydration();
 }
@@ -1519,12 +1506,10 @@ function updateCycle(nextCycle: DispatchCycle) {
   state.cycles[index] = nextCycle;
 }
 
-function createBaseCycle(storeId: string, seed?: DispatchCycle | null): DispatchCycle {
-  const reference = seed ?? getPlanningCycle(storeId) ?? getActiveExecutionCycle(storeId);
-  const today = formatDateKey(new Date());
-  const periodStart = reference ? addDays(reference.periodEnd, 1) : today;
-  const periodEnd = reference ? addDays(periodStart, 29) : addMonths(periodStart, 1);
-  const templateType = reference?.templateType ?? "week";
+function createBaseCycle(storeId: string): DispatchCycle {
+  const periodStart = getDispatchTodayDateKey();
+  const periodEnd = addMonths(periodStart, 1);
+  const templateType = "week";
 
   return {
     id: createDispatchId("cycle"),
@@ -1537,11 +1522,11 @@ function createBaseCycle(storeId: string, seed?: DispatchCycle | null): Dispatch
     templateType,
     periodStart,
     periodEnd,
-    targetTechnicianIds: reference?.targetTechnicianIds ?? getStoreTechnicianIdsForDispatch(storeId),
+    targetTechnicianIds: getStoreTechnicianIdsForDispatch(storeId),
     feedbackDeadline: null,
-    templateMatrix: cloneValue(reference?.templateMatrix ?? fillMatrixHours(templateType, [{ dayIndex: 1, startHour: 10, endHour: 22 }])),
-    regularHolidayWeekdays: [...(reference?.regularHolidayWeekdays ?? [3])],
-    ruleSet: cloneValue(reference?.ruleSet ?? buildDefaultRuleSet()),
+    templateMatrix: fillMatrixHours(templateType, [{ dayIndex: 1, startHour: 10, endHour: 22 }]),
+    regularHolidayWeekdays: [3],
+    ruleSet: buildDefaultRuleSet(),
     launchedAt: null,
     finalizedAt: null,
     activeAt: null,
@@ -1695,8 +1680,9 @@ function validateDispatchCycleDraft(cycle: DispatchCycle) {
 }
 
 function getFutureCycleCount(storeId: string, ignoreCycleId?: string) {
+  const today = getDispatchTodayDateKey();
   return state.cycles.filter((cycle) => {
-    if (cycle.storeId !== storeId || cycle.id === ignoreCycleId) {
+    if (cycle.storeId !== storeId || cycle.id === ignoreCycleId || cycle.periodEnd < today) {
       return false;
     }
 
@@ -2130,7 +2116,7 @@ export function getCycleFeedbackMatrix(cycleId: string, dateKey: string): Dispat
 export function createDispatchCycleDraft(storeId: string, targetTechnicianIds?: string[]) {
   hydrate();
   const cycle = createBaseCycle(storeId);
-  if (targetTechnicianIds?.length) {
+  if (targetTechnicianIds) {
     cycle.targetTechnicianIds = [...new Set(targetTechnicianIds)];
   }
   updateCycle(cycle);

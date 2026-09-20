@@ -126,6 +126,39 @@ describe("dispatch center scheduling workflow", () => {
     expect(cycle.feedbackDeadline).toBeNull();
   });
 
+  it("does not inherit a historical draft when creating a blank cycle", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-20T10:00:00+09:00"));
+    const baseline = createDispatchCycleDraft("fresh-store", ["current-tech"]);
+    const history = createDispatchCycleDraft("store-1", ["former-tech"]);
+    const historicalDraft = {
+      ...history,
+      name: "历史草稿",
+      periodStart: "2026-05-27",
+      periodEnd: "2026-06-25",
+      templateType: "day" as const,
+      templateMatrix: [Array(24).fill(false)],
+      regularHolidayWeekdays: [1, 2, 3, 4, 5],
+      ruleSet: { ...history.ruleSet, minStaff: 9, targetStaff: 10, maxStaff: 11 }
+    };
+    saveDispatchCycleDraft(historicalDraft);
+
+    const cycle = createDispatchCycleDraft("store-1", ["current-tech"]);
+
+    expect(cycle).toMatchObject({
+      periodStart: baseline.periodStart,
+      periodEnd: baseline.periodEnd,
+      templateType: baseline.templateType,
+      templateMatrix: baseline.templateMatrix,
+      regularHolidayWeekdays: baseline.regularHolidayWeekdays,
+      ruleSet: baseline.ruleSet,
+      targetTechnicianIds: ["current-tech"]
+    });
+    expect(cycle.id).not.toBe(history.id);
+    expect(getDispatchCycleList("store-1").find((item) => item.id === history.id))
+      .toMatchObject(historicalDraft);
+  });
+
   it("discards a new cycle when editing is cancelled", () => {
     const cycle = createDispatchCycleDraft("store-1");
     expect(cancelDispatchCycle(cycle.id, "store-1").ok).toBe(true);
