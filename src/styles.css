@@ -350,6 +350,7 @@ html[data-needo-display-mode="standalone"] .client-shell .client-floating-header
 
 .needo-pet-button {
   position: absolute;
+  z-index: 2;
   inset: 0;
   display: flex;
   align-items: flex-end;
@@ -443,6 +444,11 @@ html[data-needo-display-mode="standalone"] .client-shell .client-floating-header
 
 .needo-pet-motion-image.is-fallback {
   z-index: 0;
+}
+
+.needo-pet-motion-image.is-preloader {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .needo-pet-motion-image.is-active {
@@ -734,6 +740,7 @@ html[data-needo-display-mode="standalone"] .client-shell .client-floating-header
 
 .needo-pet-panel {
   position: absolute;
+  z-index: 1;
   box-sizing: border-box;
   top: var(--needo-pet-panel-y, 0px);
   left: var(--needo-pet-panel-x, 140px);

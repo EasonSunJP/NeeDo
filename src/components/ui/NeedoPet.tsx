@@ -615,20 +615,25 @@ function NeedoPetMotionSequence({
 
   return (
     <span className={cn("needo-pet-sprite-shell is-motion", sprite === "idle" ? "is-idle-motion" : "is-running-motion")} data-sprite={sprite}>
-      {loadedSrc !== clip.src ? (
-        <img alt="" className="needo-pet-motion-image is-fallback" draggable={false} src={previousSrc ?? fallbackSrc} />
-      ) : null}
-      <img
-        key={clip.src}
-        alt=""
-        className="needo-pet-motion-image is-active"
-        draggable={false}
-        onLoad={() => {
-          setLoadedSrc(clip.src);
-          setPreviousSrc(null);
-        }}
-        src={clip.src}
-      />
+      {loadedSrc === clip.src ? (
+        <img key={clip.src} alt="" className="needo-pet-motion-image is-active" draggable={false} src={clip.src} />
+      ) : (
+        <>
+          <img alt="" className="needo-pet-motion-image is-fallback" draggable={false} src={previousSrc ?? fallbackSrc} />
+          <img
+            key={`preload-${clip.src}`}
+            alt=""
+            aria-hidden="true"
+            className="needo-pet-motion-image is-preloader"
+            draggable={false}
+            onLoad={() => {
+              setLoadedSrc(clip.src);
+              setPreviousSrc(null);
+            }}
+            src={clip.src}
+          />
+        </>
+      )}
     </span>
   );
 }
@@ -639,22 +644,27 @@ function NeedoPetOneShotMotion({ runId, sprite }: { runId: number; sprite: PetOn
 
   return (
     <span className={cn("needo-pet-sprite-shell is-motion is-one-shot-motion", `is-${sprite}-motion`)} data-sprite={sprite}>
-      {loadedRunId !== runId ? (
-        <img
-          alt=""
-          className="needo-pet-motion-image is-fallback"
-          draggable={false}
-          src={sprite === "death" ? petSpriteSrc.grave : petSpriteSrc.idle}
-        />
-      ) : null}
-      <img
-        key={`${clip.src}-${runId}`}
-        alt=""
-        className="needo-pet-motion-image is-active"
-        draggable={false}
-        onLoad={() => setLoadedRunId(runId)}
-        src={clip.src}
-      />
+      {loadedRunId === runId ? (
+        <img key={`${clip.src}-${runId}`} alt="" className="needo-pet-motion-image is-active" draggable={false} src={clip.src} />
+      ) : (
+        <>
+          <img
+            alt=""
+            className="needo-pet-motion-image is-fallback"
+            draggable={false}
+            src={sprite === "death" ? petSpriteSrc.grave : petSpriteSrc.idle}
+          />
+          <img
+            key={`preload-${clip.src}-${runId}`}
+            alt=""
+            aria-hidden="true"
+            className="needo-pet-motion-image is-preloader"
+            draggable={false}
+            onLoad={() => setLoadedRunId(runId)}
+            src={clip.src}
+          />
+        </>
+      )}
     </span>
   );
 }
