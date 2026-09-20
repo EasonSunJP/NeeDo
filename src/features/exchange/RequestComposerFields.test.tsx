@@ -50,7 +50,7 @@ function fillValidRequestDraft() {
     serviceEndDate: "2026-09-02",
     serviceEndTime: "16:00",
     expiresDate: "2026-09-02",
-    expiresTime: "16:00",
+    expiresTime: "16:01",
     targetProviderCount: "3",
     budgetMinJpy: "15000",
     budgetMaxJpy: "30000",

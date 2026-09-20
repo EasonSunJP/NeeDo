@@ -72,7 +72,7 @@ describe("ExchangeFeedPage", () => {
   it("shows a private My Requests tab to users and keeps both formal lists for merchant and technician portals", () => {
     expect(getDefaultExchangePostType("user")).toBe("intelligence");
     expect(getDefaultExchangePostType("merchant")).toBe("intelligence");
-    expect(getDefaultExchangePostType("technician")).toBe("intelligence");
+    expect(getDefaultExchangePostType("technician")).toBe("demand");
 
     const userMarkup = renderFeed();
     expect(userMarkup).toContain("我的需求");
@@ -85,6 +85,9 @@ describe("ExchangeFeedPage", () => {
     expect(merchantMarkup).toContain("情报");
     expect(merchantMarkup).toContain("client-feature-segmented-tabs--header");
     expect(merchantMarkup).not.toContain(">全部<");
+
+    renderFeed({}, "technician");
+    expect(useExchangeFeed).toHaveBeenLastCalledWith("demand", 20);
   });
 
   it("restores the original high-fidelity search, tabs, offer card, and interaction bar", () => {

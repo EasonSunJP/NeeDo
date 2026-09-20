@@ -136,6 +136,25 @@ describe("formal NeeDo Exchange validators", () => {
     ).toBe(false);
   });
 
+  it("requires the publication expiry to be strictly later than the service end", () => {
+    expect(
+      publishExchangePostSchema.safeParse(
+        validDemand({
+          serviceEndAt: "2026-08-31T10:00:00+09:00",
+          expiresAt: "2026-08-31T10:00:00+09:00"
+        })
+      ).success
+    ).toBe(false);
+    expect(
+      publishExchangePostSchema.safeParse(
+        validDemand({
+          serviceEndAt: "2026-08-31T10:00:00+09:00",
+          expiresAt: "2026-08-31T10:00:01+09:00"
+        })
+      ).success
+    ).toBe(true);
+  });
+
   it("rejects legacy demand-only fields and provider counts outside 1 through 20", () => {
     expect(
       publishExchangePostSchema.safeParse({ ...validDemand(), areaLabel: "legacy" }).success

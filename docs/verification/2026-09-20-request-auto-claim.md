@@ -6,6 +6,17 @@ Fix the existing Step 10/13 Request automation path. A published eligible Reques
 
 The reported staging example was used as reproduction input only. This work does not establish a staging diagnosis or staging acceptance; all execution targets were local.
 
+## Request 14 follow-up
+
+The later staging reproduction exposed two additional local defects without changing the claim, matching, wallet, privacy, schedule, or permission authorities:
+
+- The technician NeeDo route opened the Intelligence tab for every role. The observed “还没有正式情报” state therefore hid the Request feed behind a second tap even though the backend already admitted technician identities. The technician route now opens Demand by default; user and merchant defaults are unchanged.
+- Request candidate discovery required `workState=on_duty` before loading the saved automation rule, and the evaluator always required online state even when `onlyOnline=false`. Candidate discovery now retains offline candidates and the evaluator applies the online gate only when configured. An online-only offline candidate writes `NOT_MATCHED` with `online:offline`; an offline-allowed candidate can create the normal idempotent formal claim.
+
+Regression coverage includes a Request-14-shaped Quick Request named `StagingTest 自动抢单集成测试`, JPY 8,000–12,000 budget, store service, zero lead/buffer, unrestricted customer rules, an offline technician, repeated triggers, one claim/event/notification, unchanged slot capacity, and no claim-created wallet hold. The real-MySQL case remains guarded by `RUN_REQUEST_AUTOMATION_INTEGRATION=true` and an explicit `needo_request_auto_test_*` scratch database; when that environment is absent the suite is reported as skipped, never as passed.
+
+Publication validation now explicitly proves `expiresAt > serviceEndAt` on both server and composer boundaries. Existing UI copy says only to check chronological order; that wording ambiguity is recorded here and was not rewritten in this fix.
+
 ## Reproduced causes and changes
 
 - The first slot was selected before rule evaluation. An obsolete pricing-mode slot, a full slot, or an unselected service could hide a later valid slot. Selection now checks current shop pricing, service ownership, remaining capacity, and actual rules first.

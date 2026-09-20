@@ -90,7 +90,7 @@ function fillValidIntelligenceDraft() {
     serviceEndDate: "2026-08-31",
     serviceEndTime: "01:00",
     expiresDate: "2026-08-31",
-    expiresTime: "01:00"
+    expiresTime: "01:01"
   };
   Object.entries(values).forEach(([name, value]) => {
     const input = document.body.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);

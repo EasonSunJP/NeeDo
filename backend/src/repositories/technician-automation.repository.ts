@@ -369,8 +369,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
                 shop: { is: { deletedAt: null } }
               }
             },
-            automationSettings: { some: { kind: DatabaseTechnicianAutomationKind.REQUEST, enabled: true, deletedAt: null } },
-            workState: { is: { status: "on_duty", deletedAt: null } }
+            automationSettings: { some: { kind: DatabaseTechnicianAutomationKind.REQUEST, enabled: true, deletedAt: null } }
           }
         }
       },
