@@ -92,7 +92,6 @@ import { CurrentMembershipBenefitsPage } from "./features/platform-membership/Cu
 import { UserAddressesPage } from "./pages/user/UserAddressesPage";
 import { UserMembershipsPage } from "./pages/user/UserMembershipsPage";
 import { UserOrdersPage } from "./pages/user/UserOrdersPage";
-import { UserOrderDetailPage } from "./pages/user/UserOrderDetailPage";
 import { UserSchedulePage } from "./pages/user/UserSchedulePage";
 import { UserTechnicianScheduleDetailPage } from "./pages/user/UserTechnicianScheduleDetailPage";
 import { TechnicianApplicationPage } from "./features/identity-applications/TechnicianApplicationPage";
@@ -223,6 +222,7 @@ const UnifiedSettingsVerificationPage = lazyNamed(loadUnifiedSettingsPages, "Uni
 const TechnicianPortalPage = lazy(() => import("./pages/mobile/TechnicianPortalPage").then((module) => ({ default: module.TechnicianPortalPage })));
 const MerchantAutoDispatchRoutePage = lazy(() => import("./pages/mobile/MerchantAutoDispatchRoutePage").then((module) => ({ default: module.MerchantAutoDispatchRoutePage })));
 const UserFavoritesRoutePage = lazy(() => import("./pages/user/UserFavoritesPage").then((module) => ({ default: module.UserFavoritesRoutePage })));
+const UserOrderDetailPage = lazy(() => import("./pages/user/UserOrderDetailPage").then((module) => ({ default: module.UserOrderDetailPage })));
 const DashboardPage = lazy(() => import("./pages/admin/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const LiveDashboardPage = lazy(() => import("./pages/admin/LiveDashboardPage").then((module) => ({ default: module.LiveDashboardPage })));
 const DashboardMetricDetailPage = lazy(() => import("./pages/admin/DashboardMetricDetailPage").then((module) => ({ default: module.DashboardMetricDetailPage })));
@@ -1315,7 +1315,7 @@ export default function App() {
               <Route path="/cps-admin/*" element={<LegacyNdaAdminRedirect />} />
               <Route path="/business-admin/*" element={<LegacyNdaAdminRedirect />} />
               <Route path="/orders" element={protect("user", <UserOrdersPage />)} />
-              <Route path="/orders/:orderId" element={protect("user", <UserOrderDetailPage />)} />
+              <Route path="/orders/:orderId" element={protect("user", <Suspense fallback={null}><UserOrderDetailPage /></Suspense>)} />
               <Route path="/me" element={protect("user", <UserCenterPage />)} />
               <Route path="/me/benefits" element={protect("user", <CurrentMembershipBenefitsPage />)} />
               <Route path="/me/addresses" element={protect("user", <UserAddressesPage />)} />
