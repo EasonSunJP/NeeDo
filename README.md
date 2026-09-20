@@ -460,6 +460,8 @@ the formal technician detail drawer against the running API.
 
 Merchant and technician schedule portals now maintain customer-bookable inventory through identity-scoped `/api/v1/*/schedule/slots` APIs. The backend derives the shop or technician profile from the active authenticated identity, validates explicit-offset ISO timestamps, prevents overlapping technician slots, and updates matching availability records transactionally. Personal calendar notes remain a separate, non-bookable compatibility lane.
 
+Public availability computes current occupancy before pagination, including authenticated customer conflicts, technician hard locks, Exchange reservations, and replaceable pending capacity. The read uses one database snapshot and remains uncached; Booking retains its authoritative locking transaction. Local regression evidence and limitations are recorded in [Availability / Booking consistency](docs/verification/2026-09-20-booking-availability-consistency.md).
+
 Verify schedule scope, exact UTC storage, overlap handling, and concurrent capacity behavior against a local non-production MySQL database:
 
 ```bash

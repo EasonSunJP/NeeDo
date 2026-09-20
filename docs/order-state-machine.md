@@ -149,6 +149,8 @@ Invalid transitions return:
 
 ## Conflict Rules
 
+公开 availability 在分页前应用同一套时间、占用和当前服务资格规则，并依据已认证顾客处理 pending 替换及会员差异；列表与总数使用一个数据库快照。返回值不预留容量，Booking 仍在原有锁定事务中重新校验。读取投影、回归证据与验收边界见 [2026-09-20 一致性修复](verification/2026-09-20-booking-availability-consistency.md)。
+
 Booking creation uses a transaction:
 
 - The selected slot must be active, available, not soft-deleted, and tied to a published service and shop.

@@ -623,6 +623,23 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
     );
   });
 
+  it("scopes availability conflicts to the authenticated viewer and prevents caching", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login();
+    await request(fixture.app)
+      .get("/api/v1/schedule/availability?technicianId=1&customerUserId=9999&from=2026-05-26T00:00:00.000Z&to=2026-05-27T00:00:00.000Z")
+      .set("Authorization", `Bearer ${token}`)
+      .expect("Cache-Control", "no-store")
+      .expect(200);
+    expect(fixture.bookingRepository.listAvailableSlots).toHaveBeenCalledWith(
+      expect.objectContaining({ technicianId: 1 }),
+      { visibility: "public" },
+      1
+    );
+    const availabilityCalls = fixture.bookingRepository.listAvailableSlots.mock.calls as unknown[][];
+    expect(availabilityCalls[0]?.[0]).not.toHaveProperty("customerUserId");
+  });
+
   it("rejects unscoped and longer-than-93-day public availability windows", async () => {
     const fixture = await createFixture();
 

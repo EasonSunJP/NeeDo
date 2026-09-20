@@ -327,7 +327,7 @@ describe("BookingService state machine", () => {
 
     await service.listAvailableSlots(input, viewer);
 
-    expect(repository.listAvailableSlots).toHaveBeenCalledWith(input, visibilityWhere);
+    expect(repository.listAvailableSlots).toHaveBeenCalledWith(input, visibilityWhere, viewer.userId);
   });
 
   it("cancels affected confirmed bookings through the formal transition before an impact-confirmed schedule edit", async () => {

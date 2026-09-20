@@ -1,6 +1,15 @@
 import { readFileSync } from "node:fs";
 import { BookingRepository } from "../src/repositories/booking.repository";
 
+const availabilityClient = (delegates: Record<string, unknown>) => {
+  const client: Record<string, unknown> = {
+    ...delegates,
+    $queryRaw: jest.fn(async () => []),
+    $transaction: jest.fn(async (operation: (transaction: unknown) => unknown) => operation(client))
+  };
+  return client as never;
+};
+
 const currentShopServiceLocation = (shopId: number, admin2RegionId = 725) => ({
   shopId,
   countryCode: "JP",
@@ -724,10 +733,10 @@ describe("BookingRepository order list scope", () => {
       findMany: jest.fn(async () => []),
       count: jest.fn(async () => 0)
     };
-    const repository = new BookingRepository({
+    const repository = new BookingRepository(availabilityClient({
       scheduleSlot,
       shopServiceLocation: { findMany: jest.fn(async () => [currentShopServiceLocation(11)]) }
-    } as never);
+    }));
 
     await repository.listAvailableSlots({
       technicianId: 17,
@@ -748,11 +757,12 @@ describe("BookingRepository order list scope", () => {
         deletedAt: null,
         status: "published",
         visibility: "public",
+        publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } },
         entitySuspensions: {
           none: { activeKey: { not: null }, status: "active", deletedAt: null }
         }
       },
-      AND: [
+      AND: expect.arrayContaining([
         {
           OR: [
             { serviceId: null },
@@ -806,7 +816,7 @@ describe("BookingRepository order list scope", () => {
             }
           ]
         }
-      ]
+      ])
     });
     expect(scheduleSlot.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -853,11 +863,11 @@ describe("BookingRepository order list scope", () => {
         }
       ])
     };
-    const repository = new BookingRepository({
+    const repository = new BookingRepository(availabilityClient({
       service: { findFirst: jest.fn(async () => ({ shopId: 16 })) },
       scheduleSlot,
       shopServiceLocation
-    } as never);
+    }));
 
     await repository.listAvailableSlots({
       serviceId: 79,
@@ -895,11 +905,11 @@ describe("BookingRepository order list scope", () => {
     const service = {
       findFirst: jest.fn(async () => ({ shopId: 16 }))
     };
-    const repository = new BookingRepository({
+    const repository = new BookingRepository(availabilityClient({
       service,
       scheduleSlot,
       shopServiceLocation: { findMany: jest.fn(async () => [currentShopServiceLocation(16)]) }
-    } as never);
+    }));
 
     await repository.listAvailableSlots({
       serviceId: 79,
@@ -969,11 +979,11 @@ describe("BookingRepository order list scope", () => {
       count: jest.fn(async () => 0)
     };
     const shopServiceLocation = { findMany: jest.fn(async () => []) };
-    const repository = new BookingRepository({
+    const repository = new BookingRepository(availabilityClient({
       service: { findFirst: jest.fn(async () => null) },
       scheduleSlot,
       shopServiceLocation
-    } as never);
+    }));
 
     await expect(repository.listAvailableSlots({
       serviceId: 79,
@@ -996,11 +1006,11 @@ describe("BookingRepository order list scope", () => {
       }),
       count: jest.fn(async () => 0)
     };
-    const repository = new BookingRepository({
+    const repository = new BookingRepository(availabilityClient({
       service: { findFirst: jest.fn(async () => ({ shopId: 11 })) },
       scheduleSlot,
       shopServiceLocation: { findMany: jest.fn(async () => [currentShopServiceLocation(11)]) }
-    } as never);
+    }));
 
     await repository.listAvailableSlots({
       serviceId: 12,
@@ -1052,11 +1062,11 @@ describe("BookingRepository order list scope", () => {
       }),
       count: jest.fn(async () => 0)
     };
-    const repository = new BookingRepository({
+    const repository = new BookingRepository(availabilityClient({
       service: { findFirst: jest.fn(async () => ({ shopId: 11 })) },
       scheduleSlot,
       shopServiceLocation: { findMany: jest.fn(async () => [currentShopServiceLocation(11)]) }
-    } as never);
+    }));
 
     await repository.listAvailableSlots({
       serviceId: 12,

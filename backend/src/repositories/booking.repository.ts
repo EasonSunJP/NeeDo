@@ -1061,7 +1061,8 @@ export interface BookingRepositoryPort {
   findActiveCustomerUserIdByIdentityId?: (identityId: number) => Promise<number | null>;
   listAvailableSlots: (
     input: AvailabilityListInput,
-    shopVisibilityWhere?: Record<string, unknown>
+    shopVisibilityWhere?: Record<string, unknown>,
+    customerUserId?: number
   ) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
   listAvailabilityWindows?: (
     input: AvailabilityWindowListInput
@@ -1389,13 +1390,26 @@ export class BookingRepository implements BookingRepositoryPort {
 
   public async listAvailableSlots(
     input: AvailabilityListInput,
-    shopVisibilityWhere: Record<string, unknown> = { visibility: "public" }
+    shopVisibilityWhere: Record<string, unknown> = { visibility: "public" },
+    customerUserId?: number
+  ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
+    return this.client.$transaction(
+      (transaction) => this.readAvailableSlots(transaction, input, shopVisibilityWhere, customerUserId),
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+    );
+  }
+
+  private async readAvailableSlots(
+    transaction: Prisma.TransactionClient,
+    input: AvailabilityListInput,
+    shopVisibilityWhere: Record<string, unknown>,
+    customerUserId?: number
   ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
     const pagination = toPrismaPagination(input);
     const now = new Date();
     let resolvedShopId = input.shopId;
     if (input.serviceId) {
-      const service = await this.client.service.findFirst({
+      const service = await transaction.service.findFirst({
         where: {
           id: input.serviceId,
           deletedAt: null,
@@ -1420,11 +1434,36 @@ export class BookingRepository implements BookingRepositoryPort {
 
     const scopedInput = { ...input, shopId: resolvedShopId };
     const currentLocationShopIds =
-      await this.listShopsWithCurrentVerifiedServiceLocations(scopedInput);
+      await this.listShopsWithCurrentVerifiedServiceLocations(transaction, scopedInput);
+    const occupancy = await this.listAvailabilityOccupancy(transaction, scopedInput, now, customerUserId);
+    const blockedIds = occupancy.filter((row) => Boolean(row.conflict)).map((row) => row.id);
+    const releasedCounts = new Map(occupancy.map((row) => [row.id, Number(row.releasedCount)]));
+    const replaceableIds = occupancy
+      .filter((row) => !row.conflict && Number(row.releasedCount) > 0
+        && row.bookedCount >= Number(row.releasedCount)
+        && row.bookedCount - Number(row.releasedCount) < row.capacity
+        && ["available", "booked"].includes(row.status))
+      .map((row) => row.id);
+    const capacityWhere: Prisma.ScheduleSlotWhereInput = {
+      status: "AVAILABLE",
+      bookedCount: { lt: transaction.scheduleSlot.fields.capacity }
+    };
     const where: Prisma.ScheduleSlotWhereInput = {
       deletedAt: null,
       AND: [
         ...currentBookableScheduleSlotSourcesWhere().AND,
+        {
+          OR: [
+            { shop: { pricingMode: "MERCHANT" }, serviceId: { not: null } },
+            { shop: { pricingMode: "TECHNICIAN" }, technicianServiceId: { not: null } }
+          ]
+        },
+        {
+          OR: [
+            { technicianProfileId: null },
+            { technicianProfile: { is: publicTechnicianProfileWhere() } }
+          ]
+        },
         {
           OR: [
             { shopId: { in: currentLocationShopIds } },
@@ -1462,8 +1501,10 @@ export class BookingRepository implements BookingRepositoryPort {
       ...(input.includeUnavailable
         ? {}
         : {
-            status: "AVAILABLE",
-            bookedCount: { lt: this.client.scheduleSlot.fields.capacity }
+            ...(replaceableIds.length > 0
+              ? { OR: [capacityWhere, { id: { in: replaceableIds } }] }
+              : capacityWhere),
+            ...(blockedIds.length > 0 ? { id: { notIn: blockedIds } } : {})
           }),
       ...(input.serviceId ? { serviceId: input.serviceId, technicianServiceId: null } : {}),
       ...(input.technicianServiceId
@@ -1493,6 +1534,7 @@ export class BookingRepository implements BookingRepositoryPort {
         deletedAt: null,
         status: "published",
         ...(shopVisibilityWhere as Prisma.ShopWhereInput),
+        publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } },
         entitySuspensions: {
           none: { activeKey: { not: null }, status: "active", deletedAt: null }
         }
@@ -1500,27 +1542,108 @@ export class BookingRepository implements BookingRepositoryPort {
       ...(input.technicianId ? { technicianProfileId: input.technicianId } : {})
     };
     const [list, total] = await Promise.all([
-      this.client.scheduleSlot.findMany({
+      transaction.scheduleSlot.findMany({
         where,
         include: this.slotInclude(),
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ startsAt: "asc" }, { id: "asc" }]
       }),
-      this.client.scheduleSlot.count({ where })
+      transaction.scheduleSlot.count({ where })
     ]);
 
     return buildPaginatedResponse(
-      list.map((slot) => this.mapSlot(slot)),
+      list.map((slot) => {
+        const payload = this.mapSlot(slot);
+        if (blockedIds.includes(slot.id)) return { ...payload, status: "blocked" as const };
+        const released = releasedCounts.get(slot.id) ?? 0;
+        if (replaceableIds.includes(slot.id)) {
+          return { ...payload, status: "available" as const, bookedCount: slot.bookedCount - released };
+        }
+        return payload.status === "available" && slot.bookedCount >= slot.capacity
+          ? { ...payload, status: "booked" as const }
+          : payload;
+      }),
       total,
       pagination
     );
   }
 
+  private async listAvailabilityOccupancy(
+    transaction: Prisma.TransactionClient,
+    input: AvailabilityListInput,
+    now: Date,
+    customerUserId?: number
+  ) {
+    const customer = customerUserId
+      ? await transaction.customerProfile.findFirst({
+          where: { userId: customerUserId, deletedAt: null },
+          select: { membershipLevel: true }
+        })
+      : null;
+    const isBlackMember = customer?.membershipLevel.toLowerCase() === "black";
+    // Correlate overlap to each slot in SQL, before pagination. Only changed projections
+    // are materialized; do not fetch every order or run one conflict query per slot.
+    return transaction.$queryRaw<Array<{
+      id: number; conflict: bigint | number; releasedCount: bigint | number;
+      bookedCount: number; capacity: number; status: string;
+    }>>(Prisma.sql`
+      SELECT projection.* FROM (
+        SELECT s.id, s.booked_count AS bookedCount, s.capacity, s.status,
+          (s.starts_at <= ${now}
+          ${customerUserId && !isBlackMember ? Prisma.sql`OR EXISTS (
+            SELECT pending_slot.id FROM booking_orders pending
+            JOIN schedule_slots pending_slot ON pending_slot.id = pending.schedule_slot_id
+            WHERE pending.customer_user_id = ${customerUserId} AND pending.status = 'pending'
+              AND pending.deleted_at IS NULL AND pending_slot.deleted_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM exchange_match_participants participant
+                WHERE participant.booking_order_id = pending.id)
+            GROUP BY pending_slot.id, pending_slot.booked_count
+            HAVING COUNT(*) > pending_slot.booked_count
+          )` : Prisma.empty}
+          OR (s.technician_profile_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM technician_shop_affiliations affiliation
+            WHERE affiliation.technician_profile_id = s.technician_profile_id
+              AND affiliation.shop_id = s.shop_id AND affiliation.deleted_at IS NULL
+              AND affiliation.active_key IS NOT NULL AND affiliation.work_status = 'active'
+              AND affiliation.starts_at <= ${now}
+              AND (affiliation.ends_at IS NULL OR affiliation.ends_at > ${now})
+          )) OR EXISTS (
+            SELECT 1 FROM booking_orders o
+            WHERE o.deleted_at IS NULL AND o.starts_at < s.ends_at AND o.ends_at > s.starts_at
+              AND ((o.technician_profile_id = s.technician_profile_id
+                AND o.schedule_slot_id <> s.id
+                AND o.status IN (${Prisma.join(HARD_LOCK_ORDER_DB_STATUSES.map((status) => status.toLowerCase()))}))
+                ${customerUserId ? Prisma.sql`OR (o.customer_user_id = ${customerUserId}
+                  AND o.status IN (${Prisma.join((isBlackMember ? ACTIVE_ORDER_DB_STATUSES : HARD_LOCK_ORDER_DB_STATUSES).map((status) => status.toLowerCase()))}))` : Prisma.empty})
+          ) OR EXISTS (
+            SELECT 1 FROM exchange_match_participants p
+            WHERE p.technician_profile_id = s.technician_profile_id
+              AND p.estimated_starts_at < s.ends_at AND p.estimated_ends_at > s.starts_at
+              AND p.active_reservation_key IS NOT NULL AND p.deleted_at IS NULL
+          )) AS conflict,
+          ${customerUserId && !isBlackMember ? Prisma.sql`(
+            SELECT COUNT(*) FROM booking_orders pending
+            WHERE pending.schedule_slot_id = s.id AND pending.customer_user_id = ${customerUserId}
+              AND pending.status = 'pending' AND pending.deleted_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM exchange_match_participants participant
+                WHERE participant.booking_order_id = pending.id)
+          )` : Prisma.sql`0`} AS releasedCount
+        FROM schedule_slots s
+        WHERE s.deleted_at IS NULL AND s.starts_at >= ${input.from} AND s.ends_at <= ${input.to}
+          ${input.shopId ? Prisma.sql`AND s.shop_id = ${input.shopId}` : Prisma.empty}
+          ${input.serviceId ? Prisma.sql`AND s.service_id = ${input.serviceId}` : Prisma.empty}
+          ${input.technicianServiceId ? Prisma.sql`AND s.technician_service_id = ${input.technicianServiceId}` : Prisma.empty}
+          ${input.technicianId ? Prisma.sql`AND s.technician_profile_id = ${input.technicianId}` : Prisma.empty}
+      ) projection WHERE projection.conflict <> 0 OR projection.releasedCount > 0
+    `);
+  }
+
   private async listShopsWithCurrentVerifiedServiceLocations(
+    transaction: Prisma.TransactionClient,
     input: AvailabilityListInput
   ): Promise<number[]> {
-    const locations = await this.client.shopServiceLocation.findMany({
+    const locations = await transaction.shopServiceLocation.findMany({
       where: {
         deletedAt: null,
         countryCode: "JP",

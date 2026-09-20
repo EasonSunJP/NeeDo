@@ -22620,7 +22620,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Paginated available schedule slots",
         security: [{}, { bearerAuth: [] }],
         description:
-          "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. The from/to window must not exceed 93 days. By default, results are limited to published, unsuspended shops and bookable slots with remaining capacity.",
+          "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. The from/to window must not exceed 93 days. Results use one uncached database snapshot and filter current service/pricing/affiliation eligibility, future start time, capacity, technician hard locks and Exchange reservations before pagination. An authenticated booking-capable viewer also receives customer-specific overlap checks; ordinary customers' replaceable pending capacity is deducted from the returned bookedCount, while black members retain pending occupancy. This read does not reserve capacity: Booking revalidates inside its locking transaction.",
         parameters: [
           {
             name: "serviceId",
@@ -22634,7 +22634,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "includeUnavailable",
             in: "query",
             description:
-              "When true, include booked, blocked, and full formal slots for disabled time-option display.",
+              "When true, include unavailable formal slots for disabled time-option display. Time, occupancy or affiliation conflicts are projected as blocked; full slots are never marked available. Service publication and visibility restrictions still apply.",
             schema: { type: "boolean", default: false }
           },
           {

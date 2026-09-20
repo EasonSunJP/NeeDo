@@ -218,7 +218,10 @@ export class BookingService {
       input,
       this.shopVisibility
         ? await this.shopVisibility.buildVisibilityWhere(viewer)
-        : { visibility: "public" }
+        : { visibility: "public" },
+      ...(viewer && this.isCustomerSharedIdentity({ currentIdentityType: viewer.identityType })
+        ? [viewer.userId]
+        : [])
     );
   }
 
@@ -2193,7 +2196,7 @@ export class BookingService {
     return hasMerchantShopScope(actor as AuthenticatedAccessContext);
   }
 
-  private isCustomerSharedIdentity(actor: AuthenticatedBookingActor): boolean {
+  private isCustomerSharedIdentity(actor: Pick<AuthenticatedBookingActor, "currentIdentityType">): boolean {
     if (!actor.currentIdentityType) return true;
     return ["customer", "user", "u", "scout", "affiliate", "alliance_marketing"].includes(
       actor.currentIdentityType
