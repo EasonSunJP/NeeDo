@@ -149,6 +149,20 @@ Invalid transitions return:
 }
 ```
 
+Merchant order editing follows the same state boundary:
+
+- `PATCH /api/v1/orders/:id/merchant-edit` accepts only `pending` and `confirmed` orders.
+- `cancelled`, `inService`, checkout, and completed states return HTTP `409` with
+  `40906 error.order.invalid_transition`; another shop's order remains a non-leaking `404`.
+- The repository locks the shop-owned order before checking its current state. A cancellation or
+  other state transition that wins the lock cannot be overwritten by a stale edit.
+- Rejected state attempts do not update amount, payment method, or note. They create the audit action
+  `merchant_admin.booking.edit_rejected`; successful edits retain
+  `merchant_admin.booking.edit`.
+- The merchant detail UI shows the change entry only for editable states. A direct visit to a terminal
+  order's change route keeps every field and the save action disabled and displays a localized status
+  explanation.
+
 ## Conflict Rules
 
 公开 availability 在分页前应用同一套时间、占用和当前服务资格规则，并依据已认证顾客处理 pending 替换及会员差异；列表与总数使用一个数据库快照。返回值不预留容量，Booking 仍在原有锁定事务中重新校验。读取投影、回归证据与验收边界见 [2026-09-20 一致性修复](verification/2026-09-20-booking-availability-consistency.md)。
@@ -226,9 +240,10 @@ This keeps Step 10 focused on the transaction chain without opening Request, wal
 
 The append-only order histories, service events, performance revisions, audit logs, and their original reason fields remain the internal source of truth. Portal and operations timelines do not render those raw reason values directly.
 
-- Customer timelines show localized order-state semantics and explicitly submitted participant timeline comments. Technician-performance revisions are not customer-visible.
+- Customer timelines show localized order-state semantics and explicitly submitted participant timeline comments. Cancellation events additionally show the persisted actor name/source, appointment time, service, shop, and participant-facing cancellation reason; an explicit localized default is used when no reason was submitted. Technician-performance revisions are not customer-visible.
 - Technician timelines additionally show localized business descriptions for technician-performance revisions. A performance revision's dedicated `publicReason` may be shown when it is non-empty business prose; internal-code, QA, debug, payload, fixture, and numeric-only values fall back to the localized fixed description.
-- Operations and merchant timelines show localized event kinds and approved business snapshots such as add-on service name, duration, and amount. Status-history and service-event reasons are never rendered as public copy. Generic timeline bubbles do not render `internalNote`, numeric actor identifiers, event enums, QA references, or raw payloads.
+- Operations and merchant timelines show localized event kinds and approved business snapshots such as add-on service name, duration, and amount. Apart from the cancellation details above, status-history and service-event reasons are never rendered as public copy. Generic timeline bubbles do not render `internalNote`, numeric actor identifiers, event enums, QA references, or raw payloads.
+- A status transition stores an immutable actor identity snapshot in the existing status-history metadata. New rows use the authenticated customer, merchant, technician, or platform identity; legacy rows fall back to the persisted user and order-participant relationship. This attribution is presentation data only and does not replace authorization, transition, refund, audit, or idempotency checks.
 - Explicit `ORDER_COMMENT_ADDED` records are the participant-visible business-note channel. Internal review evidence and debugging notes remain in protected audit/API data and require a purpose-built authorized audit surface rather than the generic order timeline.
 - Unknown status values fail closed to a localized generic “order status updated” label instead of exposing the raw value.
 

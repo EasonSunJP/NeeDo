@@ -17,6 +17,7 @@ Wallet reads and finance reporting expose both currencies without adding them to
 - `GET /api/v1/wallets/me` returns the active wallet, including `currency`.
 - `GET /api/v1/wallets/me/summary` returns `activeCurrency`, `ndp`, and `testNdp` available/frozen pairs.
 - `GET /api/v1/backoffice/finance/ndp-summary` returns each metric as `{ ndp, testNdp }` and returns formal-only `settleableNdp`.
+- `todayNdpConsumption` sums `OrderCheckout.payableNdp` only when the order, checkout, and checkout-payment ledger form the authoritative confirmed-payment chain for the requested Tokyo day. It is customer checkout consumption, not the platform-fee total. `platformNetRevenue` remains a separate fee result: captured Booking/Request fees and penalties minus granted rewards and customer compensation.
 - Formal reconciliation and settlement export repositories always add `currency = NDP`/`ndpCurrency = NDP`; a client cannot request Test NDP through those endpoints.
 - A completed Test NDP checkout persists its exact `OrderCheckout.payableNdp` evidence and reports `paymentChannel = platform_test_ndp` with confirmed service-income status. Its formal JPY platform-collected amount remains zero, and operations gross/travel revenue excludes it while the finance detail identifies the amount as Test NDP.
 

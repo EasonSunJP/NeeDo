@@ -405,6 +405,11 @@ export type BookingAssignTechnicianResult =
   | { outcome: "ok"; order: BookingOrderPayload }
   | { outcome: "not_found" | "already_assigned" | "technician_unavailable" };
 
+export type MerchantBookingEditResult =
+  | { outcome: "ok"; order: BookingOrderPayload }
+  | { outcome: "not_found" }
+  | { outcome: "invalid_state" };
+
 export interface BookingCreateAffiliatePreparationContext {
   transactionClient: LedgerTransactionClient;
   customerUserId: number;
@@ -649,9 +654,19 @@ export interface OrderStatusHistoryPayload {
   fromStatus: BookingOrderStatusPayload | null;
   toStatus: BookingOrderStatusPayload;
   actorUserId: number | null;
+  actorIdentityId?: number | null;
+  actorSource?: OrderStatusActorSource;
+  actorDisplayName?: string | null;
   reason: string | null;
   createdAt: Date;
 }
+
+export type OrderStatusActorSource =
+  | "customer"
+  | "merchant"
+  | "technician"
+  | "platform"
+  | "system";
 
 export type OrderAddOnStatusPayload = "proposed" | "accepted" | "rejected";
 export type FulfillmentParticipant = "customer" | "technician";
@@ -751,6 +766,9 @@ export type OrderTimelineEventPayload =
       id: string;
       createdAt: Date;
       actorUserId: number | null;
+      actorIdentityId?: number | null;
+      actorSource?: OrderStatusActorSource;
+      actorDisplayName?: string | null;
       fromStatus: BookingOrderStatusPayload | null;
       toStatus: BookingOrderStatusPayload;
       publicReason: string | null;
@@ -1145,7 +1163,7 @@ export interface BookingRepositoryPort {
     input: PaginationInput & { orderId: number }
   ) => Promise<PaginatedResponse<OrderAddOnServicePayload>>;
   assignTechnician?: (input: BookingAssignTechnicianInput) => Promise<BookingAssignTechnicianResult>;
-  editMerchantOrder?: (input: MerchantBookingEditInput) => Promise<BookingOrderPayload | null>;
+  editMerchantOrder?: (input: MerchantBookingEditInput) => Promise<MerchantBookingEditResult>;
   listCancellableOrdersForScheduleSlot?: (scheduleSlotId: number) => Promise<BookingOrderPayload[]>;
   findOrderRealtimeRecipients?: (
     id: number
@@ -1297,6 +1315,7 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
       };
     };
     statusHistory: {
+      include: { actor: true };
       orderBy: {
         createdAt: "asc";
       };
@@ -3060,19 +3079,18 @@ export class BookingRepository implements BookingRepositoryPort {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
 
-  public async editMerchantOrder(input: MerchantBookingEditInput): Promise<BookingOrderPayload | null> {
+  public async editMerchantOrder(input: MerchantBookingEditInput): Promise<MerchantBookingEditResult> {
     return this.client.$transaction(async (transaction) => {
       const lockedOrder = await transaction.$queryRaw<Array<{ id: number }>>(Prisma.sql`
         SELECT id FROM booking_orders
         WHERE id = ${input.orderId}
           AND shop_id = ${input.shopId}
-          AND status IN ('PENDING', 'CONFIRMED')
           AND deleted_at IS NULL
         FOR UPDATE
       `);
-      if (lockedOrder.length !== 1) return null;
+      if (lockedOrder.length !== 1) return { outcome: "not_found" };
       const current = await transaction.bookingOrder.findFirst({
-        where: { id: input.orderId, shopId: input.shopId, deletedAt: null, status: { in: ["PENDING", "CONFIRMED"] } },
+        where: { id: input.orderId, shopId: input.shopId, deletedAt: null },
         select: {
           id: true,
           status: true,
@@ -3085,7 +3103,23 @@ export class BookingRepository implements BookingRepositoryPort {
           updatedAt: true
         }
       });
-      if (!current) return null;
+      if (!current) return { outcome: "not_found" };
+      if (current.status !== "PENDING" && current.status !== "CONFIRMED") {
+        await transaction.auditLog.create({
+          data: toAuditLogCreateData({
+            actorId: input.actorUserId,
+            action: "merchant_admin.booking.edit_rejected",
+            targetType: "booking_order",
+            targetId: current.id,
+            metadata: {
+              reason: "invalid_state",
+              shopId: input.shopId,
+              status: current.status
+            }
+          })
+        });
+        return { outcome: "invalid_state" };
+      }
       const changesFinancialTerms = input.priceAmountJpy !== undefined || input.paymentMethod !== undefined;
       if (changesFinancialTerms) {
         const [walletHold, financial, checkout, prepayment] = await Promise.all([
@@ -3135,7 +3169,9 @@ export class BookingRepository implements BookingRepositoryPort {
         })
       });
       const updated = await transaction.bookingOrder.findFirst({ where: { id: current.id, deletedAt: null }, include: this.orderInclude() });
-      return updated ? this.mapOrder(updated) : null;
+      return updated
+        ? { outcome: "ok", order: this.mapOrder(updated) }
+        : { outcome: "not_found" };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
 
@@ -5256,13 +5292,45 @@ export class BookingRepository implements BookingRepositoryPort {
           });
         }
 
+        const actorIdentity = actor.identityId === null
+          ? null
+          : await tx.userIdentity.findFirst({
+              where: { id: actor.identityId, userId: actor.userId },
+              select: {
+                id: true,
+                type: true,
+                scopeType: true,
+                displayName: true,
+                user: { select: { username: true } }
+              }
+            });
+        if (actor.identityId !== null && !actorIdentity) {
+          throw new Error("error.order.transition_actor_identity_mismatch");
+        }
+        const actorSource = this.orderStatusActorSource(
+          actorIdentity?.type ?? actor.identityType,
+          actorIdentity?.scopeType ?? null,
+          current,
+          actor.userId
+        );
+        const actorDisplayName =
+          actorIdentity?.displayName?.trim() || actorIdentity?.user.username.trim() || null;
+
         await tx.orderStatusHistory.create({
           data: {
             bookingOrderId: input.id,
             fromStatus: bookingOrderStatusToDb(input.fromStatus),
             toStatus: bookingOrderStatusToDb(input.toStatus),
             actorUserId: actor.userId,
-            reason: input.reason?.trim() || null
+            reason: input.reason?.trim() || null,
+            metadata: {
+              actor: {
+                identityId: actorIdentity?.id ?? actor.identityId,
+                identityType: actorIdentity?.type ?? actor.identityType,
+                source: actorSource,
+                displayName: actorDisplayName
+              }
+            }
           }
         });
 
@@ -7089,7 +7157,8 @@ export class BookingRepository implements BookingRepositoryPort {
       },
       statusHistory: {
         where: { deletedAt: null },
-        orderBy: { createdAt: "asc" as const }
+        orderBy: { createdAt: "asc" as const },
+        include: { actor: true }
       },
       timelineComments: {
         where: { visibility: "participants", deletedAt: null },
@@ -7487,21 +7556,30 @@ export class BookingRepository implements BookingRepositoryPort {
       order.technicianService?.name ??
       "Unknown service";
 
-    const statusHistory = order.statusHistory.map((history) => ({
-      id: history.id,
-      orderId: history.bookingOrderId,
-      fromStatus: history.fromStatus ? bookingOrderStatusFromDb(history.fromStatus) : null,
-      toStatus: bookingOrderStatusFromDb(history.toStatus),
-      actorUserId: history.actorUserId,
-      reason: history.reason,
-      createdAt: history.createdAt
-    }));
+    const statusHistory = order.statusHistory.map((history) => {
+      const actor = this.orderStatusActorProjection(order, history);
+      return {
+        id: history.id,
+        orderId: history.bookingOrderId,
+        fromStatus: history.fromStatus ? bookingOrderStatusFromDb(history.fromStatus) : null,
+        toStatus: bookingOrderStatusFromDb(history.toStatus),
+        actorUserId: history.actorUserId,
+        actorIdentityId: actor.identityId,
+        actorSource: actor.source,
+        actorDisplayName: actor.displayName,
+        reason: history.reason,
+        createdAt: history.createdAt
+      };
+    });
     const timelineEvents: OrderTimelineEventPayload[] = [
       ...statusHistory.map((history) => ({
         type: "ORDER_STATUS_CHANGED" as const,
         id: `status:${history.id}`,
         createdAt: history.createdAt,
         actorUserId: history.actorUserId,
+        actorIdentityId: history.actorIdentityId,
+        actorSource: history.actorSource,
+        actorDisplayName: history.actorDisplayName,
         fromStatus: history.fromStatus,
         toStatus: history.toStatus,
         publicReason: history.reason
@@ -7662,6 +7740,83 @@ export class BookingRepository implements BookingRepositoryPort {
         : null,
       timelineEvents
     };
+  }
+
+  private orderStatusActorProjection(
+    order: OrderRecord,
+    history: OrderRecord["statusHistory"][number]
+  ): { identityId: number | null; source: OrderStatusActorSource; displayName: string | null } {
+    const metadata = this.orderStatusActorMetadata(history.metadata);
+    const source = metadata?.source ?? this.orderStatusActorSource(
+      null,
+      null,
+      order,
+      history.actorUserId
+    );
+    const displayName =
+      metadata?.displayName ??
+      history.actor?.username?.trim() ??
+      (source === "customer"
+        ? order.customer?.customerProfile?.displayName?.trim() || order.customer?.username?.trim()
+        : source === "technician"
+          ? order.technicianProfile?.displayName?.trim()
+          : source === "merchant"
+            ? order.shop.name.trim()
+            : null) ??
+      null;
+    return {
+      identityId: metadata?.identityId ?? null,
+      source,
+      displayName: displayName || null
+    };
+  }
+
+  private orderStatusActorMetadata(metadata: Prisma.JsonValue): {
+    identityId: number | null;
+    source: OrderStatusActorSource;
+    displayName: string | null;
+  } | null {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+    const actor = metadata.actor;
+    if (!actor || typeof actor !== "object" || Array.isArray(actor)) return null;
+    const source = actor.source;
+    if (
+      source !== "customer" &&
+      source !== "merchant" &&
+      source !== "technician" &&
+      source !== "platform" &&
+      source !== "system"
+    ) return null;
+    return {
+      identityId: typeof actor.identityId === "number" ? actor.identityId : null,
+      source,
+      displayName:
+        typeof actor.displayName === "string" && actor.displayName.trim()
+          ? actor.displayName.trim()
+          : null
+    };
+  }
+
+  private orderStatusActorSource(
+    identityType: string | null,
+    scopeType: string | null,
+    order: Pick<OrderRecord, "customerUserId" | "technicianProfile" | "shop">,
+    actorUserId: number | null
+  ): OrderStatusActorSource {
+    const normalizedType = identityType?.trim().toLowerCase() ?? "";
+    if (normalizedType === "technician") return "technician";
+    if (scopeType === "shop" || normalizedType.startsWith("merchant")) return "merchant";
+    if (["customer", "user", "u", "scout", "affiliate", "alliance_marketing"].includes(normalizedType)) {
+      return "customer";
+    }
+    if (["platform", "platform_admin", "operator", "operations"].includes(normalizedType)) {
+      return "platform";
+    }
+    if (actorUserId === null) return "system";
+    if (actorUserId === order.customerUserId) return "customer";
+    if (actorUserId === order.technicianProfile?.userId) return "technician";
+    if (actorUserId === order.shop.ownerUserId) return "merchant";
+    return "system";
   }
 
   private resolveRebook(order: OrderRecord): BookingOrderRebookPayload {

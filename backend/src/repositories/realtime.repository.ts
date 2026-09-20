@@ -708,11 +708,16 @@ export interface CreateOrderStatusNotificationInput {
   recipientIdentities?: Array<{ userId: number; identityId: number }>;
   actorUserId: number;
   actorIdentityId?: number;
+  actorSource?: "customer" | "merchant" | "technician" | "platform" | "system";
+  actorDisplayName?: string | null;
   orderId: number;
   orderNo: string;
   fromStatus: string;
   toStatus: string;
   serviceName: string;
+  shopName?: string;
+  startsAt?: Date;
+  reason?: string | null;
 }
 
 export interface RealtimeRepositoryPort {
@@ -5337,7 +5342,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
               orderNo: input.orderNo,
               serviceName: input.serviceName,
               fromStatus: input.fromStatus,
-              toStatus: input.toStatus
+              toStatus: input.toStatus,
+              ...(input.actorSource ? { actorSource: input.actorSource } : {}),
+              ...(input.actorDisplayName ? { actorDisplayName: input.actorDisplayName } : {}),
+              ...(input.shopName ? { shopName: input.shopName } : {}),
+              ...(input.startsAt ? { startsAt: input.startsAt.toISOString() } : {}),
+              ...(input.toStatus === "cancelled" ? { reason: input.reason ?? null } : {})
             }
           }
         })

@@ -194,6 +194,63 @@ describe("order timeline display privacy", () => {
     expect(rendered).not.toContain(`internal_${toStatus}`);
   });
 
+  it.each(["customer", "technician"] as const)(
+    "shows merchant cancellation attribution and appointment context to the %s",
+    (audience) => {
+      const order = makeOrder([{
+        type: "ORDER_STATUS_CHANGED",
+        id: "status:24418",
+        createdAt: "2026-09-20T13:24:00.000Z",
+        actorUserId: 202,
+        actorIdentityId: 16,
+        actorSource: "merchant",
+        actorDisplayName: "Eason",
+        fromStatus: "confirmed",
+        toStatus: "cancelled",
+        publicReason: "店铺当天无法履约"
+      }]);
+      order.id = 24418;
+      order.orderNo = "ND202609200104226905";
+      order.status = "cancelled";
+      order.startsAt = "2026-09-21T05:00:00.000Z";
+      order.serviceName = "ボディケア 60分";
+      order.shopName = "Eason 店铺";
+
+      const [event] = buildFormalOrderTimelineEvents(order, { audience, language: "zh" });
+
+      expect(event).toMatchObject({
+        actorName: "Eason",
+        actorRole: "店铺/商户",
+        title: "预约已取消"
+      });
+      expect(event?.message).toContain("2026年9月21日");
+      expect(event?.message).toContain("ボディケア 60分");
+      expect(event?.message).toContain("Eason 店铺");
+      expect(event?.message).toContain("原因：店铺当天无法履约");
+    }
+  );
+
+  it("shows an explicit default reason when a merchant cancellation has no reason", () => {
+    const order = makeOrder([{
+      type: "ORDER_STATUS_CHANGED",
+      id: "status:without-reason",
+      createdAt: "2026-09-20T13:24:00.000Z",
+      actorUserId: 202,
+      actorIdentityId: 16,
+      actorSource: "merchant",
+      actorDisplayName: "Eason",
+      fromStatus: "confirmed",
+      toStatus: "cancelled",
+      publicReason: null
+    }]);
+    order.status = "cancelled";
+
+    expect(buildFormalOrderTimelineEvents(order, {
+      audience: "customer",
+      language: "zh"
+    })[0]?.message).toContain("原因：店铺未填写取消原因");
+  });
+
   it("fails closed for an unknown future status instead of displaying its raw value", () => {
     const events = mapBackofficeOrderTimeline([{
       type: "ORDER_STATUS_CHANGED",

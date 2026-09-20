@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { parse } from "dotenv";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
+import type { BookingLedgerSettlementInput } from "../src/services/ledger.service";
 
 type Environment = Record<string, string | undefined>;
 
@@ -48,8 +49,10 @@ const REQUIRED_TABLES = [
   "order_status_histories",
   "order_financials",
   "wallets",
+  "wallet_holds",
   "ledger_transactions",
   "wallet_ledgers",
+  "fee_calculation_logs",
   "finance_reconciliations",
   "audit_logs",
   "review_summaries",
@@ -59,7 +62,8 @@ const REQUIRED_TABLES = [
   "order_add_ons",
   "order_checkouts",
   "order_reviews",
-  "order_review_tags"
+  "order_review_tags",
+  "technician_compensation_profiles"
 ] as const;
 const REQUIRED_COLUMNS = [
   "order_service_sessions.verification_hash",
@@ -263,7 +267,13 @@ export async function captureCashNoDebitEvidence(
 }
 
 export function assertNoCashDebit(before: CashNoDebitEvidence, after: CashNoDebitEvidence): void {
-  if (serializeEvidence(before) !== serializeEvidence(after)) {
+  const checkoutEvidenceChanged =
+    before.checkoutId !== after.checkoutId ||
+    before.walletFrozenBalance !== after.walletFrozenBalance ||
+    before.ledgerTransactionCount !== after.ledgerTransactionCount ||
+    before.walletLedgerCount !== after.walletLedgerCount ||
+    before.reconciliationCount !== after.reconciliationCount;
+  if (checkoutEvidenceChanged || after.walletAvailableBalance < before.walletAvailableBalance) {
     throw new Error(
       "Formal order checker assertion failed: cash payment changed wallet or checkout ledger evidence"
     );
@@ -487,8 +497,10 @@ const BASELINE_TABLES = [
   "order_status_histories",
   "order_financials",
   "wallets",
+  "wallet_holds",
   "ledger_transactions",
   "wallet_ledgers",
+  "fee_calculation_logs",
   "finance_reconciliations",
   "audit_logs",
   "ndp_exchange_rate_rules",
@@ -498,7 +510,8 @@ const BASELINE_TABLES = [
   "order_checkouts",
   "order_reviews",
   "order_review_tags",
-  "review_summaries"
+  "review_summaries",
+  "technician_compensation_profiles"
 ] as const;
 
 type BaselineRow = { rowCount: string; idSum: string; updatedAtMax: Date | null };
@@ -524,6 +537,7 @@ type CheckerFixture = {
   technician: Prisma.UserGetPayload<Record<string, never>>;
   customerProfileId: number;
   technicianProfileId: number;
+  compensationProfileId: number;
   shopId: number;
   serviceId: number;
   addOnServiceId: number;
@@ -582,6 +596,31 @@ async function createCheckerFixture(
       city: "Tokyo"
     }
   });
+  const compensationProfile = await tx.technicianCompensationProfile.create({
+    data: {
+      shopId: shop.id,
+      technicianProfileId: technicianProfile.id,
+      name: "Formal flow 40 percent commission",
+      status: "active",
+      version: 1,
+      wageMode: "commission",
+      commissionRateBps: 4_000,
+      extensionCommissionRateBps: 4_000,
+      ndpFeeBearer: "shop",
+      technicianNdpShareBps: 0,
+      effectiveFrom: new Date(now.getTime() - 60_000),
+      createdById: technician.id,
+      updatedById: technician.id
+    }
+  });
+  await tx.wallet.create({
+    data: {
+      ownerType: "SHOP",
+      ownerId: shop.id,
+      currency: "TEST_NDP",
+      availableBalance: 10_000
+    }
+  });
   const category = await tx.category.create({
     data: {
       code: `${marker}-category`,
@@ -607,7 +646,7 @@ async function createCheckerFixture(
       technicianProfileId: technicianProfile.id,
       name: "Formal add-on",
       city: "Tokyo",
-      priceAmount: 2_200,
+      priceAmount: 8_800,
       durationMinutes: 30,
       status: "published"
     }
@@ -643,6 +682,7 @@ async function createCheckerFixture(
     technician,
     customerProfileId: customerProfile.id,
     technicianProfileId: technicianProfile.id,
+    compensationProfileId: compensationProfile.id,
     shopId: shop.id,
     serviceId: service.id,
     addOnServiceId: addOn.id,
@@ -652,7 +692,12 @@ async function createCheckerFixture(
   };
 }
 
-type CheckerOrder = { id: number; orderNo: string };
+type CheckerOrder = {
+  id: number;
+  orderNo: string;
+  startsAt: Date;
+  acceptedAt: Date;
+};
 
 async function createConfirmedOrder(
   tx: Prisma.TransactionClient,
@@ -689,29 +734,22 @@ async function createConfirmedOrder(
       serviceNameSnapshot: "Formal service",
       servicePriceSnapshot: 8_800,
       serviceDurationSnapshot: 60,
-      serviceSnapshotJson: { serviceId: fixture.serviceId, marker: fixture.marker },
+      serviceSnapshotJson: {
+        serviceId: fixture.serviceId,
+        marker: fixture.marker,
+        compensationBasisVersion: `technician_override:${fixture.compensationProfileId}`
+      },
       startsAt,
       endsAt
     }
   });
-  await tx.orderStatusHistory.create({
+  const confirmation = await tx.orderStatusHistory.create({
     data: {
       bookingOrderId: order.id,
       fromStatus: "PENDING",
       toStatus: "CONFIRMED",
       actorUserId: fixture.technician.id,
       reason: "Formal checker fixture"
-    }
-  });
-  await tx.orderFinancial.create({
-    data: {
-      bookingOrderId: order.id,
-      customerUserId: fixture.customer.id,
-      shopId: fixture.shopId,
-      technicianProfileId: fixture.technicianProfileId,
-      serviceAmountJpy: 8_800,
-      ndpCurrency: currency,
-      platformFeeEnabledSnapshot: false
     }
   });
   if (walletBalance > 0) {
@@ -728,7 +766,40 @@ async function createConfirmedOrder(
       update: { availableBalance: walletBalance, frozenBalance: 0 }
     });
   }
-  return { id: order.id, orderNo: order.orderNo };
+  return {
+    id: order.id,
+    orderNo: order.orderNo,
+    startsAt,
+    acceptedAt: confirmation.createdAt
+  };
+}
+
+async function freezeBookingAcceptance(
+  ledger: {
+    freezeBookingAcceptance: (
+      input: BookingLedgerSettlementInput,
+      context?: { transactionClient?: unknown }
+    ) => Promise<unknown>;
+  },
+  tx: Prisma.TransactionClient,
+  fixture: CheckerFixture,
+  order: CheckerOrder
+): Promise<void> {
+  await ledger.freezeBookingAcceptance(
+    {
+      bookingOrderId: order.id,
+      orderType: "booking",
+      shopId: fixture.shopId,
+      technicianProfileId: fixture.technicianProfileId,
+      serviceId: fixture.serviceId,
+      serviceAmountJpy: 8_800,
+      scheduledStartAt: order.startsAt,
+      acceptedAt: order.acceptedAt,
+      customerUserId: fixture.customer.id,
+      actorUserId: fixture.technician.id
+    },
+    { transactionClient: tx }
+  );
 }
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -884,6 +955,10 @@ async function createFormalFlowHarness(tx: Prisma.TransactionClient, now: Date) 
     bookingRepositoryModule,
     ledgerModule,
     ledgerRepositoryModule,
+    feeCalculationModule,
+    feeRuleRepositoryModule,
+    platformFeePolicyModule,
+    platformFeePolicyRepositoryModule,
     auditModule,
     auditRepositoryModule,
     rateModule,
@@ -894,6 +969,10 @@ async function createFormalFlowHarness(tx: Prisma.TransactionClient, now: Date) 
     import("../src/repositories/booking.repository"),
     import("../src/services/ledger.service"),
     import("../src/repositories/ledger.repository"),
+    import("../src/services/fee-calculation.service"),
+    import("../src/repositories/fee-rule.repository"),
+    import("../src/services/platform-fee-policy.service"),
+    import("../src/repositories/platform-fee-policy.repository"),
     import("../src/services/audit-log.service"),
     import("../src/repositories/audit-log.repository"),
     import("../src/services/ndp-exchange-rate.service"),
@@ -903,8 +982,19 @@ async function createFormalFlowHarness(tx: Prisma.TransactionClient, now: Date) 
   const audit = new auditModule.AuditLogService(
     new auditRepositoryModule.AuditLogRepository(facade)
   );
+  const feeCalculation = new feeCalculationModule.FeeCalculationService(
+    new feeRuleRepositoryModule.FeeRuleRepository(facade)
+  );
+  const platformFeePolicy = new platformFeePolicyModule.PlatformFeePolicyService(
+    new platformFeePolicyRepositoryModule.PlatformFeePolicyRepository(facade),
+    audit
+  );
   const ledger = new ledgerModule.LedgerService(
-    new ledgerRepositoryModule.LedgerRepository(facade)
+    new ledgerRepositoryModule.LedgerRepository(facade),
+    feeCalculation,
+    undefined,
+    () => now,
+    platformFeePolicy
   );
   const rate = new rateModule.NdpExchangeRateService(
     new rateRepositoryModule.NdpExchangeRateRepository(facade),
@@ -966,6 +1056,7 @@ async function createFormalFlowHarness(tx: Prisma.TransactionClient, now: Date) 
     bookingRepositoryModule,
     validatorModule,
     service,
+    ledger,
     currency,
     customer,
     technician,
@@ -980,6 +1071,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     bookingRepositoryModule,
     validatorModule,
     service,
+    ledger,
     currency,
     customer,
     technician,
@@ -987,6 +1079,28 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   } = await createFormalFlowHarness(tx, now);
 
   const ndpOrder = await createConfirmedOrder(tx, fixture, 1, now, currency, 100_000);
+  await freezeBookingAcceptance(ledger, tx, fixture, ndpOrder);
+  const [acceptanceFinancial, shopWalletAfterAcceptance] = await Promise.all([
+    tx.orderFinancial.findUniqueOrThrow({ where: { bookingOrderId: ndpOrder.id } }),
+    tx.wallet.findUniqueOrThrow({
+      where: {
+        ownerType_ownerId_currency: {
+          ownerType: "SHOP",
+          ownerId: fixture.shopId,
+          currency
+        }
+      }
+    })
+  ]);
+  assert(
+    acceptanceFinancial.bPlatformFeeHoldNdp === 500 &&
+      acceptanceFinancial.platformFeeAmountNdpSnapshot === 500 &&
+      acceptanceFinancial.platformFeeEnabledSnapshot === true &&
+      acceptanceFinancial.platformFeePayerType === "shop" &&
+      shopWalletAfterAcceptance.availableBalance === 9_500 &&
+      shopWalletAfterAcceptance.frozenBalance === 500,
+    "booking acceptance did not freeze the exact 500 Test NDP platform fee"
+  );
   const ndpStart = { actor: "customer" as const, idempotencyKey: `${fixture.marker}-ndp-start` };
   await service.startService(customer, ndpOrder.id, ndpStart, context);
   await service.startService(customer, ndpOrder.id, ndpStart, context);
@@ -1040,7 +1154,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   const checkout = await service.getCheckout(customer, ndpOrder.id);
   const checkoutReplay = await service.getCheckout(customer, ndpOrder.id);
   assert(
-    checkout.id === checkoutReplay.id && checkout.payableNdp === 11_000,
+    checkout.id === checkoutReplay.id && checkout.payableNdp === 17_600,
     "checkout replay/snapshot mismatch"
   );
   const selection = { method: "ndp" as const, idempotencyKey: `${fixture.marker}-ndp-select` };
@@ -1158,7 +1272,13 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
       ),
     "error.order.review_already_submitted"
   );
-  const [ndpEvidence, ndpWalletAfter] = await Promise.all([
+  const [
+    ndpEvidence,
+    ndpWalletAfter,
+    shopWalletAfter,
+    platformFeeHold,
+    settlementTransaction
+  ] = await Promise.all([
     tx.bookingOrder.findUnique({
       where: { id: ndpOrder.id },
       include: {
@@ -1184,6 +1304,26 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
           currency
         }
       }
+    }),
+    tx.wallet.findUniqueOrThrow({
+      where: {
+        ownerType_ownerId_currency: {
+          ownerType: "SHOP",
+          ownerId: fixture.shopId,
+          currency
+        }
+      }
+    }),
+    tx.walletHold.findFirstOrThrow({
+      where: {
+        bookingOrderId: ndpOrder.id,
+        feeType: "b_platform_fee",
+        deletedAt: null
+      }
+    }),
+    tx.ledgerTransaction.findUniqueOrThrow({
+      where: { idempotencyKey: `booking:${ndpOrder.id}:complete:settlement` },
+      include: { entries: true }
     })
   ]);
   assert(
@@ -1210,10 +1350,10 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   const persistedCheckout = ndpEvidence.checkout;
   assert(
     persistedCheckout?.baseAmountJpy === 8_800 &&
-      persistedCheckout.addOnAmountJpy === 2_200 &&
+      persistedCheckout.addOnAmountJpy === 8_800 &&
       persistedCheckout.discountAmountJpy === 0 &&
-      persistedCheckout.checkoutAmountJpy === 11_000 &&
-      persistedCheckout.payableNdp === 11_000,
+      persistedCheckout.checkoutAmountJpy === 17_600 &&
+      persistedCheckout.payableNdp === 17_600,
     "NDP checkout amount evidence is not exact"
   );
   const rateSnapshot = asRecord(persistedCheckout.rateSnapshotJson);
@@ -1229,10 +1369,10 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   assert(
     calculationSnapshot.formula === "base_plus_accepted_add_ons_plus_travel_fare_minus_discount" &&
       calculationSnapshot.baseAmountJpy === 8_800 &&
-      calculationSnapshot.addOnAmountJpy === 2_200 &&
+      calculationSnapshot.addOnAmountJpy === 8_800 &&
       calculationSnapshot.travelFareAmountJpy === 0 &&
       calculationSnapshot.discountAmountJpy === 0 &&
-      calculationSnapshot.checkoutAmountJpy === 11_000 &&
+      calculationSnapshot.checkoutAmountJpy === 17_600 &&
       calculationSnapshot.rateFormula === "ceil(jpy_times_ndp_units_divided_by_jpy_units)" &&
       Array.isArray(calculationSnapshot.acceptedAddOnIds) &&
       calculationSnapshot.acceptedAddOnIds.length === 1 &&
@@ -1246,29 +1386,78 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     paymentTransaction?.referenceType === "order_checkout_payment" &&
       paymentTransaction.referenceId === persistedCheckout.id &&
       paymentTransaction.actorUserId === fixture.customer.id &&
-      paymentTransaction.amount === 11_000 &&
+      paymentTransaction.amount === 17_600 &&
       paymentTransaction.currency === currency &&
       paymentEntry?.walletId === ndpWalletBefore.id &&
       paymentEntry.direction === "AVAILABLE_DEBIT" &&
-      paymentEntry.amount === 11_000 &&
-      paymentEntry.availableDelta === -11_000 &&
+      paymentEntry.amount === 17_600 &&
+      paymentEntry.availableDelta === -17_600 &&
       paymentEntry.frozenDelta === 0 &&
-      paymentEntry.availableBalanceAfter === 89_000 &&
+      paymentEntry.availableBalanceAfter === 82_400 &&
       paymentEntry.frozenBalanceAfter === 0 &&
       ndpWalletBefore.availableBalance === 100_000 &&
-      ndpWalletAfter.availableBalance === 89_000 &&
+      ndpWalletAfter.availableBalance === 82_500 &&
       ndpWalletAfter.frozenBalance === 0,
     "NDP wallet/ledger balance evidence is not exact"
   );
   assert(
+    platformFeeHold.holdAmountNdp === 500 &&
+      platformFeeHold.capturedAmountNdp === 500 &&
+      platformFeeHold.releasedAmountNdp === 0 &&
+      platformFeeHold.status === "captured" &&
+      shopWalletAfter.availableBalance === 9_500 &&
+      shopWalletAfter.frozenBalance === 0 &&
+      settlementTransaction.referenceType === "booking_order" &&
+      settlementTransaction.referenceId === ndpOrder.id &&
+      settlementTransaction.amount === 600 &&
+      settlementTransaction.currency === currency &&
+      settlementTransaction.entries.some(
+        (entry) =>
+          entry.walletId === shopWalletAfter.id &&
+          entry.amount === 500 &&
+          entry.availableDelta === 0 &&
+          entry.frozenDelta === -500
+      ) &&
+      settlementTransaction.entries.some(
+        (entry) =>
+          entry.walletId === ndpWalletAfter.id &&
+          entry.amount === 100 &&
+          entry.availableDelta === 100 &&
+          entry.frozenDelta === 0
+      ),
+    "platform-fee capture/reward settlement source evidence is not exact"
+  );
+  const ndpFinancial = ndpEvidence.financial;
+  const ndpTimeline = Array.isArray(ndpFinancial?.moneyTimelineJson)
+    ? ndpFinancial.moneyTimelineJson.map(asRecord)
+    : [];
+  const ndpIncomeEvent = ndpTimeline.find((event) => event.type === "service_income_confirmed");
+  const technicianIncomeEvent = ndpTimeline.find(
+    (event) => event.type === "technician_income_estimated"
+  );
+  const technicianIncomeMetadata = asRecord(technicianIncomeEvent?.metadata);
+  assert(
     reconciliation === null &&
-      ndpEvidence.financial?.settlementStatus === "settled" &&
-      ndpEvidence.financial.ndpCurrency === "TEST_NDP" &&
-      ndpEvidence.financial.platformCollectedServiceAmountJpy === 0 &&
-      ndpEvidence.financial.offlineReportedServiceAmountJpy === 0 &&
-      ndpEvidence.financial.unknownOrUnreportedServiceAmountJpy === 0 &&
-      ndpEvidence.financial.paymentChannel === "platform_test_ndp" &&
-      ndpEvidence.financial.serviceIncomeStatus === "confirmed",
+      ndpFinancial?.settlementStatus === "settled" &&
+      ndpFinancial.ndpCurrency === "TEST_NDP" &&
+      ndpFinancial.serviceAmountJpy === 17_600 &&
+      ndpFinancial.baseServiceAmountJpy === 8_800 &&
+      ndpFinancial.extensionAmountJpy === 8_800 &&
+      ndpFinancial.bPlatformFeeHoldNdp === 500 &&
+      ndpFinancial.bPlatformFeeActualNdp === 500 &&
+      ndpFinancial.userRewardNdp === 100 &&
+      ndpFinancial.platformCollectedServiceAmountJpy === 0 &&
+      ndpFinancial.offlineReportedServiceAmountJpy === 0 &&
+      ndpFinancial.unknownOrUnreportedServiceAmountJpy === 0 &&
+      ndpFinancial.paymentChannel === "platform_test_ndp" &&
+      ndpFinancial.serviceIncomeStatus === "confirmed" &&
+      ndpIncomeEvent?.amountJpy === 17_600 &&
+      ndpIncomeEvent.platformFeeNdp === 500 &&
+      ndpIncomeEvent.userRewardNdp === 100 &&
+      technicianIncomeEvent?.amountJpy === 7_040 &&
+      technicianIncomeMetadata.shopEstimatedGrossProfitJpy === 10_060 &&
+      technicianIncomeMetadata.compensationBasisVersion ===
+        `technician_override:${fixture.compensationProfileId}`,
     "TEST_NDP reconciliation isolation/settlement reporting evidence is not exact"
   );
   assertFormalFulfillmentChain(
@@ -1285,7 +1474,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
         status: "COMPLETED",
         paymentMethod: "NDP",
         paymentStatus: "CONFIRMED",
-        paymentAmountJpy: 11_000,
+        paymentAmountJpy: 17_600,
         paymentConfirmedById: fixture.customer.id,
         paymentConfirmedAt: ndpPaymentEvent.occurredAt,
         paymentReference: `checkout:${persistedCheckout.id}:ledger:${paymentTransaction.id}`,
@@ -1320,14 +1509,14 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
         serviceId: fixture.addOnServiceId,
         status: "ACCEPTED",
         serviceNameSnapshot: "Formal add-on",
-        priceAmountJpy: 2_200,
+        priceAmountJpy: 8_800,
         currency: "JPY",
         durationMinutes: 30,
         serviceSnapshotJson: {
           serviceId: fixture.addOnServiceId,
           name: "Formal add-on",
           description: null,
-          priceAmountJpy: 2_200,
+          priceAmountJpy: 8_800,
           currency: "JPY",
           durationMinutes: 30
         },
@@ -1442,9 +1631,9 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
           idempotencyKey: `checkout:${ndpOrder.id}:created`,
           reason: null,
           metadata: {
-            checkoutAmountJpy: 11_000,
+            checkoutAmountJpy: 17_600,
             travelFareAmountJpy: 0,
-            payableNdp: 11_000,
+            payableNdp: 17_600,
             rateRuleId: fixture.rateId
           }
         },
@@ -1487,7 +1676,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   assert(
     paymentAuditMetadata.referenceType === "order_checkout_payment" &&
       paymentAuditMetadata.referenceId === persistedCheckout.id &&
-      paymentAuditMetadata.amount === 11_000 &&
+      paymentAuditMetadata.amount === 17_600 &&
       paymentAuditMetadata.currency === currency &&
       paymentAuditMetadata.bookingOrderId === ndpOrder.id &&
       paymentAuditMetadata.checkoutId === persistedCheckout.id,
@@ -1520,6 +1709,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   );
 
   const cashOrder = await createConfirmedOrder(tx, fixture, 2, now, currency);
+  await freezeBookingAcceptance(ledger, tx, fixture, cashOrder);
   const verificationCode = bookingRepositoryModule.deriveOrderServiceVerificationCode(cashOrder.id);
   const cashStartInput = {
     actor: "technician",
@@ -1613,6 +1803,11 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     currency
   );
   assertNoCashDebit(cashNoDebitBefore, cashNoDebitAfter);
+  assert(
+    cashNoDebitAfter.walletAvailableBalance ===
+      cashNoDebitBefore.walletAvailableBalance + 100,
+    "cash completion did not grant the exact settlement reward without a checkout debit"
+  );
   const cashCustomerReview = validatorModule.orderReviewCreateBodySchema.parse({
     targetType: "technician",
     rating: 4,
@@ -1688,13 +1883,16 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   const cashIncomeEvent = cashTimeline.find((event) => event.type === "service_income_confirmed");
   const cashIncomeMetadata = asRecord(cashIncomeEvent?.metadata);
   assert(
-    cashFinancial.serviceAmountJpy === 11_000 &&
+    cashFinancial.serviceAmountJpy === 17_600 &&
       cashFinancial.baseServiceAmountJpy === 8_800 &&
-      cashFinancial.extensionAmountJpy === 2_200 &&
+      cashFinancial.extensionAmountJpy === 8_800 &&
       cashFinancial.nominationChargeAmountJpy === 0 &&
       cashFinancial.wasTechnicianNominated === false &&
+      cashFinancial.bPlatformFeeHoldNdp === 500 &&
+      cashFinancial.bPlatformFeeActualNdp === 500 &&
+      cashFinancial.userRewardNdp === 100 &&
       cashFinancial.platformCollectedServiceAmountJpy === 0 &&
-      cashFinancial.offlineReportedServiceAmountJpy === 11_000 &&
+      cashFinancial.offlineReportedServiceAmountJpy === 17_600 &&
       cashFinancial.unknownOrUnreportedServiceAmountJpy === 0 &&
       cashFinancial.paymentChannel === "offline_cash" &&
       cashFinancial.serviceIncomeStatus === "confirmed" &&
@@ -1705,14 +1903,14 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
       cashFinancial.serviceIncomeConfirmedAt?.getTime() ===
         cashEvidence.checkout!.receiptConfirmedAt?.getTime() &&
       cashFinancial.serviceIncomeNote === "cash received" &&
-      cashIncomeEvent?.amountJpy === 11_000 &&
+      cashIncomeEvent?.amountJpy === 17_600 &&
       cashIncomeEvent.occurredAt === cashEvidence.checkout!.receiptConfirmedAt?.toISOString() &&
       cashIncomeEvent.platformFeeNdp === cashFinancial.bPlatformFeeActualNdp &&
       cashIncomeEvent.userRewardNdp === cashFinancial.userRewardNdp &&
       cashIncomeMetadata.paymentChannel === "offline_cash" &&
       cashIncomeMetadata.paymentEvidence === "technician_receipt_confirmation" &&
       cashIncomeMetadata.baseServiceAmountJpy === 8_800 &&
-      cashIncomeMetadata.extensionAmountJpy === 2_200 &&
+      cashIncomeMetadata.extensionAmountJpy === 8_800 &&
       cashIncomeMetadata.platformFeeNdp === cashFinancial.bPlatformFeeActualNdp,
     "cash finance attribution/add-on/platform-fee timeline evidence is not exact"
   );
@@ -1741,7 +1939,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
         status: "COMPLETED",
         paymentMethod: "CASH",
         paymentStatus: "CONFIRMED",
-        paymentAmountJpy: 11_000,
+        paymentAmountJpy: 17_600,
         paymentConfirmedById: fixture.technician.id,
         paymentConfirmedAt: cashReceiptEvent.occurredAt,
         paymentReference: `checkout:${cashCheckout.id}:technician-receipt`,
@@ -1776,14 +1974,14 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
         serviceId: fixture.addOnServiceId,
         status: "ACCEPTED",
         serviceNameSnapshot: "Formal add-on",
-        priceAmountJpy: 2_200,
+        priceAmountJpy: 8_800,
         currency: "JPY",
         durationMinutes: 30,
         serviceSnapshotJson: {
           serviceId: fixture.addOnServiceId,
           name: "Formal add-on",
           description: null,
-          priceAmountJpy: 2_200,
+          priceAmountJpy: 8_800,
           currency: "JPY",
           durationMinutes: 30
         },
@@ -1905,9 +2103,9 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
           idempotencyKey: `checkout:${cashOrder.id}:created`,
           reason: null,
           metadata: {
-            checkoutAmountJpy: 11_000,
+            checkoutAmountJpy: 17_600,
             travelFareAmountJpy: 0,
-            payableNdp: 11_000,
+            payableNdp: 17_600,
             rateRuleId: fixture.rateId
           }
         },
@@ -1966,6 +2164,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   );
 
   const invalidCodeOrder = await createConfirmedOrder(tx, fixture, 3, now, currency);
+  await freezeBookingAcceptance(ledger, tx, fixture, invalidCodeOrder);
   const invalidCodeBefore = await captureOrderMutationState(tx, invalidCodeOrder.id);
   const wrongCode =
     bookingRepositoryModule.deriveOrderServiceVerificationCode(invalidCodeOrder.id) === "000000"
@@ -1992,6 +2191,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   );
 
   const pendingAddOnOrder = await createConfirmedOrder(tx, fixture, 4, now, currency);
+  await freezeBookingAcceptance(ledger, tx, fixture, pendingAddOnOrder);
   await service.startService(
     customer,
     pendingAddOnOrder.id,
@@ -2035,8 +2235,10 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
 
 async function runInsufficientBalanceRollbackFlow(tx: Prisma.TransactionClient): Promise<void> {
   const now = new Date();
-  const { fixture, service, currency, customer, context } = await createFormalFlowHarness(tx, now);
+  const { fixture, service, ledger, currency, customer, context } =
+    await createFormalFlowHarness(tx, now);
   const order = await createConfirmedOrder(tx, fixture, 1, now, currency);
+  await freezeBookingAcceptance(ledger, tx, fixture, order);
   await service.startService(
     customer,
     order.id,
