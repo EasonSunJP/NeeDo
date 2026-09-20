@@ -129,6 +129,7 @@ describe("StagingTest operations provisioning gate", () => {
     );
 
     expect(source).toContain("dynamicAvailability: true");
+    expect(source).toContain("postBufferMinutes: 30");
     expect(source).not.toContain("scheduleSlot.createMany");
     expect(source).toContain("technicianProfileId: { in: allTechnicianProfileIds }");
     expect(source).toContain("scheduleCycleTarget.updateMany");

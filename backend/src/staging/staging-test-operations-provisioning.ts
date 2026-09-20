@@ -257,7 +257,7 @@ export class StagingTestOperationsProvisioner {
                   dynamicAvailability: true,
                   startIntervalMinutes: 5,
                   preBufferMinutes: 0,
-                  postBufferMinutes: 0
+                  postBufferMinutes: 30
                 },
               finalizedAt: new Date(),
               activeAt: new Date(),
@@ -286,7 +286,7 @@ export class StagingTestOperationsProvisioner {
                 dynamicAvailability: true,
                 startIntervalMinutes: 5,
                 preBufferMinutes: 0,
-                postBufferMinutes: 0
+                postBufferMinutes: 30
               },
               finalizedAt: new Date(),
               activeAt: new Date(),
