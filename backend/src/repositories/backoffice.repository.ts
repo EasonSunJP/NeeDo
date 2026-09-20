@@ -2817,6 +2817,21 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
               { paymentChannel: { contains: input.keyword } },
               { bookingOrder: { orderNo: { contains: input.keyword } } },
               { bookingOrder: { shop: { name: { contains: input.keyword } } } },
+              {
+                bookingOrder: {
+                  shop: {
+                    merchantMemberships: {
+                      some: {
+                        deletedAt: null,
+                        merchantAccount: {
+                          name: { contains: input.keyword },
+                          deletedAt: null
+                        }
+                      }
+                    }
+                  }
+                }
+              },
               { bookingOrder: { technicianProfile: { displayName: { contains: input.keyword } } } }
             ]
           }

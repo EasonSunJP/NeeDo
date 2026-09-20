@@ -2,8 +2,14 @@ import { BackofficeRepository } from "../src/repositories/backoffice.repository"
 
 function modelClient() {
   return {
-    findMany: jest.fn(async () => []),
-    count: jest.fn(async () => 0)
+    findMany: jest.fn(async (args?: { where?: unknown }) => {
+      void args;
+      return [];
+    }),
+    count: jest.fn(async (args?: { where?: unknown }) => {
+      void args;
+      return 0;
+    })
   };
 }
 
@@ -91,6 +97,65 @@ describe("BackofficeRepository keyword filters", () => {
         })
       })
     );
+  });
+
+  it("applies a formal merchant name search to both finance rows and the filtered total", async () => {
+    const client = { orderFinancial: modelClient() };
+    const repository = new BackofficeRepository(client as never);
+
+    await repository.listFinanceSettlements({
+      scope: "platform",
+      keyword: "Aoyama Holdings",
+      page: 1,
+      pageSize: 20
+    });
+
+    const expectedMerchantFilter = {
+      bookingOrder: {
+        shop: {
+          merchantMemberships: {
+            some: {
+              deletedAt: null,
+              merchantAccount: {
+                name: { contains: "Aoyama Holdings" },
+                deletedAt: null
+              }
+            }
+          }
+        }
+      }
+    };
+    const listWhere = client.orderFinancial.findMany.mock.calls[0]?.[0]?.where;
+    const countWhere = client.orderFinancial.count.mock.calls[0]?.[0]?.where;
+
+    expect(listWhere).toEqual(
+      expect.objectContaining({ OR: expect.arrayContaining([expectedMerchantFilter]) })
+    );
+    expect(countWhere).toEqual(listWhere);
+  });
+
+  it("applies a complete order number search to both finance rows and the filtered total", async () => {
+    const client = { orderFinancial: modelClient() };
+    const repository = new BackofficeRepository(client as never);
+
+    await repository.listFinanceSettlements({
+      scope: "platform",
+      keyword: "ND202609200104226905",
+      page: 1,
+      pageSize: 20
+    });
+
+    const listWhere = client.orderFinancial.findMany.mock.calls[0]?.[0]?.where;
+    const countWhere = client.orderFinancial.count.mock.calls[0]?.[0]?.where;
+
+    expect(listWhere).toEqual(
+      expect.objectContaining({
+        OR: expect.arrayContaining([
+          { bookingOrder: { orderNo: { contains: "ND202609200104226905" } } }
+        ])
+      })
+    );
+    expect(countWhere).toEqual(listWhere);
   });
 
   it.each([
