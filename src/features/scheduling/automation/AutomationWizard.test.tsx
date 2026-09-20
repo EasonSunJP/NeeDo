@@ -303,6 +303,65 @@ describe("merchant schedule planning home", () => {
     expect(container.querySelector<HTMLInputElement>('input[type="datetime-local"]')).not.toBeNull();
   });
 
+  it("keeps technician self-scheduling limited to its six relevant rule cards", async () => {
+    await renderWizard(formalTechnicians);
+
+    await act(async () => button("新建周期")?.click());
+    await act(async () => button("技师自主排班")?.click());
+    await act(async () => button("下一步：规则设定")?.click());
+
+    expect(container.textContent).toContain("1/6");
+    expect(container.textContent).toContain("时间区间");
+
+    await act(async () => button("下一步")?.click());
+    expect(container.textContent).toContain("2/6");
+    expect(container.textContent).toContain("选择模板粒度");
+
+    await act(async () => button("下一步")?.click());
+    expect(container.textContent).toContain("3/6");
+    expect(container.textContent).toContain("工时、休息天与服务缓冲");
+
+    await act(async () => button("下一步")?.click());
+    expect(container.textContent).toContain("4/6");
+    expect(container.textContent).toContain("临时技师招募");
+    expect(container.textContent).not.toContain("优先规则");
+    expect(container.textContent).not.toContain("工时更少优先");
+
+    await act(async () => button("下一步")?.click());
+    expect(container.textContent).toContain("5/6");
+    expect(container.textContent).toContain("选择本周期对象");
+
+    await act(async () => button("下一步")?.click());
+    expect(container.textContent).toContain("6/6");
+    expect(container.textContent).toContain("通知模板制作");
+    expect(button("下一步")).toBeUndefined();
+    expect(button("发起")).toBeDefined();
+  });
+
+  it("does not block technician self-scheduling on hidden store staffing rules", async () => {
+    const draft = createDispatchCycleDraft("store-1", formalTechnicians.map((technician) => technician.id));
+    saveDispatchCycleDraft({
+      ...draft,
+      currentStep: 2,
+      mode: "TECH_SELF_FINAL",
+      ruleSet: {
+        ...draft.ruleSet,
+        maxStaff: 1,
+        minStaff: 5,
+        targetStaff: 3
+      }
+    });
+    await renderWizard(formalTechnicians);
+
+    await act(async () => button("新建周期")?.click());
+    for (let index = 0; index < 5; index += 1) {
+      await act(async () => button("下一步")?.click());
+    }
+
+    expect(container.textContent).not.toContain("人数规则必须满足");
+    expect(button("发起")?.disabled).toBe(false);
+  });
+
   it("keeps the new-cycle action available when it continues an existing builder at the cycle limit", async () => {
     prepareNextCycle("TECH_SELF_FINAL");
     const builder = createDispatchCycleDraft("store-1");
@@ -341,7 +400,7 @@ describe("merchant schedule planning home", () => {
     await act(async () => button("新建周期")?.click());
     await act(async () => button("下一步：规则设定")?.click());
 
-    for (let index = 0; index < 7; index += 1) {
+    for (let index = 0; index < 4; index += 1) {
       await act(async () => button("下一步")?.click());
     }
 
@@ -373,10 +432,7 @@ describe("merchant schedule planning home", () => {
         input.dispatchEvent(new Event("input", { bubbles: true }));
       });
     }
-    await act(async () => button("下一步")?.click());
-    await act(async () => button("下一步")?.click());
-    await act(async () => button("全选")?.click());
-    for (let index = 0; index < 6; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       await act(async () => button("下一步")?.click());
     }
     await act(async () => { createDispatchCycleDraft("another-store"); });
@@ -388,7 +444,6 @@ describe("merchant schedule planning home", () => {
     expect(created).toMatchObject({ name: "本次三个月周期", periodStart: "2026-09-20",
       periodEnd: "2026-12-20", currentStep: 3, status: "final_confirming",
       targetTechnicianIds: formalTechnicians.map((tech) => tech.id) });
-    expect(created?.templateMatrix.every((row) => row.every(Boolean))).toBe(true);
     expect(getDispatchCycleList("store-1").filter((cycle) => historicalIds.includes(cycle.id))).toEqual(before);
     await act(async () => button("删除周期")?.click());
     expect(container.textContent).not.toContain("旧草稿");
@@ -453,6 +508,7 @@ describe("merchant schedule planning home", () => {
     await renderWizard(formalTechnicians);
 
     await act(async () => button("新建周期")?.click());
+    await act(async () => button("商户直接排班")?.click());
     await act(async () => button("下一步：规则设定")?.click());
 
     for (let index = 0; index < 9; index += 1) {
