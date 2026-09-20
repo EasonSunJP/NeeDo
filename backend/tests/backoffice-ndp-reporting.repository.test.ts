@@ -93,7 +93,13 @@ describe("BackofficeRepository NDP reporting", () => {
         }
       }
     ]);
-    const repository = new BackofficeRepository({ orderFinancial: { groupBy } } as never);
+    const queryRaw = jest.fn(async () => [
+      { ndpCurrency: "TEST_NDP", checkoutPaymentNdp: 17_600 }
+    ]);
+    const repository = new BackofficeRepository({
+      orderFinancial: { groupBy },
+      $queryRaw: queryRaw
+    } as never);
     const fromInclusive = new Date("2026-05-24T15:00:00.000Z");
     const toExclusive = new Date("2026-05-25T15:00:00.000Z");
 
@@ -102,6 +108,7 @@ describe("BackofficeRepository NDP reporting", () => {
     ).resolves.toEqual([
       {
         ndpCurrency: "TEST_NDP",
+        checkoutPaymentNdp: 17_600,
         bPlatformFeeActualNdp: 700,
         cRequestFeeActualNdp: 300,
         penaltyNdp: 10,
@@ -122,6 +129,7 @@ describe("BackofficeRepository NDP reporting", () => {
         }
       })
     );
+    expect(queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it("fails closed when persisted finance rows contain an unknown currency", async () => {
@@ -131,7 +139,10 @@ describe("BackofficeRepository NDP reporting", () => {
         _sum: {}
       }
     ]);
-    const repository = new BackofficeRepository({ orderFinancial: { groupBy } } as never);
+    const repository = new BackofficeRepository({
+      orderFinancial: { groupBy },
+      $queryRaw: jest.fn(async () => [])
+    } as never);
 
     await expect(
       repository.summarizeNdpByCurrency({

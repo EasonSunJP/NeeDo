@@ -2,16 +2,17 @@ import { BackofficeService } from "../src/services/backoffice.service";
 import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 describe("BackofficeService NDP summary", () => {
-  it("uses the current Tokyo date and zeroes a missing formal NDP aggregate", async () => {
+  it("uses confirmed checkout debits for consumption while keeping platform fees as net revenue", async () => {
     const summarizeNdpByCurrency = jest.fn(async () => [
       {
         ndpCurrency: "TEST_NDP",
-        bPlatformFeeActualNdp: 999,
+        checkoutPaymentNdp: 17_600,
+        bPlatformFeeActualNdp: 500,
         cRequestFeeActualNdp: 0,
         penaltyNdp: 0,
-        userRewardNdp: 0,
+        userRewardNdp: 100,
         compensationToUserNdp: 0,
-        bPlatformFeeHoldNdp: 999,
+        bPlatformFeeHoldNdp: 500,
         cRequestFeeHoldNdp: 0,
         releasedNdp: 0,
         campaignDiscountNdp: 0
@@ -44,8 +45,8 @@ describe("BackofficeService NDP summary", () => {
     ).resolves.toEqual(
       expect.objectContaining({
         period: { date: "2026-05-26", timeZone: "Asia/Tokyo" },
-        todayNdpConsumption: { ndp: 0, testNdp: 999 },
-        platformNetRevenue: { ndp: 0, testNdp: 999 },
+        todayNdpConsumption: { ndp: 0, testNdp: 17_600 },
+        platformNetRevenue: { ndp: 0, testNdp: 400 },
         settleableNdp: 0
       })
     );
