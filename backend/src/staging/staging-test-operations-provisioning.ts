@@ -120,6 +120,16 @@ export const buildContinuousAvailabilityRanges = (input: {
     endsAt: new Date(input.endsAt)
   }));
 
+const STAGING_TEST_TECHNICIAN_COUNT = 6;
+
+export const selectStagingTestTechnicianProfileIds = (ids: number[]): number[] => {
+  const selected = [...new Set(ids)].sort((left, right) => left - right);
+  if (selected.length < STAGING_TEST_TECHNICIAN_COUNT) {
+    throw new Error(`STAGING_TEST_TECHNICIAN_COUNT_TOO_LOW:${selected.length}`);
+  }
+  return selected.slice(0, STAGING_TEST_TECHNICIAN_COUNT);
+};
+
 export const parseStagingTestOperationsConfig = (
   environment: NodeJS.ProcessEnv
 ): StagingTestOperationsConfig => {
@@ -194,10 +204,12 @@ export class StagingTestOperationsProvisioner {
         select: { technicianProfileId: true },
         orderBy: { technicianProfileId: "asc" }
       });
-      const technicianProfileIds = [...new Set(affiliations.map((item) => item.technicianProfileId))];
-      if (technicianProfileIds.length < 10) {
-        throw new Error(`STAGING_TEST_TECHNICIAN_COUNT_TOO_LOW:${technicianProfileIds.length}`);
-      }
+      const allTechnicianProfileIds = [
+        ...new Set(affiliations.map((item) => item.technicianProfileId))
+      ];
+      const technicianProfileIds = selectStagingTestTechnicianProfileIds(
+        allTechnicianProfileIds
+      );
 
       const cyclePeriodStart = new Date(`${config.startDate}T00:00:00.000Z`);
       const cyclePeriodEnd = new Date(`${config.endDate}T00:00:00.000Z`);
@@ -283,18 +295,28 @@ export class StagingTestOperationsProvisioner {
             },
             select: { id: true }
           });
-      await transaction.scheduleCycleTarget.createMany({
-        data: technicianProfileIds.map((technicianProfileId) => ({
+      await transaction.scheduleCycleTarget.updateMany({
+        where: {
           cycleId: scheduleCycle.id,
-          technicianProfileId
-        })),
-        skipDuplicates: true
+          technicianProfileId: { notIn: technicianProfileIds },
+          deletedAt: null
+        },
+        data: { deletedAt: new Date() }
       });
+      for (const technicianProfileId of technicianProfileIds) {
+        await transaction.scheduleCycleTarget.upsert({
+          where: {
+            cycleId_technicianProfileId: { cycleId: scheduleCycle.id, technicianProfileId }
+          },
+          create: { cycleId: scheduleCycle.id, technicianProfileId },
+          update: { deletedAt: null }
+        });
+      }
 
       const conflicting = await transaction.availability.findMany({
         where: {
           shopId: shop.id,
-          technicianProfileId: { in: technicianProfileIds },
+          technicianProfileId: { in: allTechnicianProfileIds },
           isScheduleControlWindow: true,
           isActive: true,
           deletedAt: null,
@@ -342,7 +364,7 @@ export class StagingTestOperationsProvisioner {
       const existingAvailabilities = await transaction.availability.findMany({
         where: {
           shopId: shop.id,
-          technicianProfileId: { in: technicianProfileIds },
+          technicianProfileId: { in: allTechnicianProfileIds },
           sourceType: AvailabilitySourceType.TECHNICIAN,
           visibility: AvailabilityVisibility.TECHNICIAN_SHOPS,
           startsAt: { lt: periodEnd },

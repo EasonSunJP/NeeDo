@@ -1,7 +1,8 @@
 import {
   buildContinuousAvailabilityRanges,
   parseStagingTestOperationsConfig,
-  planAvailabilityReconciliation
+  planAvailabilityReconciliation,
+  selectStagingTestTechnicianProfileIds
 } from "../src/staging/staging-test-operations-provisioning";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -59,6 +60,15 @@ describe("StagingTest operations provisioning gate", () => {
         endsAt: new Date("2026-12-20T15:00:00.000Z")
       }
     ]);
+  });
+
+  it("selects exactly six stable StagingTest technicians", () => {
+    expect(selectStagingTestTechnicianProfileIds([9, 2, 7, 2, 5, 3, 1, 10])).toEqual([
+      1, 2, 3, 5, 7, 9
+    ]);
+    expect(() => selectStagingTestTechnicianProfileIds([1, 2, 3, 4, 5])).toThrow(
+      "STAGING_TEST_TECHNICIAN_COUNT_TOO_LOW:5"
+    );
   });
 
   it.each([
@@ -120,5 +130,7 @@ describe("StagingTest operations provisioning gate", () => {
 
     expect(source).toContain("dynamicAvailability: true");
     expect(source).not.toContain("scheduleSlot.createMany");
+    expect(source).toContain("technicianProfileId: { in: allTechnicianProfileIds }");
+    expect(source).toContain("scheduleCycleTarget.updateMany");
   });
 });
