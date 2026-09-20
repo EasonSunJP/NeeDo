@@ -9,6 +9,8 @@ import {
   formatOrderTimelineDuration,
   orderStatusTimelineMessage,
   orderTimelineActorName,
+  orderTimelineActorRole,
+  orderCancellationTimelineMessage,
   orderTimelineText,
   performanceTimelineDisplay,
   type OrderTimelineAudience
@@ -40,6 +42,9 @@ export function buildFormalOrderTimelineEvents(
           id: `status:${history.id}`,
           createdAt: history.createdAt,
           actorUserId: history.actorUserId,
+          actorIdentityId: history.actorIdentityId,
+          actorSource: history.actorSource,
+          actorDisplayName: history.actorDisplayName,
           fromStatus: history.fromStatus,
           toStatus: history.toStatus,
           publicReason: history.reason
@@ -124,12 +129,33 @@ export function buildFormalOrderTimelineEvents(
 
       if (event.type === "ORDER_STATUS_CHANGED") {
         const message = orderStatusTimelineMessage(event.toStatus, options.language);
+        const publicReason = displayablePublicBusinessReason(event.publicReason);
+        const cancellationActorName =
+          event.actorDisplayName ??
+          (event.actorSource === "merchant"
+            ? order.shopName
+            : event.actorSource === "technician"
+              ? order.technicianName
+              : event.actorSource === "customer"
+                ? orderTimelineText("用户", options.language)
+                : null);
         return {
-          actorName,
-          actorRole: orderTimelineText("订单状态", options.language),
+          actorName: orderTimelineActorName(cancellationActorName, options.language),
+          actorRole: event.toStatus === "cancelled"
+            ? orderTimelineActorRole(event.actorSource, options.language)
+            : orderTimelineText("订单状态", options.language),
           atLabel: formatOrderTimelineDate(event.createdAt, options.language),
           id: event.id,
-          message,
+          message: event.toStatus === "cancelled"
+            ? orderCancellationTimelineMessage({
+                actorSource: event.actorSource,
+                startsAt: order.startsAt,
+                serviceName: order.serviceName,
+                shopName: order.shopName,
+                reason: publicReason,
+                language: options.language
+              })
+            : message,
           title: message,
           tone: event.toStatus === "cancelled" ? "red" : "green"
         };

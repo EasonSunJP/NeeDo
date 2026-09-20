@@ -97,7 +97,9 @@ This local slice persists content-free `TRACELESS_RECALL` deletion-sync facts an
 
 ## Order Status Notifications
 
-Booking state transitions call the Step 13 notification service after a successful transition. The first slice writes an `order_status` notification for the customer when a service provider confirms, starts, completes, or cancels an order. This keeps Booking state-machine logic separate from the notification repository while still producing a durable notification event.
+Booking state transitions call the Step 13 notification service after a successful transition. Confirmation, start, and completion continue to write the established customer `order_status` notification. Cancellation writes durable notification events for the customer and assigned technician, excluding the authenticated actor when that actor is also a recipient. The structured payload carries the persisted actor source and display name plus appointment time, service, shop, and participant-facing reason, allowing both portals to render the same authoritative cancellation details without reconstructing identity from client state.
+
+Notification delivery remains outside the Booking state transaction. A notification failure is logged after the successful state change and does not replay cancellation, refunds, compensation, slot release, audit writes, or any other state-machine side effect.
 
 ## SSE Events
 

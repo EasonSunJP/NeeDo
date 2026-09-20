@@ -52,11 +52,16 @@ function isClientAuthoredContactCard(metadata: unknown): boolean {
 export interface OrderStatusNotificationInput {
   actorUserId: number;
   actorIdentityId?: number;
+  actorSource?: "customer" | "merchant" | "technician" | "platform" | "system";
+  actorDisplayName?: string | null;
   orderId: number;
   orderNo: string;
   fromStatus: string;
   toStatus: string;
   serviceName: string;
+  shopName?: string;
+  startsAt?: Date;
+  reason?: string | null;
   recipientUserIds: number[];
   recipientIdentities?: Array<{ userId: number; identityId: number }>;
 }
@@ -1375,13 +1380,18 @@ export class RealtimeService
     const notificationsInput: CreateOrderStatusNotificationInput = {
       actorUserId: input.actorUserId,
       actorIdentityId: input.actorIdentityId,
+      actorSource: input.actorSource,
+      actorDisplayName: input.actorDisplayName,
       recipientUserIds: input.recipientUserIds,
       recipientIdentities: input.recipientIdentities,
       orderId: input.orderId,
       orderNo: input.orderNo,
       fromStatus: input.fromStatus,
       toStatus: input.toStatus,
-      serviceName: input.serviceName
+      serviceName: input.serviceName,
+      shopName: input.shopName,
+      startsAt: input.startsAt,
+      reason: input.reason
     };
     const notifications = await this.repository.createOrderStatusNotifications(notificationsInput);
 

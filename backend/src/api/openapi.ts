@@ -11942,7 +11942,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       OrderStatusHistory: {
         type: "object",
-        required: ["id", "orderId", "fromStatus", "toStatus", "actorUserId", "reason", "createdAt"],
+        required: [
+          "id", "orderId", "fromStatus", "toStatus", "actorUserId", "actorIdentityId",
+          "actorSource", "actorDisplayName", "reason", "createdAt"
+        ],
         properties: {
           id: { type: "integer" },
           orderId: { type: "integer" },
@@ -11972,6 +11975,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             ]
           },
           actorUserId: { type: ["integer", "null"] },
+          actorIdentityId: { type: ["integer", "null"] },
+          actorSource: {
+            type: "string",
+            enum: ["customer", "merchant", "technician", "platform", "system"]
+          },
+          actorDisplayName: { type: ["string", "null"] },
           reason: { type: ["string", "null"] },
           createdAt: { type: "string", format: "date-time" }
         }
@@ -12012,6 +12021,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "id",
           "createdAt",
           "actorUserId",
+          "actorIdentityId",
+          "actorSource",
+          "actorDisplayName",
           "fromStatus",
           "toStatus",
           "publicReason"
@@ -12021,8 +12033,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           id: { type: "string", pattern: "^status:[1-9][0-9]*$" },
           createdAt: { type: "string", format: "date-time" },
           actorUserId: { type: ["integer", "null"] },
-          actorName: { type: "string", minLength: 1 },
-          actorAvatarUrl: { type: ["string", "null"] },
+          actorIdentityId: { type: ["integer", "null"] },
+          actorSource: {
+            type: "string",
+            enum: ["customer", "merchant", "technician", "platform", "system"]
+          },
+          actorDisplayName: { type: ["string", "null"] },
           fromStatus: {
             type: ["string", "null"],
             enum: ["pending", "confirmed", "inService", "completed", "cancelled", null]
