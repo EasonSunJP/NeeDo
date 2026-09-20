@@ -1,5 +1,8 @@
 import { recordBookingWorkTransition } from "../domain/work-status-booking";
-import { projectOrderPayment } from "../domain/order-payment-projection";
+import {
+  projectOrderPayment,
+  sumAcceptedOrderAddOnAmountJpy
+} from "../domain/order-payment-projection";
 import { WorkStatusSession } from "./work-status.repository";
 import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
 import {
@@ -895,7 +898,7 @@ export interface BookingOrderPayload {
   paymentMethod: ServicePaymentMethodPayload;
   paymentStatus: ServicePaymentStatusPayload;
   paymentAmountJpy: number;
-  amountSource: "order_payment" | "order_price" | "checkout";
+  amountSource: "order_payment" | "order_price" | "accepted_add_ons" | "checkout";
   effectivePaymentMethod: ServicePaymentMethodPayload | null;
   otherMethodCode: string | null;
   otherMethodLabel: string | null;
@@ -7527,6 +7530,9 @@ export class BookingRepository implements BookingRepositoryPort {
     const payment = projectOrderPayment({
       orderPriceAmountJpy: Number(order.priceAmount),
       orderPaymentAmountJpy: order.paymentAmountJpy,
+      acceptedAddOnAmountJpy: sumAcceptedOrderAddOnAmountJpy(
+        order.serviceSession?.addOns ?? []
+      ),
       orderPaymentMethod: order.paymentMethod,
       checkout: order.checkout,
       financial: order.financial

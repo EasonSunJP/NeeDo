@@ -371,7 +371,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
                     </div>
                     <div className="rounded-[18px] border border-white/10 bg-white/[0.08] px-4 py-3 text-right">
                       <p className="text-[10px] font-bold text-white/50">
-                        {t(nextOrder.amountSource === "checkout" || nextOrder.amountSource === "order_payment" ? "顾客支付总额" : "订单金额")}
+                        {t(nextOrder.amountSource === "checkout" || nextOrder.amountSource === "order_payment" || nextOrder.amountSource === "accepted_add_ons" ? "顾客支付总额" : "订单金额")}
                       </p>
                       <strong className="mt-1 block text-lg font-black text-[color:var(--client-primary)]">{yen(nextOrder.paymentAmountJpy)}</strong>
                     </div>

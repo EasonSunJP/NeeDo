@@ -1662,7 +1662,11 @@ describe("formal order fulfillment repository transactions", () => {
 
     await expect(harness.repository.decideOrderAddOn(decisionInput)).resolves.toMatchObject({
       outcome: "ok",
-      applied: true
+      applied: true,
+      order: {
+        paymentAmountJpy: 12_800,
+        amountSource: "accepted_add_ons"
+      }
     });
     expect(harness.getSession()!.expectedEndsAt.getTime() - originalEnd.getTime()).toBe(
       30 * 60_000

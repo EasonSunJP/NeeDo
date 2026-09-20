@@ -2019,7 +2019,10 @@ describe("GET /api/v1/openapi.json", () => {
     );
     expect(response.body.components.schemas.BackofficeBookingSummary.properties).toMatchObject({
       totalAmountJpy: { type: "integer", minimum: 0 },
-      amountSource: { type: "string", enum: ["order_payment", "order_price", "checkout"] },
+      amountSource: {
+        type: "string",
+        enum: ["order_payment", "order_price", "accepted_add_ons", "checkout"]
+      },
       paymentMethod: {
         type: "string",
         enum: ["onsite", "bank_transfer", "cash", "ndp", "other"]
@@ -2046,7 +2049,10 @@ describe("GET /api/v1/openapi.json", () => {
     );
     expect(response.body.components.schemas.BookingOrder.properties).toMatchObject({
       paymentAmountJpy: { type: "integer", minimum: 0 },
-      amountSource: { type: "string", enum: ["order_payment", "order_price", "checkout"] },
+      amountSource: {
+        type: "string",
+        enum: ["order_payment", "order_price", "accepted_add_ons", "checkout"]
+      },
       effectivePaymentMethod: {
         type: ["string", "null"],
         enum: ["onsite", "bank_transfer", "cash", "ndp", "other", null]

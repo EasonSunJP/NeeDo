@@ -185,12 +185,48 @@ describe("BackofficeRepository keyword filters", () => {
         paymentStatus: "PENDING",
         paymentAmountJpy: 8_000,
         paymentMethod: "ONSITE",
+        addOns: [],
         checkout: null,
         financial: null
       },
       {
         totalAmountJpy: 8_000,
         amountSource: "order_payment",
+        paymentMethod: "onsite",
+        effectivePaymentMethod: "onsite",
+        otherMethodCode: null,
+        otherMethodLabel: null,
+        checkoutPaymentAmountNdp: null,
+        ndpCurrency: null
+      }
+    ],
+    [
+      "an in-service order with an accepted add-on before checkout",
+      {
+        status: "IN_SERVICE",
+        paymentStatus: "PENDING",
+        paymentAmountJpy: 8_800,
+        paymentMethod: "ONSITE",
+        addOns: [
+          {
+            status: "ACCEPTED",
+            priceAmountJpy: 8_800,
+            currency: "JPY",
+            deletedAt: null
+          },
+          {
+            status: "PROPOSED",
+            priceAmountJpy: 2_000,
+            currency: "JPY",
+            deletedAt: null
+          }
+        ],
+        checkout: null,
+        financial: null
+      },
+      {
+        totalAmountJpy: 17_600,
+        amountSource: "accepted_add_ons",
         paymentMethod: "onsite",
         effectivePaymentMethod: "onsite",
         otherMethodCode: null,

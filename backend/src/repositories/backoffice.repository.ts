@@ -1,5 +1,8 @@
 import { accountLogPagination } from "../domain/account-user-log";
-import { projectOrderPayment } from "../domain/order-payment-projection";
+import {
+  projectOrderPayment,
+  sumAcceptedOrderAddOnAmountJpy
+} from "../domain/order-payment-projection";
 import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 import { buildManagedUserTierWhere } from "./managed-user-tier-filter";
 import { projectWorkStatuses } from './work-status.repository';
@@ -388,6 +391,14 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
             };
           };
         };
+      };
+    };
+    addOns: {
+      select: {
+        status: true;
+        priceAmountJpy: true;
+        currency: true;
+        deletedAt: true;
       };
     };
     checkout: {
@@ -3008,6 +3019,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           }
         }
       },
+      addOns: {
+        where: { status: "ACCEPTED" as const, deletedAt: null },
+        select: {
+          status: true,
+          priceAmountJpy: true,
+          currency: true,
+          deletedAt: true
+        }
+      },
       checkout: {
         select: {
           checkoutAmountJpy: true,
@@ -3314,6 +3334,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     const payment = projectOrderPayment({
       orderPriceAmountJpy: this.toNumber(order.priceAmount),
       orderPaymentAmountJpy: order.paymentAmountJpy,
+      acceptedAddOnAmountJpy: sumAcceptedOrderAddOnAmountJpy(order.addOns ?? []),
       orderPaymentMethod: order.paymentMethod,
       checkout: order.checkout,
       financial: order.financial

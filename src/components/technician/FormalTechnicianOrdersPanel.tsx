@@ -194,7 +194,7 @@ export function FormalTechnicianOrdersPanel() {
                 </div>
                 <div className="shrink-0 text-right">
                   <span className="block text-[10px] font-bold text-white/45">
-                    {t(order.amountSource === "checkout" || order.amountSource === "order_payment" ? "顾客支付总额" : "订单金额")}
+                    {t(order.amountSource === "checkout" || order.amountSource === "order_payment" || order.amountSource === "accepted_add_ons" ? "顾客支付总额" : "订单金额")}
                   </span>
                   <strong className="mt-1 block text-base font-black text-[color:var(--client-primary)]">
                     {yen(order.paymentAmountJpy)}

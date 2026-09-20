@@ -14,6 +14,14 @@ const makeOrderRecord = () => ({
   priceAmount: 8800,
   paymentAmountJpy: 8800,
   paymentMethod: "ONSITE",
+  addOns: [
+    {
+      status: "ACCEPTED",
+      priceAmountJpy: 8800,
+      currency: "JPY",
+      deletedAt: null
+    }
+  ],
   checkout: null,
   financial: null,
   currency: "JPY",
@@ -143,6 +151,10 @@ describe("BackofficeRepository order performance detail", () => {
       treatment: "counted",
       version: 3
     });
+    expect(result).toMatchObject({
+      totalAmountJpy: 17_600,
+      amountSource: "accepted_add_ons"
+    });
     expect(result?.timelineEvents).toEqual([
       expect.objectContaining({ id: "performance:91", internalNote: null, actorName: "Mika Tanaka", actorAvatarUrl: "/avatars/mika.png" }),
       expect.objectContaining({ id: "status:11", type: "ORDER_STATUS_CHANGED", actorName: "Mika Tanaka" }),
@@ -226,6 +238,10 @@ describe("BackofficeRepository order performance detail", () => {
 
     const result = await repository.findOrderById({ scope: "merchant", shopId: 11, id: 31 });
 
+    expect(result).toMatchObject({
+      totalAmountJpy: 17_600,
+      amountSource: "accepted_add_ons"
+    });
     expect(result?.timelineEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "performance:92", internalNote: null, actorName: "Operations Admin" }),
       expect.objectContaining({ id: "service:501", actorName: "Aya Customer" })
