@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { PageScaffold, PrimaryButton } from "../../components/client-ui/AppScaffold";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { pricingModeApi, type TechnicianServicePayload } from "../../features/pricing-mode/api";
@@ -12,6 +12,7 @@ import { getScopedTechnicianDynamicPath } from "../../shared/profile-card";
 import { mapTechnicianServiceToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
 import { useEntityStore } from "../../state/entityStore";
 import type { Technician } from "../../types/domain";
+import { buildTechnicianServiceCheckoutRoute } from "./formal-checkout/checkoutServiceRoute";
 
 function routeEntityIdToApiId(value: string | undefined) {
   if (!value) {
@@ -63,6 +64,7 @@ function getTechnicianServiceFallbackPath(scope: SocialPortalScope) {
 export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPortalScope } = {}) {
   const { shopId, technicianId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const apiShopId = routeEntityIdToApiId(shopId);
   const apiTechnicianId = routeEntityIdToApiId(technicianId);
   const { stores, technicians } = useEntityStore();
@@ -143,7 +145,12 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
               actionSlot={scope === "user" ? (
                 <PrimaryButton
                   className="h-9 px-3 text-xs"
-                  to={`/checkout/${service.id > 0 ? `technician-service-${service.id}` : "svc-fallback"}?shop=${apiShopId ?? ""}&technician=${apiTechnicianId ?? ""}`}
+                  to={buildTechnicianServiceCheckoutRoute(service.id, {
+                    date: searchParams.get("date"),
+                    people: searchParams.get("people"),
+                    scheduleSlotId: searchParams.get("scheduleSlotId"),
+                    time: searchParams.get("time")
+                  })}
                 >
                   预约这个服务
                 </PrimaryButton>

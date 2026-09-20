@@ -3778,7 +3778,16 @@ export function StoreDetailExperience({
     void coverImage;
     window.alert("付费转发功能将在后续支付阶段开放。");
   };
-  const getTechnicianServiceListTo = (technicianId: string) => getScopedTechnicianServiceListPath(scope, store.id, technicianId);
+  const getTechnicianServiceListTo = (technicianId: string) => getScopedTechnicianServiceListPath(
+    scope,
+    store.id,
+    technicianId,
+    {
+      date: formatDateParam(selectedVisitDate),
+      people: selectedPeople,
+      time: selectedTime
+    }
+  );
 
   const renderTechnicianServiceListRows = ({ selectable = false }: { selectable?: boolean } = {}) =>
     storeTechnicians.length > 0 ? (

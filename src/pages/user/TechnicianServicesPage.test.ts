@@ -14,6 +14,9 @@ describe("TechnicianServicesPage social header", () => {
     expect(pageSource).toContain("scope={scope}");
     expect(pageSource).toContain("getScopedTechnicianDynamicPath(scope, technician)");
     expect(pageSource).toContain("getTechnicianServiceFallbackPath(scope)");
+    expect(pageSource).toContain("buildTechnicianServiceCheckoutRoute");
+    expect(pageSource).toContain('date: searchParams.get("date")');
+    expect(pageSource).toContain('time: searchParams.get("time")');
     expect(pageSource).toContain('scope === "user" ? (');
     expect(pageSource).toContain("profileKey({ entityType: \"technician\", id: technician.id })");
     expect(pageSource).toContain('title="服务内容"');

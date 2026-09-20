@@ -125,6 +125,9 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("profileTo={getScopedTechnicianDynamicPath(scope, technician)}");
     expect(pageSource).toContain("getScopedTechnicianServiceListPath");
     expect(pageSource).toContain("const getTechnicianServiceListTo = (technicianId: string)");
+    expect(pageSource).toContain("date: formatDateParam(selectedVisitDate)");
+    expect(pageSource).toContain("people: selectedPeople");
+    expect(pageSource).toContain("time: selectedTime");
     expect(pageSource).toContain("serviceListTo={getTechnicianServiceListTo(technician.id)}");
     expect(pageSource).not.toContain("selectStoreServiceFromTechnicianRecommendation");
     expect(pageSource).not.toContain("onServiceSelect={selectStoreServiceFromTechnicianRecommendation}");

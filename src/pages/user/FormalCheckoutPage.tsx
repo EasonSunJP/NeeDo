@@ -649,7 +649,11 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     () => slots.find((slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot, checkoutNowMs)) ?? null,
     [checkoutNowMs, selectedSlotId, slots]
   );
-  const selectedTechnicianProfileId = nominatedTechnicianProfileId ?? null;
+  const selectedTechnicianProfileId = nominatedTechnicianProfileId ?? (
+    catalogRef.type === "technician_service"
+      ? selectedSlot?.technicianProfileId ?? null
+      : null
+  );
   const coreService = service?.coreService ?? null;
   const fixedTechnicianPublisher = intelligenceSource?.publisherCard?.type === "technician"
     ? intelligenceSource.publisherCard
@@ -902,10 +906,10 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           ? { serviceId: catalogRef.id }
           : { technicianServiceId: catalogRef.id }),
         ...(exchangePostId ? { exchangeIntelligencePostId: exchangePostId } : {}),
-        ...(nominatedTechnicianProfileId ? { nominatedTechnicianProfileId } : {}),
+        ...(selectedTechnicianProfileId ? { nominatedTechnicianProfileId: selectedTechnicianProfileId } : {}),
         expectedPriceAmountJpy:
           Number(displayServiceInfo?.priceAmount ?? freshSelectedSlot.priceAmount) +
-          (nominatedTechnicianProfileId ? freshSelectedSlot.nominationFeeJpy ?? 0 : 0),
+          (selectedTechnicianProfileId ? freshSelectedSlot.nominationFeeJpy ?? 0 : 0),
         scheduleSlotId: freshSelectedSlot.id,
         ...fulfillment,
         paymentMethod,
@@ -1318,8 +1322,8 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               <div className="grid grid-cols-[minmax(0,1fr),auto] items-end gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-black text-[color:color-mix(in_srgb,var(--client-text)_72%,var(--client-muted)_28%)]" data-no-i18n>{t("amountDue")}</p>
-                  <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(Number(displayServiceInfo.priceAmount) + (nominatedTechnicianProfileId ? selectedSlot?.nominationFeeJpy ?? 0 : 0) + (fulfillmentMode === "home" && estimateStatus === "success" ? estimate?.fareAmountJpy ?? 0 : 0))}</strong>
-                  {nominatedTechnicianProfileId ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("includesNominationFee", { amount: yen(selectedSlot?.nominationFeeJpy ?? 0) })}</span> : null}
+                  <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(Number(displayServiceInfo.priceAmount) + (selectedTechnicianProfileId ? selectedSlot?.nominationFeeJpy ?? 0 : 0) + (fulfillmentMode === "home" && estimateStatus === "success" ? estimate?.fareAmountJpy ?? 0 : 0))}</strong>
+                  {selectedTechnicianProfileId ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("includesNominationFee", { amount: yen(selectedSlot?.nominationFeeJpy ?? 0) })}</span> : null}
                   {fulfillmentMode === "home" ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("serviceAndTravelFee")}</span> : null}
                 </div>
                 <div className="flex max-w-[54vw] flex-wrap justify-end gap-2">
