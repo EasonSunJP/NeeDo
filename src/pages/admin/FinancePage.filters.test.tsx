@@ -99,6 +99,14 @@ describe("FinancePage formal settlement filters", () => {
       if (query?.keyword === "不存在的文本") {
         return { list: [], total: 0, page: 1, page_size: 20 };
       }
+      if (query?.keyword === "ND202609200104226905") {
+        return {
+          list: [settlement(1, "ND202609200104226905")],
+          total: 1,
+          page: 1,
+          page_size: 20
+        };
+      }
 
       return {
         list: [settlement(Number(query?.page ?? 1), "ND202609101341243926")],
@@ -141,7 +149,7 @@ describe("FinancePage formal settlement filters", () => {
     expect(period).not.toBeNull();
     expect(city).not.toBeNull();
 
-    changeValue(search!, "ND202609101341243926");
+    changeValue(search!, "ND202609200104226905");
     await act(async () => search!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" })));
     await flush();
     changeValue(status!, "ready_for_payroll");
@@ -154,7 +162,7 @@ describe("FinancePage formal settlement filters", () => {
     expect(backofficeRealDataApi.financeSettlements).toHaveBeenLastCalledWith("backoffice", {
       page: 1,
       pageSize: 20,
-      keyword: "ND202609101341243926",
+      keyword: "ND202609200104226905",
       status: "ready_for_payroll",
       period: "week",
       city: "東京都"
@@ -186,5 +194,26 @@ describe("FinancePage formal settlement filters", () => {
     expect(container.textContent).toContain("当前没有符合条件的正式结算记录");
     expect(container.textContent).toContain("服务器共 0 条，第 1 / 1 页");
     expect(container.textContent).not.toContain("ND202609101341243926");
+  });
+
+  it("clears a submitted order search and restores the authoritative unfiltered total", async () => {
+    await act(async () => root.render(<MemoryRouter><FinancePage /></MemoryRouter>));
+    await flush();
+
+    const search = container.querySelector<HTMLInputElement>('[aria-label="搜索结算"]');
+    changeValue(search!, "ND202609200104226905");
+    await act(async () => search!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" })));
+    await flush();
+    expect(container.textContent).toContain("服务器共 1 条，第 1 / 1 页");
+
+    changeValue(search!, "");
+    await act(async () => search!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" })));
+    await flush();
+
+    expect(backofficeRealDataApi.financeSettlements).toHaveBeenLastCalledWith(
+      "backoffice",
+      expect.objectContaining({ keyword: undefined, page: 1 })
+    );
+    expect(container.textContent).toContain("服务器共 41 条，第 1 / 3 页");
   });
 });
