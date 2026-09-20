@@ -1893,6 +1893,7 @@ function getCalendarSearchFields(event: UnifiedCalendarEvent, view: UnifiedCalen
   if (view === "agenda") {
     return [
       event.title,
+      event.subtitle,
       event.startTime,
       event.endTime,
       event.url,
@@ -5507,7 +5508,7 @@ export function UnifiedUserCalendar({
       try {
         const data = formalCacheScope
           ? await persistentResourceCache.load({
-              force: formalDataReloadKey > 0,
+              force: formalDataReloadKey > 0 || isMerchantAppointmentStatusMode,
               key: formalCacheKey,
               load: loadFormalDataFromServer,
               scope: formalCacheScope

@@ -254,10 +254,11 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     vi.restoreAllMocks();
   });
 
-  async function renderMerchant() {
+  async function renderMerchant(searchQuery = "") {
     await act(async () => root.render(
       <MemoryRouter><I18nProvider><UnifiedUserCalendar
         currentStore={{ id: "17", name: "Formal Shop" } as Store}
+        searchQuery={searchQuery}
         technicians={[{ ...technicianFixture, avatar: "/media/formal-avatar.jpg" } as Technician]}
         scope="merchant" displayMode="parallel" merchantLaneMode="appointmentStatus" formalOnly
       /></I18nProvider></MemoryRouter>
@@ -306,6 +307,69 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     const assigned = Array.from(container.querySelectorAll("button")).find(button => button.textContent === "已排预约");
     await act(async () => assigned?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(container.textContent).toContain("last-page-service");
+  });
+
+  it("refreshes a previously checked appointment cache so the card follows the formal order status", async () => {
+    const cachedOrder = makeFormalBookingOrder({
+      id: 24419,
+      orderNo: "ND202609200105214144",
+      serviceName: "cache-status-service",
+      startsAt: `${todayKey()}T10:00:00+09:00`,
+      endsAt: `${todayKey()}T11:00:00+09:00`,
+      status: "confirmed"
+    });
+    const cacheKey = `calendar:merchant:17:formal:appointments:${todayKey()}:${todayKey()}`;
+    await persistentResourceCache.load({
+      force: true,
+      key: cacheKey,
+      load: async () => ({
+        orders: [],
+        merchantOrders: [cachedOrder],
+        scheduleSlots: [],
+        availabilityWindows: []
+      }),
+      scope: "account:7"
+    });
+    testState.legacyListOrders.mockResolvedValue({
+      list: [{ ...cachedOrder, status: "inService" }],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
+
+    await renderMerchant();
+
+    await waitFor(() => {
+      expect(testState.legacyListOrders).toHaveBeenCalled();
+      const appointmentCard = Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("cache-status-service"));
+      expect(appointmentCard?.textContent).toContain("服务中");
+      expect(appointmentCard?.textContent).not.toContain("已确认");
+    });
+  });
+
+  it("finds a merchant appointment by its complete formal order number", async () => {
+    testState.legacyListOrders.mockResolvedValue({
+      list: [makeFormalBookingOrder({
+        id: 24419,
+        orderNo: "ND202609200105214144",
+        serviceName: "order-number-search-service",
+        startsAt: `${todayKey()}T10:00:00+09:00`,
+        endsAt: `${todayKey()}T11:00:00+09:00`,
+        status: "inService"
+      })],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
+
+    await renderMerchant("ND202609200105214144");
+
+    await waitFor(() => {
+      expect(testState.legacyListOrders).toHaveBeenCalled();
+      expect(container.textContent).toContain("order-number-search-service");
+      expect(container.textContent).toContain("服务中");
+    });
   });
 
   it("preserves historical orders when their technician is no longer in the current roster", async () => {
