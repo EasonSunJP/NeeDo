@@ -5,68 +5,81 @@ import { defaultTechnicianAutomationRules } from "../src/validators/technician-a
 const asClient = (value: unknown): PrismaClient => value as PrismaClient;
 
 describe("technician automation shop-affiliation gates", () => {
-  it("treats the formal on_duty work state as online for Booking automation", async () => {
-    const startsAt = new Date("2026-09-10T03:00:00.000Z");
-    const endsAt = new Date("2026-09-10T04:00:00.000Z");
-    const client = {
-      bookingOrder: {
-        findFirst: jest.fn(async () => ({
-          id: 501,
-          status: "PENDING",
-          shopId: 77,
-          customerUserId: 9,
-          technicianProfileId: 31,
-          serviceId: 101,
-          technicianServiceId: null,
-          startsAt,
-          endsAt,
-          priceAmount: { toString: () => "12000" },
-          fulfillmentMode: "store",
-          paymentMethod: "ONSITE",
-          serviceLocation: null,
-          scheduleSlot: {
-            availabilityId: 81,
+  it.each([
+    ["on_duty", true],
+    ["in_service", true],
+    ["off_duty", false]
+  ] as const)(
+    "projects the formal %s work state to Booking automation online=%s",
+    async (status, expectedOnline) => {
+      const startsAt = new Date("2026-09-10T03:00:00.000Z");
+      const endsAt = new Date("2026-09-10T04:00:00.000Z");
+      const client = {
+        bookingOrder: {
+          findFirst: jest.fn(async () => ({
+            id: 501,
+            status: "PENDING",
+            shopId: 77,
+            customerUserId: 9,
+            technicianProfileId: 31,
+            serviceId: 101,
+            technicianServiceId: null,
             startsAt,
             endsAt,
-            deletedAt: null,
-            availability: { startsAt, endsAt, isActive: true, deletedAt: null }
-          },
-          technicianProfile: {
-            id: 31,
-            userId: 7,
-            status: "published",
-            verifiedAt: new Date("2026-01-01T00:00:00.000Z"),
-            deletedAt: null,
-            workState: { status: "on_duty", deletedAt: null },
-            user: { isActive: true, deletedAt: null },
-            automationSettings: [{
-              id: 1,
-              version: 1,
-              rules: { ...defaultTechnicianAutomationRules("booking"), minLeadMinutes: 0 }
-            }],
-            technicianShopAffiliations: [{ shopId: 77 }]
-          }
-        })),
-        count: jest.fn(async () => 0)
-      },
-      userIdentity: {
-        findFirst: jest.fn(async () => ({
-          id: 17,
-          publicIdentifier: { publicId: "s0000000031" }
-        }))
-      },
-      availability: { count: jest.fn(async () => 1) },
-      customerProfile: { findUnique: jest.fn(async () => null) },
-      ekycVerification: { count: jest.fn(async () => 0) },
-      contact: { findFirst: jest.fn(async () => null) }
-    };
+            priceAmount: { toString: () => "12000" },
+            fulfillmentMode: "store",
+            paymentMethod: "ONSITE",
+            serviceLocation: null,
+            scheduleSlot: {
+              availabilityId: 81,
+              startsAt,
+              endsAt,
+              deletedAt: null,
+              availability: { startsAt, endsAt, isActive: true, deletedAt: null }
+            },
+            technicianProfile: {
+              id: 31,
+              userId: 7,
+              status: "published",
+              verifiedAt: new Date("2026-01-01T00:00:00.000Z"),
+              deletedAt: null,
+              workState: { status, deletedAt: null },
+              user: { isActive: true, deletedAt: null },
+              automationSettings: [
+                {
+                  id: 1,
+                  version: 1,
+                  rules: { ...defaultTechnicianAutomationRules("booking"), minLeadMinutes: 0 }
+                }
+              ],
+              technicianShopAffiliations: [{ shopId: 77 }]
+            }
+          })),
+          count: jest.fn(async () => 0)
+        },
+        userIdentity: {
+          findFirst: jest.fn(async () => ({
+            id: 17,
+            publicIdentifier: { publicId: "s0000000031" }
+          }))
+        },
+        availability: { count: jest.fn(async () => 1) },
+        customerProfile: { findUnique: jest.fn(async () => null) },
+        ekycVerification: { count: jest.fn(async () => 0) },
+        contact: { findFirst: jest.fn(async () => null) }
+      };
 
-    const repository = new TechnicianAutomationRepository(asClient(client));
-    const candidate = await repository.loadBookingCandidate(501);
+      const repository = new TechnicianAutomationRepository(asClient(client));
+      const candidate = await repository.loadBookingCandidate(501);
 
-    expect(candidate?.context.technicianOnline).toBe(true);
-    expect(candidate?.context.hardBlockReasons).not.toContain("technician_not_on_duty");
-  });
+      expect(candidate?.context.technicianOnline).toBe(expectedOnline);
+      expect(candidate?.context.hardBlockReasons).toEqual(
+        expectedOnline
+          ? expect.not.arrayContaining(["technician_not_on_duty"])
+          : expect.arrayContaining(["technician_not_on_duty"])
+      );
+    }
+  );
 
   it("does not load booking automation when the technician is no longer active in that order's shop", async () => {
     const client = {
@@ -165,30 +178,33 @@ describe("technician automation shop-affiliation gates", () => {
     expect(client.technicianAutomationDecisionLog.create).not.toHaveBeenCalled();
   });
 
-  it("reopens a non-matching decision when new payment evidence triggers evaluation", async () => {
-    const client = {
-      technicianAutomationDecisionLog: {
-        findUnique: jest.fn(async () => ({ id: 91, outcome: "NOT_MATCHED" })),
-        updateMany: jest.fn(async () => ({ count: 1 })),
-        create: jest.fn()
-      }
-    };
-    const repository = new TechnicianAutomationRepository(asClient(client));
-    await expect(repository.reserveDecision({
-      settingId: 1,
-      technicianProfileId: 31,
-      kind: "booking",
-      targetType: "booking_order",
-      targetId: 501,
-      actionType: "accept_booking",
-      ruleVersion: 3,
-      idempotencyKey: "booking:501:31:accept_booking"
-    })).resolves.toBe(true);
-    expect(client.technicianAutomationDecisionLog.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 91, outcome: "NOT_MATCHED" },
-      data: expect.objectContaining({ outcome: "MATCHED", failedReasons: [] })
-    }));
-  });
+  it.each(["NOT_MATCHED", "ACTION_FAILED"] as const)(
+    "reopens a %s decision when new evidence or a retry triggers evaluation",
+    async (outcome) => {
+      const client = {
+        technicianAutomationDecisionLog: {
+          findUnique: jest.fn(async () => ({ id: 91, outcome })),
+          updateMany: jest.fn(async () => ({ count: 1 })),
+          create: jest.fn()
+        }
+      };
+      const repository = new TechnicianAutomationRepository(asClient(client));
+      await expect(repository.reserveDecision({
+        settingId: 1,
+        technicianProfileId: 31,
+        kind: "booking",
+        targetType: "booking_order",
+        targetId: 501,
+        actionType: "accept_booking",
+        ruleVersion: 3,
+        idempotencyKey: "booking:501:31:accept_booking"
+      })).resolves.toBe(true);
+      expect(client.technicianAutomationDecisionLog.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 91, outcome },
+        data: expect.objectContaining({ outcome: "MATCHED", failedReasons: [] })
+      }));
+    }
+  );
 
   it("lets the decision unique key serialize concurrent reservations", async () => {
     const duplicate = new Prisma.PrismaClientKnownRequestError("duplicate decision", {

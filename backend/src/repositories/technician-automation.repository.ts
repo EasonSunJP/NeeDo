@@ -660,6 +660,6 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
 
   private isOnline(status: string | null): boolean | null {
     if (!status || status === "unsynced") return null;
-    return ["on_duty", "available", "idle", "working", "online"].includes(status);
+    return ["on_duty", "in_service", "available", "idle", "working", "online"].includes(status);
   }
 }
