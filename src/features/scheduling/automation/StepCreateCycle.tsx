@@ -82,6 +82,10 @@ const rulePhases: Array<{ value: RulePhase; label: string; caption: string }> = 
   { value: "notify", label: "通知模板", caption: "模板、变量、阈值、预览" }
 ];
 
+const technicianSelfRulePhases = rulePhases.filter(({ value }) =>
+  ["period", "template", "hours", "priority", "technicians", "notify"].includes(value)
+);
+
 const notificationTemplateVariables = [
   { token: "{{name}}", label: "名称" },
   { token: "{{storeName}}", label: "店铺名" },
@@ -154,7 +158,10 @@ function getCycleValidationMessage(cycle: DispatchCycle) {
     return "排班周期最长 1 年。";
   }
 
-  if (cycle.ruleSet.minStaff > cycle.ruleSet.targetStaff || cycle.ruleSet.targetStaff > cycle.ruleSet.maxStaff) {
+  if (
+    cycle.mode === "STORE_ASSIGN_FINAL"
+    && (cycle.ruleSet.minStaff > cycle.ruleSet.targetStaff || cycle.ruleSet.targetStaff > cycle.ruleSet.maxStaff)
+  ) {
     return "人数规则必须满足 最小人数 <= 目标人数 <= 最大人数。";
   }
 
@@ -238,9 +245,11 @@ export function StepCreateCycle({
     () => getDispatchHolidayRules(storeId, draft.periodStart, draft.periodEnd),
     [draft.periodEnd, draft.periodStart, storeId]
   );
-  const rulePhaseIndex = rulePhases.findIndex((phase) => phase.value === rulePhase);
+  const activeRulePhases = isDirectScheduling ? rulePhases : technicianSelfRulePhases;
+  const rulePhaseIndex = activeRulePhases.findIndex((phase) => phase.value === rulePhase);
   const isFirstRulePhase = rulePhaseIndex <= 0;
-  const isLastRulePhase = rulePhaseIndex >= rulePhases.length - 1;
+  const isLastRulePhase = rulePhaseIndex >= activeRulePhases.length - 1;
+  const rulePhaseProgress = `${rulePhaseIndex + 1}/${activeRulePhases.length}`;
   const validationMessage = getCycleValidationMessage(draft);
   const canSaveCycle = !validationMessage;
   const actionColumnCount = isFirstRulePhase ? 3 : 4;
@@ -292,9 +301,9 @@ export function StepCreateCycle({
   };
 
   const moveRulePhase = (nextIndex: number) => {
-    const boundedIndex = Math.min(rulePhases.length - 1, Math.max(0, nextIndex));
+    const boundedIndex = Math.min(activeRulePhases.length - 1, Math.max(0, nextIndex));
     setSlideDirection(boundedIndex >= rulePhaseIndex ? "next" : "previous");
-    setRulePhase(rulePhases[boundedIndex].value);
+    setRulePhase(activeRulePhases[boundedIndex].value);
     requestAnimationFrame(() => {
       pageTopRef.current?.scrollIntoView({ block: "start" });
       window.scrollTo({ top: 0 });
@@ -408,7 +417,7 @@ export function StepCreateCycle({
       {rulePhase === "history" ? (
         <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="blue">1/10</Badge>
+            <Badge tone="blue">{rulePhaseProgress}</Badge>
             <Badge tone="neutral">导入历史模板</Badge>
             <Badge tone="neutral">{getCycleModeLabel(draft.mode)}</Badge>
             <Badge tone="yellow">{draft.periodStart} - {draft.periodEnd}</Badge>
@@ -462,7 +471,7 @@ export function StepCreateCycle({
       {rulePhase === "period" ? (
         <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="blue">2/10</Badge>
+            <Badge tone="blue">{rulePhaseProgress}</Badge>
             <Badge tone="neutral">{isDirectScheduling ? "时间区间与截止" : "时间区间"}</Badge>
             <Badge tone="neutral">{getCycleModeLabel(draft.mode)}</Badge>
           </div>
@@ -514,7 +523,7 @@ export function StepCreateCycle({
         <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <Badge tone="blue">3/10</Badge>
+              <Badge tone="blue">{rulePhaseProgress}</Badge>
               <RuleCardTitle
                 info="模板类型单独成卡，避免和周期截止、适用技师混在同一步里。"
                 surface={surface}
@@ -544,7 +553,7 @@ export function StepCreateCycle({
         <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <Badge tone="blue">9/10</Badge>
+              <Badge tone="blue">{rulePhaseProgress}</Badge>
               <RuleCardTitle
                 info="技师自主排班会通知技师发布可上班时间；商户直接排班会发送正式排班和确认收到入口。"
                 surface={surface}
@@ -584,7 +593,7 @@ export function StepCreateCycle({
       <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <Badge tone="blue">4/10</Badge>
+            <Badge tone="blue">{rulePhaseProgress}</Badge>
             <RuleCardTitle
               info="这里只维护商户开放时间；定休日与节假日增减会在下一张卡片单独处理。"
               surface={surface}
@@ -627,7 +636,7 @@ export function StepCreateCycle({
         <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <Badge tone="blue">5/10</Badge>
+              <Badge tone="blue">{rulePhaseProgress}</Badge>
               <RuleCardTitle
                 info="休息日已在店铺开放时段矩阵里设定；这里只自动读取选中周期内的日本节假日，并调整当天所需人数。"
                 surface={surface}
@@ -687,7 +696,7 @@ export function StepCreateCycle({
         <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <Badge tone="blue">6/10</Badge>
+              <Badge tone="blue">{rulePhaseProgress}</Badge>
               <RuleCardTitle
                 info="先设每天最小、目标、最大人数，再按星期补充 +X / -X 的容量变化。"
                 surface={surface}
@@ -737,7 +746,7 @@ export function StepCreateCycle({
         <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <Badge tone="blue">7/10</Badge>
+              <Badge tone="blue">{rulePhaseProgress}</Badge>
               <RuleCardTitle
                 info="这些限制会参与自动生成、冲突校验和最终确认，不再和人数规则挤在同一张卡里。"
                 surface={surface}
@@ -760,16 +769,18 @@ export function StepCreateCycle({
         <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <Badge tone="blue">8/10</Badge>
+              <Badge tone="blue">{rulePhaseProgress}</Badge>
               <RuleCardTitle
-                info="把特殊规则集中在一张卡里，和适用技师名单区分开，便于后续审计。"
+                info={isDirectScheduling
+                  ? "把特殊规则集中在一张卡里，和适用技师名单区分开，便于后续审计。"
+                  : "绑定联系人列表的临时员工池，池子为空时不能开启。"}
                 surface={surface}
-                title="临时技师、语言与工时优先"
+                title={isDirectScheduling ? "临时技师、语言与工时优先" : "临时技师招募"}
               />
             </div>
             <Badge tone={draft.ruleSet.tempStaffEnabled ? "green" : "neutral"}>{draft.ruleSet.tempStaffEnabled ? "临时池开启" : "临时池关闭"}</Badge>
           </div>
-          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <div className={cn("mt-4 grid gap-4", isDirectScheduling && "xl:grid-cols-2")}>
             <div className={cn("rounded-[22px] p-4", softPanelClass)}>
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -824,6 +835,7 @@ export function StepCreateCycle({
               </div>
             </div>
 
+            {isDirectScheduling ? (
             <div className={cn("rounded-[22px] p-4", softPanelClass)}>
               <p className="text-sm font-black text-ink">优先规则</p>
               <div className="mt-3 space-y-3">
@@ -928,6 +940,7 @@ export function StepCreateCycle({
                 </div>
               </div>
             </div>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -936,7 +949,7 @@ export function StepCreateCycle({
         <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
           <div className="grid gap-5 xl:grid-cols-[1fr,0.9fr]">
             <div>
-              <Badge tone="blue">10/10</Badge>
+              <Badge tone="blue">{rulePhaseProgress}</Badge>
               <RuleCardTitle
                 info="通知正文支持和官方通知系统一致的模板保存与变量插入。{{name}} 会在技师或员工打开通知时替换成当前账号名称。"
                 surface={surface}
