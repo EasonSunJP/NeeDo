@@ -2,6 +2,7 @@ import type { DashboardBucketPayload } from "../../api/backofficeRealData";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateTextForContext } from "../../i18n/translations";
+import { DashboardChartTooltip, useDashboardChartTooltip } from "./DashboardChartTooltip";
 import { createDashboardAxis } from "./dashboardChartScale";
 import { formatDashboardNumber } from "./dashboardFormat";
 
@@ -40,36 +41,130 @@ export function ScheduleStatusChart({ title, description, buckets }: {
   const line = buckets.map((bucket, index) =>
     `${index ? "L" : "M"} ${x(index, buckets.length).toFixed(2)} ${attendanceAxis.y(bucket.scheduleAttendanceCount, plot.top, plotHeight).toFixed(2)}`
   ).join(" ");
+  const tooltip = useDashboardChartTooltip(buckets.map((bucket) => bucket.key).join("|"));
+  const selectedBucket = tooltip.active === null ? null : buckets[tooltip.active.index] ?? null;
 
   return (
-    <figure className="min-w-0 overflow-hidden rounded-2xl border border-line bg-white p-4 shadow-panel" data-dashboard-chart-frame="true">
-      <figcaption data-dashboard-chart-info="true">
-        <TitleWithInfo as="h3" info={<p>{description}</p>} infoPanelMode="tooltip" label={`${t("查看")}${title}${t("说明")}`} title={title} titleClassName="text-base font-black text-ink" variant="paper" />
-      </figcaption>
-      <div aria-label="图例" className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
-        {[...series, attendance].map((item, index) => (
-          <span className="inline-flex items-center gap-2 text-xs font-black text-ink/60" key={item.label}>
-            <span aria-hidden="true" className={index === 2 ? "h-2.5 w-2.5 rounded-full" : "h-2.5 w-2.5"} style={{ background: item.color }} />
-            {item.label} · {item.unit}
-          </span>
-        ))}
-      </div>
-      <div className="relative mt-3 min-w-0 overflow-hidden">
-        <svg aria-label={title} className="dashboard-chart h-auto w-full text-ink/45" role="img" viewBox={`0 0 ${width} ${height}`}>
-          {durationAxis.ticks.map((tick) => {
-            const y = durationAxis.y(tick, plot.top, plotHeight);
-            return <g key={tick}><line stroke="var(--admin-line, rgba(148, 163, 184, 0.25))" strokeDasharray="4 6" vectorEffect="non-scaling-stroke" x1={plot.left} x2={width - plot.right} y1={y} y2={y} /><text data-axis-side="left" data-no-i18n fill="currentColor" fontSize="10" textAnchor="end" x={plot.left - 8} y={y + 4}>{formatDashboardNumber(tick, language)}</text></g>;
-          })}
-          {attendanceAxis.ticks.map((tick) => <text data-axis-side="right" data-no-i18n fill="currentColor" fontSize="10" key={tick} textAnchor="start" x={width - plot.right + 8} y={attendanceAxis.y(tick, plot.top, plotHeight) + 4}>{formatDashboardNumber(tick, language)}</text>)}
-          {buckets.map((bucket, index) => <text data-no-i18n fill="currentColor" fontSize="11" key={bucket.key} textAnchor="middle" x={x(index, buckets.length)} y={height - 18}>{bucket.label}</text>)}
-          {buckets.flatMap((bucket, bucketIndex) => series.map((item, seriesIndex) => {
-            const y = durationAxis.y(bucket[item.key], plot.top, plotHeight);
-            return <rect data-schedule-status-bar={seriesIndex ? "available" : "booked"} fill={item.color} height={plot.top + plotHeight - y} key={`${bucket.key}-${item.key}`} rx="3" vectorEffect="non-scaling-stroke" width={barWidth} x={x(bucketIndex, buckets.length) - (barWidth * 2 + gap) / 2 + seriesIndex * (barWidth + gap)} y={y} />;
-          }))}
-          {buckets.length ? <><path d={line} data-schedule-attendance-line="true" fill="none" stroke={attendance.color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" vectorEffect="non-scaling-stroke" />{buckets.map((bucket, index) => <circle cx={x(index, buckets.length)} cy={attendanceAxis.y(bucket.scheduleAttendanceCount, plot.top, plotHeight)} data-schedule-attendance-point="true" fill="var(--admin-surface, white)" key={`${bucket.key}-attendance`} r="4" stroke={attendance.color} strokeWidth="2.5" vectorEffect="non-scaling-stroke" />)}</> : null}
-        </svg>
-      </div>
-      <table className="sr-only"><caption><span>{title}</span><span>精确数据</span></caption><thead><tr><th>期间</th>{series.map((item) => <th key={item.key}>{item.label}（{item.unit}）</th>)}<th>{attendance.label}（{attendance.unit}）</th></tr></thead><tbody>{buckets.map((bucket) => <tr key={bucket.key}><th data-no-i18n>{bucket.label}</th>{series.map((item) => <td data-no-i18n key={item.key}>{formatDashboardNumber(bucket[item.key], language)}</td>)}<td data-no-i18n>{formatDashboardNumber(bucket.scheduleAttendanceCount, language)}</td></tr>)}</tbody></table>
-    </figure>
+    <>
+      <figure
+        className="min-w-0 overflow-hidden rounded-2xl border border-line bg-white p-4 shadow-panel"
+        data-dashboard-chart-frame="true"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") tooltip.dismiss();
+        }}
+      >
+        <figcaption data-dashboard-chart-info="true">
+          <TitleWithInfo as="h3" info={<p>{description}</p>} infoPanelMode="tooltip" label={`${t("查看")}${title}${t("说明")}`} title={title} titleClassName="text-base font-black text-ink" variant="paper" />
+        </figcaption>
+        <div aria-label="图例" className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
+          {[...series, attendance].map((item, index) => (
+            <span className="inline-flex items-center gap-2 text-xs font-black text-ink/60" key={item.label}>
+              <span aria-hidden="true" className={index === 2 ? "h-2.5 w-2.5 rounded-full" : "h-2.5 w-2.5"} style={{ background: item.color }} />
+              {item.label} · {item.unit}
+            </span>
+          ))}
+        </div>
+        <div className="relative mt-3 min-w-0 overflow-hidden">
+          <svg
+            aria-label={title}
+            className="dashboard-chart h-auto w-full text-ink/45"
+            role="img"
+            viewBox={`0 0 ${width} ${height}`}
+          >
+            {durationAxis.ticks.map((tick) => {
+              const y = durationAxis.y(tick, plot.top, plotHeight);
+              return <g key={tick}><line stroke="var(--admin-line, rgba(148, 163, 184, 0.25))" strokeDasharray="4 6" vectorEffect="non-scaling-stroke" x1={plot.left} x2={width - plot.right} y1={y} y2={y} /><text data-axis-side="left" data-no-i18n fill="currentColor" fontSize="10" textAnchor="end" x={plot.left - 8} y={y + 4}>{formatDashboardNumber(tick, language)}</text></g>;
+            })}
+            {attendanceAxis.ticks.map((tick) => (
+              <text data-axis-side="right" data-no-i18n fill="currentColor" fontSize="10" key={tick} textAnchor="start" x={width - plot.right + 8} y={attendanceAxis.y(tick, plot.top, plotHeight) + 4}>
+                {formatDashboardNumber(tick, language)}
+              </text>
+            ))}
+            {buckets.map((bucket, index) => (
+              <text data-no-i18n fill="currentColor" fontSize="11" key={bucket.key} textAnchor="middle" x={x(index, buckets.length)} y={height - 18}>
+                {bucket.label}
+              </text>
+            ))}
+            {buckets.flatMap((bucket, bucketIndex) => series.map((item, seriesIndex) => {
+              const y = durationAxis.y(bucket[item.key], plot.top, plotHeight);
+              return (
+                <rect
+                  data-schedule-status-bar={seriesIndex ? "available" : "booked"}
+                  fill={item.color}
+                  height={plot.top + plotHeight - y}
+                  key={`${bucket.key}-${item.key}`}
+                  onClick={(event) => tooltip.select(bucketIndex, event)}
+                  onMouseEnter={(event) => tooltip.hover(bucketIndex, event)}
+                  onMouseLeave={tooltip.leave}
+                  onMouseMove={(event) => tooltip.hover(bucketIndex, event)}
+                  rx="3"
+                  vectorEffect="non-scaling-stroke"
+                  width={barWidth}
+                  x={x(bucketIndex, buckets.length) - (barWidth * 2 + gap) / 2 + seriesIndex * (barWidth + gap)}
+                  y={y}
+                />
+              );
+            }))}
+            {buckets.length ? (
+              <>
+                <path d={line} data-schedule-attendance-line="true" fill="none" stroke={attendance.color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+                {buckets.map((bucket, index) => (
+                  <circle
+                    cx={x(index, buckets.length)}
+                    cy={attendanceAxis.y(bucket.scheduleAttendanceCount, plot.top, plotHeight)}
+                    data-schedule-attendance-point="true"
+                    fill="var(--admin-surface, white)"
+                    key={`${bucket.key}-attendance`}
+                    r="4"
+                    stroke={attendance.color}
+                    strokeWidth="2.5"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+                {buckets.map((bucket, index) => (
+                  <circle
+                    aria-label={`${bucket.label} ${t("节点详细数据")}`}
+                    cx={x(index, buckets.length)}
+                    cy={attendanceAxis.y(bucket.scheduleAttendanceCount, plot.top, plotHeight)}
+                    data-schedule-attendance-control="true"
+                    fill="transparent"
+                    key={`${bucket.key}-attendance-control`}
+                    onClick={(event) => tooltip.select(index, event)}
+                    onKeyDown={(event) => tooltip.selectOnKeyboard(index, event)}
+                    onMouseEnter={(event) => tooltip.hover(index, event)}
+                    onMouseLeave={tooltip.leave}
+                    onMouseMove={(event) => tooltip.hover(index, event)}
+                    r="12"
+                    role="button"
+                    tabIndex={0}
+                  />
+                ))}
+              </>
+            ) : null}
+          </svg>
+        </div>
+        <table className="sr-only"><caption><span>{title}</span><span>精确数据</span></caption><thead><tr><th>期间</th>{series.map((item) => <th key={item.key}>{item.label}（{item.unit}）</th>)}<th>{attendance.label}（{attendance.unit}）</th></tr></thead><tbody>{buckets.map((bucket) => <tr key={bucket.key}><th data-no-i18n>{bucket.label}</th>{series.map((item) => <td data-no-i18n key={item.key}>{formatDashboardNumber(bucket[item.key], language)}</td>)}<td data-no-i18n>{formatDashboardNumber(bucket.scheduleAttendanceCount, language)}</td></tr>)}</tbody></table>
+      </figure>
+      <DashboardChartTooltip
+        anchor={tooltip.active}
+        closeLabel={t("关闭数据提示")}
+        items={selectedBucket ? [
+          ...series.map((item) => ({
+            color: item.color,
+            key: item.key,
+            label: item.label,
+            value: `${formatDashboardNumber(selectedBucket[item.key], language)} ${item.unit}`
+          })),
+          {
+            color: attendance.color,
+            key: "scheduleAttendanceCount",
+            label: attendance.label,
+            value: `${formatDashboardNumber(selectedBucket.scheduleAttendanceCount, language)} ${attendance.unit}`
+          }
+        ] : []}
+        label={selectedBucket?.label ?? ""}
+        onClose={tooltip.dismiss}
+      />
+    </>
   );
 }

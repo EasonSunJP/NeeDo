@@ -149,6 +149,7 @@ describe("DashboardCharts", () => {
 
   it("shows numeric axes and exposes point details to mouse and keyboard", async () => {
     const container = document.createElement("div");
+    container.className = "admin-shell";
     document.body.append(container);
     const root = createRoot(container);
     await act(async () => root.render(
@@ -168,30 +169,46 @@ describe("DashboardCharts", () => {
     const controls = container.querySelectorAll<SVGElement>('[data-chart-point-control="true"]');
     expect(controls).toHaveLength(4);
 
-    await act(async () => controls[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(container.querySelector('[data-dashboard-point-detail="true"]')?.textContent)
+    await act(async () => controls[0]?.dispatchEvent(new MouseEvent("mouseover", {
+      bubbles: true,
+      clientX: 120,
+      clientY: 180
+    })));
+    const hoveredDetail = document.body.querySelector('[data-dashboard-point-detail="true"]');
+    expect(hoveredDetail?.textContent).toContain("8/24");
+    expect(container.querySelector('[data-dashboard-chart-frame="true"]')?.contains(hoveredDetail)).toBe(false);
+    expect(hoveredDetail?.parentElement).toBe(container);
+    await act(async () => controls[0]?.dispatchEvent(new MouseEvent("mouseout", { bubbles: true })));
+    expect(document.body.querySelector('[data-dashboard-point-detail="true"]')).toBeNull();
+
+    await act(async () => controls[0]?.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      clientX: 120,
+      clientY: 180
+    })));
+    expect(document.body.querySelector('[data-dashboard-point-detail="true"]')?.textContent)
       .toContain("8/24");
-    expect(container.querySelector('[data-dashboard-point-detail="true"]')?.textContent)
+    expect(document.body.querySelector('[data-dashboard-point-detail="true"]')?.textContent)
       .toContain("2 单");
-    expect(container.querySelector('[data-dashboard-point-detail="true"]')?.textContent)
+    expect(document.body.querySelector('[data-dashboard-point-detail="true"]')?.textContent)
       .toContain("12,000 JPY");
 
-    const close = container.querySelector<HTMLButtonElement>(
+    const close = document.body.querySelector<HTMLButtonElement>(
       '[data-dashboard-point-detail="true"] button'
     )!;
     expect(close.getAttribute("aria-label")).toBeTruthy();
     await act(async () => close.click());
-    expect(container.querySelector('[data-dashboard-point-detail="true"]')).toBeNull();
+    expect(document.body.querySelector('[data-dashboard-point-detail="true"]')).toBeNull();
 
     await act(async () => controls[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
-    expect(container.querySelector('[data-dashboard-point-detail="true"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-dashboard-point-detail="true"]')).not.toBeNull();
     await act(async () => container.querySelector('[data-dashboard-chart-frame="true"]')?.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
     ));
-    expect(container.querySelector('[data-dashboard-point-detail="true"]')).toBeNull();
+    expect(document.body.querySelector('[data-dashboard-point-detail="true"]')).toBeNull();
 
     await act(async () => controls[2]?.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true })));
-    expect(container.querySelector('[data-dashboard-point-detail="true"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-dashboard-point-detail="true"]')).not.toBeNull();
     await act(async () => root.render(
       <I18nProvider>
         <DualAxisLineChart
@@ -203,7 +220,7 @@ describe("DashboardCharts", () => {
         />
       </I18nProvider>
     ));
-    expect(container.querySelector('[data-dashboard-point-detail="true"]')).toBeNull();
+    expect(document.body.querySelector('[data-dashboard-point-detail="true"]')).toBeNull();
 
     await act(async () => root.unmount());
     container.remove();

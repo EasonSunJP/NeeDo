@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type {
   AnalyticsMetricSeries,
   DashboardBucketPayload
@@ -7,6 +6,7 @@ import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateTextForContext } from "../../i18n/translations";
 import { createDashboardAxis, type DashboardAxis } from "./dashboardChartScale";
+import { DashboardChartTooltip, useDashboardChartTooltip } from "./DashboardChartTooltip";
 import { formatDashboardNumber, normalizeDashboardNumber } from "./dashboardFormat";
 
 export type DashboardChartMetricKey = Exclude<keyof DashboardBucketPayload, "key" | "label">;
@@ -133,7 +133,6 @@ function ChartFrame({
   children,
   leftAxis,
   rightAxis,
-  overlay,
   onKeyDown,
   empty
 }: {
@@ -144,7 +143,6 @@ function ChartFrame({
   children: React.ReactNode;
   leftAxis?: DashboardAxis;
   rightAxis?: DashboardAxis;
-  overlay?: React.ReactNode;
   onKeyDown?: React.KeyboardEventHandler<HTMLElement>;
   empty: boolean;
 }) {
@@ -191,7 +189,6 @@ function ChartFrame({
           <Grid buckets={buckets} language={language} leftAxis={leftAxis} rightAxis={rightAxis} />
           {children}
         </svg>
-        {overlay}
         {empty ? (
           <p className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-black text-ink/45">
             当前范围暂无数据
@@ -260,63 +257,25 @@ export function DualAxisLineChart({
   const leftAxis = createDashboardAxis(leftValues);
   const rightAxis = right ? createDashboardAxis(rightValues) : undefined;
   const bucketKey = buckets.map((bucket) => bucket.key).join("|");
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  useEffect(() => setSelectedIndex(null), [bucketKey]);
-  const selectOnKeyboard = (event: React.KeyboardEvent<SVGElement>, index: number) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      setSelectedIndex(index);
-    }
-  };
-  const selectedBucket = selectedIndex === null ? null : buckets[selectedIndex] ?? null;
-  const anchorPercent = selectedIndex === null
-    ? 50
-    : Math.min(85, Math.max(15, (getX(selectedIndex, buckets.length) / chartWidth) * 100));
+  const tooltip = useDashboardChartTooltip(bucketKey);
+  const selectedBucket = tooltip.active === null ? null : buckets[tooltip.active.index] ?? null;
 
   return (
-    <ChartFrame
-      buckets={buckets}
-      description={description}
-      empty={buckets.length === 0}
-      leftAxis={leftAxis}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") setSelectedIndex(null);
-      }}
-      overlay={selectedBucket ? (
-        <div
-          aria-label={t("节点详细数据")}
-          className="absolute top-3 z-10 min-w-44 -translate-x-1/2 rounded-xl border border-line bg-white p-3 text-xs font-bold text-ink shadow-panel"
-          data-dashboard-point-detail="true"
-          role="status"
-          style={{ left: `${anchorPercent}%` }}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <strong data-no-i18n>{selectedBucket.label}</strong>
-            <button
-              aria-label={t("关闭数据提示")}
-              className="rounded-md px-1.5 text-ink/45 hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40"
-              onClick={() => setSelectedIndex(null)}
-              type="button"
-            >
-              ×
-            </button>
-          </div>
-          <ul className="mt-2 space-y-1.5">
-            {series.map((item) => (
-              <li className="flex items-center justify-between gap-4" key={item.key}>
-                <span>{item.label}</span>
-                <span data-no-i18n>{formatDashboardNumber(getValue(selectedBucket, item), language)} {item.unit}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : undefined}
-      rightAxis={rightAxis}
-      series={series}
-      title={title}
-    >
-      {buckets.length > 0 ? (
-        <>
+    <>
+      <ChartFrame
+        buckets={buckets}
+        description={description}
+        empty={buckets.length === 0}
+        leftAxis={leftAxis}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") tooltip.dismiss();
+        }}
+        rightAxis={rightAxis}
+        series={series}
+        title={title}
+      >
+        {buckets.length > 0 ? (
+          <>
           <text fill="currentColor" fontSize="11" fontWeight="700" x={plot.left} y={18}>
             {left.label} · {left.unit}
           </text>
@@ -350,8 +309,11 @@ export function DualAxisLineChart({
               data-chart-point-control="true"
               fill="transparent"
               key={`left-control-${bucket.key}`}
-              onClick={() => setSelectedIndex(index)}
-              onKeyDown={(event) => selectOnKeyboard(event, index)}
+              onClick={(event) => tooltip.select(index, event)}
+              onKeyDown={(event) => tooltip.selectOnKeyboard(index, event)}
+              onMouseEnter={(event) => tooltip.hover(index, event)}
+              onMouseLeave={tooltip.leave}
+              onMouseMove={(event) => tooltip.hover(index, event)}
               r="12"
               role="button"
               tabIndex={0}
@@ -410,8 +372,11 @@ export function DualAxisLineChart({
                   data-chart-point-control="true"
                   fill="transparent"
                   key={`right-control-${bucket.key}`}
-                  onClick={() => setSelectedIndex(index)}
-                  onKeyDown={(event) => selectOnKeyboard(event, index)}
+                  onClick={(event) => tooltip.select(index, event)}
+                  onKeyDown={(event) => tooltip.selectOnKeyboard(index, event)}
+                  onMouseEnter={(event) => tooltip.hover(index, event)}
+                  onMouseLeave={tooltip.leave}
+                  onMouseMove={(event) => tooltip.hover(index, event)}
                   r="12"
                   role="button"
                   tabIndex={0}
@@ -419,9 +384,22 @@ export function DualAxisLineChart({
               ))}
             </>
           ) : null}
-        </>
-      ) : null}
-    </ChartFrame>
+          </>
+        ) : null}
+      </ChartFrame>
+      <DashboardChartTooltip
+        anchor={tooltip.active}
+        closeLabel={t("关闭数据提示")}
+        items={selectedBucket ? series.map((item, index) => ({
+          color: item.color ?? lineColors[index],
+          key: item.key,
+          label: item.label,
+          value: `${formatDashboardNumber(getValue(selectedBucket, item), language)} ${item.unit}`
+        })) : []}
+        label={selectedBucket?.label ?? ""}
+        onClose={tooltip.dismiss}
+      />
+    </>
   );
 }
 
