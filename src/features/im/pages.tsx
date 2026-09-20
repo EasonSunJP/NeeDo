@@ -103,6 +103,7 @@ import {
   ToggleRow,
   type ImChatComposerPanel
 } from "./components";
+import { useImLongPressAction } from "./useImLongPressAction";
 import {
   UnifiedChatHeaderAction,
   UnifiedChatHomePage,
@@ -1543,7 +1544,6 @@ const contactSectionScrollMargin = "calc(env(safe-area-inset-top) + 5rem)";
 const contactIndexBottomGutter = "calc(6rem + env(safe-area-inset-bottom))";
 const contactIndexFixedRight = "max(0.5rem, calc((100vw - min(100vw, 880px)) / 2 + 0.5rem))";
 const contactIndexFixedBottom = "calc(7.5rem + env(safe-area-inset-bottom))";
-const imMessageLongPressActivationGuardMs = 800;
 const contactIndexBarClassName =
   "pointer-events-auto max-h-full touch-none select-none overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-1 py-2 shadow-[0_8px_18px_color-mix(in_srgb,var(--client-text)_10%,transparent)] ring-1 ring-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] backdrop-blur-xl";
 
@@ -1594,110 +1594,8 @@ export function MessagePressable({
   onOpenMenu: () => void;
   children: ReactNode;
 }) {
-  const timerRef = useRef<number | null>(null);
-  const activationGuardTimerRef = useRef<number | null>(null);
-  const suppressNextActivationRef = useRef(false);
-  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
-
-  const clearPress = () => {
-    if (timerRef.current) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    pressStartRef.current = null;
-  };
-
-  const clearActivationGuard = () => {
-    if (activationGuardTimerRef.current) {
-      window.clearTimeout(activationGuardTimerRef.current);
-      activationGuardTimerRef.current = null;
-    }
-    suppressNextActivationRef.current = false;
-  };
-
-  const releaseActivationGuardAfterPointerSequence = () => {
-    if (!suppressNextActivationRef.current) {
-      return;
-    }
-
-    if (activationGuardTimerRef.current) {
-      window.clearTimeout(activationGuardTimerRef.current);
-    }
-    activationGuardTimerRef.current = window.setTimeout(
-      clearActivationGuard,
-      imMessageLongPressActivationGuardMs,
-    );
-  };
-
-  useEffect(() => () => {
-    clearPress();
-    clearActivationGuard();
-  }, []);
-
-  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    clearPress();
-    clearActivationGuard();
-
-    if (hasActiveImMessageTextSelection(event.currentTarget)) {
-      return;
-    }
-
-    pressStartRef.current = { x: event.clientX, y: event.clientY };
-    timerRef.current = window.setTimeout(() => {
-      timerRef.current = null;
-      suppressNextActivationRef.current = true;
-      onOpenMenu();
-    }, 380);
-  };
-
-  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const start = pressStartRef.current;
-
-    if (!start) {
-      return;
-    }
-
-    if (Math.abs(event.clientX - start.x) > 10 || Math.abs(event.clientY - start.y) > 10) {
-      clearPress();
-    }
-  };
-
-  return (
-    <div
-      onClickCapture={(event) => {
-        if (!suppressNextActivationRef.current) {
-          return;
-        }
-
-        clearActivationGuard();
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        if (hasActiveImMessageTextSelection(event.currentTarget)) {
-          return;
-        }
-        onOpenMenu();
-      }}
-      onPointerCancel={() => {
-        clearPress();
-        releaseActivationGuardAfterPointerSequence();
-      }}
-      onPointerDown={handlePointerDown}
-      onPointerLeave={() => {
-        clearPress();
-        releaseActivationGuardAfterPointerSequence();
-      }}
-      onPointerMove={handlePointerMove}
-      onPointerUp={() => {
-        clearPress();
-        releaseActivationGuardAfterPointerSequence();
-      }}
-    >
-      {children}
-    </div>
-  );
+  const longPress = useImLongPressAction(onOpenMenu);
+  return <div {...longPress.handlers}>{children}</div>;
 }
 
 function ImQuickMenuItem({

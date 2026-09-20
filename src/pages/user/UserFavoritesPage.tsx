@@ -1,501 +1,205 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  AppIcon,
-  floatingHeaderControlButtonClassName,
-} from "../../components/client-ui/AppScaffold";
+import { AppIcon, floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { ImChatRecordCard } from "../../features/im/ImChatRecordCard";
+import { FavoriteTimelineRow } from "../../features/favorites/FavoriteTimelineRow";
+import { favoritesApi, type FavoriteInteractionState } from "../../features/favorites/api";
 import {
-  SocialPostCompactCard,
-  type SocialPostCompactCardData,
-} from "../../features/im/SocialPostCompactCard";
-import type {
-  ImChatRecordFavorite,
-  ImChatRecordFavoritePage,
-} from "../../features/im/chat-records";
-import { useImStoreApi } from "../../features/im/store";
-import { translateImUiText as translateText } from "../../features/im/ui-copy";
-import {
-  entityEngagementApi,
-  type EntityFavoriteListItem,
-  type EntityTarget,
-} from "../../features/entity-engagement/api";
+  favoriteTabs,
+  groupFavoritesByTokyoDate,
+  type FavoriteItemType,
+  type FavoriteTab,
+  type UnifiedFavoriteItem,
+  type UnifiedFavoritePage,
+} from "../../features/favorites/model";
+import { ImMessageMultiSelectOverlay } from "../../features/im/ImMessageMultiSelectOverlay";
+import type { EntityTarget } from "../../features/entity-engagement/api";
+import { socialPaths } from "../../features/social/paths";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
-import { UnifiedEntityInfoCard } from "../../shared/profile-card/UnifiedEntityInfoCard";
-import { UnifiedServiceInfoCard } from "../../shared/service-card";
-import { useSocial } from "../../features/social/context";
-import { socialPaths } from "../../features/social/paths";
-import { postAuthorKey } from "../../features/social/timeline";
+import { translateText } from "../../i18n/translations";
+import { EntityShareDestinationSheet } from "../../shared/entity-share/EntityShareDestinationSheet";
 
-export type UserFavoritesApi = {
-  listChatRecordFavorites(query?: {
-    page?: number;
-    pageSize?: number;
-  }): Promise<ImChatRecordFavoritePage>;
-  removeChatRecordFavorite(favoriteId: string): Promise<{ deleted: true }>;
+type FavoriteLoadStatus = "error" | "loading" | "ready";
+
+export type FavoritesTimelineApi = {
+  list(input?: { type?: FavoriteItemType; query?: string; page?: number; pageSize?: number }): Promise<UnifiedFavoritePage>;
+  removeSourceFavorite(type: FavoriteItemType, itemKey: string): Promise<{ deleted: true }>;
+  setPinned(type: FavoriteItemType, itemKey: string, active: boolean): Promise<FavoriteInteractionState>;
+  setReaction(type: FavoriteItemType, itemKey: string, reaction: string | null): Promise<FavoriteInteractionState>;
 };
 
-export type UserEntityFavoritesApi = {
-  listFavorites(query?: { page?: number; pageSize?: number }): Promise<{
-    list: EntityFavoriteListItem[];
-    total: number;
-    page: number;
-    page_size: number;
-  }>;
-  setFavorite(target: EntityTarget, isFavorited: boolean): Promise<unknown>;
+const tabLabels: Record<FavoriteTab, string> = {
+  all: "全部",
+  shop: "店铺",
+  technician: "技师",
+  service: "服务",
+  social_post: "动态",
+  chat_record: "聊天记录",
 };
 
-export type UserSocialFavorite = SocialPostCompactCardData;
-type FavoriteLoadStatus = "loading" | "ready" | "error";
+const emptyLabels: Record<FavoriteTab, string> = {
+  all: "暂无收藏内容",
+  shop: "暂无收藏的店铺",
+  technician: "暂无收藏的技师",
+  service: "暂无收藏的服务",
+  social_post: "暂无收藏的动态",
+  chat_record: "暂无收藏的聊天记录",
+};
 
-function normalizedSearch(value: string) {
-  return value.trim().toLocaleLowerCase();
+function asEntityTarget(item: UnifiedFavoriteItem): EntityTarget | null {
+  if (item.type !== "shop" && item.type !== "technician" && item.type !== "service") return null;
+  const separator = item.itemKey.indexOf(":");
+  const targetType = separator < 0 ? item.type : item.itemKey.slice(0, separator);
+  const publicId = separator < 0 ? item.itemKey : item.itemKey.slice(separator + 1);
+  if (!["shop", "technician", "service", "technician_service"].includes(targetType)) return null;
+  return { targetType, publicId } as EntityTarget;
 }
 
-function matchesSearch(query: string, values: Array<string | null | undefined>) {
-  if (!query) return true;
-  return values.some((value) => value?.toLocaleLowerCase().includes(query));
-}
-
-const formalServicePublicIdPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-
-function entityFavoriteDetailPath(
-  favorite: EntityFavoriteListItem,
-): string | undefined {
-  const { publicId, targetType } = favorite;
-  if (typeof publicId !== "string") return undefined;
-
-  if (
-    favorite.card.kind === "shop" &&
-    targetType === "shop" &&
-    /^shop\d{10}$/u.test(publicId)
-  ) {
-    return `/stores/${publicId}`;
-  }
-  if (
-    favorite.card.kind === "technician" &&
-    targetType === "technician" &&
-    /^s\d{10}$/u.test(publicId)
-  ) {
-    return `/profiles/technician/${publicId}`;
-  }
-  if (
-    favorite.card.kind === "service" &&
-    targetType === "service" &&
-    formalServicePublicIdPattern.test(publicId)
-  ) {
-    return `/services/${publicId}`;
-  }
-
-  return undefined;
-}
-
-function FavoritesSection({
-  children,
-  empty,
-  emptyLabel,
-  title,
-}: {
-  children: ReactNode;
-  empty: boolean;
-  emptyLabel: string;
-  title: string;
-}) {
-  return (
-    <section aria-label={title} className="mb-7" data-favorites-section={title}>
-      <h2 className="mb-3 text-sm font-black text-[color:var(--client-muted)]">
-        {title}
-      </h2>
-      {empty ? (
-        <p className="py-5 text-center text-sm font-bold text-[color:var(--client-muted)]">
-          {emptyLabel}
-        </p>
-      ) : (
-        children
-      )}
-    </section>
-  );
-}
-
-function EntityFavoriteCardView({
-  favorite,
-  language,
-}: {
-  favorite: EntityFavoriteListItem;
-  language: Language;
-}) {
-  const detailTo = entityFavoriteDetailPath(favorite);
-  if (favorite.card.kind === "service") {
-    return (
-      <UnifiedServiceInfoCard
-        data={{
-          id: favorite.publicId,
-          coverUrl: favorite.card.imageUrl,
-          name: favorite.card.name,
-          priceAmount: favorite.card.priceAmount,
-          currency: favorite.card.currency,
-          durationMinutes: favorite.card.durationMinutes,
-          completedOrderCount: favorite.card.usageCount,
-          favoriteCount: favorite.favoriteCount,
-          shareCount: favorite.card.shareCount,
-          isFavorited: true,
-          isBookable: favorite.card.isBookable,
-          shopPublicId: favorite.card.shopPublicId,
-          shopAddress: favorite.card.shopAddress,
-          description: favorite.card.description,
-          tags: favorite.card.tags,
-        }}
-        detailTo={detailTo}
-        language={language}
-      />
-    );
-  }
-
-  return (
-    <UnifiedEntityInfoCard
-      data={
-        favorite.card.kind === "shop"
-          ? {
-              kind: "shop",
-              id: favorite.publicId,
-              name: favorite.card.name,
-              imageUrl: favorite.card.imageUrl,
-              description: favorite.card.description,
-              address: favorite.card.address,
-              languages: [],
-              tags: [],
-              rating: favorite.card.rating,
-              reviewCount: favorite.card.reviewCount,
-              completedOrderCount: favorite.card.completedOrderCount,
-              favoriteCount: favorite.favoriteCount,
-              shareCount: favorite.card.shareCount,
-              isFavorited: true,
-            }
-          : {
-              kind: "technician",
-              id: favorite.publicId,
-              name: favorite.card.name,
-              imageUrl: favorite.card.imageUrl,
-              description: favorite.card.description,
-              languages: favorite.card.languages,
-              tags: [],
-              rating: favorite.card.rating,
-              completedOrderCount: favorite.card.completedOrderCount,
-              favoriteCount: favorite.favoriteCount,
-              shareCount: favorite.card.shareCount,
-              isFavorited: true,
-              specialReviewTags: [],
-            }
-      }
-      detailTo={detailTo}
-      language={language}
-    />
-  );
-}
-
-function EntityFavoritesSection({
-  api,
-  language,
-  query,
-}: {
-  api: UserEntityFavoritesApi;
-  language: Language;
-  query: string;
-}) {
-  const [revision, setRevision] = useState(0);
-  const [result, setResult] = useState<Awaited<
-    ReturnType<UserEntityFavoritesApi["listFavorites"]>
-  > | null>(null);
-  const [status, setStatus] = useState<FavoriteLoadStatus>("loading");
-  const [removing, setRemoving] = useState<string | null>(null);
-  const [removeError, setRemoveError] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setStatus("loading");
-    void (async () => {
-      const firstPage = await api.listFavorites({ page: 1, pageSize: 100 });
-      const pageCount = Math.ceil(firstPage.total / firstPage.page_size);
-      const remainingPages = pageCount > 1
-        ? await Promise.all(
-            Array.from({ length: pageCount - 1 }, (_, index) =>
-              api.listFavorites({ page: index + 2, pageSize: 100 }),
-            ),
-          )
-        : [];
-      return {
-        ...firstPage,
-        list: [
-          ...firstPage.list,
-          ...remainingPages.flatMap((nextPage) => nextPage.list),
-        ],
-      };
-    })()
-      .then((next) => {
-        if (!active) return;
-        setResult(next);
-        setStatus("ready");
-      })
-      .catch(() => {
-        if (active) setStatus("error");
-      });
-    return () => {
-      active = false;
-    };
-  }, [api, revision]);
-
-  const remove = (favorite: EntityFavoriteListItem) => {
-    const key = `${favorite.targetType}:${favorite.publicId}`;
-    if (removing) return;
-    setRemoveError(false);
-    setRemoving(key);
-    void api
-      .setFavorite(
-        {
-          targetType: favorite.targetType,
-          publicId: favorite.publicId,
-        } as EntityTarget,
-        false,
-      )
-      .then(() => setRevision((value) => value + 1))
-      .catch(() => setRemoveError(true))
-      .finally(() => setRemoving(null));
-  };
-  const normalizedQuery = normalizedSearch(query);
-  const visibleFavorites = (result?.list ?? []).filter((favorite) =>
-    matchesSearch(normalizedQuery, [
-      favorite.card.name,
-      favorite.card.description,
-      favorite.card.kind === "shop" ? favorite.card.address : undefined,
-      favorite.card.kind === "technician"
-        ? favorite.card.languages.join(" ")
-        : undefined,
-      favorite.card.kind === "service"
-        ? favorite.card.tags.join(" ")
-        : undefined,
-    ]),
-  );
-  const groupCopy: Record<
-    EntityFavoriteListItem["card"]["kind"],
-    string
-  > = {
-    shop: translateText("店铺", language),
-    technician: translateText("技师", language),
-    service: translateText("服务", language),
-  };
-  const emptyGroupCopy: Record<
-    EntityFavoriteListItem["card"]["kind"],
-    string
-  > = {
-    shop: translateText("暂无收藏的店铺", language),
-    technician: translateText("暂无收藏的技师", language),
-    service: translateText("暂无收藏的服务", language),
-  };
-
-  return (
-    <>
-      {status === "loading" ? (
-        <p className="py-5 text-center text-sm font-bold text-[color:var(--client-muted)]">
-          {translateText("正在读取收藏", language)}
-        </p>
-      ) : null}
-      {status === "error" ? (
-        <div className="py-5 text-center">
-          <p className="text-sm font-bold text-[color:var(--client-muted)]">
-            {translateText("收藏读取失败", language)}
-          </p>
-          <button
-            className="mt-3 rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black"
-            onClick={() => setRevision((value) => value + 1)}
-            type="button"
-          >
-            {translateText("重试", language)}
-          </button>
-        </div>
-      ) : null}
-      {removeError ? (
-        <p
-          className="mb-3 text-center text-sm font-bold text-[color:var(--client-danger,#f87171)]"
-          role="alert"
-        >
-          {translateText("移除收藏失败，请重试", language)}
-        </p>
-      ) : null}
-      {status === "ready"
-        ? (["shop", "technician", "service"] as const).map((kind) => {
-            const rows = visibleFavorites.filter(
-              (favorite) => favorite.card.kind === kind,
-            );
-            return (
-              <FavoritesSection
-                empty={rows.length === 0}
-                emptyLabel={emptyGroupCopy[kind]}
-                key={kind}
-                title={groupCopy[kind]}
-              >
-                <ul className="space-y-4">
-                  {rows.map((favorite) => {
-                    const key = `${favorite.targetType}:${favorite.publicId}`;
-                    return (
-                      <li key={key}>
-                        <EntityFavoriteCardView
-                          favorite={favorite}
-                          language={language}
-                        />
-                        <div className="mt-2 flex justify-end">
-                          <button
-                            className="rounded-full px-3 py-1.5 text-xs font-black text-[color:var(--client-muted)]"
-                            disabled={removing !== null}
-                            onClick={() => remove(favorite)}
-                            type="button"
-                          >
-                            {removing === key
-                              ? translateText("正在移除", language)
-                              : translateText("移除收藏", language)}
-                          </button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </FavoritesSection>
-            );
-          })
-        : null}
-    </>
-  );
-}
+const tabType = (tab: FavoriteTab) => (tab === "all" ? undefined : tab);
 
 export function UserFavoritesPage({
-  api,
-  entityApi,
+  api = favoritesApi,
   language: requestedLanguage,
-  onRetrySocial,
-  socialFavorites = [],
-  socialStatus = "ready",
+  now = () => new Date(),
 }: {
-  api: UserFavoritesApi;
-  entityApi?: UserEntityFavoritesApi;
+  api?: FavoritesTimelineApi;
   language?: Language;
-  onRetrySocial?: () => void;
-  socialFavorites?: UserSocialFavorite[];
-  socialStatus?: FavoriteLoadStatus;
+  now?: () => Date;
 }) {
   const { language: contextLanguage } = useOptionalI18n();
   const language = requestedLanguage ?? contextLanguage;
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<FavoriteTab>("all");
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
-  const [loadRevision, setLoadRevision] = useState(0);
-  const [result, setResult] = useState<ImChatRecordFavoritePage | null>(null);
+  const [pages, setPages] = useState<Record<FavoriteTab, number>>(() =>
+    Object.fromEntries(favoriteTabs.map((tab) => [tab, 1])) as Record<FavoriteTab, number>,
+  );
+  const [result, setResult] = useState<UnifiedFavoritePage | null>(null);
   const [status, setStatus] = useState<FavoriteLoadStatus>("loading");
-  const [removingKey, setRemovingKey] = useState<string | null>(null);
-  const [removeErrorKey, setRemoveErrorKey] = useState<string | null>(null);
-  const alive = useRef(true);
-  const loadGeneration = useRef(0);
-  const activePage = useRef(page);
-  const inflightRemovals = useRef(new Set<string>());
-  const normalizedQuery = normalizedSearch(query);
-  const visibleSocialFavorites = socialFavorites.filter((favorite) =>
-    matchesSearch(normalizedQuery, [
-      favorite.authorName,
-      favorite.text,
-      favorite.postId,
-    ]),
-  );
-  const visibleChatFavorites = (result?.list ?? []).filter((favorite) =>
-    matchesSearch(normalizedQuery, [
-      favorite.title,
-      favorite.preview,
-      favorite.senderNames.join(" "),
-    ]),
-  );
+  const [revision, setRevision] = useState(0);
+  const [busyKeys, setBusyKeys] = useState<Set<string>>(new Set());
+  const [notice, setNotice] = useState<string | null>(null);
+  const [multiSelectActive, setMultiSelectActive] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
+  const [multiPending, setMultiPending] = useState<"delete" | "forward" | null>(null);
+  const [entityShareItem, setEntityShareItem] = useState<UnifiedFavoriteItem | null>(null);
+  const requestGeneration = useRef(0);
+  const page = pages[activeTab];
 
   useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (query) setPage(1);
-  }, [query]);
-
-  useEffect(() => {
-    const generation = loadGeneration.current + 1;
-    loadGeneration.current = generation;
-    activePage.current = page;
-    let active = true;
-    setResult(null);
-    setRemoveErrorKey(null);
-    setRemovingKey(null);
+    const generation = ++requestGeneration.current;
     setStatus("loading");
-    void api
-      .listChatRecordFavorites({ page, pageSize: 20 })
+    setNotice(null);
+    void api.list({ type: tabType(activeTab), query: query.trim() || undefined, page, pageSize: 20 })
       .then((next) => {
-        if (
-          !active ||
-          !alive.current ||
-          loadGeneration.current !== generation ||
-          activePage.current !== page
-        )
-          return;
+        if (generation !== requestGeneration.current) return;
         setResult(next);
         setStatus("ready");
       })
       .catch(() => {
-        if (
-          active &&
-          alive.current &&
-          loadGeneration.current === generation &&
-          activePage.current === page
-        )
-          setStatus("error");
+        if (generation === requestGeneration.current) setStatus("error");
       });
-    return () => {
-      active = false;
-    };
-  }, [api, loadRevision, page]);
+  }, [activeTab, api, page, query, revision]);
 
-  const remove = (favorite: ImChatRecordFavorite) => {
-    const originPage = page;
-    const originTotal = result?.total ?? 0;
-    const originPageSize = result?.page_size ?? 20;
-    const operationKey = `${originPage}:${favorite.id}`;
-    if (inflightRemovals.current.size > 0) return;
-    inflightRemovals.current.add(operationKey);
-    setRemovingKey(operationKey);
-    setRemoveErrorKey(null);
-    void api
-      .removeChatRecordFavorite(favorite.id)
-      .then(() => {
-        if (!alive.current || activePage.current !== originPage) return;
-        const newTotal = Math.max(0, originTotal - 1);
-        const offset = (originPage - 1) * originPageSize;
-        if (originPage > 1 && offset >= newTotal) {
-          setPage(originPage - 1);
-          return;
-        }
-        setLoadRevision((value) => value + 1);
-      })
-      .catch(() => {
-        if (alive.current && activePage.current === originPage)
-          setRemoveErrorKey(operationKey);
-      })
-      .finally(() => {
-        inflightRemovals.current.delete(operationKey);
-        if (alive.current && activePage.current === originPage)
-          setRemovingKey((current) =>
-            current === operationKey ? null : current,
-          );
+  useEffect(() => {
+    setPages((current) => ({ ...current, [activeTab]: 1 }));
+  }, [activeTab, query]);
+
+  useEffect(() => {
+    setMultiSelectActive(false);
+    setSelectedKeys(new Set());
+  }, [activeTab]);
+
+  const rows = result?.list ?? [];
+  const groups = useMemo(() => groupFavoritesByTokyoDate(rows, now(), language), [language, now, rows]);
+  const selectedRows = rows.filter((item) => selectedKeys.has(item.key));
+
+  const mutate = async (item: UnifiedFavoriteItem, operation: () => Promise<unknown>) => {
+    if (busyKeys.has(item.key)) return;
+    setBusyKeys((current) => new Set(current).add(item.key));
+    setNotice(null);
+    try {
+      await operation();
+      setRevision((value) => value + 1);
+    } catch {
+      setNotice(translateText("收藏操作失败，请重试", language));
+    } finally {
+      setBusyKeys((current) => {
+        const next = new Set(current);
+        next.delete(item.key);
+        return next;
       });
+    }
   };
+
+  const forward = (item: UnifiedFavoriteItem) => {
+    if (!item.canForward) {
+      setNotice(translateText("此收藏暂不支持转发", language));
+      return;
+    }
+    const entityTarget = asEntityTarget(item);
+    if (entityTarget) {
+      setEntityShareItem(item);
+    } else if (item.type === "social_post") {
+      navigate(socialPaths.repost("user", item.itemKey));
+    } else {
+      navigate(`${item.detailPath}?action=forward`);
+    }
+  };
+
+  const confirmMultiDelete = async () => {
+    if (multiPending || selectedRows.length === 0) return;
+    setMultiPending("delete");
+    setDeleteConfirmationOpen(false);
+    const outcomes = await Promise.allSettled(
+      selectedRows.map((item) => api.removeSourceFavorite(item.type, item.itemKey)),
+    );
+    const failedKeys = new Set(
+      selectedRows.filter((_, index) => outcomes[index]?.status === "rejected").map((item) => item.key),
+    );
+    if (failedKeys.size > 0) {
+      setNotice(translateText("{count}项删除失败，请重试", language).replace("{count}", String(failedKeys.size)));
+      setSelectedKeys(failedKeys);
+    } else {
+      setMultiSelectActive(false);
+      setSelectedKeys(new Set());
+    }
+    setMultiPending(null);
+    setRevision((value) => value + 1);
+  };
+
+  const multiForward = () => {
+    if (selectedRows.length !== 1 || !selectedRows[0]?.canForward) {
+      setNotice(translateText("请选择一项可转发的收藏", language));
+      return;
+    }
+    setMultiSelectActive(false);
+    setSelectedKeys(new Set());
+    forward(selectedRows[0]);
+  };
+
+  const tabs = (
+    <div className="scrollbar-none flex gap-2 overflow-x-auto pb-1" role="tablist">
+      {favoriteTabs.map((tab) => (
+        <button
+          aria-selected={activeTab === tab}
+          className={activeTab === tab
+            ? "focus-ring shrink-0 rounded-full bg-[color:var(--client-primary)] px-4 py-2 text-xs font-black text-[color:var(--client-primary-contrast)]"
+            : "focus-ring shrink-0 rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black text-[color:var(--client-muted)]"}
+          key={tab}
+          onClick={() => setActiveTab(tab)}
+          role="tab"
+          type="button"
+        >
+          {translateText(tabLabels[tab], language)}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <>
@@ -515,204 +219,109 @@ export function UserFavoritesPage({
         )}
         backLabel={translateText("返回个人中心", language)}
         closeLabel={translateText("关闭收藏", language)}
-        footer={searchOpen ? (
-          <label className="flex h-10 items-center gap-2 rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-3">
-            <AppIcon className="h-4 w-4 text-[color:var(--client-muted)]" name="search" />
-            <input
-              aria-label={translateText("搜索收藏内容", language)}
-              autoFocus
-              className="min-w-0 flex-1 bg-transparent text-sm font-bold outline-none placeholder:text-[color:var(--client-muted)]"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={translateText("搜索收藏内容", language)}
-              type="search"
-              value={query}
-            />
-          </label>
-        ) : undefined}
+        footer={(
+          <div className="space-y-2">
+            {searchOpen ? (
+              <label className="flex h-10 items-center gap-2 rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-3">
+                <AppIcon className="h-4 w-4 text-[color:var(--client-muted)]" name="search" />
+                <input
+                  aria-label={translateText("搜索收藏内容", language)}
+                  autoFocus
+                  className="min-w-0 flex-1 bg-transparent text-sm font-bold outline-none placeholder:text-[color:var(--client-muted)]"
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={translateText("搜索收藏内容", language)}
+                  type="search"
+                  value={query}
+                />
+              </label>
+            ) : null}
+            {tabs}
+          </div>
+        )}
         info={translateText("店铺、技师、服务、动态与聊天记录", language)}
         onBack={() => navigate(-1)}
         onClose={() => navigate("/me", { replace: true })}
         title={translateText("我的收藏", language)}
       />
-      <main className="client-app-frame client-app-gutter pb-[max(24px,env(safe-area-inset-bottom))] pt-3 text-[color:var(--client-text)]">
-      {entityApi ? (
-        <EntityFavoritesSection
-          api={entityApi}
-          language={language}
-          query={query}
-        />
-      ) : null}
-      <FavoritesSection
-        empty={socialStatus === "ready" && visibleSocialFavorites.length === 0}
-        emptyLabel={translateText("暂无收藏的动态", language)}
-        title={translateText("动态", language)}
-      >
-        {socialStatus === "loading" ? (
-          <p className="py-5 text-center text-sm font-bold text-[color:var(--client-muted)]">
-            {translateText("正在读取收藏", language)}
-          </p>
-        ) : null}
-        {socialStatus === "error" ? (
-          <div className="py-5 text-center">
-            <p className="text-sm font-bold text-[color:var(--client-muted)]">
-              {translateText("收藏读取失败", language)}
-            </p>
-            <button
-              className="mt-3 rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black"
-              onClick={onRetrySocial}
-              type="button"
-            >
-              {translateText("重试", language)}
-            </button>
+
+      <main className="client-app-frame client-app-gutter overflow-x-hidden pb-[max(24px,env(safe-area-inset-bottom))] pt-3 text-[color:var(--client-text)]">
+        {notice ? <p className="mb-3 rounded-2xl bg-[color:color-mix(in_srgb,var(--client-danger,#f87171)_14%,transparent)] px-4 py-3 text-sm font-black" role="alert">{notice}</p> : null}
+        {status === "loading" ? <p className="py-10 text-center text-sm font-bold text-[color:var(--client-muted)]">{translateText("正在读取收藏", language)}</p> : null}
+        {status === "error" ? (
+          <div className="py-10 text-center">
+            <p className="text-sm font-bold text-[color:var(--client-muted)]">{translateText("收藏读取失败", language)}</p>
+            <button className="mt-3 rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black" onClick={() => setRevision((value) => value + 1)} type="button">{translateText("重试", language)}</button>
           </div>
         ) : null}
-        <ul className="space-y-3">
-          {visibleSocialFavorites.map((favorite) => (
-            <li key={favorite.postId}>
-              <SocialPostCompactCard
-                card={favorite}
-                language={language}
-                to={socialPaths.post("user", favorite.postId)}
-              />
-            </li>
-          ))}
-        </ul>
-      </FavoritesSection>
-      <FavoritesSection
-        empty={status === "ready" && visibleChatFavorites.length === 0}
-        emptyLabel={translateText(
-          normalizedQuery
-            ? "当前页没有匹配的聊天记录"
-            : "暂无收藏的聊天记录",
-          language,
-        )}
-        title={translateText("保存的聊天记录", language)}
-      >
-      {status === "loading" ? (
-        <p className="py-10 text-center text-sm font-bold text-[color:var(--client-muted)]">
-          {translateText("正在读取收藏", language)}
-        </p>
-      ) : null}
-      {status === "error" ? (
-        <div className="py-10 text-center">
-          <p className="text-sm font-bold text-[color:var(--client-muted)]">
-            {translateText("收藏读取失败", language)}
-          </p>
-          <button
-            className="mt-3 rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black text-[color:var(--client-primary)]"
-            onClick={() => setLoadRevision((value) => value + 1)}
-            type="button"
-          >
-            {translateText("重试", language)}
-          </button>
-        </div>
-      ) : null}
-      <ul className="space-y-3">
-        {visibleChatFavorites.map((favorite) => (
-          <li
-            className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_70%,transparent)] p-1.5"
-            key={favorite.id}
-          >
-            <ImChatRecordCard
-              language={language}
-              openerId={`favorite-${favorite.id}`}
-              record={favorite}
-            />
-            <div className="flex items-center justify-end gap-3 px-2 pb-1 pt-2">
-              {removeErrorKey === `${page}:${favorite.id}` ? (
-                <span
-                  className="text-[11px] font-bold text-[color:var(--client-danger,#d84b4b)]"
-                  role="alert"
-                >
-                  {translateText("移除失败", language)}
-                </span>
-              ) : null}
-              <button
-                className="rounded-full px-3 py-1.5 text-xs font-black text-[color:var(--client-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--client-primary)]"
-                disabled={removingKey !== null}
-                onClick={() => remove(favorite)}
-                type="button"
-              >
-                {removingKey === `${page}:${favorite.id}`
-                  ? translateText("正在移除", language)
-                  : translateText("移除收藏", language)}
-              </button>
+        {status === "ready" && rows.length === 0 ? <p className="py-14 text-center text-sm font-bold text-[color:var(--client-muted)]">{translateText(emptyLabels[activeTab], language)}</p> : null}
+        {status === "ready" ? groups.map((group) => (
+          <section aria-labelledby={`favorite-date-${group.key}`} className="mb-6" key={group.key}>
+            <h2 className="mb-2 px-1 text-[17px] font-black" id={`favorite-date-${group.key}`}>{group.label}</h2>
+            <div className="overflow-hidden rounded-[22px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)]">
+              {group.items.map((item) => (
+                <FavoriteTimelineRow
+                  busy={busyKeys.has(item.key)}
+                  item={item}
+                  key={item.key}
+                  language={language}
+                  multiSelectActive={multiSelectActive}
+                  onDelete={() => void mutate(item, () => api.removeSourceFavorite(item.type, item.itemKey))}
+                  onForward={() => forward(item)}
+                  onMultiSelect={() => { setMultiSelectActive(true); setSelectedKeys(new Set([item.key])); }}
+                  onPin={() => void mutate(item, () => api.setPinned(item.type, item.itemKey, !item.pinnedAt))}
+                  onReact={(reaction) => void mutate(item, () => api.setReaction(item.type, item.itemKey, reaction))}
+                  onToggleSelected={() => setSelectedKeys((current) => {
+                    const next = new Set(current);
+                    next.has(item.key) ? next.delete(item.key) : next.add(item.key);
+                    return next;
+                  })}
+                  selected={selectedKeys.has(item.key)}
+                />
+              ))}
             </div>
-          </li>
-        ))}
-      </ul>
-
-      {result && result.total > result.page_size ? (
-        <nav
-          aria-label={translateText("收藏分页", language)}
-          className="mt-5 flex items-center justify-center gap-3"
-        >
-          <button
-            className="rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black disabled:opacity-40"
-            disabled={page <= 1}
-            onClick={() => setPage((value) => value - 1)}
-            type="button"
-          >
-            {translateText("上一页", language)}
-          </button>
-          <span className="text-xs font-bold text-[color:var(--client-muted)]">
-            {page}
-          </span>
-          <button
-            className="rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black disabled:opacity-40"
-            disabled={page * result.page_size >= result.total}
-            onClick={() => setPage((value) => value + 1)}
-            type="button"
-          >
-            {translateText("下一页", language)}
-          </button>
-        </nav>
-      ) : null}
-      </FavoritesSection>
+          </section>
+        )) : null}
+        {status === "ready" && result && result.total > result.page_size ? (
+          <nav aria-label={translateText("收藏分页", language)} className="flex items-center justify-center gap-3 py-3">
+            <button className="rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black disabled:opacity-40" disabled={page <= 1} onClick={() => setPages((current) => ({ ...current, [activeTab]: page - 1 }))} type="button">{translateText("上一页", language)}</button>
+            <span className="text-xs font-bold text-[color:var(--client-muted)]">{page}</span>
+            <button className="rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black disabled:opacity-40" disabled={page * result.page_size >= result.total} onClick={() => setPages((current) => ({ ...current, [activeTab]: page + 1 }))} type="button">{translateText("下一页", language)}</button>
+          </nav>
+        ) : null}
       </main>
+
+      {multiSelectActive ? (
+        <ImMessageMultiSelectOverlay
+          actionItems={[
+            { icon: "forward", key: "forward", label: "转发", onClick: multiForward },
+            { icon: "delete", key: "delete", label: "删除", onClick: () => setDeleteConfirmationOpen(true) },
+          ]}
+          deleteConfirmationOpen={deleteConfirmationOpen}
+          deleteConfirmationText={translateText("确定删除所选收藏吗？", language)}
+          language={language}
+          notice={notice}
+          onCancel={() => { setMultiSelectActive(false); setSelectedKeys(new Set()); }}
+          onConfirmDelete={() => void confirmMultiDelete()}
+          onCopy={() => undefined}
+          onDelete={() => setDeleteConfirmationOpen(true)}
+          onDismissDeleteConfirmation={() => setDeleteConfirmationOpen(false)}
+          onFavorite={() => undefined}
+          onForward={multiForward}
+          onSelectToPoint={() => undefined}
+          pendingAction={multiPending}
+          recordActionsSupported={selectedRows.every((item) => item.canForward)}
+          selectedCount={selectedKeys.size}
+          selectedCountText={translateText("已选择 {count} 项", language).replace("{count}", String(selectedKeys.size))}
+          showRangeControls={false}
+        />
+      ) : null}
+      {entityShareItem && asEntityTarget(entityShareItem) ? (
+        <EntityShareDestinationSheet onClose={() => setEntityShareItem(null)} target={asEntityTarget(entityShareItem)!} targetLabel={entityShareItem.title} />
+      ) : null}
     </>
   );
 }
 
 export function UserFavoritesRoutePage() {
-  const api = useImStoreApi("user");
-  const {
-    feedStatus,
-    getActorForScope,
-    profiles,
-    refreshFeeds,
-    state,
-  } = useSocial();
-  const actorKey = getActorForScope("user");
-  const socialFavorites = useMemo<UserSocialFavorite[]>(() => {
-    const interactions = state.interactions[actorKey] ?? {};
-    return state.posts
-      .filter((post) => interactions[post.id]?.bookmarked)
-      .map((post) => {
-        const author = profiles[postAuthorKey(post)];
-        const media = post.media[0];
-        return {
-          postId: post.id,
-          authorName: author?.displayName ?? author?.handle ?? "NeeDo",
-          authorAvatar: author?.avatar ?? "",
-          text: post.text,
-          ...(media?.url ? { mediaUrl: media.url } : {}),
-          ...(media?.type ? { mediaType: media.type } : {}),
-          ...(media?.thumbnailUrl
-            ? { mediaThumbnailUrl: media.thumbnailUrl }
-            : {}),
-        };
-      });
-  }, [actorKey, profiles, state.interactions, state.posts]);
-  return (
-    <MobileShell showBottomNav={false} showTopEdgeMask={false}>
-      <UserFavoritesPage
-        api={api}
-        entityApi={entityEngagementApi}
-        onRetrySocial={refreshFeeds}
-        socialFavorites={socialFavorites}
-        socialStatus={feedStatus}
-      />
-    </MobileShell>
-  );
+  return <MobileShell showBottomNav={false} showTopEdgeMask={false}><UserFavoritesPage /></MobileShell>;
 }
