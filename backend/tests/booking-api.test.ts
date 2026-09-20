@@ -899,11 +899,37 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(404);
 
-    await request(fixture.app)
+    const cancelResponse = await request(fixture.app)
       .post("/api/v1/orders/1/cancel")
       .set("Authorization", `Bearer ${token}`)
       .send({ reason: "too late" })
       .expect(200);
+    expect(cancelResponse.body.data).toMatchObject({
+      id: 1,
+      status: "cancelled",
+      cancelReason: "too late",
+      statusHistory: expect.arrayContaining([
+        expect.objectContaining({
+          fromStatus: "confirmed",
+          toStatus: "cancelled",
+          actorUserId: 1,
+          reason: "too late"
+        })
+      ])
+    });
+
+    await request(fixture.app)
+      .post("/api/v1/orders/1/cancel")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "duplicate customer click" })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: ERROR_CODES.ORDER_INVALID_TRANSITION,
+          message: "error.order.invalid_transition",
+          data: null
+        });
+      });
 
     const ordersResponse = await request(fixture.app)
       .get("/api/v1/orders?page=1&pageSize=20")
