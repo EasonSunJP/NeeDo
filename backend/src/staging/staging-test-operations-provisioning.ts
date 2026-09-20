@@ -134,46 +134,57 @@ export class StagingTestOperationsProvisioner {
         throw new Error(`STAGING_TEST_SCHEDULE_MODE_CONFLICT:${conflicting}`);
       }
 
-      let availabilityCount = 0;
+      const desiredAvailabilities: Prisma.AvailabilityCreateManyInput[] = [];
       for (const technicianProfileId of technicianProfileIds) {
         for (let cursor = new Date(periodStart); cursor <= inclusiveEnd; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
           const startsAt = new Date(cursor);
           const endsAt = new Date(startsAt.getTime() + 24 * 60 * 60 * 1000);
-          const existing = await transaction.availability.findFirst({
-            where: {
-              shopId: shop.id,
-              technicianProfileId,
-              sourceType: AvailabilitySourceType.TECHNICIAN,
-              visibility: AvailabilityVisibility.AFFILIATED_SHOPS,
-              startsAt,
-              endsAt,
-              isScheduleControlWindow: true,
-              deletedAt: null
-            },
-            select: { id: true, isActive: true }
+          desiredAvailabilities.push({
+            shopId: shop.id,
+            technicianProfileId,
+            sourceType: AvailabilitySourceType.TECHNICIAN,
+            visibility: AvailabilityVisibility.AFFILIATED_SHOPS,
+            startsAt,
+            endsAt,
+            capacity: 1,
+            isActive: true,
+            isScheduleControlWindow: true
           });
-          if (existing) {
-            if (!existing.isActive) {
-              await transaction.availability.update({ where: { id: existing.id }, data: { isActive: true } });
-            }
-          } else {
-            await transaction.availability.create({
-              data: {
-                shopId: shop.id,
-                technicianProfileId,
-                sourceType: AvailabilitySourceType.TECHNICIAN,
-                visibility: AvailabilityVisibility.AFFILIATED_SHOPS,
-                startsAt,
-                endsAt,
-                capacity: 1,
-                isActive: true,
-                isScheduleControlWindow: true
-              }
-            });
-          }
-          availabilityCount += 1;
         }
       }
+
+      const existingAvailabilities = await transaction.availability.findMany({
+        where: {
+          shopId: shop.id,
+          technicianProfileId: { in: technicianProfileIds },
+          sourceType: AvailabilitySourceType.TECHNICIAN,
+          visibility: AvailabilityVisibility.AFFILIATED_SHOPS,
+          startsAt: { gte: periodStart, lte: inclusiveEnd },
+          endsAt: { gt: periodStart, lte: periodEnd },
+          isScheduleControlWindow: true,
+          deletedAt: null
+        },
+        select: { id: true, technicianProfileId: true, startsAt: true, endsAt: true, isActive: true }
+      });
+      const availabilityKey = (item: {
+        technicianProfileId?: number | null;
+        startsAt: Date | string;
+        endsAt: Date | string;
+      }): string =>
+        `${item.technicianProfileId}:${new Date(item.startsAt).toISOString()}:${new Date(item.endsAt).toISOString()}`;
+      const existingKeys = new Set(existingAvailabilities.map(availabilityKey));
+      const inactiveIds = existingAvailabilities.filter((item) => !item.isActive).map((item) => item.id);
+      if (inactiveIds.length > 0) {
+        await transaction.availability.updateMany({
+          where: { id: { in: inactiveIds } },
+          data: { isActive: true }
+        });
+      }
+      const missingAvailabilities = desiredAvailabilities.filter((item) => !existingKeys.has(availabilityKey(item)));
+      if (missingAvailabilities.length > 0) {
+        await transaction.availability.createMany({ data: missingAvailabilities });
+      }
+      const availabilityCount = desiredAvailabilities.length;
 
       let automationSettingCount = 0;
       for (const technicianProfileId of technicianProfileIds) {

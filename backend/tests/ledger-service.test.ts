@@ -17,6 +17,9 @@ import type {
 import type { BookingPlatformFeePolicySnapshot } from "../src/services/platform-fee-policy.service";
 
 const now = new Date("2026-05-25T00:00:00.000Z");
+type CreateWalletHoldInput = Parameters<
+  NonNullable<LedgerRepositoryPort["createWalletHold"]>
+>[0];
 const bookingInput = (input: {
   bookingOrderId: number;
   shopId: number;
@@ -331,23 +334,13 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
     );
   }
 
-  public async createWalletHold(input: {
-    ownerType: WalletOwnerType;
-    ownerId: number;
-    bookingOrderId: number;
-    feeType: WalletHoldPayload["feeType"];
-    holdAmountNdp: number;
-    currency: LedgerCurrency;
-    status: WalletHoldPayload["status"];
-    idempotencyKey: string;
-    calculationLogId: number | null;
-    metadata?: unknown;
-  }): Promise<WalletHoldPayload> {
+  public async createWalletHold(input: CreateWalletHoldInput): Promise<WalletHoldPayload> {
     const hold: WalletHoldPayload = {
       id: this.holdId++,
       ownerType: input.ownerType,
       ownerId: input.ownerId,
-      bookingOrderId: input.bookingOrderId,
+      bookingOrderId: input.bookingOrderId ?? null,
+      exchangePostId: input.exchangePostId ?? null,
       feeType: input.feeType,
       holdAmountNdp: input.holdAmountNdp,
       capturedAmountNdp: 0,
