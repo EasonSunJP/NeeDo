@@ -10,6 +10,18 @@ describe("social account profile paths", () => {
     expect(socialPaths.accountProfile("user", 237, 1237)).toBe("/moments/users/237?identityId=1237");
   });
 
+  it("routes hydrated formal authors through the reload-safe account activity page", () => {
+    expect(socialPaths.profile("user", {
+      entityType: "user",
+      id: "237",
+      identityId: 1237
+    })).toBe("/moments/users/237?identityId=1237");
+    expect(socialPaths.profile("user", {
+      entityType: "user",
+      id: "demo-profile"
+    })).toBe("/profiles/user/demo-profile");
+  });
+
   it("limits compose URLs to author, edit, and quote workflows", () => {
     type ComposeParams = NonNullable<Parameters<typeof socialPaths.compose>[1]>;
 

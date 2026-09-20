@@ -77,8 +77,14 @@ export const socialPaths = {
     const path = `${scopePrefix(scope)}/moments/users/${encodeURIComponent(String(userId))}`;
     return identityId ? `${path}?identityId=${encodeURIComponent(String(identityId))}` : path;
   },
-  profile(scope: SocialPortalScope, ref: SocialProfileRef | string) {
+  profile(scope: SocialPortalScope, ref: (SocialProfileRef & { identityId?: number }) | string) {
     const nextRef = typeof ref === "string" ? profileKeyToRef(ref) : ref;
+    const identityId = typeof ref === "string" ? undefined : ref.identityId;
+
+    if (Number.isSafeInteger(identityId) && (identityId ?? 0) > 0) {
+      return `${scopePrefix(scope)}/moments/users/${encodeURIComponent(nextRef.id)}?identityId=${encodeURIComponent(String(identityId))}`;
+    }
+
     return `${scopePrefix(scope)}/profiles/${nextRef.entityType}/${nextRef.id}`;
   },
   followers(scope: SocialPortalScope, ref: SocialProfileRef | string) {

@@ -20,6 +20,7 @@ import { useHomeLocationPreference, type HomeLocationPreferenceState } from "../
 import { useSocial } from "../context";
 import { getSocialScopeFromPathname, socialPaths } from "../paths";
 import { type SocialTimelineLocationContext } from "../timeline";
+import { buildTimelineUpdateNotifications } from "../timeline-notifications";
 import {
   navItemsForSocialScope,
   NotificationRow,
@@ -259,7 +260,6 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
     getPostById,
     getTimelineFeed,
     getTrendingTags,
-    getNotifications,
     getFollowing,
     refreshFeeds
   } = useSocial();
@@ -310,7 +310,15 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
   const visibleCount = currentPanel.visibleCountByTab.posts;
   const visiblePosts = renderedPosts.slice(0, visibleCount);
   const trendingTags = getTrendingTags().slice(0, 6);
-  const notifications = getNotifications(actorKey).slice(0, 3);
+  const friendUpdatePosts = useMemo(() => getTimelineFeed("friends", actorKey), [actorKey, getTimelineFeed]);
+  const nearbyUpdatePosts = useMemo(
+    () => getTimelineFeed("nearby", actorKey, homeNearbyPanel.locationContext),
+    [actorKey, getTimelineFeed, homeNearbyPanel.locationContext]
+  );
+  const notifications = useMemo(
+    () => buildTimelineUpdateNotifications({ actorKey, friendPosts: friendUpdatePosts, nearbyPosts: nearbyUpdatePosts, profiles }).slice(0, 3),
+    [actorKey, friendUpdatePosts, nearbyUpdatePosts, profiles]
+  );
   const followingKeys = useMemo(() => new Set(getFollowing(actorKey).map((profile) => profileKey(profile))), [actorKey, getFollowing]);
   const suggestionProfiles = useMemo(
     () =>
@@ -518,8 +526,8 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
                 locationCaption="当前服务区域"
                 locationLabel={selectedHomeLocation?.label ?? "当前服务区域"}
                 locationTo={scope === "user" ? "/me/settings/service-range" : portalConfig.settingsPath}
-                settingsLabel="系统设置"
-                settingsTo={portalConfig.settingsPath}
+                secondaryActionLabel="动态通知"
+                secondaryActionTo={socialPaths.notifications(scope)}
               />
               <div className="mt-3">
                 <SocialTimelineHeaderSearch
@@ -673,7 +681,7 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
                   全部通知
                 </Link>
               }
-              title="动态通知"
+              title="附近与好友新动态"
             >
               <div className="grid gap-3">
                 {notifications.length > 0 ? (
@@ -681,15 +689,15 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
                     <NotificationRow
                       actor={profiles[item.actorKey]}
                       at={item.createdAt}
-                      avatarTo={socialPaths.profile(scope, item.actorKey)}
+                      avatarTo={socialPaths.profile(scope, profiles[item.actorKey])}
                       content={item.content}
                       key={item.id}
-                      to={item.postId ? socialPaths.post(scope, item.postId) : socialPaths.profile(scope, item.actorKey)}
-                      unread={!item.read}
+                      to={socialPaths.post(scope, item.postId)}
+                      unread
                     />
                   ))
                 ) : (
-                  <p className="text-sm leading-6 text-[color:var(--client-muted)]">有人回复、引用、点赞或关注你时，会在这里串起来。</p>
+                  <p className="text-sm leading-6 text-[color:var(--client-muted)]">附近或好友发布新动态后，会在这里提示。</p>
                 )}
               </div>
             </SocialSidebarSection>
