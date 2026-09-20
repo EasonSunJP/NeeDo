@@ -13,6 +13,7 @@ const decoderOptions = {
   limitInputPixels: 25_000_000,
   sequentialRead: true
 };
+const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 const defaultClassification = Object.freeze({
   criticalPatterns: [
@@ -147,6 +148,48 @@ function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+export function inspectPngAnimation(bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length < 33 || !bytes.subarray(0, 8).equals(pngSignature)) {
+    return null;
+  }
+
+  let width = null;
+  let height = null;
+  let frameCount = null;
+  let durationSeconds = 0;
+  for (let offset = 8; offset + 12 <= bytes.length;) {
+    const chunkLength = bytes.readUInt32BE(offset);
+    const chunkEnd = offset + 12 + chunkLength;
+    if (chunkEnd > bytes.length) return null;
+
+    const chunkType = bytes.toString("ascii", offset + 4, offset + 8);
+    if (chunkType === "IHDR" && chunkLength === 13) {
+      width = bytes.readUInt32BE(offset + 8);
+      height = bytes.readUInt32BE(offset + 12);
+    } else if (chunkType === "acTL" && chunkLength === 8) {
+      frameCount = bytes.readUInt32BE(offset + 8);
+    } else if (chunkType === "fcTL" && chunkLength === 26) {
+      const delayNumerator = bytes.readUInt16BE(offset + 28);
+      const delayDenominator = bytes.readUInt16BE(offset + 30) || 100;
+      durationSeconds += delayNumerator / delayDenominator;
+    }
+
+    offset = chunkEnd;
+  }
+
+  return frameCount && frameCount > 1 && width && height
+    ? {
+        durationMs: Math.round(durationSeconds * 1_000),
+        frameCount,
+        frameRate: durationSeconds > 0
+          ? Number((frameCount / durationSeconds).toFixed(3))
+          : null,
+        height,
+        width
+      }
+    : null;
+}
+
 function retainedResult({ bytes, relativePath, reason, metadata = {} }) {
   const digest = sha256(bytes);
   return {
@@ -193,11 +236,12 @@ export async function optimizeProductionImage({ bytes, relativePath, policy: sup
   }
   const policy = suppliedPolicy ?? await loadProductionImagePolicy();
   const metadata = await sharp(bytes, decoderOptions).metadata();
+  const pngAnimation = extension === ".png" ? inspectPngAnimation(bytes) : null;
   const visualMetadata = {
     format: metadata.format,
     hasAlpha: metadata.hasAlpha,
     height: metadata.autoOrient?.height ?? metadata.height,
-    pages: metadata.pages ?? 1,
+    pages: pngAnimation?.frameCount ?? metadata.pages ?? 1,
     width: metadata.autoOrient?.width ?? metadata.width
   };
   if (!visualMetadata.width || !visualMetadata.height) {

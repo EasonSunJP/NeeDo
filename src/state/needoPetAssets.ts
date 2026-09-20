@@ -39,7 +39,7 @@ export type NeedoPetAssetReadiness = {
 };
 
 const assetStorageKey = "needo.digital-pet.assets.v1";
-export const xiaobaiPetAssetVersion = "20260521h";
+export const xiaobaiPetAssetVersion = "20260921a";
 
 export function getVersionedNeedoPetAsset(src: string) {
   return `${src}?v=${xiaobaiPetAssetVersion}`;
@@ -66,26 +66,26 @@ export const petSpriteSrc: Record<XiaobaiPetSpriteKey, string> = {
 };
 
 export const xiaobaiIdleClips = [
-  { durationMs: 6_600, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-question-cheer.png") },
-  { durationMs: 3_600, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-sparkle.png") },
-  { durationMs: 6_600, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-heart-thanks.png") },
-  { durationMs: 4_950, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-angry.png") },
-  { durationMs: 5_850, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-sad.png") },
-  { durationMs: 5_200, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-sleepy.png") },
-  { durationMs: 6_350, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-excited.png") },
+  { durationMs: 6_667, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-question-cheer.png") },
+  { durationMs: 3_667, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-sparkle.png") },
+  { durationMs: 6_667, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-heart-thanks.png") },
+  { durationMs: 5_000, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-angry.png") },
+  { durationMs: 5_833, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-sad.png") },
+  { durationMs: 5_167, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-sleepy.png") },
+  { durationMs: 6_333, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-excited.png") },
   { durationMs: 5_000, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-thinking.png") }
 ] as const satisfies readonly NeedoPetMotionClip[];
 
 export const xiaobaiRunningClips = [
-  { durationMs: 6_400, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-run-dash.png") },
-  { durationMs: 8_400, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-run-sprint.png") }
+  { durationMs: 6_667, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-run-dash.png") },
+  { durationMs: 8_500, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-run-sprint.png") }
 ] as const satisfies readonly NeedoPetMotionClip[];
 
 export const xiaobaiOneShotClips: Record<XiaobaiPetOneShotSpriteKey, NeedoPetMotionClip> = {
-  death: { durationMs: 7_450, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-death.png") },
+  death: { durationMs: 7_500, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-death.png") },
   enter: { durationMs: 3_000, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-enter.png") },
-  exit: { durationMs: 4_800, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-exit.png") },
-  revive: { durationMs: 6_550, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-revive.png") }
+  exit: { durationMs: 4_833, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-exit.png") },
+  revive: { durationMs: 6_500, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-revive.png") }
 };
 
 export const xiaobaiPetAssetManifest = Array.from(
@@ -97,12 +97,18 @@ export const xiaobaiPetAssetManifest = Array.from(
   ])
 );
 
+export const xiaobaiPetCoreAssetManifest = [
+  petSpriteSrc.idle,
+  petSpriteSrc.running,
+  xiaobaiOneShotClips.enter.src
+] as const;
+
 const listeners = new Set<() => void>();
 const defaultReadiness: NeedoPetAssetReadiness = {
   loaded: 0,
   ready: false,
   status: "idle",
-  total: xiaobaiPetAssetManifest.length,
+  total: xiaobaiPetCoreAssetManifest.length,
   updatedAt: 0,
   version: xiaobaiPetAssetVersion
 };
@@ -119,10 +125,10 @@ function readStoredReadiness(): NeedoPetAssetReadiness {
 
     if (stored?.status === "ready" && stored.version === xiaobaiPetAssetVersion) {
       return {
-        loaded: xiaobaiPetAssetManifest.length,
+        loaded: xiaobaiPetCoreAssetManifest.length,
         ready: true,
         status: "ready",
-        total: xiaobaiPetAssetManifest.length,
+        total: xiaobaiPetCoreAssetManifest.length,
         updatedAt: Number(stored.updatedAt) || Date.now(),
         version: xiaobaiPetAssetVersion
       };
@@ -226,7 +232,7 @@ export function preloadNeedoPetAssets(options: { force?: boolean } = {}) {
       updatedAt: startedAt
     });
 
-    for (const [index, src] of xiaobaiPetAssetManifest.entries()) {
+    for (const [index, src] of xiaobaiPetCoreAssetManifest.entries()) {
       try {
         await loadImageAsset(src);
       } catch {
@@ -235,7 +241,7 @@ export function preloadNeedoPetAssets(options: { force?: boolean } = {}) {
           loaded: index,
           ready: false,
           status: "error" as const,
-          total: xiaobaiPetAssetManifest.length,
+          total: xiaobaiPetCoreAssetManifest.length,
           updatedAt: Date.now(),
           version: xiaobaiPetAssetVersion
         };
@@ -249,17 +255,17 @@ export function preloadNeedoPetAssets(options: { force?: boolean } = {}) {
         loaded: index + 1,
         ready: false,
         status: "loading",
-        total: xiaobaiPetAssetManifest.length,
+        total: xiaobaiPetCoreAssetManifest.length,
         updatedAt: Date.now(),
         version: xiaobaiPetAssetVersion
       });
     }
 
     const readyReadiness = {
-      loaded: xiaobaiPetAssetManifest.length,
+      loaded: xiaobaiPetCoreAssetManifest.length,
       ready: true,
       status: "ready" as const,
-      total: xiaobaiPetAssetManifest.length,
+      total: xiaobaiPetCoreAssetManifest.length,
       updatedAt: Date.now(),
       version: xiaobaiPetAssetVersion
     };

@@ -573,21 +573,16 @@ function getNextMotionClipIndex(currentIndex: number, clipCount: number) {
 
 function NeedoPetMotionSequence({
   clips,
+  fallbackSrc,
   sprite
 }: {
   clips: readonly PetMotionClip[];
+  fallbackSrc: string;
   sprite: "idle" | "running";
 }) {
   const [clipIndex, setClipIndex] = useState(() => Math.floor(Math.random() * clips.length));
-  const [fallbackSrc, setFallbackSrc] = useState<string | null>(null);
+  const [previousSrc, setPreviousSrc] = useState<string | null>(null);
   const clip = clips[clipIndex] ?? clips[0];
-
-  useEffect(() => {
-    clips.forEach((item) => {
-      const image = new Image();
-      image.src = item.src;
-    });
-  }, [clips]);
 
   useEffect(() => {
     let cancelled = false;
@@ -599,7 +594,7 @@ function NeedoPetMotionSequence({
         if (cancelled) {
           return;
         }
-        setFallbackSrc(clip.src);
+        setPreviousSrc(clip.src);
         setClipIndex(nextIndex);
       };
 
@@ -619,13 +614,13 @@ function NeedoPetMotionSequence({
 
   return (
     <span className={cn("needo-pet-sprite-shell is-motion", sprite === "idle" ? "is-idle-motion" : "is-running-motion")} data-sprite={sprite}>
-      {fallbackSrc ? <img alt="" className="needo-pet-motion-image is-fallback" draggable={false} src={fallbackSrc} /> : null}
+      <img alt="" className="needo-pet-motion-image is-fallback" draggable={false} src={previousSrc ?? fallbackSrc} />
       <img
         key={clip.src}
         alt=""
         className="needo-pet-motion-image is-active"
         draggable={false}
-        onLoad={() => setFallbackSrc(null)}
+        onLoad={() => setPreviousSrc(null)}
         src={clip.src}
       />
     </span>
@@ -637,6 +632,12 @@ function NeedoPetOneShotMotion({ runId, sprite }: { runId: number; sprite: PetOn
 
   return (
     <span className={cn("needo-pet-sprite-shell is-motion is-one-shot-motion", `is-${sprite}-motion`)} data-sprite={sprite}>
+      <img
+        alt=""
+        className="needo-pet-motion-image is-fallback"
+        draggable={false}
+        src={sprite === "death" ? petSpriteSrc.grave : petSpriteSrc.idle}
+      />
       <img
         key={`${clip.src}-${runId}`}
         alt=""
@@ -650,11 +651,11 @@ function NeedoPetOneShotMotion({ runId, sprite }: { runId: number; sprite: PetOn
 
 function NeedoPetSprite({ runId, sprite }: { runId: number; sprite: PetSpriteKey }) {
   if (sprite === "idle") {
-    return <NeedoPetMotionSequence key="idle" clips={xiaobaiIdleClips} sprite="idle" />;
+    return <NeedoPetMotionSequence key="idle" clips={xiaobaiIdleClips} fallbackSrc={petSpriteSrc.idle} sprite="idle" />;
   }
 
   if (sprite === "running") {
-    return <NeedoPetMotionSequence key="running" clips={xiaobaiRunningClips} sprite="running" />;
+    return <NeedoPetMotionSequence key="running" clips={xiaobaiRunningClips} fallbackSrc={petSpriteSrc.running} sprite="running" />;
   }
 
   if (isOneShotSprite(sprite)) {
@@ -675,7 +676,7 @@ export function NeedoPetRunningSprite() {
     return null;
   }
 
-  return <NeedoPetMotionSequence key="running" clips={xiaobaiRunningClips} sprite="running" />;
+  return <NeedoPetMotionSequence key="running" clips={xiaobaiRunningClips} fallbackSrc={petSpriteSrc.running} sprite="running" />;
 }
 
 function findClimbSurface(position: MotionPosition) {

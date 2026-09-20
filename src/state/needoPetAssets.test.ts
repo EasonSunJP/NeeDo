@@ -66,7 +66,7 @@ afterEach(() => {
 });
 
 describe("needoPetAssets", () => {
-  it("preloads every Xiaobai asset before reporting ready", async () => {
+  it("preloads only the Xiaobai core pack before reporting ready", async () => {
     const localStorage = createStorage();
     const requestedSources: string[] = [];
     stubWindow(localStorage);
@@ -75,6 +75,7 @@ describe("needoPetAssets", () => {
     const {
       getNeedoPetAssetReadiness,
       preloadNeedoPetAssets,
+      xiaobaiPetCoreAssetManifest,
       xiaobaiPetAssetManifest,
       xiaobaiPetAssetVersion
     } = await import("./needoPetAssets");
@@ -84,8 +85,9 @@ describe("needoPetAssets", () => {
     const result = await preloadNeedoPetAssets({ force: true });
 
     expect(result.status).toBe("ready");
-    expect(result.loaded).toBe(xiaobaiPetAssetManifest.length);
-    expect(requestedSources).toEqual(xiaobaiPetAssetManifest);
+    expect(result.loaded).toBe(xiaobaiPetCoreAssetManifest.length);
+    expect(requestedSources).toEqual(xiaobaiPetCoreAssetManifest);
+    expect(xiaobaiPetAssetManifest.length).toBeGreaterThan(xiaobaiPetCoreAssetManifest.length);
 
     const stored = JSON.parse(String(localStorage.getItem("needo.digital-pet.assets.v1"))) as { status: string; version: string };
     expect(stored).toMatchObject({
@@ -99,7 +101,7 @@ describe("needoPetAssets", () => {
       "needo.digital-pet.assets.v1": JSON.stringify({ status: "ready", version: "old" })
     });
     stubWindow(localStorage);
-    stubImageLoader({ failSrc: (src) => src.includes("xiao-bai-run-sprint") });
+    stubImageLoader({ failSrc: (src) => src.includes("xiao-bai-enter") });
 
     const { preloadNeedoPetAssets } = await import("./needoPetAssets");
 
@@ -107,12 +109,12 @@ describe("needoPetAssets", () => {
 
     expect(result.status).toBe("error");
     expect(result.ready).toBe(false);
-    expect(result.failedSrc).toContain("xiao-bai-run-sprint");
+    expect(result.failedSrc).toContain("xiao-bai-enter");
     expect(localStorage.removeItem).toHaveBeenCalledWith("needo.digital-pet.assets.v1");
   });
 
   it("restores readiness from the matching local asset version", async () => {
-    const version = "20260521h";
+    const version = "20260921a";
     const localStorage = createStorage({
       "needo.digital-pet.assets.v1": JSON.stringify({ status: "ready", version })
     });
@@ -124,6 +126,24 @@ describe("needoPetAssets", () => {
       ready: true,
       status: "ready",
       version
+    });
+  });
+
+  it("keeps Xiaobai clip timing aligned with the 6 fps assets", async () => {
+    stubWindow(createStorage());
+
+    const { xiaobaiIdleClips, xiaobaiOneShotClips, xiaobaiRunningClips, xiaobaiPetAssetVersion } = await import(
+      "./needoPetAssets"
+    );
+
+    expect(xiaobaiPetAssetVersion).toBe("20260921a");
+    expect(xiaobaiIdleClips.map((clip) => clip.durationMs)).toEqual([6_667, 3_667, 6_667, 5_000, 5_833, 5_167, 6_333, 5_000]);
+    expect(xiaobaiRunningClips.map((clip) => clip.durationMs)).toEqual([6_667, 8_500]);
+    expect(xiaobaiOneShotClips).toMatchObject({
+      death: { durationMs: 7_500 },
+      enter: { durationMs: 3_000 },
+      exit: { durationMs: 4_833 },
+      revive: { durationMs: 6_500 }
     });
   });
 });

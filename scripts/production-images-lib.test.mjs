@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import sharp from "sharp";
 import {
   classifyProductionImage,
   computeImageSsim,
+  inspectPngAnimation,
   optimizeProductionImage
 } from "./production-images-lib.mjs";
 
@@ -121,4 +123,53 @@ test("retains a multi-frame image when animation cannot be safely rewritten", as
   assert.equal(result.status, "kept-original");
   assert.equal(result.exceptionReason, "unsupported-extension");
   assert.deepEqual(result.bytes, animatedGif);
+});
+
+test("retains every APNG frame even when the image decoder reports one page", async () => {
+  const animatedPng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAACGFjVEwAAAACAAAAAPONk3AAAAAaZmNUTAAAAAAAAAACAAAAAgAAAAAAAAAAAAEAAgAA5keNuAAAABBJREFUeJxj/MMAAixgkgEADQQBAr9QFbMAAAAaZmNUTAAAAAEAAAABAAAAAQAAAAAAAAAAAAEAAgAAzx+LvAAAABBmZEFUAAAAAnicY/zDwAAAAvwA/uU1kAgAAAAASUVORK5CYII=",
+    "base64"
+  );
+
+  const result = await optimizeProductionImage({
+    bytes: animatedPng,
+    relativePath: "public/images/needo-pet/two-frame.png"
+  });
+
+  assert.equal(result.status, "kept-original");
+  assert.equal(result.exceptionReason, "multi-frame-preserved");
+  assert.equal(result.pages, 2);
+  assert.deepEqual(result.bytes, animatedPng);
+});
+
+test("ships Xiaobai motion clips as compact six-frame-per-second APNGs", async () => {
+  const animatedAssets = [
+    "xiao-bai-death.png",
+    "xiao-bai-enter.png",
+    "xiao-bai-exit.png",
+    "xiao-bai-idle-angry.png",
+    "xiao-bai-idle-excited.png",
+    "xiao-bai-idle-heart-thanks.png",
+    "xiao-bai-idle-question-cheer.png",
+    "xiao-bai-idle-sad.png",
+    "xiao-bai-idle-sleepy.png",
+    "xiao-bai-idle-sparkle.png",
+    "xiao-bai-idle-thinking.png",
+    "xiao-bai-revive.png",
+    "xiao-bai-run-dash.png",
+    "xiao-bai-run-sprint.png"
+  ];
+  let totalBytes = 0;
+
+  for (const asset of animatedAssets) {
+    const bytes = await readFile(new URL(`../public/images/needo-pet/${asset}`, import.meta.url));
+    const animation = inspectPngAnimation(bytes);
+    totalBytes += bytes.length;
+
+    assert.ok(animation, `${asset} must remain animated`);
+    assert.equal(animation.frameRate, 6, `${asset} must play at 6 fps`);
+    assert.ok(animation.width <= 138 && animation.height <= 162, `${asset} exceeds the existing Xiaobai canvas`);
+  }
+
+  assert.ok(totalBytes <= 5 * 1024 * 1024, `Xiaobai motion clips exceed 5 MiB: ${totalBytes}`);
 });

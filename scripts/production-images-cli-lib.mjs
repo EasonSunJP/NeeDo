@@ -12,6 +12,7 @@ import path from "node:path";
 import sharp from "sharp";
 import {
   classifyProductionImage,
+  inspectPngAnimation,
   loadProductionImagePolicy,
   optimizeProductionImage
 } from "./production-images-lib.mjs";
@@ -198,10 +199,11 @@ export async function verifyProductionImages({
     }).metadata();
     const width = metadata.autoOrient?.width ?? metadata.width;
     const height = metadata.autoOrient?.height ?? metadata.height;
+    const pages = inspectPngAnimation(bytes)?.frameCount ?? metadata.pages ?? 1;
     if (
       width !== image.width ||
       height !== image.height ||
-      (metadata.pages ?? 1) !== image.pages ||
+      pages !== image.pages ||
       metadata.format !== image.format ||
       Boolean(metadata.hasAlpha) !== image.hasAlpha
     ) {
