@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import appSource from "../../App.tsx?raw";
 import type { UnifiedFavoriteItem, UnifiedFavoritePage } from "../../features/favorites/model";
 import { UserFavoritesPage, type FavoritesTimelineApi } from "./UserFavoritesPage";
 
@@ -61,6 +62,11 @@ async function flush() {
 }
 
 describe("UserFavoritesPage", () => {
+  it("keeps the timeline route outside the initial application bundle", () => {
+    expect(appSource).toContain('lazy(() => import("./pages/user/UserFavoritesPage")');
+    expect(appSource).toContain("<Suspense fallback={null}><UserFavoritesRoutePage /></Suspense>");
+  });
+
   let container: HTMLDivElement;
   let root: Root;
 

@@ -478,6 +478,9 @@ export const realtimeApi = {
   createChatRecordDelivery(targetConversationId: number, input: RealtimeChatRecordCommand) {
     return httpClient.request<RealtimeChatRecordDelivery>(`/im/conversations/${targetConversationId}/chat-records`, { body: input, method: "POST" });
   },
+  forwardChatRecord(publicId: string, input: { targetConversationId: number; idempotencyKey: string }) {
+    return httpClient.request<RealtimeChatRecordDelivery>(`/im/chat-records/${publicId}/forward`, { body: input, method: "POST" });
+  },
   getChatRecord(publicId: string) { return httpClient.request<RealtimeChatRecordSummary>(`/im/chat-records/${publicId}`); },
   listChatRecordItems(publicId: string, query: { beforePosition?: number; pageSize?: number } = {}) {
     return httpClient.request<RealtimeChatRecordItemPage>(`/im/chat-records/${publicId}/items`, { query });

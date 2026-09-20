@@ -330,6 +330,28 @@ describe("BookingService state machine", () => {
     expect(repository.listAvailableSlots).toHaveBeenCalledWith(input, visibilityWhere, viewer.userId);
   });
 
+  it("forwards an explicit technician nomination to the repository price transaction", async () => {
+    const order = makeOrder("pending");
+    const repository = createRepository(order);
+    repository.findScheduleSlotShopId = jest.fn(async () => 1);
+    const service = new BookingService(repository);
+
+    await service.createBooking(actor, {
+      expectedPriceAmountJpy: 11_800,
+      serviceId: 1,
+      nominatedTechnicianProfileId: 31,
+      scheduleSlotId: 11,
+      fulfillmentMode: "store"
+    });
+
+    expect(repository.createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedPriceAmountJpy: 11_800,
+        nominatedTechnicianProfileId: 31
+      })
+    );
+  });
+
   it("cancels affected confirmed bookings through the formal transition before an impact-confirmed schedule edit", async () => {
     const confirmed = { ...makeOrder("confirmed"), technicianProfileId: 31, scheduleSlotId: scheduleSlot.id };
     const repository = createRepository(confirmed);

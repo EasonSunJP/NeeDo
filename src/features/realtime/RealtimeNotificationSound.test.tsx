@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     isRestoring: false,
     session: { activeIdentityId: 70, id: 7, portal: "user" }
   },
+  location: { pathname: "/" },
   onEvent: undefined as ((event: { id: string; payload: unknown; recipientUserId?: number; type: string }) => void) | undefined,
   preferenceListener: undefined as ((value: { sound: boolean }) => void) | undefined,
   realtimeUnsubscribe: vi.fn(),
@@ -19,6 +20,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../auth/AuthProvider", () => ({
   useAuth: () => mocks.auth
+}));
+
+vi.mock("react-router-dom", () => ({
+  useLocation: () => mocks.location
 }));
 
 vi.mock("./api", () => ({
@@ -44,6 +49,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
   mocks.onEvent = undefined;
+  mocks.location.pathname = "/";
   mocks.preferenceListener = undefined;
   mocks.realtimeUnsubscribe.mockReset();
   mocks.settingsUnsubscribe.mockReset();
@@ -75,6 +81,13 @@ afterEach(async () => {
 });
 
 describe("browser notification sound", () => {
+  it("does not subscribe to protected realtime events on a login route", async () => {
+    mocks.location.pathname = "/login/user";
+    await act(async () => root.render(<RealtimeNotificationSound />));
+
+    expect(mocks.subscribeRealtimeEvents).not.toHaveBeenCalled();
+  });
+
   it("silently unlocks, resets and plays the same audio element", async () => {
     const audio = {
       currentTime: 4,

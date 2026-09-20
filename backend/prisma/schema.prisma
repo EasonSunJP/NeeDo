@@ -1861,6 +1861,7 @@ model Shop {
   publicIdentifier           PublicIdentifier?
   customerSupportAccount     CustomerSupportAccount?
   platformFeePolicy          ShopPlatformFeePolicy?
+  autoDispatchRule           ShopAutoDispatchRule?
   orderAcceptancePauses      OrderAcceptancePause[]
   customerMemberships        ShopCustomerMembership[]
   membershipCardPlans        ShopMembershipCardPlan[]
@@ -1898,6 +1899,39 @@ model Shop {
   @@index([deletedAt])
   @@map("shops")
   sosAlerts SosAlert[]
+}
+
+model ShopAutoDispatchRule {
+  id                         Int       @id @default(autoincrement())
+  shopId                     Int       @unique(map: "shop_auto_dispatch_rules_shop_id_key") @map("shop_id")
+  enabled                    Boolean   @default(false)
+  startsOn                   DateTime? @map("starts_on") @db.Date
+  endsOn                     DateTime? @map("ends_on") @db.Date
+  startMinute                Int       @default(0) @map("start_minute")
+  endMinute                  Int       @default(1439) @map("end_minute")
+  allowStore                 Boolean   @default(true) @map("allow_store")
+  allowHome                  Boolean   @default(true) @map("allow_home")
+  minimumRating              Decimal?  @map("minimum_rating") @db.Decimal(2, 1)
+  minimumAcceptanceRate      Int?      @map("minimum_acceptance_rate")
+  maximumCancellationRate    Int?      @map("maximum_cancellation_rate")
+  dailyTechnicianLimit       Int?      @map("daily_technician_limit")
+  strategy                   String    @default("balanced") @db.VarChar(40)
+  preferredTechnicianIdsJson Json?     @map("preferred_technician_ids_json")
+  travelMinutesPerKm         Int       @default(3) @map("travel_minutes_per_km")
+  strictWindow               Boolean   @default(false) @map("strict_window")
+  createdById                Int?      @map("created_by_id")
+  updatedById                Int?      @map("updated_by_id")
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
+  deletedAt                  DateTime? @map("deleted_at")
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  @@index([enabled, startsOn, endsOn, deletedAt], map: "shop_auto_dispatch_rules_active_range_idx")
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([deletedAt])
+  @@map("shop_auto_dispatch_rules")
 }
 
 model PlatformPartnerProfile {
@@ -5440,6 +5474,8 @@ model ImChatRecordDelivery {
   bundleId       Int       @map("bundle_id")
   messageId      Int       @unique @map("message_id")
   conversationId Int       @map("conversation_id")
+  forwardIdempotencyKey String? @unique(map: "im_chat_record_deliveries_forward_key_key") @map("forward_idempotency_key") @db.VarChar(191)
+  forwardedByIdentityId Int? @map("forwarded_by_identity_id")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
@@ -5450,6 +5486,7 @@ model ImChatRecordDelivery {
 
   @@index([bundleId, deletedAt])
   @@index([conversationId, deletedAt])
+  @@index([forwardedByIdentityId])
   @@map("im_chat_record_deliveries")
 }
 

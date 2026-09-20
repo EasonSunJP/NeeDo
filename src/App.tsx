@@ -38,7 +38,6 @@ import { MerchantPortalPage, MerchantStaffDetailRoutePage } from "./pages/mobile
 import { BusinessCpsPage } from "./pages/mobile/BusinessCpsPage";
 import { AffiliateMarketplacePage } from "./pages/mobile/AffiliateMarketplacePage";
 import { AffiliateTaskDetailPage } from "./pages/mobile/AffiliateTaskDetailPage";
-import { MerchantAutoDispatchRoutePage } from "./pages/mobile/MerchantAutoDispatchRoutePage";
 import { MerchantScheduleArrangementRoutePage } from "./pages/mobile/MerchantScheduleArrangementRoutePage";
 import { MerchantScheduleCellRoutePage } from "./pages/mobile/MerchantScheduleCellRoutePage";
 import {
@@ -91,7 +90,6 @@ import { SupportPage } from "./pages/user/SupportPage";
 import { UserCenterPage } from "./pages/user/UserCenterPage";
 import { CurrentMembershipBenefitsPage } from "./features/platform-membership/CurrentMembershipBenefitsPage";
 import { UserAddressesPage } from "./pages/user/UserAddressesPage";
-import { UserFavoritesRoutePage } from "./pages/user/UserFavoritesPage";
 import { UserMembershipsPage } from "./pages/user/UserMembershipsPage";
 import { UserOrdersPage } from "./pages/user/UserOrdersPage";
 import { UserOrderDetailPage } from "./pages/user/UserOrderDetailPage";
@@ -223,6 +221,8 @@ const UnifiedSettingsTermsPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSet
 const UnifiedSettingsVerificationPage = lazyNamed(loadUnifiedSettingsPages, "UnifiedSettingsVerificationPage");
 
 const TechnicianPortalPage = lazy(() => import("./pages/mobile/TechnicianPortalPage").then((module) => ({ default: module.TechnicianPortalPage })));
+const MerchantAutoDispatchRoutePage = lazy(() => import("./pages/mobile/MerchantAutoDispatchRoutePage").then((module) => ({ default: module.MerchantAutoDispatchRoutePage })));
+const UserFavoritesRoutePage = lazy(() => import("./pages/user/UserFavoritesPage").then((module) => ({ default: module.UserFavoritesRoutePage })));
 const DashboardPage = lazy(() => import("./pages/admin/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const LiveDashboardPage = lazy(() => import("./pages/admin/LiveDashboardPage").then((module) => ({ default: module.LiveDashboardPage })));
 const DashboardMetricDetailPage = lazy(() => import("./pages/admin/DashboardMetricDetailPage").then((module) => ({ default: module.DashboardMetricDetailPage })));
@@ -1319,7 +1319,7 @@ export default function App() {
               <Route path="/me" element={protect("user", <UserCenterPage />)} />
               <Route path="/me/benefits" element={protect("user", <CurrentMembershipBenefitsPage />)} />
               <Route path="/me/addresses" element={protect("user", <UserAddressesPage />)} />
-              <Route path="/me/favorites" element={protect("user", <UserFavoritesRoutePage />)} />
+              <Route path="/me/favorites" element={protect("user", <Suspense fallback={null}><UserFavoritesRoutePage /></Suspense>)} />
               <Route path="/me/favorites/chat-records" element={protect("user", <Navigate replace to="/me/favorites" />)} />
               <Route path="/me/memberships" element={protect("user", <UserMembershipsPage />)} />
               <Route path="/me/memberships/:membershipPublicId" element={protect("user", <UserMembershipsPage />)} />
@@ -1378,7 +1378,7 @@ export default function App() {
               <Route path="/merchant/moments/posts/:postId/media/:mediaId" element={protect("merchant", <SocialMediaViewerPage />)} />
               <Route path="/merchant/moments/posts/:postId" element={protect("merchant", <SocialPostDetailPage />)} />
               <Route path="/merchant/moments" element={protect("merchant", <MomentsPage context="merchant" />)} />
-              <Route path="/merchant/schedule/auto-dispatch" element={protect("merchant", <MerchantAutoDispatchRoutePage />)} />
+              <Route path="/merchant/schedule/auto-dispatch" element={protect("merchant", <Suspense fallback={null}><MerchantAutoDispatchRoutePage /></Suspense>)} />
               <Route path="/merchant/schedule/arrangements/:orderId" element={protect("merchant", <MerchantScheduleArrangementRoutePage />)} />
               <Route path="/merchant/schedule/cells/:date/:slot/:technicianId" element={protect("merchant", <MerchantScheduleCellRoutePage />)} />
               <Route path="/merchant/orders" element={protect("merchant", <Navigate replace to="/merchant/schedule?tab=appointments" />)} />

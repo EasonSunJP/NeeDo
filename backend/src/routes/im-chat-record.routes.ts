@@ -16,6 +16,7 @@ import { PersonalIdentityScopeService } from "../services/personal-identity-scop
 import { SseRealtimeEventGateway } from "../services/realtime-event.gateway";
 import {
   chatRecordCommandBodySchema,
+  chatRecordForwardBodySchema,
   chatRecordItemsQuerySchema,
   chatRecordMediaParamSchema,
   chatRecordPublicIdParamSchema,
@@ -94,6 +95,13 @@ export const createImChatRecordRoutes = (
     createAuthorizeMiddleware(IM_CHAT_RECORD_ROUTE_PERMISSIONS.read),
     validateRequest({ params: chatRecordPublicIdParamSchema }),
     controller.getBundle
+  );
+  router.post(
+    "/im/chat-records/:publicId/forward",
+    authenticate(),
+    createAuthorizeMiddleware(IM_CHAT_RECORD_ROUTE_PERMISSIONS.createDelivery),
+    validateRequest({ params: chatRecordPublicIdParamSchema, body: chatRecordForwardBodySchema }),
+    controller.forwardBundle
   );
   router.post(
     "/im/chat-record-favorites",

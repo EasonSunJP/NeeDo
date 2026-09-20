@@ -15,10 +15,12 @@ import {
   endServiceBodySchema,
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
+  merchantOrderEditBodySchema,
   orderCancelBodySchema,
   orderConfirmBodySchema,
   orderAddOnDecisionBodySchema,
   orderAddOnIdParamsSchema,
+  orderAssignTechnicianBodySchema,
   orderIdParamSchema,
   orderListQuerySchema,
   orderReviewCreateBodySchema,
@@ -233,6 +235,39 @@ export class BookingController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public assignOrderTechnician = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const body = orderAssignTechnicianBodySchema.parse(request.body);
+      response.status(200).json(successResponse(await this.bookingService.assignOrderTechnician(
+        this.getActor(response),
+        this.getOrderId(request),
+        body.technicianProfileId
+      )));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public editMerchantOrder = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(successResponse(await this.bookingService.editMerchantOrder(
+        this.getActor(response),
+        this.getOrderId(request),
+        merchantOrderEditBodySchema.parse(request.body)
+      )));
     } catch (error) {
       next(error);
     }

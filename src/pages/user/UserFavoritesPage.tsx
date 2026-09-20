@@ -20,6 +20,7 @@ import { useOptionalI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import { translateText } from "../../i18n/translations";
 import { EntityShareDestinationSheet } from "../../shared/entity-share/EntityShareDestinationSheet";
+import { ChatRecordForwardDestinationSheet } from "../../shared/entity-share/ChatRecordForwardDestinationSheet";
 
 type FavoriteLoadStatus = "error" | "loading" | "ready";
 
@@ -87,6 +88,7 @@ export function UserFavoritesPage({
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [multiPending, setMultiPending] = useState<"delete" | "forward" | null>(null);
   const [entityShareItem, setEntityShareItem] = useState<UnifiedFavoriteItem | null>(null);
+  const [chatRecordShareItem, setChatRecordShareItem] = useState<UnifiedFavoriteItem | null>(null);
   const requestGeneration = useRef(0);
   const page = pages[activeTab];
 
@@ -146,8 +148,10 @@ export function UserFavoritesPage({
       setEntityShareItem(item);
     } else if (item.type === "social_post") {
       navigate(socialPaths.repost("user", item.itemKey));
+    } else if (item.type === "chat_record") {
+      setChatRecordShareItem(item);
     } else {
-      navigate(`${item.detailPath}?action=forward`);
+      setNotice(translateText("此收藏暂不支持转发", language));
     }
   };
 
@@ -318,6 +322,11 @@ export function UserFavoritesPage({
       {entityShareItem && asEntityTarget(entityShareItem) ? (
         <EntityShareDestinationSheet onClose={() => setEntityShareItem(null)} target={asEntityTarget(entityShareItem)!} targetLabel={entityShareItem.title} />
       ) : null}
+      {chatRecordShareItem ? <ChatRecordForwardDestinationSheet
+        onClose={() => setChatRecordShareItem(null)}
+        publicId={chatRecordShareItem.detailPath.split("/").pop() ?? ""}
+        title={chatRecordShareItem.title}
+      /> : null}
     </>
   );
 }

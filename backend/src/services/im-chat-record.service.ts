@@ -209,6 +209,51 @@ export class ImChatRecordService {
     return bundle;
   }
 
+  public async forwardBundle(
+    auth: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: { targetConversationId: number; idempotencyKey: string }
+  ) {
+    const scope = await this.personalIdentityScope.resolve(auth);
+    const result = await this.repository.forwardBundle({
+      publicId,
+      targetConversationId: input.targetConversationId,
+      idempotencyKey: input.idempotencyKey,
+      createdByUserId: auth.userId,
+      createdByIdentityId: scope.identityId,
+      context
+    });
+    if (!result) throw this.notFound();
+    if (!result.replayed) {
+      for (const recipient of result.recipients) {
+        try {
+          this.eventGateway.publish({
+            id: randomUUID(),
+            type: "message.created",
+            recipientUserId: recipient.userId,
+            recipientIdentityId: recipient.identityId,
+            payload: result.message,
+            createdAt: this.now().toISOString()
+          });
+        } catch (error) {
+          this.warn(
+            {
+              conversationId: input.targetConversationId,
+              error,
+              eventType: "message.created",
+              messageId: result.message.id,
+              operation: "im_chat_record_forward_realtime_publish",
+              recipientIdentityId: recipient.identityId
+            },
+            "Forwarded chat record realtime publication failed"
+          );
+        }
+      }
+    }
+    return result;
+  }
+
   public async listItems(
     auth: AuthenticatedAccessContext,
     publicId: string,

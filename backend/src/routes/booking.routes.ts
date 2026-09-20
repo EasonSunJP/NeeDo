@@ -41,10 +41,12 @@ import {
   endServiceBodySchema,
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
+  merchantOrderEditBodySchema,
   orderCancelBodySchema,
   orderConfirmBodySchema,
   orderAddOnDecisionBodySchema,
   orderAddOnIdParamsSchema,
+  orderAssignTechnicianBodySchema,
   orderIdParamSchema,
   orderListQuerySchema,
   orderReviewCreateBodySchema,
@@ -237,6 +239,20 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.getOrder),
     validateRequest({ params: orderIdParamSchema }),
     controller.getOrder
+  );
+  router.post(
+    "/orders/:id/assign-technician",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.confirm),
+    validateRequest({ params: orderIdParamSchema, body: orderAssignTechnicianBodySchema }),
+    controller.assignOrderTechnician
+  );
+  router.patch(
+    "/orders/:id/merchant-edit",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.confirm),
+    validateRequest({ params: orderIdParamSchema, body: merchantOrderEditBodySchema }),
+    controller.editMerchantOrder
   );
   router.post(
     "/orders/:id/confirm",

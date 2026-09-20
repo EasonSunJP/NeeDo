@@ -180,6 +180,7 @@ const createHarness = (
     },
     technicianCompensationProfile: { findFirst: jest.fn().mockResolvedValue(null) },
     shopFinanceRuleSet: { findFirst: jest.fn().mockResolvedValue(null) },
+    shopAutoDispatchRule: { findFirst: jest.fn().mockResolvedValue(null) },
     exchangeMatchParticipant: { findFirst: jest.fn().mockResolvedValue(null) },
     exchangeIntelligence: {
       findFirst: jest.fn().mockResolvedValue(
@@ -300,7 +301,7 @@ describe("BookingRepository Exchange Intelligence source", () => {
     expect(harness.create).not.toHaveBeenCalled();
   });
 
-  it("allows a shop-service Intelligence booking to use an assigned shop technician slot", async () => {
+  it("keeps a shop-service Intelligence booking unassigned when its slot belongs to a technician", async () => {
     const harness = createHarness({
       slot: {
         technicianProfileId: 91,
@@ -322,7 +323,7 @@ describe("BookingRepository Exchange Intelligence source", () => {
       order: {
         id: 301,
         exchangeIntelligencePostId: 61,
-        technicianProfileId: 91
+        technicianProfileId: null
       }
     });
     expect(harness.tx.scheduleSlot.updateMany).toHaveBeenCalledTimes(1);

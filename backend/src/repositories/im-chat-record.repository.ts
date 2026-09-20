@@ -142,6 +142,15 @@ export interface ChatRecordFavoriteCreationPayload {
   favorite: ChatRecordFavoritePayload;
 }
 
+export interface ForwardChatRecordBundleInput {
+  publicId: string;
+  targetConversationId: number;
+  idempotencyKey: string;
+  createdByUserId: number;
+  createdByIdentityId: number;
+  context: AuthRequestContext;
+}
+
 export interface ChatRecordCommandPreflightInput {
   commandType: ChatRecordCommandType;
   createdByIdentityId: number;
@@ -176,6 +185,7 @@ export interface ImChatRecordRepositoryPort {
   createFavorite(
     input: CreateChatRecordFavoritePersistenceInput
   ): Promise<ChatRecordFavoriteCreationPayload>;
+  forwardBundle(input: ForwardChatRecordBundleInput): Promise<ChatRecordDeliveryPayload | null>;
   getBundle(input: {
     publicId: string;
     userId: number;
@@ -364,6 +374,120 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
       const replay = await this.recoverUniqueReplay(error, input);
       if (replay) return this.toDeliveryReplay(replay, input.requestFingerprint);
       throw error;
+    }
+  }
+
+  public async forwardBundle(input: ForwardChatRecordBundleInput): Promise<ChatRecordDeliveryPayload | null> {
+    try {
+      return await this.client.$transaction(async (transaction) => {
+      const replay = await transaction.imChatRecordDelivery.findFirst({
+        where: { forwardIdempotencyKey: input.idempotencyKey, deletedAt: null },
+        include: {
+          bundle: { include: { favorites: { where: { deletedAt: null } } } },
+          message: true,
+          conversation: { select: { participants: { where: { deletedAt: null }, select: { userId: true, identityId: true } } } }
+        }
+      });
+      if (replay) {
+        if (
+          replay.bundle.publicId !== input.publicId ||
+          replay.conversationId !== input.targetConversationId ||
+          replay.forwardedByIdentityId !== input.createdByIdentityId
+        ) throw this.idempotencyConflict();
+        return {
+          replayed: true,
+          bundle: this.mapBundle(replay.bundle),
+          message: this.mapMessage(replay.message, input.createdByIdentityId, this.now()),
+          recipients: replay.conversation.participants
+        };
+      }
+      const bundle = await transaction.imChatRecordBundle.findFirst({
+        where: activeBundleAccessWhere({ publicId: input.publicId, userId: input.createdByUserId, identityId: input.createdByIdentityId }),
+        include: { favorites: { where: { deletedAt: null } } }
+      });
+      if (!bundle) return null;
+      const send = await persistImMessageInTransaction(transaction, {
+        conversationId: input.targetConversationId,
+        senderUserId: input.createdByUserId,
+        senderIdentityId: input.createdByIdentityId,
+        type: MessageType.TEXT,
+        content: bundle.titleSnapshot,
+        metadata: {
+          needoMessageType: "chat-record",
+          needoMessageExt: {
+            bundlePublicId: bundle.publicId,
+            itemCount: bundle.itemCount,
+            preview: bundle.previewSnapshot,
+            senderNames: bundle.senderNamesSnapshot,
+            senderCount: bundle.senderCount,
+            title: bundle.titleSnapshot
+          }
+        },
+        transactionNow: this.now()
+      });
+      if (send.status !== "created") throw this.sendRejected(send.status);
+      await transaction.imChatRecordDelivery.create({
+        data: {
+          bundleId: bundle.id,
+          messageId: send.message.id,
+          conversationId: input.targetConversationId,
+          forwardIdempotencyKey: input.idempotencyKey,
+          forwardedByIdentityId: input.createdByIdentityId
+        }
+      });
+      await transaction.auditLog.create({
+        data: {
+          actorId: input.createdByUserId,
+          action: "im.chat_record.forwarded",
+          targetType: "ImChatRecordBundle",
+          targetId: bundle.id,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent ?? null,
+          metadata: { conversationId: input.targetConversationId, messageId: send.message.id }
+        }
+      });
+      return {
+        replayed: false,
+        bundle: this.mapBundle(bundle),
+        message: this.mapMessage(send.message, input.createdByIdentityId, this.now()),
+        recipients: send.recipients
+      };
+      });
+    } catch (error) {
+      if (
+        typeof error !== "object" ||
+        error === null ||
+        !("code" in error) ||
+        error.code !== "P2002"
+      ) throw error;
+      const replay = await this.client.imChatRecordDelivery.findUnique({
+        where: { forwardIdempotencyKey: input.idempotencyKey },
+        include: {
+          bundle: { include: { favorites: { where: { deletedAt: null } } } },
+          message: true,
+          conversation: {
+            select: {
+              participants: {
+                where: { deletedAt: null },
+                select: { userId: true, identityId: true }
+              }
+            }
+          }
+        }
+      });
+      if (
+        !replay ||
+        replay.deletedAt !== null ||
+        replay.bundle.publicId !== input.publicId ||
+        replay.conversationId !== input.targetConversationId ||
+        replay.forwardedByIdentityId !== input.createdByIdentityId
+      ) throw this.idempotencyConflict();
+      return {
+        replayed: true,
+        bundle: this.mapBundle(replay.bundle),
+        message: this.mapMessage(replay.message, input.createdByIdentityId, this.now()),
+        recipients: replay.conversation.participants
+      };
     }
   }
 

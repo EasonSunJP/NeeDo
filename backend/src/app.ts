@@ -268,6 +268,7 @@ import { createIdentityActivationRoutes } from "./routes/identity-activation.rou
 import { createMerchantTechnicianApplicationRoutes } from "./routes/merchant-technician-application.routes";
 import { createOperationsMerchantApplicationRoutes } from "./routes/operations-merchant-application.routes";
 import { createMerchantFinanceRulesRoutes } from "./routes/merchant-finance-rules.routes";
+import { createShopAutoDispatchRoutes } from "./routes/shop-auto-dispatch.routes";
 import { createMerchantSaasBillingRoutes } from "./routes/merchant-saas-billing.routes";
 import { createObservabilityRoutes } from "./routes/observability.routes";
 import { createOrderFinanceRoutes } from "./routes/order-finance.routes";
@@ -825,6 +826,7 @@ export const createApp = (
   mount("backoffice", createAffiliatePlatformFeeRoutes(config, resolvedDependencies));
   mount("backoffice", createNdpExchangeRateRoutes(config, resolvedDependencies));
   mount("merchant-admin", createMerchantFinanceRulesRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createShopAutoDispatchRoutes(config, resolvedDependencies));
   mount(["backoffice", "merchant-admin"], createOrderFinanceRoutes(config, resolvedDependencies));
   mount(["backoffice", "merchant-admin"], createPayrollRoutes(config, resolvedDependencies));
   mount("merchant-admin", createPayrollSchedulePolicyRoutes(config, resolvedDependencies));

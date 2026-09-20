@@ -340,6 +340,7 @@ const createPendingReplacementHarness = (
     },
     technicianCompensationProfile: { findFirst: jest.fn().mockResolvedValue(null) },
     shopFinanceRuleSet: { findFirst: jest.fn().mockResolvedValue(null) },
+    shopAutoDispatchRule: { findFirst: jest.fn().mockResolvedValue(null) },
     shop: { update: jest.fn().mockResolvedValue({ id: 16 }) },
     scheduleSlot: {
       findUnique: jest.fn(

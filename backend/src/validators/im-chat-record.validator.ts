@@ -43,6 +43,11 @@ export const chatRecordPublicIdParamSchema = z.object({
   publicId: z.string().uuid()
 });
 
+export const chatRecordForwardBodySchema = z.object({
+  targetConversationId: safePositiveIntegerSchema,
+  idempotencyKey: z.string().uuid()
+}).strict();
+
 export const chatRecordItemsQuerySchema = z.object({
   beforePosition: safePositiveIntegerSchema.optional(),
   pageSize: safePositiveInteger(50).optional()

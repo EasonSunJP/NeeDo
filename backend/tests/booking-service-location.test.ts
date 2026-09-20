@@ -121,6 +121,7 @@ const createRepositoryHarness = (options?: {
     customerProfile: { findFirst: jest.fn(async () => ({ membershipLevel: "regular" })) },
     technicianCompensationProfile: { findFirst: jest.fn().mockResolvedValue(null) },
     shopFinanceRuleSet: { findFirst: jest.fn().mockResolvedValue(null) },
+    shopAutoDispatchRule: { findFirst: jest.fn().mockResolvedValue(null) },
     scheduleSlot: {
       findFirst: jest.fn(async () => ({ ...slot, bookedCount: state.bookedCount })),
       updateMany: jest.fn(async () => {

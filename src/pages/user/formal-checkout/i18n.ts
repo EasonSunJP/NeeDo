@@ -116,6 +116,7 @@ const copy = {
   ndpNotice: ["本次订单的 NDP 使用与结算结果，以服务完成后的正式结算记录为准。", "本次訂單的 NDP 使用與結算結果，以服務完成後的正式結算記錄為準。", "この予約の NDP 利用額と精算結果は、サービス完了後の正式な精算記録で確定します。", "NDP usage and settlement for this order are determined by the formal settlement record after service completion.", "이 주문의 NDP 사용 및 정산 결과는 서비스 완료 후 정식 정산 기록을 기준으로 확정됩니다."],
   reloadAvailableTimes: ["重新加载可预约时段", "重新載入可預約時段", "予約可能時間を再読み込み", "Reload available times", "예약 가능 시간 다시 불러오기"],
   amountDue: ["应付金额", "應付金額", "お支払い金額", "Amount due", "결제 금액"],
+  includesNominationFee: ["含指名费 {amount}", "含指名費 {amount}", "指名料 {amount} を含む", "Includes {amount} nomination fee", "지명료 {amount} 포함"],
   serviceAndTravelFee: ["服务费 + 正式交通费", "服務費 + 正式交通費", "サービス料金＋正式出張料金", "Service fee + formal travel fee", "서비스 요금 + 정식 출장비"],
   payOnArrival: ["到店后支付", "到店後支付", "現地で支払う", "Pay onsite", "현장 결제"],
   bankTransfer: ["银行转账", "銀行轉帳", "銀行振込", "Bank transfer", "은행 이체"],

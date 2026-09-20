@@ -1,7 +1,7 @@
 import { subscribeWorkStatusRefresh } from "../../features/technician-work-status/refresh";
 import type { WorkStatus } from "../../features/technician-work-status/api";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import {
@@ -105,6 +105,8 @@ import { mapBookingOrderToDomainOrder } from "../../features/booking/api";
 import { ShopAnalyticsDashboard } from "../../features/shop-analytics/ShopAnalyticsDashboard";
 import "../../features/shop-analytics/registerI18n";
 
+const AutoDispatchEntryButton = lazy(() => import("../../features/dispatch-center/AutoDispatchEntryButton").then((module) => ({ default: module.AutoDispatchEntryButton })));
+
 type MerchantView = "dashboard" | "today-appointments" | "revenue" | "orders" | "messages" | "schedule" | "staff" | "contacts" | "moments" | "me";
 type MerchantMeTab = "info" | "service" | "data";
 type MerchantSchedulePrimaryTab = "current" | "appointments" | "planning";
@@ -121,6 +123,11 @@ type MerchantManualEmployee = {
   status: MerchantManualEmployeeStatus;
   employmentType: "fullTime" | "partTime";
 };
+
+function UnassignedDispatchButton({ className = "mt-2 w-full", order }: { className?: string; order: Order }) {
+  if (order.technicianProfileId) return null;
+  return <Button className={className} size="lg" to={`/merchant/orders/${order.id}/dispatch`}>派单</Button>;
+}
 type MerchantStoreStaffEntry = {
   employmentType: MerchantStaffEmploymentType;
   status: StaffStatus;
@@ -1374,6 +1381,7 @@ export function MerchantTodayAppointmentsTimeline({
                 data={buildOrderServiceMiniCardData(order)}
                 detailTo={`/merchant/orders/${order.id}`}
               />
+              <UnassignedDispatchButton order={order} />
             </div>
           </div>
         )) : null}
@@ -3030,18 +3038,18 @@ export function MerchantPortalContent({
             <section className="space-y-3">
               <div className="px-1">
                 <SectionTitle caption="展示今日待确认、进行中和即将开始的预约，减少来回切页。" title="今日预约">
-                  <Button size="sm" to="/merchant/schedule/auto-dispatch" variant="secondary">
-                    自动派单
-                  </Button>
+                  <Suspense fallback={<Button size="sm" to="/merchant/schedule/auto-dispatch" variant="secondary">自动派单 · —</Button>}><AutoDispatchEntryButton /></Suspense>
                 </SectionTitle>
               </div>
               <div className="space-y-3">
                 {pendingOrders.slice(0, 4).map((order) => (
-                  <UnifiedServiceInfoCard
-                    data={buildOrderServiceMiniCardData(order)}
-                    detailTo={`/merchant/orders/${order.id}`}
-                    key={order.id}
-                  />
+                  <div className="overflow-hidden rounded-[28px]" key={order.id}>
+                    <UnifiedServiceInfoCard
+                      data={buildOrderServiceMiniCardData(order)}
+                      detailTo={`/merchant/orders/${order.id}`}
+                    />
+                    <UnassignedDispatchButton order={order} />
+                  </div>
                 ))}
               </div>
             </section>
@@ -3113,6 +3121,7 @@ export function MerchantPortalContent({
                     data={buildOrderServiceMiniCardData(order)}
                     detailTo={`/merchant/orders/${order.id}`}
                   />
+                  <UnassignedDispatchButton className="w-full" order={order} />
                 </div>
               ))}
               {filteredStoreOrders.length === 0 ? (

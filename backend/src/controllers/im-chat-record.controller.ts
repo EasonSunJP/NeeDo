@@ -5,6 +5,7 @@ import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
   chatRecordCommandBodySchema,
+  chatRecordForwardBodySchema,
   chatRecordItemsQuerySchema,
   chatRecordMediaParamSchema,
   chatRecordPublicIdParamSchema,
@@ -41,6 +42,18 @@ export class ImChatRecordController {
     const { publicId } = chatRecordPublicIdParamSchema.parse(request.params);
     return publicBundle(await this.service.getBundle(getAuthenticatedAccess(response), publicId));
   });
+
+  public forwardBundle = this.createJsonHandler(async (request, response) => {
+    const { publicId } = chatRecordPublicIdParamSchema.parse(request.params);
+    const body = chatRecordForwardBodySchema.parse(request.body);
+    const result = await this.service.forwardBundle(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      publicId,
+      body
+    );
+    return { replayed: result.replayed, bundle: publicBundle(result.bundle), message: result.message };
+  }, 201);
 
   public listItems = this.createJsonHandler(async (request, response) => {
     const { publicId } = chatRecordPublicIdParamSchema.parse(request.params);

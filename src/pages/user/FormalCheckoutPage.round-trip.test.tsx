@@ -805,7 +805,7 @@ describe("formal checkout technician-card round trip", () => {
               "/origin",
               {
                 pathname: "/checkout/31",
-                search: "?date=2026-09-03&time=08%3A00&mode=store&people=2%E5%90%8D&remark=quiet&coupon=keep",
+                search: "?date=2026-09-03&time=08%3A00&mode=store&people=2%E5%90%8D&remark=quiet&coupon=keep&technician=17",
                 state: { existingSource: "recommendation" }
               }
             ]}
@@ -927,7 +927,7 @@ describe("formal checkout technician-card round trip", () => {
       root.render(
         <ClientThemeProvider>
           <MemoryRouter
-            initialEntries={["/origin", "/checkout/31?date=2026-09-03&time=08%3A00&mode=store"]}
+            initialEntries={["/origin", "/checkout/31?date=2026-09-03&time=08%3A00&mode=store&technician=16"]}
             initialIndex={1}
           >
             <LocationProbe />
@@ -967,7 +967,8 @@ describe("formal checkout technician-card round trip", () => {
     await click(confirm);
     await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({
       serviceId: 31,
-      scheduleSlotId: 102
+      scheduleSlotId: 102,
+      nominatedTechnicianProfileId: 16
     })));
   });
 

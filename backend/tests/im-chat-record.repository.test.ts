@@ -985,4 +985,34 @@ describe("ImChatRecordRepository", () => {
     });
     expect(result).not.toHaveProperty("url");
   });
+
+  it("recovers the committed winner after a concurrent forward idempotency conflict", async () => {
+    const replay = {
+      id: 901,
+      deletedAt: null,
+      conversationId: 99,
+      forwardedByIdentityId: 71,
+      bundle: { ...bundle, favorites: [] },
+      message,
+      conversation: { participants: [{ userId: 52, identityId: 82 }] }
+    };
+    const repository = new ImChatRecordRepository({
+      $transaction: jest.fn(async () => { throw Object.assign(new Error("unique"), { code: "P2002" }); }),
+      imChatRecordDelivery: { findUnique: jest.fn(async () => replay) }
+    } as never, { now: () => now });
+
+    await expect(repository.forwardBundle({
+      publicId: bundle.publicId,
+      targetConversationId: 99,
+      idempotencyKey: "forward-key",
+      createdByUserId: 41,
+      createdByIdentityId: 71,
+      context
+    })).resolves.toMatchObject({
+      replayed: true,
+      bundle: { publicId: bundle.publicId },
+      message: { id: message.id },
+      recipients: [{ userId: 52, identityId: 82 }]
+    });
+  });
 });
