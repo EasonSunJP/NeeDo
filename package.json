@@ -52,6 +52,11 @@
     "topojson-simplify": "^3.0.3",
     "typescript": "^5.9.3",
     "vite": "^7.1.10",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "pptxgenjs": {
+      "image-size": "2.0.4"
+    }
   }
 }
