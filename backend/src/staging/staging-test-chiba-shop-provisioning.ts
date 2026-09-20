@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 import { PublicIdentifierRepository } from "../repositories/public-identifier.repository";
 import { IdentifierAllocator } from "../services/public-identifier.service";
+import { deriveServiceStartIntervalMinutes } from "./staging-test-operations-provisioning";
 
 const configSchema = z.object({
   NODE_ENV: z.literal("production"),
@@ -17,7 +18,6 @@ const configSchema = z.object({
 
 const OWNER_EMAIL = "akiratest@lifedance.com";
 const SHOP_NAME = "StagingTest千葉店";
-const SLOT_INTERVAL_MS = 30 * 60_000;
 const INSERT_BATCH_SIZE = 1_000;
 
 export const STAGING_TEST_CHIBA_SERVICES = [
@@ -95,6 +95,7 @@ export interface StagingTestChibaShopResult {
   availabilityCount: number;
   scheduleSlotCount: number;
   createdScheduleSlotCount: number;
+  serviceStartIntervalMinutes: number;
 }
 
 const addCalendarMonths = (date: string, months: number): string => {
@@ -151,16 +152,22 @@ export const buildNightlyServiceSlotRanges = (input: {
   startsAt: Date;
   endsAt: Date;
   durationMinutes: number;
+  startIntervalMinutes?: number;
 }): Array<{ startsAt: Date; endsAt: Date }> => {
   if (!Number.isInteger(input.durationMinutes) || input.durationMinutes <= 0) {
     throw new Error("STAGING_TEST_CHIBA_SERVICE_DURATION_INVALID");
   }
+  const startIntervalMinutes = input.startIntervalMinutes ?? input.durationMinutes;
+  if (!Number.isInteger(startIntervalMinutes) || startIntervalMinutes <= 0) {
+    throw new Error("STAGING_TEST_CHIBA_SERVICE_START_INTERVAL_INVALID");
+  }
   const durationMs = input.durationMinutes * 60_000;
+  const startIntervalMs = startIntervalMinutes * 60_000;
   const ranges: Array<{ startsAt: Date; endsAt: Date }> = [];
   for (
     let startsAtMs = input.startsAt.getTime();
     startsAtMs + durationMs <= input.endsAt.getTime();
-    startsAtMs += SLOT_INTERVAL_MS
+    startsAtMs += startIntervalMs
   ) {
     ranges.push({
       startsAt: new Date(startsAtMs),
@@ -615,6 +622,9 @@ export class StagingTestChibaShopProvisioner {
 
       let scheduleSlotCount = 0;
       let createdScheduleSlotCount = 0;
+      const serviceStartIntervalMinutes = deriveServiceStartIntervalMinutes(
+        services.map((service) => service.durationMinutes)
+      );
       for (const technicianProfileId of technicianProfileIds) {
         const technicianShifts = desiredShifts.filter(
           (shift) => shift.technicianProfileId === technicianProfileId
@@ -639,7 +649,8 @@ export class StagingTestChibaShopProvisioner {
             const ranges = buildNightlyServiceSlotRanges({
               startsAt: shift.startsAt,
               endsAt: shift.endsAt,
-              durationMinutes: service.durationMinutes
+              durationMinutes: service.durationMinutes,
+              startIntervalMinutes: serviceStartIntervalMinutes
             });
             scheduleSlotCount += ranges.length;
             for (const range of ranges) {
@@ -719,6 +730,7 @@ export class StagingTestChibaShopProvisioner {
             endDate: config.endDate,
             technicianProfileIds,
             serviceNames: STAGING_TEST_CHIBA_SERVICES.map((service) => service.name),
+            serviceStartIntervalMinutes,
             availabilityCount: desiredShifts.length,
             scheduleSlotCount,
             createdScheduleSlotCount
@@ -746,7 +758,8 @@ export class StagingTestChibaShopProvisioner {
         extensionServiceCount: STAGING_TEST_CHIBA_SERVICES.filter((service) => service.kind === "extension").length,
         availabilityCount: desiredShifts.length,
         scheduleSlotCount,
-        createdScheduleSlotCount
+        createdScheduleSlotCount,
+        serviceStartIntervalMinutes
       };
     }, { timeout: 300_000 });
   }

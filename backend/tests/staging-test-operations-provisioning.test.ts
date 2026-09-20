@@ -1,6 +1,7 @@
 import {
   buildContinuousAvailabilityRanges,
   buildContinuousScheduleSlotRanges,
+  deriveServiceStartIntervalMinutes,
   parseStagingTestOperationsConfig,
   planAvailabilityReconciliation
 } from "../src/staging/staging-test-operations-provisioning";
@@ -46,23 +47,33 @@ describe("StagingTest operations provisioning gate", () => {
     ]);
   });
 
-  it("creates a bookable start every 30 minutes across the full 24-hour day", () => {
+  it("uses the configured service duration when no separate start interval is supplied", () => {
     const ranges = buildContinuousScheduleSlotRanges({
       startsAt: new Date("2026-09-20T15:00:00.000Z"),
       endsAt: new Date("2026-09-21T15:00:00.000Z"),
       durationMinutes: 60
     });
 
-    expect(ranges).toHaveLength(48);
+    expect(ranges).toHaveLength(24);
     expect(ranges[0]).toEqual({
       startsAt: new Date("2026-09-20T15:00:00.000Z"),
       endsAt: new Date("2026-09-20T16:00:00.000Z")
     });
     expect(ranges.at(-1)).toEqual({
-      startsAt: new Date("2026-09-21T14:30:00.000Z"),
-      endsAt: new Date("2026-09-21T15:30:00.000Z")
+      startsAt: new Date("2026-09-21T14:00:00.000Z"),
+      endsAt: new Date("2026-09-21T15:00:00.000Z")
     });
-    expect(ranges.every((range, index) => index === 0 || range.startsAt.getTime() - ranges[index - 1].startsAt.getTime() === 30 * 60_000)).toBe(true);
+    expect(ranges.every((range, index) => index === 0 || range.startsAt.getTime() - ranges[index - 1].startsAt.getTime() === 60 * 60_000)).toBe(true);
+  });
+
+  it("derives a shared start interval from the actual service durations", () => {
+    expect(deriveServiceStartIntervalMinutes([60, 90, 45, 20, 15, 10])).toBe(5);
+    expect(buildContinuousScheduleSlotRanges({
+      startsAt: new Date("2026-09-20T15:00:00.000Z"),
+      endsAt: new Date("2026-09-20T17:00:00.000Z"),
+      durationMinutes: 45,
+      startIntervalMinutes: 5
+    })).toHaveLength(16);
   });
 
   it.each([

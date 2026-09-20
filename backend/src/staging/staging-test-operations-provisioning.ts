@@ -15,8 +15,6 @@ const configSchema = z.object({
   STAGING_TEST_SCHEDULE_START_DATE: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 });
 
-const STAGING_SLOT_INTERVAL_MINUTES = 30;
-const STAGING_SLOT_INTERVAL_MS = STAGING_SLOT_INTERVAL_MINUTES * 60_000;
 const SCHEDULE_SLOT_INSERT_BATCH_SIZE = 1_000;
 
 export interface StagingTestOperationsConfig {
@@ -116,16 +114,22 @@ export const buildContinuousScheduleSlotRanges = (input: {
   startsAt: Date;
   endsAt: Date;
   durationMinutes: number;
+  startIntervalMinutes?: number;
 }): Array<{ startsAt: Date; endsAt: Date }> => {
   if (!Number.isInteger(input.durationMinutes) || input.durationMinutes <= 0) {
     throw new Error("STAGING_TEST_TECHNICIAN_SERVICE_DURATION_INVALID");
   }
+  const startIntervalMinutes = input.startIntervalMinutes ?? input.durationMinutes;
+  if (!Number.isInteger(startIntervalMinutes) || startIntervalMinutes <= 0) {
+    throw new Error("STAGING_TEST_SERVICE_START_INTERVAL_INVALID");
+  }
   const ranges: Array<{ startsAt: Date; endsAt: Date }> = [];
   const durationMs = input.durationMinutes * 60_000;
+  const startIntervalMs = startIntervalMinutes * 60_000;
   for (
     let startsAtMs = input.startsAt.getTime();
-    startsAtMs < input.endsAt.getTime();
-    startsAtMs += STAGING_SLOT_INTERVAL_MS
+    startsAtMs + durationMs <= input.endsAt.getTime();
+    startsAtMs += startIntervalMs
   ) {
     ranges.push({
       startsAt: new Date(startsAtMs),
@@ -133,6 +137,22 @@ export const buildContinuousScheduleSlotRanges = (input: {
     });
   }
   return ranges;
+};
+
+export const deriveServiceStartIntervalMinutes = (durations: number[]): number => {
+  if (
+    durations.length === 0 ||
+    durations.some((duration) => !Number.isInteger(duration) || duration <= 0)
+  ) {
+    throw new Error("STAGING_TEST_SERVICE_DURATION_SET_INVALID");
+  }
+  const greatestCommonDivisor = (left: number, right: number): number => {
+    let a = left;
+    let b = right;
+    while (b !== 0) [a, b] = [b, a % b];
+    return a;
+  };
+  return durations.reduce(greatestCommonDivisor);
 };
 
 export const buildContinuousAvailabilityRanges = (input: {
@@ -529,6 +549,9 @@ export class StagingTestOperationsProvisioner {
         if (!technicianServices || availabilityId === undefined) {
           throw new Error(`STAGING_TEST_SCHEDULE_SLOT_SOURCE_MISSING:${dayKey}`);
         }
+        const startIntervalMinutes = deriveServiceStartIntervalMinutes(
+          technicianServices.map((service) => service.durationMinutes)
+        );
         for (const technicianService of technicianServices) {
           const existingScheduleSlots = await transaction.scheduleSlot.findMany({
             where: {
@@ -550,7 +573,8 @@ export class StagingTestOperationsProvisioner {
           const ranges = buildContinuousScheduleSlotRanges({
             startsAt,
             endsAt: new Date(availability.endsAt),
-            durationMinutes: technicianService.durationMinutes
+            durationMinutes: technicianService.durationMinutes,
+            startIntervalMinutes
           });
           scheduleSlotCount += ranges.length;
           let pendingBatch: Prisma.ScheduleSlotCreateManyInput[] = [];
@@ -626,7 +650,7 @@ export class StagingTestOperationsProvisioner {
             createdTechnicianServiceCount: missingTechnicianServiceIds.length,
             scheduleSlotCount,
             createdScheduleSlotCount,
-            slotIntervalMinutes: STAGING_SLOT_INTERVAL_MINUTES,
+            serviceStartIntervalStrategy: "greatest_common_divisor_of_service_durations",
             continuousDailyCoverage: true,
             automationSettingCount,
             scheduleCycleId: scheduleCycle.id

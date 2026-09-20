@@ -49,14 +49,14 @@ describe("StagingTest Chiba shop provisioning gate", () => {
     });
   });
 
-  it("creates 30-minute starts only when the service finishes by 01:00", () => {
+  it("uses the service duration as its default start interval and finishes by 01:00", () => {
     const ranges = buildNightlyServiceSlotRanges({
       startsAt: new Date("2026-09-21T08:00:00.000Z"),
       endsAt: new Date("2026-09-21T16:00:00.000Z"),
       durationMinutes: 60
     });
 
-    expect(ranges).toHaveLength(15);
+    expect(ranges).toHaveLength(8);
     expect(ranges[0]).toEqual({
       startsAt: new Date("2026-09-21T08:00:00.000Z"),
       endsAt: new Date("2026-09-21T09:00:00.000Z")
