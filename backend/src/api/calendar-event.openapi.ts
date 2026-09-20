@@ -9,7 +9,11 @@ const eventSchema = {
     endsAt: { type: "string", format: "date-time" },
     allDay: { type: "boolean" },
     reminderMinutes: { type: ["integer", "null"], minimum: 0 },
-    repeatRule: { type: "string", enum: ["none", "daily", "weekly", "monthly", "yearly"] },
+    repeatRule: {
+      type: "string",
+      enum: ["none", "daily", "weekly", "monthly", "yearly"],
+      description: "Repeats at the same Asia/Tokyo time daily, on the same weekday weekly, on the same day of month monthly, or on the same month and day yearly. Missing calendar dates are skipped.",
+    },
     location: { type: "string" },
     url: { type: "string" },
     note: { type: "string" },
@@ -49,6 +53,7 @@ export const calendarEventOpenApiPaths = (prefix: string): Record<string, unknow
   [`${prefix}/calendar-events`]: {
     get: {
       tags: ["Calendar"], summary: "List the active identity's formal calendar events", security,
+      description: "Returns one persisted master row per event. Recurring masters remain eligible after their anchor interval so clients can project occurrences inside the requested window.",
       "x-permission": "calendar-events:read",
       parameters: [
         ...["from", "to"].map((name) => ({ name, in: "query", required: true, schema: { type: "string", format: "date-time" } })),
@@ -69,7 +74,7 @@ export const calendarEventOpenApiPaths = (prefix: string): Record<string, unknow
     get: {
       tags: ["Calendar"],
       summary: "List privacy-safe busy ranges for selected contacts",
-      description: "Every requested identity must be an active contact of the current personal identity. The query window is limited to 24 hours. The response contains time-only locked ranges from calendar events and hard-lock bookings, and never exposes private event content or source identifiers.",
+      description: "Every requested identity must be an active contact of the current personal identity. The query window is limited to 24 hours. The response contains time-only locked ranges from calendar events, including projected recurring occurrences, and hard-lock bookings, and never exposes private event content or source identifiers.",
       security,
       "x-permission": "calendar-events:read",
       parameters: [

@@ -20,6 +20,7 @@ import { mapScheduleSlotToCalendarItem } from "../../features/scheduling/api";
 import { loadEveryScopedOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
 import { readFormalScheduleWindow, refreshFormalScheduleWindow } from "../../features/scheduling/formalScheduleWindowCache";
 import { calendarEventApi, type FormalCalendarEvent, type FormalCalendarEventInput } from "../../features/scheduling/calendar-event-api";
+import { expandCalendarEventIntervals } from "../../features/scheduling/calendar-recurrence";
 import { availabilityWindowApi, type AvailabilityWindow } from "../../features/scheduling/availability-window-api";
 import { useDispatchCenterStore } from "../../features/dispatch-center/store";
 import type { DispatchArrangement } from "../../features/dispatch-center/domain";
@@ -581,30 +582,53 @@ function getLocalCalendarEvents(localEvents: LocalCalendarEvent[], syncContactOp
   }));
 }
 
-function getFormalPersonalCalendarEvents(events: FormalCalendarEvent[], creator?: CalendarEventCreator): UnifiedCalendarEvent[] {
-  return events.flatMap((event) => getFormalCalendarSegments(event.startsAt, event.endsAt).map((segment) => ({
-    ...segment,
-    id: `calendar-event-${event.id}-${segment.date}`,
-    sourceId: "user" as const,
-    calendarId: "formal:personal",
-    calendarLabel: "我的行程",
-    endDate: segment.date,
-    title: event.title,
-    subtitle: event.location || "个人行程",
-    badge: "个人行程",
-    readOnly: false,
-    location: event.location,
-    note: event.note,
-    url: event.url,
-    images: event.imageUrls.map((dataUrl, index) => ({ id: `formal-image-${event.id}-${index}`, name: `图片 ${index + 1}`, dataUrl })),
-    reminder: event.reminderMinutes === null ? "不提醒" : event.reminderMinutes === 60 ? "1 小时前" : `${event.reminderMinutes} 分钟前`,
-    allDay: event.allDay,
-    repeatRule: event.repeatRule,
-    syncContactLabels: [],
-    visibility: event.visibility === "participants" ? "参加者" : "仅自己",
-    participants: [],
-    ...getCalendarCreatorFields(creator)
-  })));
+export function getFormalPersonalCalendarEvents(
+  events: FormalCalendarEvent[],
+  creator?: CalendarEventCreator,
+  period?: Pick<UnifiedCalendarPeriod, "startDate" | "endDate">
+): UnifiedCalendarEvent[] {
+  const from = period ? new Date(`${period.startDate}T00:00:00+09:00`) : null;
+  const to = period ? new Date(`${addDays(period.endDate, 1)}T00:00:00+09:00`) : null;
+  return events.flatMap((event) => {
+    const intervals = from && to
+      ? expandCalendarEventIntervals({
+          startsAt: new Date(event.startsAt),
+          endsAt: new Date(event.endsAt),
+          repeatRule: event.repeatRule,
+          from,
+          to
+        })
+      : [{ startsAt: new Date(event.startsAt), endsAt: new Date(event.endsAt) }];
+
+    return intervals.flatMap((interval) => {
+      const occurrenceDate = new Date(interval.startsAt.getTime() + 9 * 60 * 60 * 1_000).toISOString().slice(0, 10);
+      return getFormalCalendarSegments(interval.startsAt.toISOString(), interval.endsAt.toISOString()).map((segment) => ({
+        ...segment,
+        id: event.repeatRule === "none"
+          ? `calendar-event-${event.id}-${segment.date}`
+          : `calendar-event-${event.id}-${occurrenceDate}-${segment.date}`,
+        sourceId: "user" as const,
+        calendarId: "formal:personal",
+        calendarLabel: "我的行程",
+        endDate: segment.date,
+        title: event.title,
+        subtitle: event.location || "个人行程",
+        badge: "个人行程",
+        readOnly: false,
+        location: event.location,
+        note: event.note,
+        url: event.url,
+        images: event.imageUrls.map((dataUrl, index) => ({ id: `formal-image-${event.id}-${index}`, name: `图片 ${index + 1}`, dataUrl })),
+        reminder: event.reminderMinutes === null ? "不提醒" : event.reminderMinutes === 60 ? "1 小时前" : `${event.reminderMinutes} 分钟前`,
+        allDay: event.allDay,
+        repeatRule: event.repeatRule,
+        syncContactLabels: [],
+        visibility: event.visibility === "participants" ? "参加者" : "仅自己",
+        participants: [],
+        ...getCalendarCreatorFields(creator)
+      }));
+    });
+  });
 }
 
 function formalCalendarEventId(eventId: string): number | null {
@@ -5622,7 +5646,7 @@ export function UnifiedUserCalendar({
   const allEvents = useMemo(() => {
     const birthdayEvents = formalOnly ? [] : getBirthdayCalendarEvents(period, currentCustomer, currentTechnician, currentStore, birthdayContactOptions);
     const localCalendarEvents = formalOnly
-      ? getFormalPersonalCalendarEvents(formalCalendarEvents, currentScopeCreator)
+      ? getFormalPersonalCalendarEvents(formalCalendarEvents, currentScopeCreator, period)
       : getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);
     const neeDoEvents = activeScope === "user" && currentCustomer
       ? getOrderEvents(currentCustomer, formalOrders, formalOnly)

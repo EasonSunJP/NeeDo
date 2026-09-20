@@ -5,11 +5,13 @@ import {
   projectParticipantBusyRanges,
   type CalendarParticipantBusyRange,
 } from "../domain/calendar-participant-availability";
+import { expandCalendarEventIntervals } from "../domain/calendar-event-recurrence";
 import { prisma } from "../prisma/client";
 import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 
 export type CalendarEventVisibility = "private" | "participants";
 export type CalendarEventRepeatRule = "none" | "daily" | "weekly" | "monthly" | "yearly";
+const recurringCalendarEventRules: CalendarEventRepeatRule[] = ["daily", "weekly", "monthly", "yearly"];
 
 export interface CalendarEventPayload {
   id: number;
@@ -169,9 +171,18 @@ export class CalendarEventRepository implements CalendarEventRepositoryPort {
   public async list(input: CalendarEventListInput) {
     const where: Prisma.CalendarEventWhereInput = {
       ownerIdentityId: input.ownerIdentityId,
-      startsAt: { lt: input.to },
-      endsAt: { gt: input.from },
       deletedAt: null,
+      OR: [
+        {
+          repeatRule: "none",
+          startsAt: { lt: input.to },
+          endsAt: { gt: input.from },
+        },
+        {
+          repeatRule: { in: recurringCalendarEventRules },
+          startsAt: { lt: input.to },
+        },
+      ],
     };
     const [rows, total] = await Promise.all([
       this.client.calendarEvent.findMany({
@@ -211,9 +222,18 @@ export class CalendarEventRepository implements CalendarEventRepositoryPort {
 
     const calendarWhere: Prisma.CalendarEventWhereInput = {
       ownerIdentityId: { in: participantIdentityIds },
-      startsAt: { lt: input.to },
-      endsAt: { gt: input.from },
       deletedAt: null,
+      OR: [
+        {
+          repeatRule: "none",
+          startsAt: { lt: input.to },
+          endsAt: { gt: input.from },
+        },
+        {
+          repeatRule: { in: recurringCalendarEventRules },
+          startsAt: { lt: input.to },
+        },
+      ],
     };
     const participantIdentityByUserId = new Map(
       authorizedContacts.map((contact) => [contact.contactUserId, contact.contactIdentityId]),
@@ -231,6 +251,7 @@ export class CalendarEventRepository implements CalendarEventRepositoryPort {
           ownerIdentityId: true,
           startsAt: true,
           endsAt: true,
+          repeatRule: true,
         },
       }),
       this.client.bookingOrder.findMany({
@@ -269,11 +290,16 @@ export class CalendarEventRepository implements CalendarEventRepositoryPort {
       }));
     });
     const projected = projectParticipantBusyRanges([
-      ...calendarRows.map((row) => ({
-        participantIdentityId: row.ownerIdentityId,
+      ...calendarRows.flatMap((row) => expandCalendarEventIntervals({
         startsAt: row.startsAt,
         endsAt: row.endsAt,
-      })),
+        repeatRule: row.repeatRule,
+        from: input.from,
+        to: input.to,
+      }).map((interval) => ({
+        participantIdentityId: row.ownerIdentityId,
+        ...interval,
+      }))),
       ...bookingBusySources,
     ]);
     const uniqueSorted = Array.from(new Map(projected.map((range) => [

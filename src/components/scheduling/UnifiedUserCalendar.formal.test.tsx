@@ -8,7 +8,7 @@ import { translateText } from "../../i18n/translations";
 import type { BookingOrder, BookingScheduleSlot } from "../../features/booking/api";
 import type { Customer, Store, Technician } from "../../types/domain";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
-import { getBookingConflictEventIds, getFormalAvailabilityWindowEvents, getFormalMerchantOrderEvents, getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedCalendarEventDetailPage, UnifiedUserCalendar, type UnifiedCalendarEvent } from "./UnifiedUserCalendar";
+import { getBookingConflictEventIds, getFormalAvailabilityWindowEvents, getFormalMerchantOrderEvents, getFormalPersonalCalendarEvents, getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedCalendarEventDetailPage, UnifiedUserCalendar, type UnifiedCalendarEvent } from "./UnifiedUserCalendar";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -330,6 +330,32 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     } as BookingScheduleSlot], "merchant");
     expect(midnight).toHaveLength(1);
     expect(midnight[0]?.endTime).toBe("24:00");
+  });
+
+  it("projects a persisted daily event into every later day in the visible period", () => {
+    const events = getFormalPersonalCalendarEvents([{
+      id: 42,
+      title: "每日复健",
+      startsAt: "2026-09-20T01:45:00.000Z",
+      endsAt: "2026-09-20T02:45:00.000Z",
+      allDay: false,
+      reminderMinutes: 30,
+      repeatRule: "daily",
+      location: "",
+      url: "",
+      note: "",
+      visibility: "private",
+      participantIdentityIds: [],
+      imageUrls: [],
+      version: 1,
+      createdAt: "2026-09-20T00:00:00.000Z",
+      updatedAt: "2026-09-20T00:00:00.000Z",
+    }], undefined, { startDate: "2026-09-21", endDate: "2026-09-22" });
+
+    expect(events.map((event) => ({ date: event.date, startTime: event.startTime, endTime: event.endTime }))).toEqual([
+      { date: "2026-09-21", startTime: "10:45", endTime: "11:45" },
+      { date: "2026-09-22", startTime: "10:45", endTime: "11:45" },
+    ]);
   });
 
   it("preserves the persisted availability source when projecting technician schedule slots", () => {

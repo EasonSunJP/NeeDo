@@ -280,7 +280,7 @@ GET /api/v1/calendar-events/participant-busy
   &page_size=100
 ```
 
-It requires `calendar-events:read`, validates a maximum of 20 distinct positive identities and a maximum 24-hour query window, and authorizes every requested identity as an active, unblocked, non-deleted contact of the current personal identity. Any unauthorized identity rejects the whole request with `403`; partial disclosure is not allowed. The paginated result merges formal calendar events with confirmed/in-service booking occupancy before sorting. Successful rows contain only `participantIdentityId`, `startsAt`, `endsAt`, and `status: "locked"`. Event IDs, titles, services, locations, customers, notes, prices, and source identifiers never leave the repository projection.
+It requires `calendar-events:read`, validates a maximum of 20 distinct positive identities and a maximum 24-hour query window, and authorizes every requested identity as an active, unblocked, non-deleted contact of the current personal identity. Any unauthorized identity rejects the whole request with `403`; partial disclosure is not allowed. The paginated result merges formal calendar events, projected recurring occurrences, and confirmed/in-service booking occupancy before sorting. Repetition keeps the same Asia/Tokyo time each day, the same weekday each week, the same day of month each month, or the same month and day each year; months or years without that calendar date are skipped. Successful rows contain only `participantIdentityId`, `startsAt`, `endsAt`, and `status: "locked"`. Event IDs, titles, services, locations, customers, notes, prices, and source identifiers never leave the repository projection.
 
 ## Historical order rebooking
 

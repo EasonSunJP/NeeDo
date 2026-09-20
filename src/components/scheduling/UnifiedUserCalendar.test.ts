@@ -150,7 +150,7 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
     expect(source).toContain("formalOnly = false");
     expect(source).toContain("loadCustomerOrderWindow");
     expect(source).toContain("formalOnly ? [] : loadLocalCalendarEvents");
-    expect(source).toContain("getFormalPersonalCalendarEvents(formalCalendarEvents, currentScopeCreator)");
+    expect(source).toContain("getFormalPersonalCalendarEvents(formalCalendarEvents, currentScopeCreator, period)");
     expect(source).toContain("if (!formalOnly) {");
     expect(source).toContain('onCreate={formalOnly && activeScope === "merchant" ? undefined : openCreate}');
   });
@@ -196,7 +196,7 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
       source.indexOf("</UnifiedCalendarSurface>")
     );
 
-    expect(allEventsSource).toContain("getFormalPersonalCalendarEvents(formalCalendarEvents, currentScopeCreator)");
+    expect(allEventsSource).toContain("getFormalPersonalCalendarEvents(formalCalendarEvents, currentScopeCreator, period)");
     expect(allEventsSource).toContain("return markBookingConflicts([");
     expect(allEventsSource).toContain("...localCalendarEvents,");
     expect(allEventsSource).toContain("...neeDoEvents");
