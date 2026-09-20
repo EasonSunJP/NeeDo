@@ -265,6 +265,7 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
       orderType: order.orderType === "REQUEST" ? "request" : "booking",
       orderNo: order.orderNo,
       orderStatus: String(order.status),
+      paymentStatus: String(order.paymentStatus),
       customerUserId: order.customerUserId,
       shopId: order.shopId,
       shopName: order.shop.name,
@@ -436,7 +437,7 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
   }
 
   private incomeStatus(value: string): ServiceIncomeStatus {
-    if (value === "reported" || value === "confirmed") {
+    if (value === "cancelled" || value === "reported" || value === "confirmed") {
       return value;
     }
 

@@ -339,6 +339,8 @@ backend/prisma/migrations/20260829123000_employee_payroll_schedule_policy/migrat
 
 `OrderFinanceService` 基于 `BookingOrder`、`OrderFinancial`、`WalletHold`、`FeeCalculationLog` 与当前收入规则生成订单财务详情。商户和运营后台读取同一 DTO；商户侧额外可以上报服务收入，写回 `order_financials` 并追加 Money Timeline。
 
+未收款且未到预约开始时间就取消的 Booking 在财务列表、详情和 CSV 中统一投影为 `cancelled`：服务 GMV、未上报收入、技师收入和店铺毛利均为 0，Money Timeline 不生成待上报收入或技师分账事件。BookingOrder 的原始报价继续保留为订单审计事实。读取层同时兼容修复前已写成 `compensated/unreported` 的历史行，不把这类行重新计入营收或工资来源。
+
 `CompensationEngine` 是纯计算层，统一输出：
 
 - `basePayJpy`

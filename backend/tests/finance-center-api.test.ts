@@ -129,6 +129,7 @@ const orderRecord: OrderFinanceRecord = {
   orderType: "booking",
   orderNo: "BK-20260603-0001",
   orderStatus: "COMPLETED",
+  paymentStatus: "CONFIRMED",
   customerUserId: 4,
   shopId: 11,
   shopName: "GINZA Calm Body Lab",

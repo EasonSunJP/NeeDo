@@ -949,20 +949,21 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       header.join(","),
       ...rows.map((row) => {
         const projection = projections.get(row.id);
+        const unpaidCancellation = this.isUnpaidCancelledSettlement(row);
         return [
           row.id,
           this.orderType(row.orderType),
           row.bookingOrder.orderNo,
           row.bookingOrder.shop.name,
-          row.settlementStatus,
-          row.serviceIncomeStatus,
-          row.paymentChannel,
+          this.financeSettlementStatus(row),
+          unpaidCancellation ? "cancelled" : row.serviceIncomeStatus,
+          unpaidCancellation ? "unknown" : row.paymentChannel,
           row.technicianProfileId ?? "",
           row.bookingOrder.technicianProfile?.displayName ?? "",
-          row.serviceAmountJpy,
-          row.platformCollectedServiceAmountJpy,
-          row.offlineReportedServiceAmountJpy,
-          row.unknownOrUnreportedServiceAmountJpy,
+          unpaidCancellation ? 0 : row.serviceAmountJpy,
+          unpaidCancellation ? 0 : row.platformCollectedServiceAmountJpy,
+          unpaidCancellation ? 0 : row.offlineReportedServiceAmountJpy,
+          unpaidCancellation ? 0 : row.unknownOrUnreportedServiceAmountJpy,
           this.platformNdpRevenue(row),
           row.cRequestFeeHoldNdp,
           row.cRequestFeeActualNdp,
@@ -973,10 +974,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           row.releasedNdp,
           row.penaltyNdp,
           row.compensationToUserNdp,
-          projection?.technicianNetIncomeJpy ??
-            this.timelineAmount(row.moneyTimelineJson, "technician_income_estimated"),
-          this.shopEstimatedGrossProfit(row, projection),
-          this.moneyTimelineStatus(row.serviceIncomeStatus),
+          unpaidCancellation
+            ? 0
+            : projection?.technicianNetIncomeJpy ??
+              this.timelineAmount(row.moneyTimelineJson, "technician_income_estimated"),
+          unpaidCancellation ? 0 : this.shopEstimatedGrossProfit(row, projection),
+          this.moneyTimelineStatus(unpaidCancellation ? "cancelled" : row.serviceIncomeStatus),
           row.createdAt.toISOString()
         ].join(",");
       })
@@ -3542,6 +3545,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     projection?: CompensationPreviewPayload
   ): BackofficeFinanceSettlementPayload {
     const pendingHoldNdp = this.pendingHoldNdp(settlement);
+    const unpaidCancellation = this.isUnpaidCancelledSettlement(settlement);
 
     return {
       id: settlement.id,
@@ -3550,7 +3554,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       orderNo: settlement.bookingOrder.orderNo,
       referenceType: "booking_order",
       referenceId: settlement.bookingOrderId,
-      status: settlement.settlementStatus,
+      status: this.financeSettlementStatus(settlement),
       shopId: settlement.shopId,
       shopName: settlement.bookingOrder.shop.name,
       technicianProfileId:
@@ -3558,12 +3562,18 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       technicianName: settlement.bookingOrder.technicianProfile?.displayName ?? null,
       ndpCurrency: LedgerCurrencyService.fromStored(settlement.ndpCurrency),
       checkoutPaymentAmountNdp: settlement.bookingOrder.checkout?.payableNdp ?? null,
-      estimatedServiceGmvJpy: settlement.serviceAmountJpy,
-      platformCollectedServiceAmountJpy: settlement.platformCollectedServiceAmountJpy,
-      offlineReportedServiceAmountJpy: settlement.offlineReportedServiceAmountJpy,
-      unknownOrUnreportedServiceAmountJpy: settlement.unknownOrUnreportedServiceAmountJpy,
-      serviceIncomeStatus: settlement.serviceIncomeStatus,
-      paymentChannel: settlement.paymentChannel,
+      estimatedServiceGmvJpy: unpaidCancellation ? 0 : settlement.serviceAmountJpy,
+      platformCollectedServiceAmountJpy: unpaidCancellation
+        ? 0
+        : settlement.platformCollectedServiceAmountJpy,
+      offlineReportedServiceAmountJpy: unpaidCancellation
+        ? 0
+        : settlement.offlineReportedServiceAmountJpy,
+      unknownOrUnreportedServiceAmountJpy: unpaidCancellation
+        ? 0
+        : settlement.unknownOrUnreportedServiceAmountJpy,
+      serviceIncomeStatus: unpaidCancellation ? "cancelled" : settlement.serviceIncomeStatus,
+      paymentChannel: unpaidCancellation ? "unknown" : settlement.paymentChannel,
       platformNdpRevenue: this.platformNdpRevenue(settlement),
       cRequestFeeHoldNdp: settlement.cRequestFeeHoldNdp,
       cRequestFeeActualNdp: settlement.cRequestFeeActualNdp,
@@ -3574,13 +3584,20 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       releasedNdp: settlement.releasedNdp,
       penaltyNdp: settlement.penaltyNdp,
       compensationToUserNdp: settlement.compensationToUserNdp,
-      technicianEstimatedIncomeJpy:
-        projection?.technicianNetIncomeJpy ??
-        this.timelineAmount(settlement.moneyTimelineJson, "technician_income_estimated"),
-      shopEstimatedGrossProfitJpy: this.shopEstimatedGrossProfit(settlement, projection),
+      technicianEstimatedIncomeJpy: unpaidCancellation
+        ? 0
+        : projection?.technicianNetIncomeJpy ??
+          this.timelineAmount(settlement.moneyTimelineJson, "technician_income_estimated"),
+      shopEstimatedGrossProfitJpy: unpaidCancellation
+        ? 0
+        : this.shopEstimatedGrossProfit(settlement, projection),
       appliedFeeRuleIds: this.stringArray(settlement.appliedFeeRuleIdsJson),
-      moneyTimeline: this.timelineArray(settlement.moneyTimelineJson),
-      moneyTimelineStatus: this.moneyTimelineStatus(settlement.serviceIncomeStatus),
+      moneyTimeline: unpaidCancellation
+        ? this.nonRevenueTimeline(settlement.moneyTimelineJson)
+        : this.timelineArray(settlement.moneyTimelineJson),
+      moneyTimelineStatus: this.moneyTimelineStatus(
+        unpaidCancellation ? "cancelled" : settlement.serviceIncomeStatus
+      ),
       createdAt: settlement.createdAt.toISOString()
     };
   }
@@ -4073,6 +4090,29 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return typeof event?.amountJpy === "number" ? event.amountJpy : 0;
   }
 
+  private isUnpaidCancelledSettlement(settlement: FinanceSettlementRecord): boolean {
+    return (
+      String(settlement.bookingOrder.status) === "CANCELLED" &&
+      String(settlement.bookingOrder.paymentStatus) === "PENDING"
+    );
+  }
+
+  private financeSettlementStatus(settlement: FinanceSettlementRecord): string {
+    return this.isUnpaidCancelledSettlement(settlement) &&
+      settlement.penaltyNdp === 0 &&
+      settlement.compensationToUserNdp === 0
+      ? "cancelled"
+      : settlement.settlementStatus;
+  }
+
+  private nonRevenueTimeline(value: unknown): unknown[] {
+    return this.timelineArray(value).filter((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return true;
+      const type = (item as { type?: unknown }).type;
+      return type !== "service_income_unreported" && type !== "technician_income_estimated";
+    });
+  }
+
   private async financeCompensationProjections(
     settlements: FinanceSettlementRecord[]
   ): Promise<Map<number, CompensationPreviewPayload>> {
@@ -4306,6 +4346,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     settlement: FinanceSettlementRecord,
     projection?: CompensationPreviewPayload
   ): number {
+    if (this.isUnpaidCancelledSettlement(settlement)) {
+      return 0;
+    }
     if (projection) {
       return projection.shopEstimatedGrossProfitJpy;
     }
@@ -4330,6 +4373,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   private moneyTimelineStatus(serviceIncomeStatus: string): string {
+    if (serviceIncomeStatus === "cancelled") {
+      return "cancelled";
+    }
     if (serviceIncomeStatus === "confirmed") {
       return "complete";
     }

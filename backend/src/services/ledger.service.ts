@@ -305,8 +305,8 @@ export interface OrderFinancialUpsertInput {
   platformCollectedServiceAmountJpy?: number;
   offlineReportedServiceAmountJpy?: number;
   unknownOrUnreportedServiceAmountJpy?: number;
-  paymentChannel?: "platform_online" | "platform_test_ndp" | "offline_cash" | "other";
-  serviceIncomeStatus?: "confirmed";
+  paymentChannel?: "unknown" | "platform_online" | "platform_test_ndp" | "offline_cash" | "other";
+  serviceIncomeStatus?: "cancelled" | "confirmed";
   serviceIncomeReportedById?: number | null;
   serviceIncomeReportedAt?: Date | null;
   serviceIncomeConfirmedById?: number | null;
@@ -651,6 +651,7 @@ export interface BookingLedgerSettlementInput {
         reason: string;
       };
   suppressCustomerReward?: boolean;
+  unpaidCancellation?: boolean;
   insufficientBalanceConfirmation?: {
     confirmed: true;
     idempotencyKey: string;
@@ -2424,6 +2425,28 @@ export class LedgerService
         return existing;
       }
       this.assertFinanceMutationRepository(repository);
+      const unpaidCancellationFinancials: Partial<OrderFinancialUpsertInput> =
+        input.unpaidCancellation
+          ? {
+              serviceAmountJpy: 0,
+              baseServiceAmountJpy: 0,
+              extensionAmountJpy: 0,
+              nominationChargeAmountJpy: 0,
+              wasTechnicianNominated: false,
+              platformCollectedServiceAmountJpy: 0,
+              offlineReportedServiceAmountJpy: 0,
+              unknownOrUnreportedServiceAmountJpy: 0,
+              paymentChannel: "unknown",
+              serviceIncomeStatus: "cancelled",
+              serviceIncomeReportedById: null,
+              serviceIncomeReportedAt: null,
+              serviceIncomeConfirmedById: null,
+              serviceIncomeConfirmedAt: null,
+              serviceIncomeNote: null,
+              penaltyNdp: 0,
+              compensationToUserNdp: 0
+            }
+          : {};
       const lockedSettlement =
         input.orderType === "booking"
           ? await this.lockOrderFinancialPlatformFeeSnapshot(repository, input.bookingOrderId)
@@ -2437,6 +2460,7 @@ export class LedgerService
           repository,
           input,
           {
+            ...unpaidCancellationFinancials,
             platformFeeOutstandingNdp: 0,
             platformFeeDebtStatus: "none",
             userRewardEligibleNdp: 0,
@@ -2472,6 +2496,7 @@ export class LedgerService
           repository,
           input,
           {
+            ...unpaidCancellationFinancials,
             releasedNdp: 0,
             ...(snapshot
               ? {
@@ -2509,6 +2534,7 @@ export class LedgerService
           repository,
           input,
           {
+            ...unpaidCancellationFinancials,
             ...(snapshot
               ? {
                   platformFeeOutstandingNdp: 0,
@@ -2574,6 +2600,7 @@ export class LedgerService
         repository,
         input,
         {
+          ...unpaidCancellationFinancials,
           releasedNdp: releaseAmount,
           ...(snapshot
             ? {

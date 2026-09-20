@@ -1795,6 +1795,43 @@ describe("LedgerService wallet mutations", () => {
     });
   });
 
+  it("records an unpaid cancellation as zero service income", async () => {
+    const repository = new InMemoryLedgerRepository();
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+    const input = {
+      ...bookingInput({
+        bookingOrderId: 213,
+        shopId: 10,
+        actorUserId: 2,
+        customerUserId: 3
+      }),
+      unpaidCancellation: true
+    };
+
+    await expect(service.releaseBookingHold(input)).resolves.toBeUndefined();
+
+    expect(repository.financials.get(213)).toMatchObject({
+      ndpCurrency: "NDP",
+      serviceAmountJpy: 0,
+      platformCollectedServiceAmountJpy: 0,
+      offlineReportedServiceAmountJpy: 0,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      paymentChannel: "unknown",
+      serviceIncomeStatus: "cancelled",
+      penaltyNdp: 0,
+      compensationToUserNdp: 0,
+      settlementStatus: "cancelled"
+    });
+    expect(repository.transactions.size).toBe(0);
+    expect(repository.entries).toHaveLength(0);
+  });
+
   it("releases only verifiably frozen NDP when a historical hold exceeds the wallet frozen balance", async () => {
     const repository = new InMemoryLedgerRepository();
     repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 1_000 });

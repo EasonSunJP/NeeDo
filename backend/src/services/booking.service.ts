@@ -2152,6 +2152,8 @@ export class BookingService {
     }
 
     if (action === "cancel" && order.status === "confirmed") {
+      const unpaidFutureCancellation =
+        order.paymentStatus === "pending" && order.startsAt.getTime() > this.now().getTime();
       if (order.orderType === "request") {
         return {
           settle: (context) =>
@@ -2165,14 +2167,15 @@ export class BookingService {
                 serviceAmountJpy: this.moneyToInteger(order.priceAmount),
                 scheduledStartAt: order.startsAt,
                 customerUserId: order.customerUserId,
-                actorUserId: actor.userId
+                actorUserId: actor.userId,
+                unpaidCancellation: unpaidFutureCancellation
               },
               { transactionClient: context.transactionClient }
             ).then(() => undefined)
         };
       }
 
-      return this.isServiceProviderActor(actor)
+      return this.isServiceProviderActor(actor) && !unpaidFutureCancellation
         ? {
             settle: (context) =>
               this.ledgerService!.compensateCustomerForMerchantCancellation(
@@ -2202,7 +2205,8 @@ export class BookingService {
                   serviceId: order.serviceId,
                   serviceAmountJpy: this.moneyToInteger(order.priceAmount),
                   scheduledStartAt: order.startsAt,
-                  actorUserId: actor.userId
+                  actorUserId: actor.userId,
+                  unpaidCancellation: unpaidFutureCancellation
                 },
                 { transactionClient: context.transactionClient }
               ).then(() => undefined)

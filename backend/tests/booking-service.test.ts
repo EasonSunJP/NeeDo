@@ -1582,6 +1582,52 @@ describe("BookingService state machine", () => {
     );
   });
 
+  it("cancels an unpaid future booking without creating provider compensation", async () => {
+    const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
+      freezeBookingAcceptance: jest.fn(),
+      releaseBookingHold: jest.fn().mockResolvedValue(undefined),
+      settleBookingCompletion: jest.fn(),
+      compensateCustomerForMerchantCancellation: jest.fn().mockResolvedValue(undefined)
+    };
+    const providerActor = {
+      userId: 2,
+      roles: ["merchant_owner"],
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 1
+    };
+    const order = {
+      ...makeOrder("confirmed"),
+      paymentStatus: "pending" as const,
+      startsAt: new Date("2026-09-24T09:00:00.000Z"),
+      endsAt: new Date("2026-09-24T10:00:00.000Z")
+    };
+
+    await expect(
+      new BookingService(
+        createRepository(order),
+        ledgerService,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        () => new Date("2026-09-20T13:24:00.000Z")
+      ).transitionOrder(
+        providerActor,
+        order.id,
+        "cancel",
+        "merchant cancelled before service"
+      )
+    ).resolves.toMatchObject({ status: "cancelled" });
+
+    expect(ledgerService.releaseBookingHold).toHaveBeenCalledTimes(1);
+    expect(ledgerService.releaseBookingHold).toHaveBeenCalledWith(
+      expect.objectContaining({ unpaidCancellation: true }),
+      expect.anything()
+    );
+    expect(ledgerService.compensateCustomerForMerchantCancellation).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["customer", actor, "pending", "release"],
     [

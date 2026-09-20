@@ -7,7 +7,7 @@ import type {
   ShopFinanceWageMode
 } from "./merchantFinanceRules";
 
-export type ServiceIncomeStatus = "unreported" | "reported" | "confirmed";
+export type ServiceIncomeStatus = "cancelled" | "unreported" | "reported" | "confirmed";
 export type ServicePaymentChannel =
   | "unknown"
   | "platform_online"
