@@ -32,13 +32,15 @@ export interface FormalDatabaseSchemaEvidence {
 const REQUIRED_MIGRATIONS = [
   "20260901090000_order_fulfillment_checkout",
   "20260901101500_order_review_idempotency",
-  "20260902090000_order_status_history_fulfillment_statuses"
+  "20260902090000_order_status_history_fulfillment_statuses",
+  "20260920210000_order_add_on_catalog_source"
 ] as const;
 const REQUIRED_TABLES = [
   "users",
   "customer_profiles",
   "shops",
   "technician_profiles",
+  "technician_services",
   "categories",
   "services",
   "schedule_slots",
@@ -63,6 +65,7 @@ const REQUIRED_COLUMNS = [
   "order_service_sessions.verification_hash",
   "order_service_events.idempotency_key",
   "order_add_ons.service_snapshot_json",
+  "order_add_ons.technician_service_id",
   "order_checkouts.calculation_snapshot_json",
   "order_checkouts.rate_snapshot_json",
   "order_checkouts.ledger_transaction_id",
@@ -71,11 +74,13 @@ const REQUIRED_COLUMNS = [
 ] as const;
 const REQUIRED_CONSTRAINTS = [
   "order_service_events.order_service_events_shape_chk",
+  "order_add_ons.order_add_ons_catalog_source_chk",
   "order_checkouts.order_checkouts_total_chk",
   "order_checkouts.order_checkouts_receipt_evidence_chk"
 ] as const;
 const REQUIRED_INDEXES = [
   "order_service_events.order_service_events_idempotency_key",
+  "order_add_ons.order_add_ons_technician_service_idx",
   "order_checkouts.order_checkouts_booking_order_key",
   "order_reviews.order_reviews_idempotency_key_key",
   "order_review_tags.order_review_tags_order_review_id_label_key"

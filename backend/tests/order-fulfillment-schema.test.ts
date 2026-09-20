@@ -6,6 +6,10 @@ const migration = readFileSync(
   join(process.cwd(), "prisma/migrations/20260901090000_order_fulfillment_checkout/migration.sql"),
   "utf8"
 );
+const addOnCatalogMigration = readFileSync(
+  join(process.cwd(), "prisma/migrations/20260920210000_order_add_on_catalog_source/migration.sql"),
+  "utf8"
+);
 
 const normalize = (value: string): string => value.replace(/\s+/g, " ").trim();
 
@@ -582,7 +586,8 @@ const expectedPrismaScalarFields: Record<string, string[]> = {
     "id Int @id @default(autoincrement())",
     'bookingOrderId Int @map("booking_order_id")',
     'serviceSessionId Int @map("service_session_id")',
-    'serviceId Int @map("service_id")',
+    'serviceId Int? @map("service_id")',
+    'technicianServiceId Int? @map("technician_service_id")',
     "status OrderAddOnStatus @default(PROPOSED)",
     'serviceNameSnapshot String @map("service_name_snapshot") @db.VarChar(160)',
     'priceAmountJpy Int @map("price_amount_jpy")',
@@ -688,6 +693,7 @@ const expectedModelDirectives: Record<string, string[]> = {
     '@@index([bookingOrderId, status, deletedAt], map: "order_add_ons_order_status_idx")',
     '@@index([serviceSessionId, status, deletedAt], map: "order_add_ons_session_status_idx")',
     '@@index([serviceId], map: "order_add_ons_service_idx")',
+    '@@index([technicianServiceId], map: "order_add_ons_technician_service_idx")',
     '@@index([proposedByUserId], map: "order_add_ons_proposed_by_idx")',
     '@@index([acceptedByUserId], map: "order_add_ons_accepted_by_idx")',
     '@@index([rejectedByUserId], map: "order_add_ons_rejected_by_idx")',
@@ -779,6 +785,7 @@ describe("order fulfillment persistence schema", () => {
           "order_add_ons_order_fkey",
           "order_add_ons_session_fkey",
           "order_add_ons_service_fkey",
+          "order_add_ons_technician_service_fkey",
           "order_add_ons_proposed_by_fkey",
           "order_add_ons_accepted_by_fkey",
           "order_add_ons_rejected_by_fkey"
@@ -838,6 +845,28 @@ describe("order fulfillment persistence schema", () => {
       expect(indexDefinitions(migration, table)).toEqual(expectedIndexes[table]);
     }
     expect(() => assertCheckoutPaymentEnum(migration)).not.toThrow();
+  });
+
+  it("migrates add-ons to exactly one shop or technician service source", () => {
+    expect(normalize(addOnCatalogMigration)).toContain(
+      normalize("MODIFY `service_id` INTEGER NULL")
+    );
+    expect(normalize(addOnCatalogMigration)).toContain(
+      normalize("ADD COLUMN `technician_service_id` INTEGER NULL AFTER `service_id`")
+    );
+    expect(checkExpression(addOnCatalogMigration, "order_add_ons_catalog_source_chk")).toBe(
+      normalize(
+        "(`service_id` IS NOT NULL AND `technician_service_id` IS NULL) OR (`service_id` IS NULL AND `technician_service_id` IS NOT NULL)"
+      )
+    );
+    expect(normalize(addOnCatalogMigration)).toContain(
+      normalize(
+        "ADD CONSTRAINT `order_add_ons_technician_service_fkey` FOREIGN KEY (`technician_service_id`) REFERENCES `technician_services`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT"
+      )
+    );
+    expect(normalize(addOnCatalogMigration)).toContain(
+      normalize("ADD INDEX `order_add_ons_technician_service_idx`(`technician_service_id`)")
+    );
   });
 
   it("binds every redundant order reference and uses only restrictive foreign keys", () => {

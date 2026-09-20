@@ -450,7 +450,8 @@ type OrderDetailRecord = OrderRecord & {
     occurredAt: Date;
     orderAddOn: {
       id: number;
-      serviceId: number;
+      serviceId: number | null;
+      technicianServiceId: number | null;
       serviceNameSnapshot: string;
       priceAmountJpy: number;
       currency: string;
@@ -3099,6 +3100,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             select: {
               id: true,
               serviceId: true,
+              technicianServiceId: true,
               serviceNameSnapshot: true,
               priceAmountJpy: true,
               currency: true,
@@ -3414,7 +3416,11 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             ...this.mapOrderTimelineActor(event.actor),
             publicReason: event.reason,
             addOnId: event.orderAddOn.id,
-            serviceId: event.orderAddOn.serviceId,
+            serviceId: (event.orderAddOn.serviceId ?? event.orderAddOn.technicianServiceId)!,
+            serviceType:
+              event.orderAddOn.technicianServiceId === null
+                ? ("shop_service" as const)
+                : ("technician_service" as const),
             serviceName: event.orderAddOn.serviceNameSnapshot,
             priceAmountJpy: event.orderAddOn.priceAmountJpy,
             currency: "JPY" as const,

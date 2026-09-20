@@ -101,7 +101,8 @@ const makeOrderRecord = () => ({
       occurredAt: new Date("2026-05-25T02:15:00.000Z"),
       orderAddOn: {
         id: 44,
-        serviceId: 7,
+        serviceId: 7 as number | null,
+        technicianServiceId: null as number | null,
         status: "ACCEPTED",
         serviceNameSnapshot: "Extended care 60 minutes",
         priceAmountJpy: 8800,
@@ -118,7 +119,8 @@ const makeOrderRecord = () => ({
       occurredAt: new Date("2026-05-25T02:20:00.000Z"),
       orderAddOn: {
         id: 44,
-        serviceId: 7,
+        serviceId: 7 as number | null,
+        technicianServiceId: null as number | null,
         status: "ACCEPTED",
         serviceNameSnapshot: "Extended care 60 minutes",
         priceAmountJpy: 8800,
@@ -148,6 +150,8 @@ describe("BackofficeRepository order performance detail", () => {
         id: "service:501",
         type: "ADD_ON_PROPOSED",
         addOnId: 44,
+        serviceId: 7,
+        serviceType: "shop_service",
         serviceName: "Extended care 60 minutes",
         priceAmountJpy: 8800,
         durationMinutes: 60
@@ -156,6 +160,8 @@ describe("BackofficeRepository order performance detail", () => {
         id: "service:502",
         type: "ADD_ON_ACCEPTED",
         addOnId: 44,
+        serviceId: 7,
+        serviceType: "shop_service",
         serviceName: "Extended care 60 minutes",
         priceAmountJpy: 8800,
         durationMinutes: 60
@@ -178,13 +184,40 @@ describe("BackofficeRepository order performance detail", () => {
             select: expect.objectContaining({
               eventType: true,
               orderAddOn: expect.objectContaining({
-                select: expect.objectContaining({ serviceNameSnapshot: true })
+                select: expect.objectContaining({
+                  serviceNameSnapshot: true,
+                  serviceId: true,
+                  technicianServiceId: true
+                })
               })
             })
           })
         })
       })
     );
+  });
+
+  it("projects technician-service add-ons with their source and identifier", async () => {
+    const record = makeOrderRecord();
+    for (const event of record.serviceEvents) {
+      if (!event.orderAddOn) continue;
+      event.orderAddOn.serviceId = null;
+      event.orderAddOn.technicianServiceId = 81;
+    }
+    const repository = new BackofficeRepository({
+      bookingOrder: { findFirst: jest.fn().mockResolvedValue(record) }
+    } as never);
+
+    const result = await repository.findOrderById({ scope: "platform", id: 31 });
+
+    expect(result?.timelineEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "service:501",
+        serviceId: 81,
+        serviceType: "technician_service",
+        priceAmountJpy: 8800
+      })
+    ]));
   });
 
   it("keeps merchant order detail shop-scoped and removes operations-only internal notes", async () => {

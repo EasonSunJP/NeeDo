@@ -13,6 +13,7 @@ import {
   mapBookingOrderToDomainOrder,
   type BookingOrder,
   type BookingOrderAddOn,
+  type OrderAddOnService,
   type OrderCheckout,
   type OrderReview,
   type OverdueAppointmentBlock,
@@ -23,7 +24,6 @@ import {
   coreReadApi,
   mapCoreShopToStore,
   mapCoreTechnicianToTechnician,
-  type CoreServiceCard,
   type CoreServiceDetail,
   type CoreShopDetail,
   type CoreTechnicianDetail
@@ -176,6 +176,22 @@ function buildAddOnSnapshotServiceData(addOn: BookingOrderAddOn): UnifiedService
   };
 }
 
+function buildAddOnCatalogServiceData(service: OrderAddOnService): UnifiedServiceInfoCardData {
+  return {
+    id: String(service.id),
+    coverUrl: service.coverUrl,
+    name: service.name,
+    priceAmount: service.priceAmountJpy,
+    currency: service.currency,
+    durationMinutes: service.durationMinutes,
+    completedOrderCount: null,
+    shopPublicId: null,
+    shopAddress: null,
+    description: service.description,
+    tags: []
+  };
+}
+
 function AddOnRow({ addOn, actions }: { addOn: BookingOrderAddOn; actions?: ReactNode }) {
   const status = addOn.status === "accepted" ? "已接受" : addOn.status === "rejected" ? "已拒绝" : addOn.proposedBy === "customer" ? "等待技师确认" : "等待你的确认";
 
@@ -205,7 +221,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const [checkoutRevision, setCheckoutRevision] = useState(0);
   const [projectionError, setProjectionError] = useState("");
   const [projectionPending, setProjectionPending] = useState(false);
-  const [services, setServices] = useState<CoreServiceCard[]>([]);
+  const [services, setServices] = useState<OrderAddOnService[]>([]);
   const [orderService, setOrderService] = useState<CoreServiceDetail | null>(null);
   const [orderShop, setOrderShop] = useState<CoreShopDetail | null>(null);
   const [orderTechnician, setOrderTechnician] = useState<CoreTechnicianDetail | null>(null);
@@ -357,11 +373,11 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       return;
     }
     let active = true;
-    coreReadApi.listServices({ shopId: order.shopId, page: 1, pageSize: 100 })
+    bookingApi.listAddOnServices(order.id, { page: 1, pageSize: 100 })
       .then((data) => { if (active) setServices(data.list); })
       .catch((error: unknown) => { if (active) setActionError(describeBookingOrderMutationError(error, language)); });
     return () => { active = false; };
-  }, [order?.shopId, order?.status]);
+  }, [order?.id, order?.status]);
 
   useEffect(() => {
     if (order?.status !== "inService") return;
@@ -636,7 +652,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
                           追加<span className="sr-only"> {service.name}</span>
                         </button>
                       )}
-                      data={mapCoreServiceCardToUnifiedData(service)}
+                      data={buildAddOnCatalogServiceData(service)}
                       key={service.id}
                     />
                   ))}

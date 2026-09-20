@@ -616,6 +616,7 @@ type RepositoryHarnessOptions = {
   prepaid?: boolean;
   platformFeeAmountNdpSnapshot?: number;
   orderType?: "BOOKING" | "REQUEST";
+  pricingMode?: "MERCHANT" | "TECHNICIAN";
   activePlatformSettingMissing?: boolean;
   service?: {
     id?: number;
@@ -623,6 +624,17 @@ type RepositoryHarnessOptions = {
     status?: string;
     currency?: string;
     priceAmount?: string;
+    durationMinutes?: number;
+  } | null;
+  technicianService?: {
+    id?: number;
+    shopId?: number | null;
+    technicianId?: number;
+    isActive?: boolean;
+    isBookable?: boolean;
+    reviewStatus?: string;
+    currency?: string;
+    priceAmount?: number;
     durationMinutes?: number;
   } | null;
 };
@@ -665,8 +677,8 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
     paymentMethod: "ONSITE",
     paymentStatus: "PENDING",
     priceAmount: new Prisma.Decimal(baseOrder.priceAmount),
-    pricingModeSnapshot: "MERCHANT",
-    serviceOwnerType: "SHOP",
+    pricingModeSnapshot: options.pricingMode ?? "MERCHANT",
+    serviceOwnerType: options.pricingMode === "TECHNICIAN" ? "TECHNICIAN" : "SHOP",
     servicePriceSnapshot: new Prisma.Decimal(baseOrder.servicePriceSnapshot!),
     serviceSnapshotJson: baseOrder.serviceSnapshot,
     fulfillmentMode: "store",
@@ -733,6 +745,29 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
           priceAmount: new Prisma.Decimal(serviceOption.priceAmount ?? "4000.00"),
           currency: serviceOption.currency ?? "JPY",
           durationMinutes: serviceOption.durationMinutes ?? 30,
+          createdAt: now,
+          deletedAt: null
+        };
+  const technicianServiceOption = options.technicianService === undefined ? {} : options.technicianService;
+  const catalogTechnicianService =
+    technicianServiceOption === null
+      ? null
+      : {
+          id: technicianServiceOption.id ?? 201,
+          publicId: "00000000-0000-4000-8000-000000000201",
+          shopId: technicianServiceOption.shopId ?? dbOrder.shopId,
+          technicianId: technicianServiceOption.technicianId ?? dbOrder.technicianProfileId,
+          categoryId: 7,
+          name: "施術延長 30分",
+          description: "担当技師の延長サービス",
+          priceAmount: technicianServiceOption.priceAmount ?? 6500,
+          currency: technicianServiceOption.currency ?? "JPY",
+          durationMinutes: technicianServiceOption.durationMinutes ?? 30,
+          isActive: technicianServiceOption.isActive ?? true,
+          isBookable: technicianServiceOption.isBookable ?? true,
+          reviewStatus: technicianServiceOption.reviewStatus ?? "APPROVED",
+          sortOrder: 1,
+          coverImageUrl: null,
           createdAt: now,
           deletedAt: null
         };
@@ -865,7 +900,27 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
           return null;
         }
         return catalogService;
-      })
+      }),
+      findMany: jest.fn(async () => catalogService ? [catalogService] : []),
+      count: jest.fn(async () => catalogService ? 1 : 0)
+    },
+    technicianService: {
+      findFirst: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
+        if (!catalogTechnicianService) return null;
+        if (
+          catalogTechnicianService.id !== where.id ||
+          catalogTechnicianService.technicianId !== where.technicianId ||
+          catalogTechnicianService.isActive !== where.isActive ||
+          catalogTechnicianService.isBookable !== where.isBookable ||
+          catalogTechnicianService.reviewStatus !== where.reviewStatus ||
+          catalogTechnicianService.deletedAt !== where.deletedAt
+        ) {
+          return null;
+        }
+        return catalogTechnicianService;
+      }),
+      findMany: jest.fn(async () => catalogTechnicianService ? [catalogTechnicianService] : []),
+      count: jest.fn(async () => catalogTechnicianService ? 1 : 0)
     },
     orderAddOn: {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -904,6 +959,8 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
   };
   const client = {
     bookingOrder: tx.bookingOrder,
+    service: tx.service,
+    technicianService: tx.technicianService,
     $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => {
       const orderSnapshot = {
         ...dbOrder,
@@ -1616,6 +1673,109 @@ describe("formal order fulfillment repository transactions", () => {
       applied: false
     });
     expect(harness.getSession()!.expectedEndsAt).toEqual(acceptedEnd);
+  });
+
+  it("snapshots only the assigned technician's active service for a technician-priced order", async () => {
+    const harness = createRepositoryHarness({
+      status: "IN_SERVICE",
+      session: true,
+      pricingMode: "TECHNICIAN",
+      service: null
+    });
+
+    await expect(harness.repository.createOrderAddOn({
+      ...repositoryActor,
+      orderId: 41,
+      serviceId: 201,
+      idempotencyKey: "technician-addon-proposal"
+    })).resolves.toMatchObject({ outcome: "ok", applied: true });
+    expect(harness.addOns[0]).toMatchObject({
+      serviceId: null,
+      technicianServiceId: 201,
+      serviceNameSnapshot: "施術延長 30分",
+      priceAmountJpy: 6500,
+      durationMinutes: 30
+    });
+  });
+
+  it("rejects a service owned by a technician other than the one assigned to the order", async () => {
+    const harness = createRepositoryHarness({
+      status: "IN_SERVICE",
+      session: true,
+      pricingMode: "TECHNICIAN",
+      service: null,
+      technicianService: { technicianId: 999 }
+    });
+
+    await expect(harness.repository.createOrderAddOn({
+      ...repositoryActor,
+      orderId: 41,
+      serviceId: 201,
+      idempotencyKey: "other-technician-addon"
+    })).resolves.toEqual({ outcome: "invalid_service" });
+    expect(harness.addOns).toHaveLength(0);
+  });
+
+  it("lists only the assigned technician catalog for a technician-priced in-service order", async () => {
+    const harness = createRepositoryHarness({
+      status: "IN_SERVICE",
+      session: true,
+      pricingMode: "TECHNICIAN",
+      service: null
+    });
+
+    await expect((harness.repository as BookingRepository & {
+      listOrderAddOnServices(input: { orderId: number; page: number; pageSize: number }): Promise<unknown>;
+    }).listOrderAddOnServices({ orderId: 41, page: 1, pageSize: 20 })).resolves.toEqual({
+      list: [{
+        id: 201,
+        sourceType: "technician_service",
+        name: "施術延長 30分",
+        description: "担当技師の延長サービス",
+        priceAmountJpy: 6500,
+        currency: "JPY",
+        durationMinutes: 30,
+        coverUrl: null
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+    expect(harness.tx.service.findMany).not.toHaveBeenCalled();
+    expect(harness.tx.technicianService.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        technicianId: 702,
+        isActive: true,
+        isBookable: true,
+        reviewStatus: "APPROVED"
+      })
+    }));
+  });
+
+  it("lists only the shop catalog for a merchant-priced in-service order", async () => {
+    const harness = createRepositoryHarness({ status: "IN_SERVICE", session: true });
+
+    await expect((harness.repository as BookingRepository & {
+      listOrderAddOnServices(input: { orderId: number; page: number; pageSize: number }): Promise<unknown>;
+    }).listOrderAddOnServices({ orderId: 41, page: 1, pageSize: 20 })).resolves.toEqual({
+      list: [{
+        id: 19,
+        sourceType: "shop_service",
+        name: "追加舒缓 30 分钟",
+        description: "肩颈放松",
+        priceAmountJpy: 4000,
+        currency: "JPY",
+        durationMinutes: 30,
+        coverUrl: null
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+    expect(harness.tx.technicianService.findMany).not.toHaveBeenCalled();
+    expect(harness.tx.service.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ shopId: 12, status: "published", currency: "JPY" })
+    }));
   });
 
   it("blocks self-decision, does not extend on reject, and blocks end until resolved", async () => {

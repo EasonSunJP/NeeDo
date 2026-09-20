@@ -71,7 +71,12 @@ const order: BookingOrderPayload = {
   note: null,
   cancelReason: null,
   affiliate: null,
-  serviceSession: null,
+  serviceSession: {
+    startedAt: now,
+    expectedEndsAt: new Date("2026-09-01T11:00:00.000Z"),
+    endedAt: null,
+    addOns: []
+  },
   createdAt: now,
   updatedAt: now,
   statusHistory: [],
@@ -119,6 +124,21 @@ const createFixture = () => {
   const ok = { outcome: "ok" as const, order, applied: true };
   const repository = {
     findOrderById: jest.fn(async (id: number) => (id === order.id ? order : null)),
+    listOrderAddOnServices: jest.fn(async () => ({
+      list: [{
+        id: 19,
+        sourceType: "shop_service",
+        name: "追加舒缓 30 分钟",
+        description: null,
+        priceAmountJpy: 4000,
+        currency: "JPY",
+        durationMinutes: 30,
+        coverUrl: null
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20
+    })),
     startService: jest.fn(async () => ok),
     createOrderAddOn: jest.fn(async () => ok),
     decideOrderAddOn: jest.fn(async () => ok),
@@ -177,6 +197,37 @@ describe("formal order fulfillment API", () => {
     expect(fixture.repository.createOrderAddOn).toHaveBeenCalledTimes(1);
     expect(fixture.repository.decideOrderAddOn).toHaveBeenCalledTimes(2);
     expect(fixture.repository.endService).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the authenticated order-scoped add-on catalog", async () => {
+    const fixture = createFixture();
+
+    const response = await request(fixture.app)
+      .get("/api/v1/orders/41/add-on-services?page=1&pageSize=20")
+      .set("Authorization", "Bearer customer")
+      .expect(200);
+    await request(fixture.app)
+      .get("/api/v1/orders/41/add-on-services?page=1&pageSize=20")
+      .set("Authorization", "Bearer technician")
+      .expect(200);
+    await request(fixture.app)
+      .get("/api/v1/orders/41/add-on-services?page=1&pageSize=20")
+      .set("Authorization", "Bearer merchant")
+      .expect(200);
+    await request(fixture.app)
+      .get("/api/v1/orders/41/add-on-services?page=1&pageSize=20")
+      .set("Authorization", "Bearer cross-shop-merchant")
+      .expect(404);
+
+    expect(response.body.data.list).toEqual([
+      expect.objectContaining({ id: 19, sourceType: "shop_service", priceAmountJpy: 4000 })
+    ]);
+    expect(fixture.repository.listOrderAddOnServices).toHaveBeenCalledWith({
+      orderId: 41,
+      page: 1,
+      pageSize: 20
+    });
+    expect(fixture.repository.listOrderAddOnServices).toHaveBeenCalledTimes(3);
   });
 
   it("rejects an unknown strict body field before the repository", async () => {

@@ -45,6 +45,7 @@ import {
   orderCancelBodySchema,
   orderConfirmBodySchema,
   orderAddOnDecisionBodySchema,
+  orderAddOnServiceListQuerySchema,
   orderAddOnIdParamsSchema,
   orderAssignTechnicianBodySchema,
   orderIdParamSchema,
@@ -288,6 +289,13 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.addOnWrite),
     validateRequest({ params: orderIdParamSchema, body: createOrderAddOnBodySchema }),
     controller.createOrderAddOn
+  );
+  router.get(
+    "/orders/:id/add-on-services",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.getOrder),
+    validateRequest({ params: orderIdParamSchema, query: orderAddOnServiceListQuerySchema }),
+    controller.listOrderAddOnServices
   );
   router.post(
     "/orders/:id/add-ons/:addOnId/accept",

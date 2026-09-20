@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   getServiceDetail: vi.fn(),
   getShopDetail: vi.fn(),
   getTechnicianDetail: vi.fn(),
+  listAddOnServices: vi.fn(),
   listServices: vi.fn(),
   payWithNdp: vi.fn(),
   rejectAddOn: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock("../../features/booking/api", async () => {
       createReview: mocks.createReview,
       endService: mocks.endService,
       getCheckout: mocks.getCheckout,
+      listAddOnServices: mocks.listAddOnServices,
       getOrder: mocks.getOrder,
       getOwnReview: mocks.getOwnReview,
       payWithNdp: mocks.payWithNdp,
@@ -164,6 +166,7 @@ function makeOrder(status: BookingOrderStatus, id = 88): BookingOrder {
       addOns: [{
         id: 301,
         serviceId: 45,
+        serviceType: "shop_service",
         status: "proposed",
         serviceNameSnapshot: "技师建议延长",
         priceAmountJpy: 1200,
@@ -309,6 +312,21 @@ describe("formal user order detail", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     mocks.listServices.mockResolvedValue({ list: [coreService], total: 1, page: 1, page_size: 100 });
+    mocks.listAddOnServices.mockResolvedValue({
+      list: [{
+        id: 45,
+        sourceType: "shop_service",
+        name: "正式延长服务",
+        description: "延长 30 分钟",
+        priceAmountJpy: 1200,
+        currency: "JPY",
+        durationMinutes: 30,
+        coverUrl: null
+      }],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
     mocks.getServiceDetail.mockResolvedValue(null);
     mocks.getShopDetail.mockResolvedValue(null);
     mocks.getTechnicianDetail.mockResolvedValue(null);
@@ -390,7 +408,8 @@ describe("formal user order detail", () => {
     await render();
     expect(Number(container.querySelector('[data-testid="countdown"]')?.textContent)).toBeGreaterThan(0);
     await waitFor(() => expect(container.textContent).toContain("正式延长服务"));
-    expect(mocks.listServices).toHaveBeenCalledWith({ shopId: 7, page: 1, pageSize: 100 });
+    expect(mocks.listAddOnServices).toHaveBeenCalledWith(88, { page: 1, pageSize: 100 });
+    expect(mocks.listServices).not.toHaveBeenCalled();
     await click("正式延长服务");
     await waitFor(() => expect(mocks.createAddOn).toHaveBeenCalledWith(88, { serviceId: 45, idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/) }));
     await click("接受追加");
@@ -402,6 +421,44 @@ describe("formal user order detail", () => {
     await click("提前结束服务");
     await click("确认结束服务");
     await waitFor(() => expect(mocks.endService).toHaveBeenCalledWith(88, { reason: "客户确认提前结束服务", idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/) }));
+  });
+
+  it("uses the order-scoped assigned-technician catalog for a technician-priced in-service order", async () => {
+    mocks.listAddOnServices.mockResolvedValueOnce({
+      list: [{
+        id: 201,
+        sourceType: "technician_service",
+        name: "施術延長 30分",
+        description: "担当技師の延長サービス",
+        priceAmountJpy: 6500,
+        currency: "JPY",
+        durationMinutes: 30,
+        coverUrl: null
+      }],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
+    mocks.getOrder.mockResolvedValue({
+      ...makeOrder("inService"),
+      serviceId: null,
+      technicianServiceId: 199,
+      pricingModeSnapshot: "technician",
+      serviceOwnerType: "technician",
+      serviceOwnerId: 9
+    });
+
+    await render();
+
+    await waitFor(() => expect(container.textContent).toContain("施術延長 30分"));
+    expect(container.textContent).not.toContain("正式延长服务");
+    expect(mocks.listAddOnServices).toHaveBeenCalledWith(88, { page: 1, pageSize: 100 });
+    expect(mocks.listServices).not.toHaveBeenCalled();
+    await click("施術延長 30分");
+    await waitFor(() => expect(mocks.createAddOn).toHaveBeenCalledWith(88, {
+      serviceId: 201,
+      idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/)
+    }));
   });
 
   it("shows immutable checkout values and moves cash to the server waiting state", async () => {

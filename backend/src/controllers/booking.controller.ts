@@ -19,6 +19,7 @@ import {
   orderCancelBodySchema,
   orderConfirmBodySchema,
   orderAddOnDecisionBodySchema,
+  orderAddOnServiceListQuerySchema,
   orderAddOnIdParamsSchema,
   orderAssignTechnicianBodySchema,
   orderIdParamSchema,
@@ -360,6 +361,26 @@ export class BookingController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public listOrderAddOnServices = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.listOrderAddOnServices(
+            this.getActor(response),
+            this.getOrderId(request),
+            orderAddOnServiceListQuerySchema.parse(request.query)
+          )
+        )
+      );
     } catch (error) {
       next(error);
     }
