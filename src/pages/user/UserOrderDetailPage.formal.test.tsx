@@ -291,13 +291,16 @@ function UserOrderNavigationProbe() {
   return <button onClick={() => navigate("/orders/89")} type="button">打开用户订单B</button>;
 }
 
-function button(label: string) {
-  const target = Array.from(container.querySelectorAll("button")).find((item) => item.textContent?.includes(label));
-  if (!target) throw new Error(`missing button ${label}`);
+function button(label: string | RegExp) {
+  const target = Array.from(container.querySelectorAll("button")).find((item) => {
+    const text = item.textContent ?? "";
+    return typeof label === "string" ? text.includes(label) : label.test(text);
+  });
+  if (!target) throw new Error(`missing button ${String(label)}`);
   return target;
 }
 
-async function click(label: string) {
+async function click(label: string | RegExp) {
   await act(async () => button(label).dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
 
@@ -344,6 +347,70 @@ describe("formal user order detail", () => {
     expect(container.textContent).not.toContain("开始服务");
     expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "取消预约")).toBe(false);
     expect(container.textContent).toContain("模拟双方同意取消");
+  });
+
+  it("requires an explicit customer confirmation with order, time, consequence, and finance details", async () => {
+    const confirmedPaymentOrder = {
+      ...makeOrder("confirmed"),
+      paymentStatus: "confirmed" as const,
+      paymentAmountJpy: 8_800,
+      paymentConfirmedAt: "2026-09-01T00:30:00.000Z",
+      paymentConfirmedById: 12
+    };
+    const cancellation = deferred<BookingOrder>();
+    mocks.getOrder.mockResolvedValue(confirmedPaymentOrder);
+    mocks.cancelOrder.mockReturnValue(cancellation.promise);
+
+    await render();
+    await click("取消预约");
+
+    const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+    expect(mocks.cancelOrder).not.toHaveBeenCalled();
+    expect(dialog?.textContent).toMatch(/确认取消预约|Confirm booking cancellation/u);
+    expect(dialog?.textContent).toContain("订单编号");
+    expect(dialog?.textContent).toContain(confirmedPaymentOrder.orderNo);
+    expect(dialog?.textContent).toContain("预约时间");
+    expect(dialog?.textContent).toContain("正式基础服务");
+    expect(dialog?.textContent).toContain("取消后果");
+    expect(dialog?.textContent).toContain("费用处理");
+    expect(dialog?.textContent).toContain("已确认付款将进入退款待处理");
+
+    await click(/返回|Back/u);
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(mocks.cancelOrder).not.toHaveBeenCalled();
+
+    await click("取消预约");
+    await click(/确定取消预约|Cancel booking/u);
+    expect(mocks.cancelOrder).toHaveBeenCalledTimes(1);
+    expect(mocks.cancelOrder).toHaveBeenCalledWith(88, "客户从预约详情取消");
+    expect(button(/正在取消预约|Cancelling booking/u).disabled).toBe(true);
+
+    await act(async () => button(/正在取消预约|Cancelling booking/u).click());
+    expect(mocks.cancelOrder).toHaveBeenCalledTimes(1);
+
+    cancellation.resolve({ ...confirmedPaymentOrder, status: "cancelled" });
+    await waitFor(() => expect(container.querySelector('[role="alertdialog"]')).toBeNull());
+    expect(container.textContent).toContain("已取消");
+  });
+
+  it("keeps the original order and confirmation open with a stable error when cancellation fails", async () => {
+    mocks.getOrder.mockResolvedValue(makeOrder("confirmed"));
+    mocks.cancelOrder.mockRejectedValue(
+      new ApiClientError("error.order.invalid_transition", 40912, 409)
+    );
+
+    await render();
+    await click("取消预约");
+    await click(/确定取消预约|Cancel booking/u);
+
+    await waitFor(() => expect(container.querySelector('[role="alertdialog"]')).not.toBeNull());
+    expect(container.querySelector('[role="alertdialog"]')?.textContent).toMatch(
+      /订单状态已经变化|Order status(?: has changed|已经变化)/iu
+    );
+    expect(container.textContent).toContain("482931");
+    expect(container.textContent).toContain("预约状态已确认");
+    expect(button("取消预约")).toBeTruthy();
+    expect(button(/确定取消预约|Cancel booking/u).disabled).toBe(false);
   });
 
   it("shows the immutable booked price and payment method in the service card without duplicate summary cards", async () => {

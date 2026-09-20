@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { registerTranslationEntries, translateText } from "../../i18n/translations";
 import { ClientActionDialog } from "./ClientActionDialog";
@@ -12,6 +13,7 @@ registerTranslationEntries({
 
 export function DangerConfirmDialog({
   cancelLabel = "取消",
+  children,
   confirmLabel = "确认取消",
   description,
   error,
@@ -23,6 +25,7 @@ export function DangerConfirmDialog({
   title
 }: {
   cancelLabel?: string;
+  children?: ReactNode;
   confirmLabel?: string;
   description?: string;
   error?: string;
@@ -67,6 +70,7 @@ export function DangerConfirmDialog({
         </div>
       )}
     >
+      {children}
       {error ? (
         <p className="rounded-[16px] border border-red-400/35 bg-red-500/10 px-3 py-2 text-sm font-bold leading-5 text-red-400" role="alert">
           {localize(error)}
