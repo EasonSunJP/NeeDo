@@ -9,12 +9,14 @@ import { rankDispatchCandidates } from "../../lib/scheduling/priorityEngine";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import {
   addDays,
+  addMonths,
   addMinutes,
   buildEmptyTemplateMatrix,
   createDispatchId,
   dispatchReferenceDateKey,
   dispatchReferenceNow,
   enumerateDateKeys,
+  formatDateKey,
   getArrangementStatusLabel,
   getCycleModeLabel,
   getCycleStatusLabel,
@@ -330,7 +332,7 @@ function buildDefaultCycles(storeId: string): DispatchCycle[] {
     creationMethod: "copy_current",
     mode: "STORE_ASSIGN_FINAL",
     status: "active",
-    currentStep: 4,
+    currentStep: 3,
     templateType: "week",
     periodStart: "2026-04-14",
     periodEnd: "2026-04-27",
@@ -368,7 +370,7 @@ function buildDefaultCycles(storeId: string): DispatchCycle[] {
     creationMethod: "new",
     mode: "TECH_SELF_FINAL",
     status: "final_confirming",
-    currentStep: 4,
+    currentStep: 3,
     templateType: "week",
     periodStart: "2026-04-28",
     periodEnd: "2026-05-27",
@@ -1519,9 +1521,9 @@ function updateCycle(nextCycle: DispatchCycle) {
 
 function createBaseCycle(storeId: string, seed?: DispatchCycle | null): DispatchCycle {
   const reference = seed ?? getPlanningCycle(storeId) ?? getActiveExecutionCycle(storeId);
-  const periodStart = reference ? addDays(reference.periodEnd, 1) : addDays(dispatchReferenceDateKey, 7);
-  const periodEnd = addDays(periodStart, 29);
-  const feedbackDeadline = `${addDays(periodStart, -2)}T18:00:00+09:00`;
+  const today = formatDateKey(new Date());
+  const periodStart = reference ? addDays(reference.periodEnd, 1) : today;
+  const periodEnd = reference ? addDays(periodStart, 29) : addMonths(periodStart, 1);
   const templateType = reference?.templateType ?? "week";
 
   return {
@@ -1536,7 +1538,7 @@ function createBaseCycle(storeId: string, seed?: DispatchCycle | null): Dispatch
     periodStart,
     periodEnd,
     targetTechnicianIds: reference?.targetTechnicianIds ?? getStoreTechnicianIdsForDispatch(storeId),
-    feedbackDeadline,
+    feedbackDeadline: null,
     templateMatrix: cloneValue(reference?.templateMatrix ?? fillMatrixHours(templateType, [{ dayIndex: 1, startHour: 10, endHour: 22 }])),
     regularHolidayWeekdays: [...(reference?.regularHolidayWeekdays ?? [3])],
     ruleSet: cloneValue(reference?.ruleSet ?? buildDefaultRuleSet()),
@@ -1611,7 +1613,7 @@ function normalizeUnsupportedCycleMode(cycle: DispatchCycle): DispatchCycle {
     ...cycle,
     mode: "TECH_SELF_FINAL",
     status: wasFeedbackState ? "final_confirming" : cycle.status,
-    currentStep: wasFeedbackState || cycle.currentStep === 3 ? 4 : cycle.currentStep,
+    currentStep: wasFeedbackState || cycle.currentStep >= 3 ? 3 : cycle.currentStep,
     feedbackDeadline: null
   };
 }
@@ -1623,11 +1625,8 @@ function normalizeCycleStep(cycle: DispatchCycle): DispatchCycle {
     return { ...normalizedCycle, currentStep: 2 };
   }
 
-  if (normalizedCycle.status === "collecting_feedback") {
-    return { ...normalizedCycle, currentStep: 3 };
-  }
-
   if (
+    normalizedCycle.status === "collecting_feedback" ||
     normalizedCycle.status === "feedback_closed" ||
     normalizedCycle.status === "ready_to_confirm" ||
     normalizedCycle.status === "confirmed" ||
@@ -1640,10 +1639,10 @@ function normalizeCycleStep(cycle: DispatchCycle): DispatchCycle {
     normalizedCycle.status === "final_confirming" ||
     normalizedCycle.status === "manual_override"
   ) {
-    return { ...normalizedCycle, currentStep: 4 };
+    return { ...normalizedCycle, currentStep: 3, feedbackDeadline: null };
   }
 
-  if (normalizedCycle.currentStep === 3 && normalizedCycle.status === "draft") {
+  if ((normalizedCycle.currentStep === 3 || normalizedCycle.currentStep === 4) && normalizedCycle.status === "draft") {
     return { ...normalizedCycle, currentStep: 2 };
   }
 
@@ -2145,12 +2144,6 @@ export function saveDispatchCycleDraft(nextCycle: DispatchCycle) {
     ...nextCycle,
     status: nextCycle.status === "draft" && nextCycle.currentStep >= 2 ? "rule_setting" : nextCycle.status
   });
-  const validationMessage = validateDispatchCycleDraft(normalizedCycle);
-
-  if (validationMessage) {
-    return { ok: false, message: validationMessage };
-  }
-
   updateCycle({
     ...normalizedCycle,
     updatedAt: dispatchReferenceNow
@@ -2190,12 +2183,25 @@ export function launchDispatchCycle(cycleId: string, operatorId: string) {
     return { ok: false, message: "待执行周期已达上限，无法继续发起。" };
   }
 
+  const overlappingCycle = getStoreCycles(cycle.storeId).find((item) =>
+    item.id !== cycle.id
+    && item.status !== "cancelled"
+    && item.status !== "completed"
+    && item.status !== "archived"
+    && item.periodStart <= cycle.periodEnd
+    && item.periodEnd >= cycle.periodStart
+  );
+  if (overlappingCycle) {
+    return { ok: false, message: "同一周期已有其他排班模式，请先终止原周期。" };
+  }
+
   const storeDirectAssign = cycle.mode === "STORE_ASSIGN_FINAL";
   const nextCycle: DispatchCycle = {
     ...cycle,
-    status: "collecting_feedback",
+    status: "final_confirming",
     currentStep: 3,
     launchedAt: dispatchReferenceNow,
+    feedbackDeadline: null,
     finalizedAt: null,
     activeAt: null,
     updatedAt: dispatchReferenceNow
@@ -2212,7 +2218,7 @@ export function launchDispatchCycle(cycleId: string, operatorId: string) {
     targetId: cycleId,
     before: JSON.stringify(cycle),
     after: JSON.stringify(nextCycle),
-    reason: storeDirectAssign ? "商户排班完成，进入技师确认与请假调整反馈" : "技师自主排班开始，收集下一周期排班完成状态"
+    reason: storeDirectAssign ? "商户排班完成，进入最终确认" : "开启技师自主排班周期并进入最终确认"
   });
   notify();
   return { ok: true, cycle: nextCycle };
@@ -2258,7 +2264,7 @@ export function closeDispatchFeedback(cycleId: string, operatorId: string) {
   const nextCycle = {
     ...cycle,
     status: "feedback_closed" as const,
-    currentStep: 4 as const,
+    currentStep: 3 as const,
     updatedAt: dispatchReferenceNow
   };
 
@@ -2366,7 +2372,7 @@ export function runDispatchAutoConfirm(cycleId: string, operatorId: string) {
   updateCycle({
     ...cycle,
     status: "final_confirming",
-    currentStep: 4,
+    currentStep: 3,
     lastAutoConfirmAt: dispatchReferenceNow,
     autoConfirmSummary: {
       confirmedCount,
@@ -2471,7 +2477,7 @@ export function finalizeDispatchCycle(cycleId: string, operatorId: string) {
   const nextCycle: DispatchCycle = {
     ...cycle,
     status: nextStatus,
-    currentStep: 4,
+    currentStep: 3,
     finalizedAt: dispatchReferenceNow,
     activeAt: nextStatus === "active" ? dispatchReferenceNow : cycle.activeAt,
     updatedAt: dispatchReferenceNow
@@ -2819,7 +2825,7 @@ export function confirmDispatchSmartSchedule(cycleId: string, operatorId: string
   const nextCycle: DispatchCycle = {
     ...cycle,
     status: nextStatus,
-    currentStep: 4,
+    currentStep: 3,
     finalizedAt: dispatchReferenceNow,
     activeAt: nextStatus === "active" ? dispatchReferenceNow : cycle.activeAt,
     updatedAt: dispatchReferenceNow
@@ -2903,21 +2909,29 @@ export function cancelDispatchCycle(cycleId: string, operatorId: string) {
     return { ok: false, message: "找不到排班周期。" };
   }
 
+  const canDiscard = cycle.status === "draft" || cycle.status === "rule_setting" || cycle.status === "rule_ready";
   const nextCycle = {
     ...cycle,
     status: "cancelled" as const,
     cancelledAt: dispatchReferenceNow,
     updatedAt: dispatchReferenceNow
   };
-  updateCycle(nextCycle);
+  if (canDiscard) {
+    state.cycles = state.cycles.filter((item) => item.id !== cycleId);
+    state.feedbacks = state.feedbacks.filter((item) => item.cycleId !== cycleId);
+    state.finalShifts = state.finalShifts.filter((item) => item.cycleId !== cycleId);
+    state.finalBookableSlots = state.finalBookableSlots.filter((item) => item.cycleId !== cycleId);
+  } else {
+    updateCycle(nextCycle);
+  }
   logAudit({
     operatorId,
     action: "dispatch.cycle.cancel",
     targetType: "cycle",
     targetId: cycleId,
     before: JSON.stringify(cycle),
-    after: JSON.stringify(nextCycle),
-    reason: "取消待执行周期"
+    after: canDiscard ? "" : JSON.stringify(nextCycle),
+    reason: canDiscard ? "放弃新建排班草稿" : "取消待执行周期"
   });
   notify();
   return { ok: true };

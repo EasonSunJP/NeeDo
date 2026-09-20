@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import storeSource from "./store.ts?raw";
 import { addDays } from "./domain";
 import {
   closeDispatchFeedback,
+  cancelDispatchCycle,
   createDispatchCycleDraft,
   finalizeDispatchCycle,
   getDispatchCenterSnapshot,
@@ -23,12 +24,16 @@ describe("dispatch center scheduling workflow", () => {
     resetDispatchCenterStore();
   });
 
-  it("collects completion feedback after technicians receive a self-scheduling cycle", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("opens final confirmation directly for technician self-scheduling", () => {
     const cycle = createDispatchCycleDraft("store-1");
 
     expect(cycle.currentStep).toBe(1);
     expect(cycle.mode).toBe("TECH_SELF_FINAL");
-    expect(cycle.feedbackDeadline).not.toBeNull();
+    expect(cycle.feedbackDeadline).toBeNull();
 
     const saved = saveDispatchCycleDraft({ ...cycle, currentStep: 2 });
     expect(saved.ok).toBe(true);
@@ -36,11 +41,11 @@ describe("dispatch center scheduling workflow", () => {
     const launched = launchDispatchCycle(cycle.id, "store-1");
     expect(launched.ok).toBe(true);
     expect(launched.cycle?.currentStep).toBe(3);
-    expect(launched.cycle?.status).toBe("collecting_feedback");
+    expect(launched.cycle?.status).toBe("final_confirming");
     expect(getDispatchCenterSnapshot().finalBookableSlots.some((slot) => slot.cycleId === cycle.id)).toBe(false);
   });
 
-  it("collects confirmations and leave or adjustment feedback before publishing a store schedule", () => {
+  it("opens final confirmation directly after a store schedule is configured", () => {
     const cycle = createDispatchCycleDraft("store-1");
     const saved = saveDispatchCycleDraft({
       ...cycle,
@@ -54,15 +59,10 @@ describe("dispatch center scheduling workflow", () => {
     const launched = launchDispatchCycle(cycle.id, "store-1");
     expect(launched.ok).toBe(true);
     expect(launched.cycle?.currentStep).toBe(3);
-    expect(launched.cycle?.status).toBe("collecting_feedback");
+    expect(launched.cycle?.status).toBe("final_confirming");
     expect(getDispatchCenterSnapshot().feedbacks.some((entry) => entry.cycleId === cycle.id)).toBe(false);
     expect(getDispatchCenterSnapshot().finalShifts.some((shift) => shift.cycleId === cycle.id)).toBe(true);
     expect(getDispatchCenterSnapshot().finalBookableSlots.some((slot) => slot.cycleId === cycle.id)).toBe(false);
-
-    const closed = closeDispatchFeedback(cycle.id, "store-1");
-    expect(closed.ok).toBe(true);
-    expect(closed.cycle?.currentStep).toBe(4);
-    expect(closed.cycle?.status).toBe("feedback_closed");
 
     const finalized = finalizeDispatchCycle(cycle.id, "store-1");
     expect(finalized.ok).toBe(true);
@@ -83,18 +83,38 @@ describe("dispatch center scheduling workflow", () => {
     });
   });
 
-  it("rejects cycles longer than one year before saving", () => {
+  it("saves incomplete drafts but rejects invalid rules before launch", () => {
     const cycle = createDispatchCycleDraft("store-1");
-    const result = saveDispatchCycleDraft({
+    const periodEnd = addDays(cycle.periodStart, 366);
+    const saved = saveDispatchCycleDraft({
       ...cycle,
-      periodEnd: addDays(cycle.periodStart, 365)
+      currentStep: 2,
+      periodEnd,
+      targetTechnicianIds: []
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.message).toContain("最长 1 年");
+    expect(saved.ok).toBe(true);
+    const launched = launchDispatchCycle(cycle.id, "store-1");
+    expect(launched.ok).toBe(false);
+    expect(launched.message).toContain("排班对象不能为空");
 
     const storedCycle = getDispatchCycleList("store-1").find((item) => item.id === cycle.id);
-    expect(storedCycle?.periodEnd).toBe(cycle.periodEnd);
+    expect(storedCycle?.periodEnd).toBe(periodEnd);
+  });
+
+  it("defaults a new cycle to today through one calendar month later", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-20T10:00:00+09:00"));
+    const cycle = createDispatchCycleDraft("new-store");
+    expect(cycle.periodStart).toBe("2026-09-20");
+    expect(cycle.periodEnd).toBe("2026-10-20");
+    expect(cycle.feedbackDeadline).toBeNull();
+  });
+
+  it("discards a new cycle when editing is cancelled", () => {
+    const cycle = createDispatchCycleDraft("store-1");
+    expect(cancelDispatchCycle(cycle.id, "store-1").ok).toBe(true);
+    expect(getDispatchCycleList("store-1").some((item) => item.id === cycle.id)).toBe(false);
   });
 
   it("starts the formal schedule views without generated technicians or shifts", () => {

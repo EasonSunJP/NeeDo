@@ -29,8 +29,7 @@ type PlanningView = "home" | "confirmation" | "builder";
 const stepItems: Array<{ step: DispatchStep; label: string }> = [
   { step: 1, label: "模式选择" },
   { step: 2, label: "规则设定" },
-  { step: 3, label: "技师反馈" },
-  { step: 4, label: "最终确认" }
+  { step: 3, label: "最终确认" }
 ];
 
 function isScheduleBoardCycle(cycle: DispatchCycle) {
@@ -118,7 +117,7 @@ function CycleWorkflowPanel({
           <div className="mt-4 flex flex-wrap gap-2">
             <Badge tone={resolveSchedulingCycleTone(cycle)}>{getCycleStatusLabel(cycle.status)}</Badge>
             <Badge tone="neutral">{getCycleModeLabel(cycle.mode)}</Badge>
-            {cycle.currentStep === 4 && cycle.status !== "active" ? (
+            {cycle.currentStep === 3 && cycle.status !== "active" ? (
               <Button className={secondaryButtonClass} onClick={() => onDelete(cycle)} size="sm" variant="danger">
                 删除周期
               </Button>
@@ -135,13 +134,14 @@ function CycleWorkflowPanel({
           cycle={cycle}
           onCycleChange={() => undefined}
           onMessage={onMessage}
+          onCancelEditing={() => onDelete(cycle)}
           operatorId={operatorId}
           storeId={storeId}
           surface={surface}
           technicians={technicians}
         />
       ) : null}
-      {cycle.currentStep === 4 ? (
+      {cycle.currentStep === 3 ? (
         <StepFinalConfirmation
           cycle={cycle}
           hideBoard={hideFinalConfirmationBoard}
@@ -228,13 +228,10 @@ export function AutomationWizard({
         <SchedulePlanningOverview
           cycle={overviewCycle}
           hasBuilderCycle={Boolean(builderCycle)}
-          onMessage={setMessage}
           onOpenBuilder={createCycle}
           onOpenConfirmation={() => setView("confirmation")}
-          operatorId={operatorId}
           storeId={storeId}
           surface={surface}
-          technicians={technicians}
         />
       ) : null}
 
@@ -283,13 +280,6 @@ export function AutomationWizard({
               surface={surface}
               technicians={technicians}
             />
-            {builderViewCycle.currentStep === 3 ? (
-              <div className={cn("rounded-[24px] border p-4", isMobileSurface ? "border-line bg-white/90 shadow-panel" : "merchant-dispatch-surface")}>
-                <h3 className="text-base font-black">已进入技师反馈</h3>
-                <p className="mt-2 text-sm leading-6 text-ink/60">返回排班首页可查看完成或确认进度，并提醒未反馈技师。</p>
-                <Button className="mt-3" onClick={() => setView("home")} size="sm">查看反馈进度</Button>
-              </div>
-            ) : null}
             {isMobileSurface && !isScheduleBoardCycle(builderViewCycle) && builderViewCycle.currentStep !== 3 ? (
               <ScheduleContactInfoPanel
                 cycle={builderViewCycle}

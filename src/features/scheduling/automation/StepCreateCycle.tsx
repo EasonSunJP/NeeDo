@@ -71,7 +71,7 @@ type RulePhase =
 
 const rulePhases: Array<{ value: RulePhase; label: string; caption: string }> = [
   { value: "history", label: "导入历史模板", caption: "新建、导入历史、复制当前周期" },
-  { value: "period", label: "时间区间与截止", caption: "周期名称、开始结束、反馈截止" },
+  { value: "period", label: "时间区间", caption: "周期名称、开始和结束日期" },
   { value: "template", label: "模板类型", caption: "日模板、周模板、4 周模板" },
   { value: "openTime", label: "商户开放时间", caption: "店铺可排班时间矩阵" },
   { value: "holiday", label: "日本节假日增减", caption: "自动读取当前周期内的日本节假日" },
@@ -162,15 +162,12 @@ function getCycleValidationMessage(cycle: DispatchCycle) {
     return "排班对象不能为空。";
   }
 
-  if (!cycle.feedbackDeadline) {
-    return "请设置技师反馈截止时间。";
-  }
-
   return null;
 }
 
 export function StepCreateCycle({
   cycle,
+  onCancelEditing,
   onCycleChange,
   onMessage,
   operatorId,
@@ -179,6 +176,7 @@ export function StepCreateCycle({
   technicians
 }: {
   cycle: DispatchCycle;
+  onCancelEditing: () => void;
   onCycleChange: (cycle: DispatchCycle) => void;
   onMessage: (message: string) => void;
   operatorId: string;
@@ -191,7 +189,7 @@ export function StepCreateCycle({
   const storeTechnicians = useMemo(() => technicians.filter((technician) => technician.storeId === storeId), [storeId, technicians]);
   const tempStaffGroup = getDispatchContactGroup(storeId);
   const [draft, setDraft] = useState<DispatchCycle>(cycle);
-  const [rulePhase, setRulePhase] = useState<RulePhase>("history");
+  const [rulePhase, setRulePhase] = useState<RulePhase>("period");
   const [slideDirection, setSlideDirection] = useState<"next" | "previous">("next");
   const [notificationPreview, setNotificationPreview] = useState("");
   const [notificationTemplateTitle, setNotificationTemplateTitle] = useState("反馈提醒模板");
@@ -244,7 +242,7 @@ export function StepCreateCycle({
   const isLastRulePhase = rulePhaseIndex >= rulePhases.length - 1;
   const validationMessage = getCycleValidationMessage(draft);
   const canSaveCycle = !validationMessage;
-  const actionColumnCount = isFirstRulePhase || isLastRulePhase ? 3 : 4;
+  const actionColumnCount = isFirstRulePhase ? 3 : 4;
 
   const updateDraft = (changes: Partial<DispatchCycle>) => {
     const nextDraft = {
@@ -303,10 +301,7 @@ export function StepCreateCycle({
   };
 
   const cancelEditing = () => {
-    setDraft(cycle);
-    onCycleChange(cycle);
-    setNotificationPreview("");
-    onMessage("已取消本页编辑，草稿恢复到最近保存状态。");
+    onCancelEditing();
   };
 
   const insertNotificationVariable = (token: string) => {
@@ -447,7 +442,7 @@ export function StepCreateCycle({
               <div className={cn("mt-3 rounded-[22px] border px-4 py-4", panelCardClass)}>
                 <div className="flex flex-wrap items-center gap-2">
                   <strong className="text-base font-black">{getCycleModeLabel(draft.mode)}</strong>
-                  <Badge tone="green">规则完成后进入技师反馈</Badge>
+                  <Badge tone="green">规则完成后进入最终确认</Badge>
                 </div>
                 <p className={cn("mt-2 text-sm leading-6", quietTextClass)}>
                   {draft.mode === "STORE_ASSIGN_FINAL"
@@ -464,10 +459,10 @@ export function StepCreateCycle({
         <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="blue">2/10</Badge>
-            <Badge tone="neutral">时间区间与截止</Badge>
+            <Badge tone="neutral">时间区间</Badge>
             <Badge tone="neutral">{getCycleModeLabel(draft.mode)}</Badge>
           </div>
-          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <label className="text-sm font-semibold text-ink">
               周期名称
               <input
@@ -492,17 +487,6 @@ export function StepCreateCycle({
                 onChange={(event) => updateDraft({ periodEnd: event.target.value })}
                 type="date"
                 value={draft.periodEnd}
-              />
-            </label>
-            <label className="text-sm font-semibold text-ink">
-              技师反馈截止
-              <input
-                className={inputClass}
-                onChange={(event) => updateDraft({
-                  feedbackDeadline: event.target.value ? `${event.target.value}:00+09:00` : null
-                })}
-                type="datetime-local"
-                value={draft.feedbackDeadline?.slice(0, 16) ?? ""}
               />
             </label>
           </div>
@@ -1116,6 +1100,13 @@ export function StepCreateCycle({
           >
             保存草稿
           </Button>
+          <Button
+            className={cn(secondaryButtonClass, "w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm")}
+            variant="secondary"
+            onClick={cancelEditing}
+          >
+            取消编辑
+          </Button>
           {isLastRulePhase ? (
             <Button
               className={cn(primaryButtonClass, "w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm")}
@@ -1131,22 +1122,14 @@ export function StepCreateCycle({
                 const launched = launchDispatchCycle(draft.id, operatorId);
                 onMessage(
                   launched.ok
-                    ? "已进入技师反馈"
+                    ? "已进入最终确认"
                     : launched.message ?? "发起失败。"
                 );
               }}
             >
               发起
             </Button>
-          ) : (
-            <Button
-              className={cn(secondaryButtonClass, "w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm")}
-              variant="secondary"
-              onClick={cancelEditing}
-            >
-              取消编辑
-            </Button>
-          )}
+          ) : null}
           {!isLastRulePhase ? (
             <Button
               className={cn(primaryButtonClass, "w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm")}

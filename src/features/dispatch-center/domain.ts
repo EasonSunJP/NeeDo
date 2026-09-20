@@ -545,6 +545,16 @@ export function addDays(dateKey: string, amount: number) {
   return formatDateKey(date);
 }
 
+export function addMonths(dateKey: string, amount: number) {
+  const date = parseDateKey(dateKey);
+  const day = date.getDate();
+  date.setDate(1);
+  date.setMonth(date.getMonth() + amount);
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(day, lastDay));
+  return formatDateKey(date);
+}
+
 export function enumerateDateKeys(start: string, end: string) {
   const values: string[] = [];
   let current = start;

@@ -18,16 +18,18 @@ describe("merchant scheduling mode retirement", () => {
     expect(domainSource).not.toContain('"STORE_COLLECT_CONFIRM"');
   });
 
-  it("keeps feedback separate from the retired availability-range negotiation mode", () => {
+  it("uses the three-step flow without a feedback deadline", () => {
     expect(automationWizardSource).not.toContain("StepFeedbackCollection");
     expect(stepCreateCycleSource).not.toContain("STORE_COLLECT_CONFIRM");
     expect(stepCreateCycleSource).not.toContain("商户确认模式");
     expect(automationWizardSource).not.toContain("商户先给可排班范围");
     expect(stepModeSelectionSource).toContain("直接完成自己的下一周期排班");
     expect(stepModeSelectionSource).toContain("确认店铺排班，可提交请假 / 调整申请");
-    expect(stepCreateCycleSource).toContain('type="datetime-local"');
-    expect(stepCreateCycleSource).toContain("已进入技师反馈");
-    expect(stepCreateCycleSource).not.toContain("自动进入最终结果");
+    expect(stepCreateCycleSource).not.toContain('type="datetime-local"');
+    expect(stepCreateCycleSource).not.toContain("技师反馈截止");
+    expect(stepCreateCycleSource).toContain("已进入最终确认");
+    expect(automationWizardSource).toContain('{ step: 3, label: "最终确认" }');
+    expect(automationWizardSource).not.toContain('{ step: 4');
   });
 
   it("uses a generic unsupported-mode fallback without restoring the retired mode", () => {

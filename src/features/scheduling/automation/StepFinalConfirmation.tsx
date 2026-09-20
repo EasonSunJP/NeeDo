@@ -10,6 +10,11 @@ import {
 import type { DispatchCycle } from "../../dispatch-center/domain";
 import { ScheduleFloatingActions } from "./ScheduleFloatingActions";
 
+function formatCycleDate(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return `${year}年${month}月${day}日`;
+}
+
 export function StepFinalConfirmation({
   cycle,
   hideBoard = false,
@@ -45,6 +50,10 @@ export function StepFinalConfirmation({
             <Badge tone={limitSummary.limitReached ? "red" : "blue"}>active {limitSummary.activeCount} / pending {limitSummary.pendingCount}</Badge>
           </div>
         </div>
+        <p className="mt-3 text-sm font-semibold leading-6 text-ink/60">
+          {formatCycleDate(cycle.periodStart)}~{formatCycleDate(cycle.periodEnd)}周期，开启
+          {cycle.mode === "TECH_SELF_FINAL" ? "技师自主排班" : "商户直接排班"}模式，同周期无法开启其他模式排班。如果想更换排班模式，请提前终止该周期。
+        </p>
       </section>
 
       {hideBoard ? null : (
