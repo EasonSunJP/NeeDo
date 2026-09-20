@@ -25,6 +25,12 @@ export type CheckoutPaymentEvidence =
   | "technician_receipt_confirmation"
   | "operations_receipt_override";
 export type FulfillmentParticipant = "customer" | "technician";
+export type OrderStatusActorSource =
+  | "customer"
+  | "merchant"
+  | "technician"
+  | "platform"
+  | "system";
 
 export type BookingOrderAddOn = {
   id: number;
@@ -180,6 +186,9 @@ export type BookingOrderTimelineEvent =
       id: string;
       createdAt: string;
       actorUserId: number | null;
+      actorIdentityId?: number | null;
+      actorSource?: OrderStatusActorSource;
+      actorDisplayName?: string | null;
       fromStatus: BookingOrderStatus | null;
       toStatus: BookingOrderStatus;
       publicReason: string | null;
@@ -289,6 +298,9 @@ export type BookingOrder = {
     fromStatus: BookingOrderStatus | null;
     toStatus: BookingOrderStatus;
     actorUserId: number | null;
+    actorIdentityId?: number | null;
+    actorSource?: OrderStatusActorSource;
+    actorDisplayName?: string | null;
     reason: string | null;
     createdAt: string;
   }>;

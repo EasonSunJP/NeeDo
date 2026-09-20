@@ -1560,14 +1560,37 @@ export class BookingService {
       });
     }
 
+    const cancellationEvent = next.status === "cancelled"
+      ? [...next.timelineEvents].reverse().find(
+          (event) => event.type === "ORDER_STATUS_CHANGED" && event.toStatus === "cancelled"
+        )
+      : undefined;
+    const cancellationRecipients = next.status === "cancelled"
+      ? await this.resolveCancellationNotificationRecipients(actor, next)
+      : null;
+
     await this.notifyOrderStatusChangedBestEffort({
       actorUserId: actor.userId,
+      actorIdentityId: actor.currentIdentityId,
+      ...(cancellationEvent?.type === "ORDER_STATUS_CHANGED"
+        ? {
+            actorSource: cancellationEvent.actorSource,
+            actorDisplayName: cancellationEvent.actorDisplayName,
+            shopName: next.shopName,
+            startsAt: next.startsAt,
+            reason: cancellationEvent.publicReason
+          }
+        : {}),
       orderId: next.id,
       orderNo: next.orderNo,
       fromStatus: order.status,
       toStatus: next.status,
       serviceName: next.serviceName,
-      recipientUserIds: this.resolveOrderNotificationRecipients(actor, next)
+      recipientUserIds:
+        cancellationRecipients?.recipientUserIds ?? this.resolveOrderNotificationRecipients(actor, next),
+      ...(cancellationRecipients
+        ? { recipientIdentities: cancellationRecipients.recipientIdentities }
+        : {})
     });
     await this.notifyOrderChangedBestEffort(actor, next, "status");
     await this.publishLiveDashboardChangesBestEffort([next.id]);
@@ -2281,5 +2304,36 @@ export class BookingService {
     order: BookingOrderPayload
   ): number[] {
     return order.customerUserId === actor.userId ? [] : [order.customerUserId];
+  }
+
+  private async resolveCancellationNotificationRecipients(
+    actor: AuthenticatedBookingActor,
+    order: BookingOrderPayload
+  ): Promise<{
+    recipientUserIds: number[];
+    recipientIdentities: Array<{ userId: number; identityId: number }>;
+  }> {
+    if (!this.repository.findOrderRealtimeRecipients) {
+      return {
+        recipientUserIds: this.resolveOrderNotificationRecipients(actor, order),
+        recipientIdentities: []
+      };
+    }
+    try {
+      const recipientIdentities = await this.repository.findOrderRealtimeRecipients(order.id);
+      return {
+        recipientUserIds: Array.from(new Set(recipientIdentities.map((recipient) => recipient.userId))),
+        recipientIdentities
+      };
+    } catch (error) {
+      logger.error(
+        { error, orderId: order.id },
+        "Cancellation notification recipient lookup failed after booking commit"
+      );
+      return {
+        recipientUserIds: this.resolveOrderNotificationRecipients(actor, order),
+        recipientIdentities: []
+      };
+    }
   }
 }

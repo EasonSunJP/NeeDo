@@ -170,6 +170,15 @@ const createCancellationTransaction = () => {
       count: jest.fn().mockResolvedValue(0)
     },
     scheduleSlot: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    userIdentity: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 16,
+        type: "merchant_owner",
+        scopeType: "shop",
+        displayName: "Eason",
+        user: { username: "Eason" }
+      })
+    },
     orderStatusHistory: { create: jest.fn().mockResolvedValue({ id: 1 }) },
     orderPerformanceAssessment: {
       findFirst: jest.fn().mockResolvedValue(null),
@@ -1600,7 +1609,15 @@ serviceLocation: { source: "SHOP_LOCATION" }
           fromStatus: "CONFIRMED",
           toStatus: "CANCELLED",
           actorUserId: 202,
-          reason: "商户无法履约"
+          reason: "商户无法履约",
+          metadata: {
+            actor: {
+              identityId: 16,
+              identityType: "merchant_owner",
+              source: "merchant",
+              displayName: "Eason"
+            }
+          }
         }
       });
       expect(settle).toHaveBeenCalledWith({
@@ -1610,6 +1627,68 @@ serviceLocation: { source: "SHOP_LOCATION" }
       expect(tx.orderPerformanceAssessment.create).not.toHaveBeenCalled();
     }
   );
+
+  it("persists and projects the authenticated merchant identity for a cancellation", async () => {
+    const tx = createCancellationTransaction();
+    const current = makeTransitionOrderRecord("CONFIRMED");
+    const next = {
+      ...makeTransitionOrderRecord("CANCELLED"),
+      statusHistory: [{
+        id: 91,
+        bookingOrderId: 701,
+        fromStatus: "CONFIRMED",
+        toStatus: "CANCELLED",
+        actorUserId: 202,
+        actor: { username: "Eason", avatarUrl: null, avatarBootstrapUrl: null },
+        reason: null,
+        metadata: {
+          actor: {
+            identityId: 16,
+            identityType: "merchant_owner",
+            source: "merchant",
+            displayName: "Eason"
+          }
+        },
+        createdAt: new Date("2026-09-20T13:24:00.000Z")
+      }]
+    };
+    tx.bookingOrder.findFirst = jest.fn().mockResolvedValueOnce(current).mockResolvedValueOnce(next);
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    const result = await repository.transitionOrderWithScheduleGuard({
+      id: 701,
+      actorUserId: 202,
+      actor: { userId: 202, identityId: 16, identityType: "merchant_owner" },
+      fromStatus: "confirmed",
+      toStatus: "cancelled"
+    });
+
+    expect(tx.orderStatusHistory.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        metadata: {
+          actor: {
+            identityId: 16,
+            identityType: "merchant_owner",
+            source: "merchant",
+            displayName: "Eason"
+          }
+        }
+      })
+    });
+    expect(result).toMatchObject({
+      outcome: "ok",
+      order: {
+        timelineEvents: [expect.objectContaining({
+          type: "ORDER_STATUS_CHANGED",
+          actorIdentityId: 16,
+          actorSource: "merchant",
+          actorDisplayName: "Eason"
+        })]
+      }
+    });
+  });
 
   it("returns an active acceptance pause before mutating or settling a confirmation", async () => {
     const settle = jest.fn();

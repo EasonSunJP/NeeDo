@@ -221,6 +221,42 @@ describe("formal social provider gate", () => {
     expect(content).not.toContain("changed from");
   });
 
+  it("localizes merchant cancellation notifications with actor, appointment, shop, and reason", () => {
+    expect(behavior.resolveFormalNotificationContent).toBeTypeOf("function");
+    if (!behavior.resolveFormalNotificationContent) return;
+
+    const notification: RealtimeNotification = {
+      actorUserId: 51,
+      body: "notification.order_status_changed.body",
+      createdAt: "2026-09-20T13:24:00.000Z",
+      id: 24418,
+      payload: {
+        eventCode: "booking.order_status_changed",
+        orderId: 24418,
+        orderNo: "ND202609200104226905",
+        actorSource: "merchant",
+        actorDisplayName: "Eason",
+        serviceName: "ボディケア 60分",
+        shopName: "Eason 店铺",
+        startsAt: "2026-09-21T05:00:00.000Z",
+        reason: "店铺当天无法履约",
+        fromStatus: "confirmed",
+        toStatus: "cancelled"
+      },
+      readAt: null,
+      recipientUserId: 41,
+      title: "notification.order_status_changed.title",
+      type: "orderStatus"
+    };
+
+    const content = behavior.resolveFormalNotificationContent(notification, "zh");
+    expect(content).toContain("店铺/商户 Eason 已取消预约");
+    expect(content).toContain("2026年9月21日");
+    expect(content).toContain("ボディケア 60分");
+    expect(content).toContain("Eason 店铺");
+    expect(content).toContain("原因：店铺当天无法履约");
+  });
+
   it("localizes friend requests and hides unknown system payloads behind safe generic copy", () => {
     expect(behavior.resolveFormalNotificationContent).toBeTypeOf("function");
     if (!behavior.resolveFormalNotificationContent) return;

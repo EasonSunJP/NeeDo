@@ -1408,6 +1408,110 @@ describe("BookingService state machine", () => {
     );
   });
 
+  it("notifies the customer and assigned technician with authoritative merchant cancellation context", async () => {
+    const confirmed = makeOrder("confirmed");
+    const cancelled = {
+      ...confirmed,
+      status: "cancelled" as const,
+      cancelReason: "店铺当天无法履约",
+      timelineEvents: [
+        ...confirmed.timelineEvents,
+        {
+          type: "ORDER_STATUS_CHANGED" as const,
+          id: "status:2",
+          createdAt: now,
+          actorUserId: 2,
+          actorIdentityId: 202,
+          actorSource: "merchant" as const,
+          actorDisplayName: "Eason",
+          fromStatus: "confirmed" as const,
+          toStatus: "cancelled" as const,
+          publicReason: "店铺当天无法履约"
+        }
+      ]
+    };
+    const repository = createRepository(confirmed);
+    repository.transitionOrder.mockResolvedValue(cancelled);
+    repository.findOrderRealtimeRecipients = jest.fn(async () => [
+      { userId: 1, identityId: 101 },
+      { userId: 3, identityId: 303 }
+    ]);
+    const notifications: jest.Mocked<OrderStatusNotificationPort> = {
+      notifyOrderStatusChanged: jest.fn(
+        async (
+          input: Parameters<OrderStatusNotificationPort["notifyOrderStatusChanged"]>[0]
+        ) => {
+          void input;
+        }
+      ),
+      notifyOrderChanged: jest.fn(async () => undefined)
+    };
+    const service = new BookingService(repository, undefined, notifications);
+
+    await service.transitionOrder(
+      {
+        userId: 2,
+        roles: ["merchant_owner"],
+        currentIdentityId: 202,
+        currentIdentityType: "merchant_owner",
+        currentIdentityScopeType: "shop",
+        currentIdentityScopeId: 1
+      },
+      confirmed.id,
+      "cancel",
+      "店铺当天无法履约"
+    );
+
+    expect(notifications.notifyOrderStatusChanged).toHaveBeenCalledWith({
+      actorUserId: 2,
+      actorIdentityId: 202,
+      actorSource: "merchant",
+      actorDisplayName: "Eason",
+      orderId: confirmed.id,
+      orderNo: confirmed.orderNo,
+      fromStatus: "confirmed",
+      toStatus: "cancelled",
+      serviceName: confirmed.serviceName,
+      shopName: confirmed.shopName,
+      startsAt: confirmed.startsAt,
+      reason: "店铺当天无法履约",
+      recipientUserIds: [1, 3],
+      recipientIdentities: [
+        { userId: 1, identityId: 101 },
+        { userId: 3, identityId: 303 }
+      ]
+    });
+  });
+
+  it("does not report a committed cancellation as failed when recipient lookup fails", async () => {
+    const confirmed = makeOrder("confirmed");
+    const cancelled = { ...confirmed, status: "cancelled" as const };
+    const repository = createRepository(confirmed);
+    repository.transitionOrder.mockResolvedValue(cancelled);
+    repository.findOrderRealtimeRecipients = jest.fn().mockRejectedValue(new Error("offline"));
+    const notifications = {
+      notifyOrderStatusChanged: jest.fn().mockResolvedValue(undefined),
+      notifyOrderChanged: jest.fn().mockResolvedValue(undefined)
+    } as unknown as jest.Mocked<OrderStatusNotificationPort>;
+    const service = new BookingService(repository, undefined, notifications);
+
+    await expect(
+      service.transitionOrder(
+        {
+          userId: 2,
+          roles: ["merchant_owner"],
+          currentIdentityId: 202,
+          currentIdentityType: "merchant_owner",
+          currentIdentityScopeType: "shop",
+          currentIdentityScopeId: 1
+        },
+        confirmed.id,
+        "cancel",
+        "店铺当天无法履约"
+      )
+    ).resolves.toEqual(cancelled);
+  });
+
   it("runs affiliate cancellation inside the transition transaction without a ledger service", async () => {
     const repository = createRepository(makeOrder("pending"));
     const affiliateCheckout = {

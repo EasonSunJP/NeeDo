@@ -432,6 +432,57 @@ function normalizedOrderStatus(value: string | null): string | null {
   return orderStatusLabels[value] ? value : null;
 }
 
+function localizedOrderCancellation(
+  payload: Record<string, unknown>,
+  language: Language
+): string | null {
+  const actorSource = payloadString(payload, "actorSource");
+  const actorDisplayName = payloadString(payload, "actorDisplayName");
+  const serviceName = payloadString(payload, "serviceName");
+  const shopName = payloadString(payload, "shopName");
+  const startsAt = payloadString(payload, "startsAt");
+  if (!actorSource || !serviceName || !shopName || !startsAt) return null;
+  const startsAtDate = new Date(startsAt);
+  if (!Number.isFinite(startsAtDate.getTime())) return null;
+
+  const actorLabels: Record<string, Record<Language, string>> = {
+    customer: { zh: "用户", "zh-Hant": "使用者", ja: "ユーザー", en: "Customer", ko: "사용자" },
+    merchant: { zh: "店铺/商户", "zh-Hant": "店鋪/商戶", ja: "店舗/加盟店", en: "Shop/Merchant", ko: "매장/판매자" },
+    technician: { zh: "担当技师", "zh-Hant": "擔當技師", ja: "担当スタッフ", en: "Assigned technician", ko: "담당 기술자" },
+    platform: { zh: "平台运营", "zh-Hant": "平台營運", ja: "プラットフォーム運営", en: "Platform operations", ko: "플랫폼 운영" },
+    system: { zh: "NeeDo 系统", "zh-Hant": "NeeDo 系統", ja: "NeeDo システム", en: "NeeDo system", ko: "NeeDo 시스템" }
+  };
+  const actorLabel = actorLabels[actorSource]?.[language];
+  if (!actorLabel) return null;
+  const actor = actorDisplayName ? `${actorLabel} ${actorDisplayName}` : actorLabel;
+  const dateLocales: Record<Language, string> = {
+    zh: "zh-CN",
+    "zh-Hant": "zh-Hant",
+    ja: "ja-JP",
+    en: "en-US",
+    ko: "ko-KR"
+  };
+  const appointment = new Intl.DateTimeFormat(dateLocales[language], {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Tokyo"
+  }).format(startsAtDate);
+  const suppliedReason = payloadString(payload, "reason", 500);
+  const reason = suppliedReason ?? (() => {
+    if (language === "ja") return actorSource === "merchant" ? "店舗がキャンセル理由を入力していません" : "キャンセル理由が入力されていません";
+    if (language === "en") return actorSource === "merchant" ? "The shop did not provide a cancellation reason" : "No cancellation reason was provided";
+    if (language === "ko") return actorSource === "merchant" ? "매장에서 취소 사유를 입력하지 않았습니다" : "취소 사유가 입력되지 않았습니다";
+    if (language === "zh-Hant") return actorSource === "merchant" ? "店鋪未填寫取消原因" : "未填寫取消原因";
+    return actorSource === "merchant" ? "店铺未填写取消原因" : "未填写取消原因";
+  })();
+
+  if (language === "ja") return `${actor}が予約をキャンセルしました。${appointment} · ${serviceName} · ${shopName} · 理由：${reason}`;
+  if (language === "en") return `${actor} cancelled the booking. ${appointment} · ${serviceName} · ${shopName} · Reason: ${reason}`;
+  if (language === "ko") return `${actor}이(가) 예약을 취소했습니다. ${appointment} · ${serviceName} · ${shopName} · 사유: ${reason}`;
+  if (language === "zh-Hant") return `${actor} 已取消預約。${appointment} · ${serviceName} · ${shopName} · 原因：${reason}`;
+  return `${actor} 已取消预约。${appointment} · ${serviceName} · ${shopName} · 原因：${reason}`;
+}
+
 function localizedOrderStatusChange(
   payload: Record<string, unknown>,
   language: Language
@@ -442,6 +493,10 @@ function localizedOrderStatusChange(
 
   const from = orderStatusLabels[fromStatus][language];
   const to = orderStatusLabels[toStatus][language];
+  if (toStatus === "cancelled") {
+    const cancellation = localizedOrderCancellation(payload, language);
+    if (cancellation) return cancellation;
+  }
   const serviceName = payloadString(payload, "serviceName");
   if (language === "ja") return serviceName
     ? `${serviceName}の状態が「${from}」から「${to}」に更新されました。`
