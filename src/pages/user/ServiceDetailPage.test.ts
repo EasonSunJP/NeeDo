@@ -112,6 +112,11 @@ describe("ServiceDetailPage formal service routes", () => {
     expect(serviceDetailSource).not.toContain('to={`/profiles/technician/${technician.id}`}');
   });
 
+  it("reserves only the fixed action footer height below the final content card", () => {
+    expect(serviceDetailSource).toContain("pb-[calc(env(safe-area-inset-bottom)+6rem)]");
+    expect(serviceDetailSource).not.toContain("pb-[calc(env(safe-area-inset-bottom)+8.5rem)]");
+  });
+
   it("derives selectable technicians from the same formal availability used by checkout", () => {
     expect(serviceDetailSource).toContain("loadAvailabilityWindow");
     expect(serviceDetailSource).toContain("resolveBookableServiceTechnicians");

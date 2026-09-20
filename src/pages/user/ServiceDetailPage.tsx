@@ -317,7 +317,7 @@ function ServiceDetailContent() {
         title="服务详情"
       />
 
-      <main className="client-app-gutter scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+8.5rem)] pt-4">
+      <main className="client-app-gutter scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+6rem)] pt-4">
         <ServiceDetailHero onPreview={() => setHeroPreviewOpen(true)} service={service} />
 
         <section className={mobileDetailCardClassName}>

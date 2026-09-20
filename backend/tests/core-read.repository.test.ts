@@ -271,6 +271,12 @@ describe("CoreReadRepository multi-entity search", () => {
           completedOrderCount: 1999,
           favoriteCount: 1540,
           shareCount: 29,
+          reviewSummary: {
+            ratingAverage: "5.00",
+            reviewCount: 0,
+            latestReviewAt: null,
+            highlights: []
+          },
           serviceCategories: [{ code: "wellness", label: "リラクゼーション" }],
           businessKeywords: [{ code: "wellness_spa", label: "スパケア" }]
         }

@@ -259,6 +259,15 @@ vi.mock("../../state/homeLocationStore", () => ({
 }));
 
 describe("CategoryPage formal category state", () => {
+  it("defaults an unscoped search entry to shops instead of all entities", () => {
+    resetQueryStates();
+    const html = renderCategoryPage("/categories");
+
+    expect(queryHarness.calls).toEqual(["categories", "shop"]);
+    expect(html).toContain("店铺");
+    expect(html).not.toContain(">全部<");
+  });
+
   it("renders Japanese search controls and result-card accessibility copy without mixed Chinese", () => {
     resetQueryStates({ service: { data: page([service]), error: null, loading: false } });
     i18nHarness.language = "ja";
@@ -294,24 +303,17 @@ describe("CategoryPage formal category state", () => {
     resetQueryStates({ categories: { data: page([]), error: null, loading: false } });
     const html = renderCategoryPage("/categories");
 
-    expect(html).toContain("没有找到匹配的标签或分类");
+    expect(html).toContain("没有找到匹配结果");
   });
 
-  it("renders a shop and technician returned without a service result", () => {
+  it("renders only shops on the default search scope", () => {
     resetQueryStates();
     const html = renderCategoryPage("/categories");
 
     expect(html).toContain("LifeDance Wellness 渋谷");
-    expect(html).toContain("橘 ひかり");
-    expect(html).toContain('data-testid="technician-showcase-card"');
-    expect(html).toContain("aspect-[3/4]");
-    expect(html).toContain("推荐服务");
-    expect(html).toContain("肩颈调理");
-    expect(html).toContain("¥8,800");
-    expect(html).toContain("接单率 98%");
-    expect(html).toContain("收藏 154");
-    expect(html).not.toContain('data-card-kind="technician"');
-    expect(html).not.toContain("完单次数");
+    expect(html).not.toContain("橘 ひかり");
+    expect(html).not.toContain('data-testid="technician-showcase-card"');
+    expect(html).not.toContain("肩颈调理");
     expect(html).toContain("包间");
     expect(html).not.toContain(">放松<");
   });
@@ -339,28 +341,20 @@ describe("CategoryPage formal category state", () => {
     const html = renderCategoryPage("/categories");
 
     expect(html).toContain("LifeDance Wellness 渋谷");
-    expect(html).toContain("橘 ひかり");
     expect(html).toContain("收藏");
     expect(html).toContain("分享");
     expect(html).toContain(">-<");
     expect(html).not.toContain("未读取");
-    expect(html).not.toContain("接单率");
-    expect(html).not.toContain("肩颈调理");
   });
 
-  it("keeps the bare category route scoped to the displayed cleaning category", () => {
+  it("keeps the bare category route unfiltered within the default shop scope", () => {
     resetQueryStates();
     renderCategoryPage("/categories");
 
-    expect(queryHarness.queries.shop).toMatchObject({ categoryIds: [4] });
-    expect(queryHarness.queries.technician).toMatchObject({ categoryIds: [4] });
-    expect(queryHarness.queries.service).toMatchObject({ categoryIds: [4] });
-    expect(queryHarness.queries.technician).toMatchObject({
-      latitude: 35.6555,
-      longitude: 139.7367
-    });
+    expect(queryHarness.queries.shop).toMatchObject({ categoryIds: [] });
+    expect(queryHarness.queries.technician).toBeUndefined();
+    expect(queryHarness.queries.service).toBeUndefined();
     expect(queryHarness.queries.shop).not.toHaveProperty("latitude");
-    expect(queryHarness.queries.service).not.toHaveProperty("latitude");
   });
 
   it("keeps a service module fulfillment mode in the category-page API queries", () => {
@@ -388,13 +382,13 @@ describe("CategoryPage formal category state", () => {
     expect(html).toContain("橘 ひかり");
   });
 
-  it("keeps successful sections and a scoped retry when one entity request fails", () => {
+  it("keeps a scoped retry when the selected entity request fails", () => {
     resetQueryStates({ shop: { data: null, error: "error.network", loading: false } });
     const html = renderCategoryPage("/categories");
 
     expect(html).toContain("店铺 · 搜索失败，请稍后重试");
     expect(html).toContain("重试");
-    expect(html).toContain("橘 ひかり");
+    expect(html).not.toContain("橘 ひかり");
   });
 
   it.each([
@@ -474,8 +468,7 @@ describe("CategoryPage formal category state", () => {
 
       expect(getFavoriteStatuses).toHaveBeenCalledTimes(1);
       expect(getFavoriteStatuses).toHaveBeenCalledWith([
-        { targetType: "shop", publicId: shop.publicId },
-        { targetType: "technician", publicId: technician.publicId }
+        { targetType: "shop", publicId: shop.publicId }
       ]);
       await expect
         .poll(() =>

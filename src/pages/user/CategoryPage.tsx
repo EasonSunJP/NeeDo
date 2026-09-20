@@ -52,7 +52,7 @@ type PopularSearchTag = {
   aliases?: string[];
 };
 
-type CategoryEntityFilter = "all" | "store" | "technician" | "service";
+type CategoryEntityFilter = "store" | "technician" | "service";
 
 const popularCategoryTags: PopularSearchTag[] = [
   { id: "tag-cleaning-home", label: "家政", query: "#家政", categoryId: "cleaning", aliases: ["家庭保洁", "保洁"] },
@@ -82,12 +82,10 @@ const popularCategoryTags: PopularSearchTag[] = [
 const pinnedCategoryTags = popularCategoryTags.slice(0, 10);
 const popularCategoryTagMap = new Map(popularCategoryTags.map((item) => [item.id, item] as const));
 const entityFilterTags: Array<{ value: CategoryEntityFilter; label: string }> = [
-  { value: "all", label: "全部" },
   { value: "store", label: "店铺" },
   { value: "technician", label: "技师" },
   { value: "service", label: "服务" }
 ];
-const entityFilterMenuTags = entityFilterTags.filter((tag) => tag.value !== "all");
 const activeSearchChipClassName =
   "rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface))] px-3 py-1.5 text-[12px] font-black text-[color:var(--client-primary)]";
 
@@ -209,7 +207,7 @@ function normalizeEntityFilter(value: string | null): CategoryEntityFilter {
     return value;
   }
 
-  return "all";
+  return "store";
 }
 
 function findPreferredCategoryId(tagIds: string[], availableCategoryIds: string[]) {
@@ -353,11 +351,7 @@ export function CategoryPage() {
         return explicitCategoryIds;
       }
 
-      if (entityFilter !== "all") {
-        return [];
-      }
-
-      return ["cleaning"];
+      return [];
     },
     [appliedCustomLabels, appliedTagIds, entityFilter, searchParams]
   );
@@ -399,9 +393,9 @@ export function CategoryPage() {
   const [shopRetryKey, setShopRetryKey] = useState(0);
   const [technicianRetryKey, setTechnicianRetryKey] = useState(0);
   const [serviceRetryKey, setServiceRetryKey] = useState(0);
-  const loadShops = entityFilter === "all" || entityFilter === "store";
-  const loadTechnicians = entityFilter === "all" || entityFilter === "technician";
-  const loadServices = entityFilter === "all" || entityFilter === "service";
+  const loadShops = entityFilter === "store";
+  const loadTechnicians = entityFilter === "technician";
+  const loadServices = entityFilter === "service";
   const searchFiltersReady = canRunCategorySearch({
     selectedHomeCategoryIds,
     searchCategoryIds,
@@ -512,8 +506,6 @@ export function CategoryPage() {
     availableCategories.find((category) => category.id === activeCategoryId) ??
     availableCategories[0] ??
     null;
-  const appliedSearchKeywords = appliedCustomLabels;
-  const hasAppliedSearch = entityFilter !== "all" || appliedTagIds.length > 0 || appliedSearchKeywords.length > 0;
   const relatedServices = useMemo(
     () => [...apiServices]
       .sort((left, right) => right.sales - left.sales || right.rating - left.rating)
@@ -621,10 +613,8 @@ export function CategoryPage() {
       | { kind: "custom"; key: string; label: string }
     > = [];
 
-    if (entityFilter !== "all") {
-      const label = entityFilterTags.find((tag) => tag.value === entityFilter)?.label ?? entityFilter;
-      chips.push({ kind: "entity", key: `entity-${entityFilter}`, label, value: entityFilter });
-    }
+    const label = entityFilterTags.find((tag) => tag.value === entityFilter)?.label ?? entityFilter;
+    chips.push({ kind: "entity", key: `entity-${entityFilter}`, label, value: entityFilter });
 
     appliedTagIds.forEach((tagId) => {
       const label = popularCategoryTagMap.get(tagId)?.label;
@@ -662,11 +652,7 @@ export function CategoryPage() {
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
 
-      if (nextEntityFilter === "all") {
-        next.delete("type");
-      } else {
-        next.set("type", nextEntityFilter);
-      }
+      next.set("type", nextEntityFilter);
 
       return next;
     }, { replace: true });
@@ -723,7 +709,7 @@ export function CategoryPage() {
 
   const handleAppliedSearchChipRemove = (chip: (typeof appliedSearchChips)[number]) => {
     if (chip.kind === "entity") {
-      handleEntityFilterSelect("all");
+      handleEntityFilterSelect("store");
       return;
     }
 
@@ -740,7 +726,7 @@ export function CategoryPage() {
     handleCustomLabelRemove(chip.label);
   };
 
-  const entityFilterLabel = t(entityFilterTags.find((tag) => tag.value === entityFilter)?.label ?? "全部");
+  const entityFilterLabel = t(entityFilterTags.find((tag) => tag.value === entityFilter)?.label ?? "店铺");
   const showServiceSection = loadServices;
   const showShopSection = loadShops;
   const showTechnicianSection = loadTechnicians;
@@ -773,7 +759,7 @@ export function CategoryPage() {
                 </div>
 
                 <div className="mt-4 grid grid-cols-3 gap-2">
-                  {entityFilterMenuTags.map((tag) => {
+                  {entityFilterTags.map((tag) => {
                     const active = entityFilter === tag.value;
 
                     return (
@@ -793,7 +779,7 @@ export function CategoryPage() {
 
                 <div className="flex flex-wrap gap-2">
                   {popularCategoryTags.map((tag) => {
-                    const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory?.id === tag.categoryId);
+                    const active = appliedTagIds.includes(tag.id);
 
                     return (
                       <button
@@ -893,7 +879,7 @@ export function CategoryPage() {
               style={{ msOverflowStyle: "none" }}
             >
               {pinnedCategoryTags.map((tag) => {
-                const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory?.id === tag.categoryId);
+                const active = appliedTagIds.includes(tag.id);
 
                 return (
                   <button

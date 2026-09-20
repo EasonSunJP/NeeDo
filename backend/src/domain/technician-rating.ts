@@ -17,3 +17,5 @@ export const calculateTechnicianPlatformRating = (
     (reviewCount + 1)
   );
 };
+
+export const calculateShopPlatformRating = calculateTechnicianPlatformRating;

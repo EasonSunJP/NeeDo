@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import composerSource from "./UnifiedComposerUi.tsx?raw";
 import source from "./UnifiedSocialUi.tsx?raw";
-import { UnifiedPostText } from "./UnifiedSocialUi";
+import { resolveSocialProfileMessageAction, UnifiedPostText } from "./UnifiedSocialUi";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -63,6 +63,71 @@ describe("UnifiedSocialUi technician store booking links", () => {
     expect(source).toContain('import { socialPaths, socialReplyFocusState } from "../paths";');
     expect(source).toContain("onClick={() => navigate(detailHref, { state: socialReplyFocusState })}");
     expect(source).not.toContain(obsoleteReplyComposeCall);
+  });
+});
+
+describe("social profile private-message routing", () => {
+  const profile = { id: "social-profile-176", entityType: "user" as const };
+  const user = {
+    id: "176",
+    accountId: "needo-176",
+    nickname: "安田 結衣",
+    avatar: "/avatar.jpg",
+    status: "active" as const,
+    searchableFields: [],
+    sortKey: "yasuda",
+    profileKind: "person" as const,
+    tags: [],
+    userIdLabel: "176",
+  };
+  const contact = {
+    id: "contact-176",
+    ownerUserId: "1",
+    targetUserId: "176",
+    relationStatus: "active" as const,
+    source: "formal",
+    tags: [],
+    isStarred: false,
+    isBlocked: false,
+    createdAt: "2026-09-20T00:00:00.000Z",
+    updatedAt: "2026-09-20T00:00:00.000Z",
+  };
+
+  it("opens a direct conversation for an active friend even without social entity mapping", () => {
+    expect(resolveSocialProfileMessageAction({
+      accountUserId: 176,
+      contacts: [contact],
+      currentUserId: "1",
+      profile,
+      users: [user],
+    })).toEqual({ kind: "conversation", targetUserId: "176" });
+  });
+
+  it("routes a nonfriend to the friend-request profile", () => {
+    expect(resolveSocialProfileMessageAction({
+      accountUserId: 176,
+      contacts: [],
+      currentUserId: "1",
+      profile,
+      users: [user],
+    })).toEqual({ kind: "friend-request", targetUserId: "176" });
+  });
+
+  it("does not treat a deleted or blocked relationship as an active friendship", () => {
+    expect(resolveSocialProfileMessageAction({
+      accountUserId: 176,
+      contacts: [{ ...contact, relationStatus: "deleted" }],
+      currentUserId: "1",
+      profile,
+      users: [user],
+    })).toEqual({ kind: "friend-request", targetUserId: "176" });
+    expect(resolveSocialProfileMessageAction({
+      accountUserId: 176,
+      contacts: [{ ...contact, isBlocked: true }],
+      currentUserId: "1",
+      profile,
+      users: [user],
+    })).toEqual({ kind: "friend-request", targetUserId: "176" });
   });
 });
 

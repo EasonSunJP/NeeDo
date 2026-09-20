@@ -21,8 +21,9 @@ describe("CategoryPage formal entity cards", () => {
     expect(categoryPageSource).not.toContain("FormalTechnicianSearchCard");
   });
 
-  it("keeps the expanded entity filter to store, technician, and service only", () => {
-    expect(categoryPageSource).toContain('const entityFilterMenuTags = entityFilterTags.filter((tag) => tag.value !== "all");');
+  it("offers only store, technician, and service filters and defaults to store", () => {
+    expect(categoryPageSource).not.toContain('{ value: "all", label: "全部" }');
+    expect(categoryPageSource).toContain('return "store";');
     expect(categoryPageSource).toContain('className="mt-4 grid grid-cols-3 gap-2"');
   });
 

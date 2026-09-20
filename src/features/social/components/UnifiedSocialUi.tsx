@@ -43,7 +43,7 @@ import { getImRoleConfig } from "../../im/role-config";
 import { ImReactionValue } from "../../im/JudgementReactionIcon";
 import { resolveImMessageRichText, type ImMessageRichTextPart } from "../../im/reaction-policy";
 import { useImStore } from "../../im/store";
-import type { ImUser } from "../../im/model";
+import type { ContactRelation, ImUser } from "../../im/model";
 import { useSocial } from "../context";
 import { socialPaths, socialReplyFocusState } from "../paths";
 import { buildTechnicianWeeklyScheduleItems, type TechnicianWeeklyScheduleTone } from "../profileHeaderPresentation";
@@ -1136,8 +1136,56 @@ export function SocialFollowButton({
   );
 }
 
-function findImUserForSocialProfile(users: ImUser[], profile: SocialProfile) {
+function findImUserForSocialProfile(
+  users: ImUser[],
+  profile: Pick<SocialProfile, "entityType" | "id">,
+) {
   return users.find((user) => user.entityType === profile.entityType && user.entityId === profile.id);
+}
+
+export function resolveSocialProfileMessageAction({
+  accountUserId,
+  contacts,
+  currentUserId,
+  profile,
+  users,
+}: {
+  accountUserId?: number;
+  contacts: ContactRelation[];
+  currentUserId?: string;
+  profile: Pick<SocialProfile, "entityType" | "id">;
+  users: ImUser[];
+}): { kind: "conversation" | "friend-request"; targetUserId: string } | null {
+  const accountTargetUserId =
+    Number.isSafeInteger(accountUserId) && (accountUserId ?? 0) > 0
+      ? String(accountUserId)
+      : undefined;
+  const targetUser =
+    findImUserForSocialProfile(users, profile) ??
+    (accountTargetUserId
+      ? users.find((user) => user.id === accountTargetUserId)
+      : undefined);
+  const targetUserId = targetUser?.id ?? accountTargetUserId;
+
+  if (
+    !targetUserId ||
+    targetUserId === currentUserId ||
+    targetUser?.serviceAccount
+  ) {
+    return null;
+  }
+
+  const isActiveFriend = contacts.some(
+    (contact) =>
+      contact.targetUserId === targetUserId &&
+      contact.relationStatus === "active" &&
+      !contact.isBlocked,
+  );
+
+  return {
+    kind: isActiveFriend ? "conversation" : "friend-request",
+    targetUserId,
+  };
 }
 
 function SocialPostContextRow({
@@ -1880,12 +1928,14 @@ export function SocialProfileSearchFab({
 }
 
 export function SocialProfileHeader({
+  accountUserId,
   profile,
   scope,
   actorKey,
   variant = "default",
   relatedShopEntries
 }: {
+  accountUserId?: number;
   profile: SocialProfile;
   scope: SocialPortalScope;
   actorKey: string;
@@ -1916,8 +1966,16 @@ export function SocialProfileHeader({
     [coverImages, profile.displayName, profile.id]
   );
   const activeCoverImage = coverImages[activeCoverIndex] ?? coverImages[0] ?? profile.coverImage;
-  const targetImUser = isSelf ? undefined : findImUserForSocialProfile(imStore.users, profile);
-  const canOpenPrivateMessage = Boolean(targetImUser && targetImUser.id !== imStore.currentUserId && !targetImUser.serviceAccount);
+  const privateMessageAction = isSelf
+    ? null
+    : resolveSocialProfileMessageAction({
+        accountUserId,
+        contacts: imStore.contacts,
+        currentUserId: imStore.currentUserId,
+        profile,
+        users: imStore.users,
+      });
+  const canOpenPrivateMessage = privateMessageAction !== null;
   const relatedShops = useMemo(() => {
     if (relatedShopEntries) {
       return relatedShopEntries;
@@ -1964,13 +2022,24 @@ export function SocialProfileHeader({
   };
 
   const openPrivateMessage = async () => {
-    if (!targetImUser || !canOpenPrivateMessage) {
+    if (!privateMessageAction) {
+      return;
+    }
+
+    if (privateMessageAction.kind === "friend-request") {
+      navigate(
+        getImRoleConfig(scope).routes.directoryProfile(
+          privateMessageAction.targetUserId,
+        ),
+      );
       return;
     }
 
     setPrivateMessagePending(true);
     try {
-      const conversation = await imStore.ensureDirectConversation(targetImUser.id);
+      const conversation = await imStore.ensureDirectConversation(
+        privateMessageAction.targetUserId,
+      );
       navigate(getImRoleConfig(scope).routes.conversation(conversation.id));
     } finally {
       setPrivateMessagePending(false);

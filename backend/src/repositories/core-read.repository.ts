@@ -12,7 +12,10 @@ import type {
 } from "@prisma/client";
 import { ContentLocale } from "@prisma/client";
 import type { ContentLocaleCode } from "../constants/content-locales";
-import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
+import {
+  calculateShopPlatformRating,
+  calculateTechnicianPlatformRating
+} from "../domain/technician-rating";
 import { shopPresentationContentSchema } from "../validators/shop-presentation.validator";
 import { prisma } from "../prisma/client";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
@@ -1669,7 +1672,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       city: shop.city,
       address: shop.address,
       coverUrl: this.findMediaUrl(shop.mediaAssets, "cover"),
-      reviewSummary: this.mapReviewSummary(shop.reviewSummary),
+      reviewSummary: this.mapShopReviewSummary(shop.reviewSummary),
       completedOrderCount: shop._count.bookingOrders,
       favoriteCount: shop._count.entityFavorites,
       shareCount: shop._count.entityShareEvents,
@@ -1915,6 +1918,17 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     return {
       ...reviewSummary,
       ratingAverage: calculateTechnicianPlatformRating(
+        Number(reviewSummary.ratingAverage),
+        reviewSummary.reviewCount
+      ).toFixed(2)
+    };
+  }
+
+  private mapShopReviewSummary(summary: ReviewSummary | null): ReviewSummaryPayload {
+    const reviewSummary = this.mapReviewSummary(summary);
+    return {
+      ...reviewSummary,
+      ratingAverage: calculateShopPlatformRating(
         Number(reviewSummary.ratingAverage),
         reviewSummary.reviewCount
       ).toFixed(2)

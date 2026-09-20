@@ -355,12 +355,14 @@ function SocialProfileUnavailable({ scope, title }: { scope: SocialPortalScope; 
 }
 
 function SocialProfileScene({
+  accountUserId,
   actorKey,
   onClose,
   profile,
   resetKey,
   scope
 }: {
+  accountUserId?: number;
   actorKey: string;
   onClose: () => void;
   profile: SocialProfile;
@@ -403,7 +405,7 @@ function SocialProfileScene({
       </div>
 
       <div>
-        <SocialProfileHeader actorKey={actorKey} profile={profile} scope={scope} />
+        <SocialProfileHeader accountUserId={accountUserId} actorKey={actorKey} profile={profile} scope={scope} />
         <div className="client-app-breakout client-app-gutter py-3">
           <SocialProfileTabs onChange={setTab} value={tab} />
         </div>
@@ -647,7 +649,7 @@ export function SocialAccountProfilePage() {
     return <SocialProfileUnavailable scope={scope} title="好友动态" />;
   }
 
-  return <SocialProfileScene actorKey={actorKey} onClose={closeProfile} profile={profile} resetKey={`account:${userId}:${requestedIdentityId ?? "canonical"}`} scope={scope} />;
+  return <SocialProfileScene accountUserId={userId} actorKey={actorKey} onClose={closeProfile} profile={profile} resetKey={`account:${userId}:${requestedIdentityId ?? "canonical"}`} scope={scope} />;
 }
 
 export function SocialSelfProfilePage() {
