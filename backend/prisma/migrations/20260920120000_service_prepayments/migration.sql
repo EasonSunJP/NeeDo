@@ -3,6 +3,37 @@ UPDATE `technician_automation_settings`
 SET `rules` = JSON_SET(`rules`, '$.minimumPrepaymentPercent', 0)
 WHERE JSON_EXTRACT(`rules`, '$.minimumPrepaymentPercent') IS NULL;
 
+ALTER TABLE `ledger_transactions`
+  MODIFY `type` ENUM(
+    'booking_accept_freeze',
+    'booking_cancel_unfreeze',
+    'booking_complete_settlement',
+    'booking_merchant_cancel_compensation',
+    'manual_topup_approved',
+    'manual_withdrawal_approved',
+    'seed_credit',
+    'affiliate_task_budget_freeze',
+    'affiliate_task_budget_release',
+    'affiliate_reward_settlement',
+    'affiliate_reward_reversal',
+    'affiliate_reward_recovery',
+    'test_balance_calibration',
+    'exchange_request_publication_freeze',
+    'exchange_request_publication_capture',
+    'exchange_request_publication_release',
+    'shop_membership_reward_settlement',
+    'shop_membership_reward_reversal',
+    'service_consumption_settlement',
+    'product_consumption_settlement',
+    'platform_membership_purchase',
+    'booking_consumption_refund',
+    'service_consumption_refund',
+    'product_consumption_refund',
+    'service_prepayment_freeze',
+    'service_prepayment_capture',
+    'service_prepayment_release'
+  ) NOT NULL;
+
 ALTER TABLE `wallet_holds`
   DROP INDEX `wallet_holds_exchange_post_id_key`,
   ADD INDEX `wallet_holds_exchange_post_id_idx` (`exchange_post_id`);

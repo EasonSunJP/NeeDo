@@ -53,6 +53,9 @@ export type LedgerTransactionType =
   | "exchange_request_publication_freeze"
   | "exchange_request_publication_capture"
   | "exchange_request_publication_release"
+  | "service_prepayment_freeze"
+  | "service_prepayment_capture"
+  | "service_prepayment_release"
   | "shop_membership_reward_settlement"
   | "shop_membership_reward_reversal"
   | "service_consumption_settlement"
@@ -65,7 +68,7 @@ export type LedgerTransactionStatus = "applied";
 export type FinanceReconciliationStatus = "pending" | "exported" | "test_only";
 export type LedgerTransactionClient = unknown;
 export type WalletHoldStatus = "active" | "captured" | "released" | "partially_captured";
-export type WalletHoldFeeType = FeeType | "exchange_request_publication_fee";
+export type WalletHoldFeeType = FeeType | "exchange_request_publication_fee" | "service_prepayment";
 export type ExchangeRequestFinancialState = "held" | "captured" | "released";
 export type OrderFinancialSettlementStatus =
   | "pending"
@@ -260,6 +263,25 @@ export interface ExchangeRequestFreezeInput {
   fee: ExchangeRequestFeeSnapshot;
   feeCalculationLogId: number;
   occurredAt: Date;
+}
+
+export interface ServicePrepaymentLedgerInput {
+  subject: { type: "booking" | "exchange"; id: number };
+  actorUserId: number;
+  walletOwnerType: Extract<WalletOwnerType, "user" | "shop">;
+  walletOwnerId: number;
+  amountNdp: number;
+  amountJpy: number;
+  baseAmountJpy: number;
+  percent: number;
+  idempotencyKey: string;
+  exchangeRate: { ruleId: number; version: number; ndpUnits: number; jpyUnits: number };
+}
+
+export interface ServicePrepaymentReleaseInput {
+  walletHoldId: number;
+  actorUserId: number;
+  idempotencyKey: string;
 }
 
 export interface ExchangeRequestTerminalInput {
@@ -508,6 +530,7 @@ export interface LedgerRepositoryPort {
     reviewNote: string;
   }) => Promise<WalletAdjustmentRequestPayload>;
   findWalletHoldByIdempotencyKey?: (idempotencyKey: string) => Promise<WalletHoldPayload | null>;
+  findWalletHoldById?: (id: number) => Promise<WalletHoldPayload | null>;
   findWalletHold?: (input: {
     bookingOrderId: number;
     ownerType: WalletOwnerType;
@@ -517,7 +540,8 @@ export interface LedgerRepositoryPort {
   createWalletHold?: (input: {
     ownerType: WalletOwnerType;
     ownerId: number;
-    bookingOrderId: number;
+    bookingOrderId?: number | null;
+    exchangePostId?: number | null;
     feeType: WalletHoldFeeType;
     holdAmountNdp: number;
     currency: LedgerCurrency;
@@ -532,7 +556,10 @@ export interface LedgerRepositoryPort {
   lockExchangeRequestFinancialByPostId?: (
     exchangePostId: number
   ) => Promise<ExchangeRequestFinancialPayload | null>;
-  findWalletHoldByExchangePostId?: (exchangePostId: number) => Promise<WalletHoldPayload | null>;
+  findWalletHoldByExchangePostId?: (
+    exchangePostId: number,
+    feeType: WalletHoldFeeType
+  ) => Promise<WalletHoldPayload | null>;
   createExchangeRequestFreezeEvidence?: (input: {
     freeze: ExchangeRequestFreezeInput;
     walletId: number;
@@ -902,6 +929,171 @@ export class LedgerService
     return this.completeExchangeRequestPublication("released", input, context);
   }
 
+  public freezeServicePrepayment(
+    input: ServicePrepaymentLedgerInput,
+    context: LedgerMutationContext = {}
+  ): Promise<WalletHoldPayload> {
+    return this.repository.runInTransaction(async (repository) => {
+      if (
+        !repository.findWalletHoldByIdempotencyKey ||
+        !repository.createWalletHold ||
+        !Number.isSafeInteger(input.subject.id) ||
+        input.subject.id <= 0 ||
+        !Number.isSafeInteger(input.amountNdp) ||
+        input.amountNdp < 0 ||
+        !Number.isSafeInteger(input.amountJpy) ||
+        input.amountJpy < 0
+      ) {
+        throw this.walletMutationError();
+      }
+      const replay = await repository.findWalletHoldByIdempotencyKey(input.idempotencyKey);
+      if (replay) {
+        if (
+          replay.feeType !== "service_prepayment" ||
+          replay.ownerType !== input.walletOwnerType ||
+          replay.ownerId !== input.walletOwnerId ||
+          replay.holdAmountNdp !== input.amountNdp ||
+          replay.bookingOrderId !== (input.subject.type === "booking" ? input.subject.id : null) ||
+          (replay.exchangePostId ?? null) !== (input.subject.type === "exchange" ? input.subject.id : null)
+        ) throw this.idempotencyConflictError();
+        return replay;
+      }
+
+      const currency = input.walletOwnerType === "user"
+        ? await this.resolveCurrencyForUser(repository, input.walletOwnerId)
+        : "NDP";
+      const wallet = await repository.getOrCreateWallet({
+        ownerType: input.walletOwnerType,
+        ownerId: input.walletOwnerId,
+        currency
+      });
+      const walletAfter = input.amountNdp === 0
+        ? wallet
+        : await repository.applyWalletDelta({
+            walletId: wallet.id,
+            availableDelta: -input.amountNdp,
+            frozenDelta: input.amountNdp,
+            requireAvailableAtLeast: input.amountNdp
+          });
+      if (!walletAfter) throw this.insufficientAvailableError();
+
+      const hold = await repository.createWalletHold({
+        ownerType: input.walletOwnerType,
+        ownerId: input.walletOwnerId,
+        bookingOrderId: input.subject.type === "booking" ? input.subject.id : null,
+        exchangePostId: input.subject.type === "exchange" ? input.subject.id : null,
+        feeType: "service_prepayment",
+        holdAmountNdp: input.amountNdp,
+        currency,
+        status: "active",
+        idempotencyKey: input.idempotencyKey,
+        calculationLogId: null,
+        metadata: {
+          amountJpy: input.amountJpy,
+          baseAmountJpy: input.baseAmountJpy,
+          percent: input.percent,
+          exchangeRate: input.exchangeRate
+        }
+      });
+      const transaction = await repository.createTransaction({
+        idempotencyKey: `${input.idempotencyKey}:ledger`,
+        type: "service_prepayment_freeze",
+        referenceType: input.subject.type === "booking" ? "booking_order" : "exchange_request",
+        referenceId: input.subject.id,
+        actorUserId: input.actorUserId,
+        amount: input.amountNdp,
+        currency,
+        metadata: { walletHoldId: hold.id, amountJpy: input.amountJpy, percent: input.percent }
+      });
+      if (input.amountNdp > 0) {
+        await repository.createLedgerEntry({
+          transactionId: transaction.id,
+          walletId: wallet.id,
+          direction: "freeze",
+          amount: input.amountNdp,
+          availableDelta: -input.amountNdp,
+          frozenDelta: input.amountNdp,
+          availableBalanceAfter: walletAfter.availableBalance,
+          frozenBalanceAfter: walletAfter.frozenBalance,
+          reason: "service_prepayment_freeze"
+        });
+      }
+      await repository.createAuditLog({
+        actorUserId: input.actorUserId,
+        action: "ledger.service_prepayment.freeze",
+        targetId: transaction.id,
+        metadata: { walletHoldId: hold.id, subject: input.subject, amountJpy: input.amountJpy }
+      });
+      return hold;
+    }, context.transactionClient);
+  }
+
+  public releaseServicePrepayment(
+    input: ServicePrepaymentReleaseInput,
+    context: LedgerMutationContext = {}
+  ): Promise<WalletHoldPayload> {
+    return this.repository.runInTransaction(async (repository) => {
+      if (!repository.findWalletHoldById || !repository.updateWalletHold) {
+        throw this.repositoryUnavailableError();
+      }
+      const hold = await repository.findWalletHoldById(input.walletHoldId);
+      if (!hold || hold.feeType !== "service_prepayment") throw this.walletMutationError();
+      if (hold.status === "released") return hold;
+      if (hold.status !== "active" || hold.capturedAmountNdp !== 0) throw this.walletMutationError();
+      const remaining = hold.holdAmountNdp - hold.releasedAmountNdp;
+      const wallet = await repository.getOrCreateWallet({
+        ownerType: hold.ownerType,
+        ownerId: hold.ownerId,
+        currency: hold.currency
+      });
+      const walletAfter = remaining === 0
+        ? wallet
+        : await repository.applyWalletDelta({
+            walletId: wallet.id,
+            availableDelta: remaining,
+            frozenDelta: -remaining,
+            requireFrozenAtLeast: remaining
+          });
+      if (!walletAfter) throw this.insufficientFrozenError();
+      const transaction = await repository.createTransaction({
+        idempotencyKey: `${input.idempotencyKey}:ledger`,
+        type: "service_prepayment_release",
+        referenceType: hold.bookingOrderId ? "booking_order" : "exchange_request",
+        referenceId: hold.bookingOrderId ?? hold.exchangePostId!,
+        actorUserId: input.actorUserId,
+        amount: remaining,
+        currency: hold.currency,
+        metadata: { walletHoldId: hold.id }
+      });
+      if (remaining > 0) {
+        await repository.createLedgerEntry({
+          transactionId: transaction.id,
+          walletId: wallet.id,
+          direction: "unfreeze",
+          amount: remaining,
+          availableDelta: remaining,
+          frozenDelta: -remaining,
+          availableBalanceAfter: walletAfter.availableBalance,
+          frozenBalanceAfter: walletAfter.frozenBalance,
+          reason: "service_prepayment_release"
+        });
+      }
+      const updated = await repository.updateWalletHold({
+        id: hold.id,
+        releasedAmountNdp: hold.releasedAmountNdp + remaining,
+        status: "released",
+        releasedAt: this.now()
+      });
+      await repository.createAuditLog({
+        actorUserId: input.actorUserId,
+        action: "ledger.service_prepayment.release",
+        targetId: transaction.id,
+        metadata: { walletHoldId: hold.id, releasedAmountNdp: remaining }
+      });
+      return updated;
+    }, context.transactionClient);
+  }
+
   private completeExchangeRequestPublication(
     targetState: Extract<ExchangeRequestFinancialState, "captured" | "released">,
     input: ExchangeRequestTerminalInput,
@@ -925,7 +1117,10 @@ export class LedgerService
         throw this.exchangeRequestFinancialConflictError();
       }
 
-      const hold = await repository.findWalletHoldByExchangePostId!(input.exchangePostId);
+      const hold = await repository.findWalletHoldByExchangePostId!(
+        input.exchangePostId,
+        "exchange_request_publication_fee"
+      );
       if (
         !hold ||
         hold.id !== financial.walletHoldId ||
@@ -4645,6 +4840,14 @@ export class LedgerService
     return new AppError({
       code: ERROR_CODES.WALLET_MUTATION_FAILED,
       message: "error.wallet.mutation_failed",
+      statusCode: 409
+    });
+  }
+
+  private idempotencyConflictError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+      message: "error.idempotency.key_reused",
       statusCode: 409
     });
   }

@@ -315,10 +315,12 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   public async findWalletHoldByExchangePostId(
-    exchangePostId: number
+    exchangePostId: number,
+    feeType: WalletHoldFeeType
   ): Promise<WalletHoldPayload | null> {
     const hold = await this.client.walletHold.findFirst({
-      where: { exchangePostId, deletedAt: null }
+      where: { exchangePostId, feeType, deletedAt: null },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
     });
 
     return hold ? this.mapWalletHold(hold) : null;
@@ -731,6 +733,13 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return hold ? this.mapWalletHold(hold) : null;
   }
 
+  public async findWalletHoldById(id: number): Promise<WalletHoldPayload | null> {
+    const hold = await this.client.walletHold.findFirst({
+      where: { id, deletedAt: null }
+    });
+    return hold ? this.mapWalletHold(hold) : null;
+  }
+
   public async findWalletHold(input: {
     bookingOrderId: number;
     ownerType: WalletOwnerType;
@@ -754,7 +763,8 @@ export class LedgerRepository implements LedgerRepositoryPort {
   public async createWalletHold(input: {
     ownerType: WalletOwnerType;
     ownerId: number;
-    bookingOrderId: number;
+    bookingOrderId?: number | null;
+    exchangePostId?: number | null;
     feeType: WalletHoldFeeType;
     holdAmountNdp: number;
     currency: LedgerCurrency;
@@ -767,7 +777,8 @@ export class LedgerRepository implements LedgerRepositoryPort {
       data: {
         ownerType: this.ownerTypeToDb(input.ownerType),
         ownerId: input.ownerId,
-        bookingOrderId: input.bookingOrderId,
+        bookingOrderId: input.bookingOrderId ?? null,
+        exchangePostId: input.exchangePostId ?? null,
         feeType: input.feeType,
         holdAmountNdp: input.holdAmountNdp,
         currency: input.currency,
@@ -1808,6 +1819,15 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeToDb(type: LedgerTransactionType) {
+    if (type === "service_prepayment_freeze") {
+      return "SERVICE_PREPAYMENT_FREEZE" as const;
+    }
+    if (type === "service_prepayment_capture") {
+      return "SERVICE_PREPAYMENT_CAPTURE" as const;
+    }
+    if (type === "service_prepayment_release") {
+      return "SERVICE_PREPAYMENT_RELEASE" as const;
+    }
     if (type === "shop_membership_reward_reversal") {
       return "SHOP_MEMBERSHIP_REWARD_REVERSAL" as const;
     }
@@ -1882,6 +1902,15 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeFromDb(type: string): LedgerTransactionType {
+    if (type === "SERVICE_PREPAYMENT_FREEZE") {
+      return "service_prepayment_freeze";
+    }
+    if (type === "SERVICE_PREPAYMENT_CAPTURE") {
+      return "service_prepayment_capture";
+    }
+    if (type === "SERVICE_PREPAYMENT_RELEASE") {
+      return "service_prepayment_release";
+    }
     if (type === "SHOP_MEMBERSHIP_REWARD_REVERSAL") {
       return "shop_membership_reward_reversal";
     }
@@ -2044,7 +2073,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private feeTypeFromDb(value: string): WalletHoldFeeType {
-    if (value === "exchange_request_publication_fee") {
+    if (value === "exchange_request_publication_fee" || value === "service_prepayment") {
       return value;
     }
     if (value === "c_request_dispatch_fee" || value === "user_reward" || value === "penalty") {

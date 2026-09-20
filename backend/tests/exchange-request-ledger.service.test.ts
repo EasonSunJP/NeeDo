@@ -235,6 +235,10 @@ describe("LedgerService Exchange Request publication fee", () => {
           { transactionClient }
         )
       ).resolves.toMatchObject({ state: "captured" });
+      expect(repository.findWalletHoldByExchangePostId).toHaveBeenCalledWith(
+        71,
+        "exchange_request_publication_fee"
+      );
       expect(repository.applyWalletDelta).toHaveBeenNthCalledWith(1, {
         walletId: 91,
         availableDelta: 0,
