@@ -1547,7 +1547,7 @@ export class BookingRepository implements BookingRepositoryPort {
     const dynamicCycle = resolvedShopId
       ? await this.findDynamicAvailabilityCycle(transaction, resolvedShopId, input.from, input.to)
       : null;
-    if (dynamicCycle && resolvedShopId && (input.serviceId || input.technicianServiceId)) {
+    if (dynamicCycle && resolvedShopId) {
       return this.readDynamicAvailableSlots(
         transaction,
         { ...scopedInput, shopId: resolvedShopId },
@@ -1755,7 +1755,7 @@ export class BookingRepository implements BookingRepositoryPort {
   ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
     const pagination = toPrismaPagination(input);
     const now = new Date();
-    const [service, technicianService, shop, locationShopIds] = await Promise.all([
+    const [service, technicianService, technicianServices, shop, locationShopIds] = await Promise.all([
       input.serviceId
         ? transaction.service.findFirst({
             where: {
@@ -1788,6 +1788,32 @@ export class BookingRepository implements BookingRepositoryPort {
             }
           })
         : null,
+      !input.serviceId && !input.technicianServiceId
+        ? transaction.technicianService.findMany({
+            where: {
+              shopId: input.shopId,
+              isActive: true,
+              isBookable: true,
+              reviewStatus: "APPROVED",
+              deletedAt: null,
+              ...(input.technicianId ? { technicianId: input.technicianId } : {})
+            },
+            select: {
+              id: true,
+              name: true,
+              durationMinutes: true,
+              priceAmount: true,
+              currency: true,
+              technicianId: true
+            },
+            orderBy: [
+              { technicianId: "asc" },
+              { isRecommended: "desc" },
+              { sortOrder: "asc" },
+              { id: "asc" }
+            ]
+          })
+        : [],
       transaction.shop.findFirst({
         where: {
           id: input.shopId,
@@ -1801,13 +1827,17 @@ export class BookingRepository implements BookingRepositoryPort {
       }),
       this.listShopsWithCurrentVerifiedServiceLocations(transaction, input, false)
     ]);
-    const source = service ?? technicianService;
-    if (!source || !shop || !locationShopIds.includes(shop.id)) {
+    const technicianServiceSources = technicianService
+      ? [technicianService]
+      : [...new Map(
+          technicianServices.map((source) => [source.technicianId, source] as const)
+        ).values()];
+    if (!shop || !locationShopIds.includes(shop.id)) {
       return buildPaginatedResponse([], 0, pagination);
     }
     if (
       (shop.pricingMode === "MERCHANT" && !service) ||
-      (shop.pricingMode === "TECHNICIAN" && !technicianService)
+      (shop.pricingMode === "TECHNICIAN" && technicianServiceSources.length === 0)
     ) {
       return buildPaginatedResponse([], 0, pagination);
     }
@@ -1896,52 +1926,60 @@ export class BookingRepository implements BookingRepositoryPort {
     for (const window of windows) {
       if (!window.technicianProfileId) continue;
       const nominationFeeJpy = nominationFees.get(window.technicianProfileId) ?? 0;
-      for (const candidate of enumerateDynamicBookingStarts({
-        windowStartsAt: window.startsAt,
-        windowEndsAt: window.endsAt,
-        serviceDurationMinutes: source.durationMinutes,
-        preBufferMinutes,
-        postBufferMinutes,
-        startIntervalMinutes
-      })) {
-        if (candidate.startsAt < input.from || candidate.startsAt >= input.to) continue;
-        const blocked = candidate.startsAt <= now || orders.some((order) => {
-          if (order.technicianProfileId !== window.technicianProfileId) return false;
-          if (
-            releasesOwnPending &&
-            customerUserId &&
-            order.customerUserId === customerUserId &&
-            order.status === "PENDING"
-          ) return false;
-          const occupiedStart = order.scheduleSlot.occupiedStartsAt ?? order.startsAt;
-          const occupiedEnd = order.scheduleSlot.occupiedEndsAt ?? order.endsAt;
-          return occupiedStart < candidate.occupiedEndsAt && occupiedEnd > candidate.occupiedStartsAt;
-        }) || reservations.some((reservation) =>
-          reservation.technicianProfileId === window.technicianProfileId &&
-          reservation.estimatedStartsAt < candidate.occupiedEndsAt &&
-          reservation.estimatedEndsAt > candidate.occupiedStartsAt
-        );
-        if (blocked && !input.includeUnavailable) continue;
-        candidates.push({
-          id: encodeDynamicAvailabilityId(window.id, candidate.offsetMinutes),
-          serviceId: service?.id ?? null,
-          technicianServiceId: technicianService?.id ?? null,
-          shopId: input.shopId,
-          technicianProfileId: window.technicianProfileId,
-          startsAt: candidate.startsAt,
-          endsAt: candidate.endsAt,
-          capacity: 1,
-          bookedCount: blocked ? 1 : 0,
-          status: blocked ? "blocked" : "available",
-          serviceName: source.name,
-          shopName: shop.name,
-          technicianName: window.technicianProfile?.displayName ?? null,
-          priceAmount: this.formatDecimal(source.priceAmount, 2),
-          currency: source.currency,
-          durationMinutes: source.durationMinutes,
-          nominationFeeJpy,
-          availabilitySourceType: window.sourceType === "SHOP" ? "shop" : "technician"
-        });
+      const sources = service
+        ? [service]
+        : technicianServiceSources.filter(
+            (source) => source.technicianId === window.technicianProfileId
+          );
+      for (const source of sources) {
+        for (const candidate of enumerateDynamicBookingStarts({
+          windowStartsAt: window.startsAt,
+          windowEndsAt: window.endsAt,
+          candidateStartsAt: input.from,
+          candidateStartsBefore: input.to,
+          serviceDurationMinutes: source.durationMinutes,
+          preBufferMinutes,
+          postBufferMinutes,
+          startIntervalMinutes
+        })) {
+          const blocked = candidate.startsAt <= now || orders.some((order) => {
+            if (order.technicianProfileId !== window.technicianProfileId) return false;
+            if (
+              releasesOwnPending &&
+              customerUserId &&
+              order.customerUserId === customerUserId &&
+              order.status === "PENDING"
+            ) return false;
+            const occupiedStart = order.scheduleSlot.occupiedStartsAt ?? order.startsAt;
+            const occupiedEnd = order.scheduleSlot.occupiedEndsAt ?? order.endsAt;
+            return occupiedStart < candidate.occupiedEndsAt && occupiedEnd > candidate.occupiedStartsAt;
+          }) || reservations.some((reservation) =>
+            reservation.technicianProfileId === window.technicianProfileId &&
+            reservation.estimatedStartsAt < candidate.occupiedEndsAt &&
+            reservation.estimatedEndsAt > candidate.occupiedStartsAt
+          );
+          if (blocked && !input.includeUnavailable) continue;
+          candidates.push({
+            id: encodeDynamicAvailabilityId(window.id, candidate.offsetMinutes),
+            serviceId: service?.id ?? null,
+            technicianServiceId: service ? null : source.id,
+            shopId: input.shopId,
+            technicianProfileId: window.technicianProfileId,
+            startsAt: candidate.startsAt,
+            endsAt: candidate.endsAt,
+            capacity: 1,
+            bookedCount: blocked ? 1 : 0,
+            status: blocked ? "blocked" : "available",
+            serviceName: source.name,
+            shopName: shop.name,
+            technicianName: window.technicianProfile?.displayName ?? null,
+            priceAmount: this.formatDecimal(source.priceAmount, 2),
+            currency: source.currency,
+            durationMinutes: source.durationMinutes,
+            nominationFeeJpy,
+            availabilitySourceType: window.sourceType === "SHOP" ? "shop" : "technician"
+          });
+        }
       }
     }
     candidates.sort((left, right) =>

@@ -99,7 +99,7 @@ describe("bookingCreateBodySchema", () => {
         addressLine1: "中央区中央1-1"
       },
       travelEstimatePublicId: "00000000-0000-4000-8000-000000000001"
-    }).success).toBe(false);
+    }).success).toBe(true);
   });
 
   it("keeps store bookings server-authoritative for service location", () => {

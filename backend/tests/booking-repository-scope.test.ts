@@ -113,6 +113,51 @@ const makeTransitionOrderRecord = (
 });
 
 describe("schedule list projection", () => {
+  it("uses dynamic availability for a technician-priced shop query before a service is selected", async () => {
+    const repository = new BookingRepository({} as never) as unknown as {
+      findDynamicAvailabilityCycle: jest.Mock;
+      readDynamicAvailableSlots: jest.Mock;
+      readAvailableSlots: (
+        transaction: unknown,
+        input: {
+          shopId: number;
+          from: Date;
+          to: Date;
+          page: number;
+          pageSize: number;
+          includeUnavailable: boolean;
+        },
+        visibility: Record<string, unknown>
+      ) => Promise<unknown>;
+    };
+    repository.findDynamicAvailabilityCycle = jest.fn(async () => ({
+      id: 2,
+      ruleSet: { dynamicAvailability: true }
+    }));
+    repository.readDynamicAvailableSlots = jest.fn(async () => ({
+      list: [],
+      pagination: { page: 1, pageSize: 100, total: 0, totalPages: 0 }
+    }));
+    const input = {
+      shopId: 11,
+      from: new Date("2026-10-28T15:00:00.000Z"),
+      to: new Date("2026-10-29T15:00:00.000Z"),
+      page: 1,
+      pageSize: 100,
+      includeUnavailable: true
+    };
+
+    await repository.readAvailableSlots({}, input, { visibility: "public" });
+
+    expect(repository.readDynamicAvailableSlots).toHaveBeenCalledWith(
+      {},
+      input,
+      { visibility: "public" },
+      { id: 2, ruleSet: { dynamicAvailability: true } },
+      undefined
+    );
+  });
+
   it("does not require persisted schedule slots when validating a dynamic shop location", async () => {
     const findMany = jest.fn(async () => [currentShopServiceLocation(11)]);
     const repository = new BookingRepository(

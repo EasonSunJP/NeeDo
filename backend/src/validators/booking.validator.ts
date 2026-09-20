@@ -197,13 +197,6 @@ export const bookingCreateBodySchema = z
     path: ["serviceId"]
   })
   .superRefine((value, context) => {
-    if (value.fulfillmentMode === "home" && value.scheduleSlotId < 0) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Dynamic availability selectors are store-booking only",
-        path: ["scheduleSlotId"]
-      });
-    }
     const hasBundleSelectors = value.technicianServiceIds !== undefined || value.scheduleSlotIds !== undefined;
     if (hasBundleSelectors) {
       if (
