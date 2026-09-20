@@ -1,4 +1,7 @@
-import { UserFavoritesService, type UserFavoritesRepositoryPort } from "../src/services/user-favorites.service";
+import {
+  UserFavoritesService,
+  type UserFavoritesRepositoryPort
+} from "../src/services/user-favorites.service";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 
 const auth: AuthenticatedAccessContext = {
@@ -17,8 +20,14 @@ const auth: AuthenticatedAccessContext = {
 const pinnedAt = new Date("2026-09-20T09:00:00.000Z");
 
 const makeRepository = (): jest.Mocked<UserFavoritesRepositoryPort> => ({
-  list: jest.fn(async (_input: Parameters<UserFavoritesRepositoryPort["list"]>[0]) => ({ list: [], total: 0 })),
-  owns: jest.fn(async (_input: Parameters<UserFavoritesRepositoryPort["owns"]>[0]) => true),
+  list: jest.fn(async (input: Parameters<UserFavoritesRepositoryPort["list"]>[0]) => {
+    void input;
+    return { list: [], total: 0 };
+  }),
+  owns: jest.fn(async (input: Parameters<UserFavoritesRepositoryPort["owns"]>[0]) => {
+    void input;
+    return true;
+  }),
   setPin: jest.fn(async (input) => ({
     itemType: input.itemType,
     itemKey: input.itemKey,
@@ -45,10 +54,66 @@ describe("UserFavoritesService", () => {
     repository.list.mockResolvedValueOnce({
       total: 4,
       list: [
-        { key: "shop:z", type: "shop", itemKey: "z", title: "Z", summary: null, imageUrl: null, detailPath: "/stores/z", favoritedAt: new Date("2026-09-20T08:00:00.000Z"), activityAt: new Date("2026-09-20T08:00:00.000Z"), pinnedAt: null, reaction: null, canForward: true, canDelete: true },
-        { key: "service:pinned", type: "service", itemKey: "pinned", title: "Pinned", summary: null, imageUrl: null, detailPath: "/services/pinned", favoritedAt: new Date("2026-09-18T08:00:00.000Z"), activityAt: new Date("2026-09-18T08:00:00.000Z"), pinnedAt, reaction: null, canForward: true, canDelete: true },
-        { key: "shop:b", type: "shop", itemKey: "b", title: "B", summary: null, imageUrl: null, detailPath: "/stores/b", favoritedAt: new Date("2026-09-19T08:00:00.000Z"), activityAt: new Date("2026-09-19T08:00:00.000Z"), pinnedAt: null, reaction: null, canForward: true, canDelete: true },
-        { key: "shop:a", type: "shop", itemKey: "a", title: "A", summary: null, imageUrl: null, detailPath: "/stores/a", favoritedAt: new Date("2026-09-19T08:00:00.000Z"), activityAt: new Date("2026-09-19T08:00:00.000Z"), pinnedAt: null, reaction: null, canForward: true, canDelete: true }
+        {
+          key: "shop:z",
+          type: "shop",
+          itemKey: "z",
+          title: "Z",
+          summary: null,
+          imageUrl: null,
+          detailPath: "/stores/z",
+          favoritedAt: new Date("2026-09-20T08:00:00.000Z"),
+          activityAt: new Date("2026-09-20T08:00:00.000Z"),
+          pinnedAt: null,
+          reaction: null,
+          canForward: true,
+          canDelete: true
+        },
+        {
+          key: "service:pinned",
+          type: "service",
+          itemKey: "pinned",
+          title: "Pinned",
+          summary: null,
+          imageUrl: null,
+          detailPath: "/services/pinned",
+          favoritedAt: new Date("2026-09-18T08:00:00.000Z"),
+          activityAt: new Date("2026-09-18T08:00:00.000Z"),
+          pinnedAt,
+          reaction: null,
+          canForward: true,
+          canDelete: true
+        },
+        {
+          key: "shop:b",
+          type: "shop",
+          itemKey: "b",
+          title: "B",
+          summary: null,
+          imageUrl: null,
+          detailPath: "/stores/b",
+          favoritedAt: new Date("2026-09-19T08:00:00.000Z"),
+          activityAt: new Date("2026-09-19T08:00:00.000Z"),
+          pinnedAt: null,
+          reaction: null,
+          canForward: true,
+          canDelete: true
+        },
+        {
+          key: "shop:a",
+          type: "shop",
+          itemKey: "a",
+          title: "A",
+          summary: null,
+          imageUrl: null,
+          detailPath: "/stores/a",
+          favoritedAt: new Date("2026-09-19T08:00:00.000Z"),
+          activityAt: new Date("2026-09-19T08:00:00.000Z"),
+          pinnedAt: null,
+          reaction: null,
+          canForward: true,
+          canDelete: true
+        }
       ]
     });
     const service = new UserFavoritesService(repository, identityScope as never);
@@ -68,8 +133,12 @@ describe("UserFavoritesService", () => {
     const repository = makeRepository();
     const service = new UserFavoritesService(repository, identityScope as never);
 
-    await expect(service.setPin(auth, "shop", "shop0000000001", true)).resolves.toMatchObject({ pinnedAt });
-    await expect(service.setReaction(auth, "shop", "shop0000000001", "🥰")).resolves.toMatchObject({ reaction: "🥰" });
+    await expect(service.setPin(auth, "shop", "shop0000000001", true)).resolves.toMatchObject({
+      pinnedAt
+    });
+    await expect(service.setReaction(auth, "shop", "shop0000000001", "🥰")).resolves.toMatchObject({
+      reaction: "🥰"
+    });
 
     expect(repository.owns).toHaveBeenCalledWith({
       userId: 42,

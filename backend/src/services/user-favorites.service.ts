@@ -1,8 +1,15 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
-import { buildPaginatedResponse, normalizePagination, type PaginatedResponse } from "../utils/pagination";
-import type { AuthenticatedAccessContext } from "./auth.service";
-import type { PersonalIdentityActor, PersonalIdentityScope } from "./personal-identity-scope.service";
+import {
+  buildPaginatedResponse,
+  normalizePagination,
+  type PaginatedResponse
+} from "../utils/pagination";
+import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import type {
+  PersonalIdentityActor,
+  PersonalIdentityScope
+} from "./personal-identity-scope.service";
 
 export type UserFavoriteItemType =
   | "shop"
@@ -54,12 +61,14 @@ export interface UserFavoritesRepositoryPort {
     itemType: UserFavoriteItemType;
     itemKey: string;
     active: boolean;
+    context: AuthRequestContext;
   }): Promise<UserFavoriteInteractionState>;
   setReaction(input: {
     userId: number;
     itemType: UserFavoriteItemType;
     itemKey: string;
     reaction: string | null;
+    context: AuthRequestContext;
   }): Promise<UserFavoriteInteractionState>;
 }
 
@@ -104,22 +113,24 @@ export class UserFavoritesService {
     auth: AuthenticatedAccessContext,
     itemType: UserFavoriteItemType,
     itemKey: string,
-    active: boolean
+    active: boolean,
+    context: AuthRequestContext = { ip: "unknown" }
   ): Promise<UserFavoriteInteractionState> {
     const identityId = await this.requireOwned(auth, itemType, itemKey);
     void identityId;
-    return this.repository.setPin({ userId: auth.userId, itemType, itemKey, active });
+    return this.repository.setPin({ userId: auth.userId, itemType, itemKey, active, context });
   }
 
   public async setReaction(
     auth: AuthenticatedAccessContext,
     itemType: UserFavoriteItemType,
     itemKey: string,
-    reaction: string | null
+    reaction: string | null,
+    context: AuthRequestContext = { ip: "unknown" }
   ): Promise<UserFavoriteInteractionState> {
     const identityId = await this.requireOwned(auth, itemType, itemKey);
     void identityId;
-    return this.repository.setReaction({ userId: auth.userId, itemType, itemKey, reaction });
+    return this.repository.setReaction({ userId: auth.userId, itemType, itemKey, reaction, context });
   }
 
   private readonly compareRows = (left: UserFavoriteRow, right: UserFavoriteRow): number => {

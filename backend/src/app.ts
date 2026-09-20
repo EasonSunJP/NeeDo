@@ -63,6 +63,7 @@ import type { ServiceSearchAnalyticsRepositoryPort } from "./repositories/servic
 import type { SearchQueryRecorderPort } from "./services/search-query-recorder.service";
 import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.repository";
 import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
+import type { UserFavoritesRepositoryPort, UserFavoritesService } from "./services/user-favorites.service";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { CustomerAddressRepositoryPort } from "./repositories/customer-address.repository";
 import {
@@ -211,6 +212,7 @@ import { createCompensationProfileRoutes } from "./routes/compensation-profile.r
 import { createCoreReadRoutes } from "./routes/core-read.routes";
 import { createShopTaxonomyRoutes } from "./routes/shop-taxonomy.routes";
 import { createEntityEngagementRoutes } from "./routes/entity-engagement.routes";
+import { createUserFavoritesRoutes } from "./routes/user-favorites.routes";
 import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
 import { createCustomerAddressRoutes } from "./routes/customer-address.routes";
 import { createShopMembershipRoutes } from "./routes/shop-membership.routes";
@@ -384,6 +386,8 @@ export interface AppDependencies {
   serviceSearchAnalyticsRepository?: ServiceSearchAnalyticsRepositoryPort;
   shopTaxonomyRepository?: ShopTaxonomyRepositoryPort;
   entityEngagementRepository?: EntityEngagementRepositoryPort;
+  userFavoritesRepository?: UserFavoritesRepositoryPort;
+  userFavoritesService?: UserFavoritesService;
   customerProfileRepository?: CustomerProfileRepositoryPort;
   customerAddressRepository?: CustomerAddressRepositoryPort;
   shopMembershipRepository?: ShopMembershipRepositoryPort;
@@ -772,6 +776,7 @@ export const createApp = (
   mount("shared", createAdministrativeRegionRoutes(resolvedDependencies));
   mount(["shared", "merchant-admin"], createShopTaxonomyRoutes(config, resolvedDependencies));
   mount("shared", createEntityEngagementRoutes(config, resolvedDependencies));
+  mount("shared", createUserFavoritesRoutes(config, resolvedDependencies));
   mount("merchant-admin", createCustomerProfileRoutes(config, resolvedDependencies));
   mount("merchant-admin", createCustomerAddressRoutes(config, resolvedDependencies));
   mount("merchant-admin", createShopMembershipRoutes(config, resolvedDependencies));

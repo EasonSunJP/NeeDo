@@ -2941,6 +2941,24 @@ const orderRefundPathParameters = [
   { name: "caseId", in: "path", required: true, schema: { type: "string", format: "uuid" } }
 ];
 
+const userFavoriteInteractionPathParameters = [
+  {
+    name: "type",
+    in: "path",
+    required: true,
+    schema: {
+      type: "string",
+      enum: ["shop", "technician", "service", "social_post", "chat_record"]
+    }
+  },
+  {
+    name: "itemKey",
+    in: "path",
+    required: true,
+    schema: { type: "string", minLength: 1, maxLength: 191 }
+  }
+];
+
 const orderRefundCommandOperation = (input: {
   summary: string;
   permission: string;
@@ -10825,6 +10843,61 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           total: { type: "integer", minimum: 0 },
           page: { type: "integer", minimum: 1 },
           page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      UserFavoriteTimelineItem: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "key", "type", "itemKey", "title", "summary", "imageUrl", "detailPath",
+          "favoritedAt", "activityAt", "pinnedAt", "reaction", "canForward", "canDelete"
+        ],
+        properties: {
+          key: { type: "string", maxLength: 240 },
+          type: {
+            type: "string",
+            enum: ["shop", "technician", "service", "social_post", "chat_record"]
+          },
+          itemKey: { type: "string", maxLength: 191 },
+          title: { type: "string" },
+          summary: { type: ["string", "null"] },
+          imageUrl: { type: ["string", "null"] },
+          detailPath: { type: "string" },
+          favoritedAt: { type: "string", format: "date-time" },
+          activityAt: { type: "string", format: "date-time" },
+          pinnedAt: { type: ["string", "null"], format: "date-time" },
+          reaction: { type: ["string", "null"], maxLength: 16 },
+          canForward: { type: "boolean" },
+          canDelete: { type: "boolean" }
+        }
+      },
+      UserFavoriteTimelinePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/UserFavoriteTimelineItem" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      UserFavoriteInteractionState: {
+        type: "object",
+        additionalProperties: false,
+        required: ["itemType", "itemKey", "pinnedAt", "reaction", "updatedAt"],
+        properties: {
+          itemType: {
+            type: "string",
+            enum: ["shop", "technician", "service", "social_post", "chat_record"]
+          },
+          itemKey: { type: "string", maxLength: 191 },
+          pinnedAt: { type: ["string", "null"], format: "date-time" },
+          reaction: { type: ["string", "null"], maxLength: 16 },
+          updatedAt: { type: "string", format: "date-time" }
         }
       },
       EntityShareReceipt: {
@@ -21828,6 +21901,120 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
           "404": jsonErrorResponse("error.entity_engagement.target_not_found")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/me/favorites`]: {
+      get: {
+        tags: ["Entity Engagement"],
+        summary: "List all authenticated-user favorites in one timeline",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          {
+            name: "type",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["shop", "technician", "service", "social_post", "chat_record"]
+            }
+          },
+          { name: "query", in: "query", schema: { type: "string", maxLength: 120 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated unified favorites", {
+            $ref: "#/components/schemas/UserFavoriteTimelinePage"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/me/favorites/{type}/{itemKey}/pin`]: {
+      put: {
+        tags: ["Entity Engagement"],
+        summary: "Pin one owned favorite",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:write",
+        parameters: userFavoriteInteractionPathParameters,
+        responses: {
+          "200": jsonDataResponse("Favorite interaction state", {
+            $ref: "#/components/schemas/UserFavoriteInteractionState"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.favorite.not_found")
+        }
+      },
+      delete: {
+        tags: ["Entity Engagement"],
+        summary: "Unpin one owned favorite",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:write",
+        parameters: userFavoriteInteractionPathParameters,
+        responses: {
+          "200": jsonDataResponse("Favorite interaction state", {
+            $ref: "#/components/schemas/UserFavoriteInteractionState"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.favorite.not_found")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/me/favorites/{type}/{itemKey}/reaction`]: {
+      put: {
+        tags: ["Entity Engagement"],
+        summary: "Set a private quick reaction on one owned favorite",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:write",
+        parameters: userFavoriteInteractionPathParameters,
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["reaction"],
+                properties: { reaction: { type: "string", minLength: 1, maxLength: 16 } }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Favorite interaction state", {
+            $ref: "#/components/schemas/UserFavoriteInteractionState"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.favorite.not_found")
+        }
+      },
+      delete: {
+        tags: ["Entity Engagement"],
+        summary: "Clear a private quick reaction from one owned favorite",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:write",
+        parameters: userFavoriteInteractionPathParameters,
+        responses: {
+          "200": jsonDataResponse("Favorite interaction state", {
+            $ref: "#/components/schemas/UserFavoriteInteractionState"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.favorite.not_found")
         }
       }
     },

@@ -190,6 +190,7 @@ export interface ImChatRecordRepositoryPort {
     identityId: number;
     page: number;
     pageSize: number;
+    query?: string;
   }): Promise<ChatRecordFavoritePage>;
   removeFavorite(input: {
     favoriteId: number;
@@ -577,11 +578,23 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
     identityId: number;
     page: number;
     pageSize: number;
+    query?: string;
   }): Promise<ChatRecordFavoritePage> {
+    const search = input.query?.trim();
     const where = {
       ownerIdentityId: input.identityId,
       deletedAt: null,
-      bundle: { deletedAt: null }
+      bundle: {
+        deletedAt: null,
+        ...(search
+          ? {
+              OR: [
+                { titleSnapshot: { contains: search } },
+                { previewSnapshot: { contains: search } }
+              ]
+            }
+          : {})
+      }
     } satisfies Prisma.ImChatRecordFavoriteWhereInput;
     const [rows, total] = await this.client.$transaction([
       this.client.imChatRecordFavorite.findMany({
@@ -623,6 +636,15 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
       const deletedAt = new Date();
       await transaction.imChatRecordFavorite.update({
         where: { id: favorite.id },
+        data: { deletedAt }
+      });
+      await transaction.userFavoriteInteraction.updateMany({
+        where: {
+          ownerUserId: input.userId,
+          itemType: "chat_record",
+          itemKey: String(favorite.id),
+          deletedAt: null
+        },
         data: { deletedAt }
       });
       await transaction.auditLog.create({

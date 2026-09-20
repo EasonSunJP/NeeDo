@@ -94,6 +94,7 @@ export interface EntityFavoriteListInput extends PaginationInput {
   page: number;
   pageSize: number;
   targetType?: EntityTargetType;
+  query?: string;
   viewer?: ShopVisibilityViewer;
 }
 
@@ -253,9 +254,19 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
             }
           });
         } else if (!isFavorited && existing?.deletedAt === null) {
+          const deletedAt = new Date();
           await transaction.entityFavorite.update({
             where: { id: existing.id },
-            data: { activeKey: null, deletedAt: new Date() }
+            data: { activeKey: null, deletedAt }
+          });
+          await transaction.userFavoriteInteraction.updateMany({
+            where: {
+              ownerUserId: userId,
+              itemType: target.targetType === "technician_service" ? "service" : target.targetType,
+              itemKey: `${target.targetType}:${target.publicId}`,
+              deletedAt: null
+            },
+            data: { deletedAt }
           });
         }
 
@@ -316,10 +327,19 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
     const visibility = input.targetType
       ? [visibilityByType[input.targetType]]
       : Object.values(visibilityByType);
+    const search = input.query?.trim();
+    const searchWhere: Prisma.EntityFavoriteWhereInput | undefined = search ? {
+      OR: [
+        { shop: { is: { OR: [{ name: { contains: search } }, { description: { contains: search } }, { address: { contains: search } }] } } },
+        { technicianProfile: { is: { OR: [{ displayName: { contains: search } }, { bio: { contains: search } }] } } },
+        { service: { is: { OR: [{ name: { contains: search } }, { description: { contains: search } }] } } },
+        { technicianService: { is: { OR: [{ name: { contains: search } }, { description: { contains: search } }] } } }
+      ]
+    } : undefined;
     const where: Prisma.EntityFavoriteWhereInput = {
       userId: input.userId,
       deletedAt: null,
-      OR: visibility
+      AND: [{ OR: visibility }, ...(searchWhere ? [searchWhere] : [])]
     };
     const [rows, total] = await Promise.all([
       this.client.entityFavorite.findMany({
