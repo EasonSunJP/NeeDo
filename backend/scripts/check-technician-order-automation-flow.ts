@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { parse } from "dotenv";
 import type { PrismaClient } from "@prisma/client";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "../src/services/auth.service";
+import type { AuthenticatedBookingActor } from "../src/services/booking.service";
 
 export const AUTOMATION_FIXTURE_MARKER = "qa-technician-order-automation-20260909";
 const MULTISHOP_MARKER = "qa-multishop-pricing-settlement-20260909";
@@ -329,6 +330,7 @@ async function ensureBooking(
   const created = await booking.createBooking(customerActor, {
     scheduleSlotId: slot.id,
     serviceId: input.serviceId,
+    nominatedTechnicianProfileId: input.technicianProfileId,
     expectedPriceAmountJpy: input.priceJpy,
     fulfillmentMode: "store",
     paymentMethod: "onsite",
@@ -509,17 +511,71 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
     );
 
     const bookingSuccess = await ensureBooking(prisma, booking, customerActor, {
-      key: "booking-success-v5", shopId: fixture.shop.id, technicianProfileId: fixture.technicianProfile.id,
-      serviceId: fixture.successService.id, startsAt: new Date("2099-02-01T01:00:00.000Z"), priceJpy: Number(fixture.successService.priceAmount)
+      key: "booking-in-service-v7", shopId: fixture.shop.id, technicianProfileId: fixture.technicianProfile.id,
+      serviceId: fixture.successService.id, startsAt: new Date("2099-06-01T01:00:00.000Z"), priceJpy: Number(fixture.successService.priceAmount)
     });
     const bookingMismatch = await ensureBooking(prisma, booking, mismatchCustomerActor, {
-      key: "booking-mismatch-v5", shopId: fixture.shop.id, technicianProfileId: fixture.technicianProfile.id,
-      serviceId: fixture.mismatchService.id, startsAt: new Date("2099-02-01T03:00:00.000Z"), priceJpy: Number(fixture.mismatchService.priceAmount)
+      key: "booking-mismatch-v6", shopId: fixture.shop.id, technicianProfileId: fixture.technicianProfile.id,
+      serviceId: fixture.mismatchService.id, startsAt: new Date("2099-06-01T03:00:00.000Z"), priceJpy: Number(fixture.mismatchService.priceAmount)
     });
-    await processor.processBooking(bookingSuccess.id);
-    await processor.processBooking(bookingMismatch.id);
-    await processor.processBooking(bookingSuccess.id);
-    await processor.processBooking(bookingMismatch.id);
+    await prisma.technicianWorkState.update({
+      where: { technicianProfileId: fixture.technicianProfile.id },
+      data: { status: "in_service", syncedAt: new Date(), deletedAt: null }
+    });
+    try {
+      await processor.processBooking(bookingSuccess.id);
+      await processor.processBooking(bookingMismatch.id);
+      await processor.processBooking(bookingSuccess.id);
+      await processor.processBooking(bookingMismatch.id);
+    } finally {
+      await prisma.technicianWorkState.update({
+        where: { technicianProfileId: fixture.technicianProfile.id },
+        data: { status: "on_duty", syncedAt: new Date(), deletedAt: null }
+      });
+    }
+    const orderViewActors: Array<{ name: string; actor: AuthenticatedBookingActor }> = [
+      { name: "customer", actor: customerActor },
+      { name: "technician", actor: technicianActor },
+      {
+        name: "shop",
+        actor: {
+          userId: fixture.customer.id,
+          roles: ["merchant_owner"],
+          currentIdentityType: "merchant_owner",
+          currentIdentityScopeType: "shop",
+          currentIdentityScopeId: fixture.shop.id,
+          selectedMerchantShopId: fixture.shop.id
+        }
+      },
+      {
+        name: "merchantBackoffice",
+        actor: {
+          userId: fixture.customer.id,
+          roles: ["merchant_staff"],
+          currentIdentityType: "merchant_staff",
+          currentIdentityScopeType: "shop",
+          currentIdentityScopeId: fixture.shop.id,
+          selectedMerchantShopId: fixture.shop.id
+        }
+      },
+      {
+        name: "operations",
+        actor: {
+          userId: fixture.customer.id,
+          roles: ["operator"],
+          currentIdentityType: "platform",
+          currentIdentityScopeType: "global"
+        }
+      }
+    ];
+    const orderViewStatuses = Object.fromEntries(await Promise.all(orderViewActors.map(async ({ name, actor }) => [
+      name,
+      (await booking.getOrder(actor, bookingSuccess.id)).status
+    ])));
+    assert(
+      Object.values(orderViewStatuses).every((status) => status === "confirmed"),
+      `cross-role Booking status drifted: ${JSON.stringify(orderViewStatuses)}`
+    );
 
     const requestSuccess = await ensureRequest(prisma, {
       key: "request-success", customerUserId: fixture.customer.id, customerIdentityId: fixture.customerIdentity.id,
@@ -550,7 +606,7 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
     await processor.processRequest(requestMismatch.post.id);
 
     let pausedOrder = await prisma.bookingOrder.findFirst({
-      where: { note: `${AUTOMATION_FIXTURE_MARKER}:booking-zero-shop-v2`, deletedAt: null }
+      where: { note: `${AUTOMATION_FIXTURE_MARKER}:booking-zero-shop-v3`, deletedAt: null }
     });
     if (!pausedOrder) {
       const affiliation = await prisma.technicianShopAffiliation.create({
@@ -565,8 +621,8 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
         }
       });
       pausedOrder = await ensureBooking(prisma, booking, zeroShopCustomerActor, {
-        key: "booking-zero-shop-v2", shopId: fixture.shop.id, technicianProfileId: fixture.pausedProfile.id,
-        serviceId: fixture.successService.id, startsAt: new Date("2099-02-01T05:00:00.000Z"), priceJpy: Number(fixture.successService.priceAmount)
+        key: "booking-zero-shop-v3", shopId: fixture.shop.id, technicianProfileId: fixture.pausedProfile.id,
+        serviceId: fixture.successService.id, startsAt: new Date("2099-06-01T05:00:00.000Z"), priceJpy: Number(fixture.successService.priceAmount)
       });
       await prisma.technicianShopAffiliation.update({
         where: { id: affiliation.id },
@@ -577,7 +633,8 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
 
     const [successOrder, mismatchOrder, zeroShopOrder, bookingSuccessDecision, bookingMismatchDecision,
       requestSuccessDecision, requestMismatchDecision, technicianServiceDecision, successClaims,
-      mismatchClaims, technicianServiceClaims, zeroCandidate, zeroProfile] = await Promise.all([
+      mismatchClaims, technicianServiceClaims, bookingConfirmedTransitions, bookingNotifications,
+      zeroCandidate, zeroProfile] = await Promise.all([
         prisma.bookingOrder.findUniqueOrThrow({ where: { id: bookingSuccess.id } }),
         prisma.bookingOrder.findUniqueOrThrow({ where: { id: bookingMismatch.id } }),
         prisma.bookingOrder.findUniqueOrThrow({ where: { id: pausedOrder.id } }),
@@ -589,11 +646,31 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
         prisma.exchangeClaim.count({ where: { exchangePostId: requestSuccess.post.id, technicianProfileId: fixture.technicianProfile.id, deletedAt: null } }),
         prisma.exchangeClaim.count({ where: { exchangePostId: requestMismatch.post.id, technicianProfileId: fixture.technicianProfile.id, deletedAt: null } }),
         prisma.exchangeClaim.count({ where: { exchangePostId: technicianServiceRequest.post.id, technicianProfileId: fixture.technicianProfile.id, deletedAt: null } }),
+        prisma.orderStatusHistory.count({ where: { bookingOrderId: bookingSuccess.id, toStatus: "CONFIRMED", deletedAt: null } }),
+        prisma.notification.count({
+          where: {
+            recipientUserId: fixture.technician.id,
+            recipientIdentityId: fixture.technicianIdentity.id,
+            type: "SYSTEM",
+            title: "已自动接受 Booking 预约",
+            deletedAt: null,
+            AND: [
+              { payload: { path: "$.kind", equals: "booking" } },
+              { payload: { path: "$.targetId", equals: bookingSuccess.id } },
+              { payload: { path: "$.automatic", equals: true } }
+            ]
+          }
+        }),
         repository.loadBookingCandidate(pausedOrder.id),
         new (await import("../src/repositories/technician-profile.repository")).TechnicianProfileRepository(prisma)
           .findMine(fixture.pausedTechnician.id, fixture.pausedProfile.id)
       ]);
-    assert(successOrder.status === "CONFIRMED" && bookingSuccessDecision?.outcome === "EXECUTED", "matching Booking was not auto-accepted");
+    assert(
+      successOrder.status === "CONFIRMED" && bookingSuccessDecision?.outcome === "EXECUTED",
+      `matching Booking was not auto-accepted: status=${successOrder.status}, outcome=${bookingSuccessDecision?.outcome ?? "missing"}, failedReasons=${JSON.stringify(bookingSuccessDecision?.failedReasons ?? [])}`
+    );
+    assert(bookingConfirmedTransitions === 1, "matching Booking was confirmed more than once");
+    assert(bookingNotifications === 1, "matching Booking notification was not delivered exactly once");
     assert(mismatchOrder.status === "PENDING" && bookingMismatchDecision?.outcome === "NOT_MATCHED", "non-matching Booking did not remain manual");
     assert((bookingMismatchDecision.failedReasons as string[]).includes("service:not_selected"), "Booking mismatch reason missing");
     assert(successClaims === 1 && requestSuccessDecision?.outcome === "EXECUTED", "matching Request was not auto-applied exactly once");
@@ -617,7 +694,14 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
       marker: AUTOMATION_FIXTURE_MARKER,
       retained: true,
       rounds: {
-        bookingMatched: { orderId: successOrder.id, status: successOrder.status, outcome: bookingSuccessDecision.outcome },
+        bookingMatched: {
+          orderId: successOrder.id,
+          status: successOrder.status,
+          outcome: bookingSuccessDecision.outcome,
+          confirmedTransitions: bookingConfirmedTransitions,
+          notifications: bookingNotifications,
+          roleStatuses: orderViewStatuses
+        },
         bookingNotMatched: { orderId: mismatchOrder.id, status: mismatchOrder.status, outcome: bookingMismatchDecision.outcome, failedReasons: bookingMismatchDecision.failedReasons },
         requestMatched: { postId: requestSuccess.post.id, claimCount: successClaims, outcome: requestSuccessDecision.outcome },
         requestNotMatched: { postId: requestMismatch.post.id, claimCount: mismatchClaims, outcome: requestMismatchDecision.outcome, failedReasons: requestMismatchDecision.failedReasons },
