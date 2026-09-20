@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { ScheduleCycleBoard } from "../../../components/scheduling/ScheduleCycleBoard";
@@ -44,52 +44,39 @@ function isScheduleBoardCycle(cycle: DispatchCycle) {
 }
 
 function CompactStepProgress({ cycle, surface }: { cycle: DispatchCycle; surface: "desktop" | "mobile" }) {
-  const isMobileSurface = surface === "mobile";
   const stepItems = cycle.mode === "STORE_ASSIGN_FINAL" ? directSchedulingStepItems : selfSchedulingStepItems;
-  const activeDotClass = isMobileSurface
-    ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
-    : "border-[color:color-mix(in_srgb,var(--admin-accent)_42%,var(--admin-line))] bg-[color:var(--admin-accent)] text-[color:var(--merchant-dispatch-on-accent)]";
-  const inactiveDotClass = isMobileSurface
-    ? "border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] text-[color:var(--client-muted)]"
-    : "border-[color:var(--admin-line)] bg-[color:color-mix(in_srgb,var(--admin-surface)_86%,transparent)] text-[color:var(--admin-muted)]";
-  const activeLineClass = isMobileSurface ? "bg-[color:var(--client-primary)]" : "bg-[color:var(--admin-accent)]";
-  const inactiveLineClass = isMobileSurface ? "bg-[color:var(--client-line)]" : "bg-[color:var(--admin-line)]";
 
   return (
-    <div className="w-full">
-      <div className={cn("flex w-full items-start", isMobileSurface ? "gap-1" : "gap-2")}>
-        {stepItems.map((item, index) => {
+    <nav aria-label="排班步骤" data-schedule-stepper="true" data-surface={surface}>
+      <ol
+        className="schedule-stepper-track"
+        data-step-count={stepItems.length}
+        style={{ "--schedule-step-count": stepItems.length } as CSSProperties}
+      >
+        {stepItems.map((item) => {
           const active = cycle.currentStep === item.step;
           const done = cycle.currentStep > item.step;
+          const state = done ? "complete" : active ? "current" : "upcoming";
 
           return (
-            <div className="flex min-w-0 flex-1 items-start" key={item.step}>
-              <div className="min-w-0 flex-1 text-center">
-                <div
-                  className={cn(
-                    "mx-auto grid h-9 w-9 place-items-center rounded-full border text-sm font-black transition sm:h-11 sm:w-11 sm:text-base",
-                    active || done ? activeDotClass : inactiveDotClass
-                  )}
-                >
-                  {item.step}
-                </div>
-                <p
-                  className={cn(
-                    "mt-2 text-[11px] font-black leading-4 sm:text-sm sm:leading-5",
-                    isMobileSurface ? "text-[color:var(--client-text)]" : "text-[color:var(--admin-text)]"
-                  )}
-                >
+            <li
+              aria-current={active ? "step" : undefined}
+              className="schedule-stepper-step"
+              data-state={state}
+              key={item.step}
+            >
+              <span className="schedule-stepper-content">
+                <span aria-hidden="true" className="schedule-stepper-index">{done ? "✓" : item.step}</span>
+                <span className="schedule-stepper-label">
                   {item.label}
-                </p>
-              </div>
-              {index < stepItems.length - 1 ? (
-                <div className={cn("mt-[18px] h-[2px] w-5 shrink-0 sm:mt-[21px] sm:w-12", done ? activeLineClass : inactiveLineClass)} />
-              ) : null}
-            </div>
+                </span>
+                <span className="sr-only">{done ? "已完成" : active ? "当前步骤" : "未开始"}</span>
+              </span>
+            </li>
           );
         })}
-      </div>
-    </div>
+      </ol>
+    </nav>
   );
 }
 
