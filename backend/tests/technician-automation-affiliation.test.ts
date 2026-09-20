@@ -165,6 +165,31 @@ describe("technician automation shop-affiliation gates", () => {
     expect(client.technicianAutomationDecisionLog.create).not.toHaveBeenCalled();
   });
 
+  it("reopens a non-matching decision when new payment evidence triggers evaluation", async () => {
+    const client = {
+      technicianAutomationDecisionLog: {
+        findUnique: jest.fn(async () => ({ id: 91, outcome: "NOT_MATCHED" })),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        create: jest.fn()
+      }
+    };
+    const repository = new TechnicianAutomationRepository(asClient(client));
+    await expect(repository.reserveDecision({
+      settingId: 1,
+      technicianProfileId: 31,
+      kind: "booking",
+      targetType: "booking_order",
+      targetId: 501,
+      actionType: "accept_booking",
+      ruleVersion: 3,
+      idempotencyKey: "booking:501:31:accept_booking"
+    })).resolves.toBe(true);
+    expect(client.technicianAutomationDecisionLog.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 91, outcome: "NOT_MATCHED" },
+      data: expect.objectContaining({ outcome: "MATCHED", failedReasons: [] })
+    }));
+  });
+
   it("lets the decision unique key serialize concurrent reservations", async () => {
     const duplicate = new Prisma.PrismaClientKnownRequestError("duplicate decision", {
       code: "P2002",

@@ -5,6 +5,7 @@ import type { AppConfig } from "../config/env";
 import { ERROR_CODES } from "../constants/error-codes";
 import { EXCHANGE_PERMISSIONS } from "../constants/permissions.constants";
 import { ExchangeController } from "../controllers/exchange.controller";
+import { ServicePrepaymentController } from "../controllers/service-prepayment.controller";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
@@ -13,11 +14,17 @@ import { ExchangeClaimRepository } from "../repositories/exchange-claim.reposito
 import { TechnicianAutomationRepository } from "../repositories/technician-automation.repository";
 import { ExchangeRequestFeeRepository } from "../repositories/exchange-request-fee.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
+import { ServicePrepaymentRepository } from "../repositories/service-prepayment.repository";
+import { NdpExchangeRateRepository } from "../repositories/ndp-exchange-rate.repository";
+import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { ExchangeRequestFeeService } from "../services/exchange-request-fee.service";
 import { ExchangeService } from "../services/exchange.service";
 import { ExchangeClaimService } from "../services/exchange-claim.service";
 import { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 import { LedgerService } from "../services/ledger.service";
+import { ServicePrepaymentService } from "../services/service-prepayment.service";
+import { NdpExchangeRateService } from "../services/ndp-exchange-rate.service";
+import { AuditLogService } from "../services/audit-log.service";
 import { AppError } from "../utils/app-error";
 import {
   createExchangeCommentSchema,
@@ -27,6 +34,7 @@ import {
   exchangePostIdParamSchema,
   publishExchangePostSchema
 } from "../validators/exchange.validators";
+import { servicePrepaymentCreateBodySchema } from "../validators/service-prepayment.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
 const validateIdempotencyKey: RequestHandler = (request, response, next) => {
@@ -119,6 +127,8 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
   const authenticate = createAuthenticateMiddleware(
     createAuthServiceForRoutes(config, dependencies)
   );
+  const prepaymentLedger = dependencies.ledgerService ??
+    new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository());
   const service =
     dependencies.exchangeService ??
     new ExchangeService(
@@ -127,8 +137,7 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
       dependencies.personalIdentityScopeService,
       dependencies.exchangeRequestFeeService ??
         new ExchangeRequestFeeService(new ExchangeRequestFeeRepository()),
-      dependencies.ledgerService ??
-        new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository()),
+      prepaymentLedger,
       dependencies.userPolicyEnforcementService,
         dependencies.platformMembershipResolverService
       );
@@ -142,6 +151,17 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
       ? undefined
       : createExchangeRequestAutomationProcessor(claimService));
   const controller = new ExchangeController(service, automationProcessor);
+  const prepaymentController = new ServicePrepaymentController(
+    new ServicePrepaymentService(
+      new ServicePrepaymentRepository(),
+      prepaymentLedger,
+      dependencies.ndpExchangeRateService ?? new NdpExchangeRateService(
+        dependencies.ndpExchangeRateRepository ?? new NdpExchangeRateRepository(),
+        new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+      )
+    ),
+    automationProcessor
+  );
 
   router.get(
     "/exchange/posts",
@@ -171,6 +191,13 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
     authorizePublish,
     validateIdempotencyKey,
     controller.publish
+  );
+  router.post(
+    "/exchange/posts/:id/service-prepayment",
+    authenticate(),
+    createAuthorizeMiddleware(EXCHANGE_PERMISSIONS.createDemand),
+    validateRequest({ params: exchangePostIdParamSchema, body: servicePrepaymentCreateBodySchema }),
+    prepaymentController.createExchange
   );
   router.post(
     "/exchange/posts/:id/withdraw",

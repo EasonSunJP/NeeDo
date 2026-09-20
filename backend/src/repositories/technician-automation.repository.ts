@@ -546,10 +546,10 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       select: { id: true, outcome: true }
     });
     if (existing) {
-      if (input.kind !== "request" || existing.outcome !== "ACTION_FAILED") return false;
+      if (existing.outcome !== "ACTION_FAILED" && existing.outcome !== "NOT_MATCHED") return false;
       const retry = await this.client.technicianAutomationDecisionLog.updateMany({
-        where: { id: existing.id, outcome: "ACTION_FAILED" },
-        data: { outcome: "MATCHED", ruleVersion: input.ruleVersion }
+        where: { id: existing.id, outcome: existing.outcome },
+        data: { outcome: "MATCHED", ruleVersion: input.ruleVersion, matchedConditions: [], failedReasons: [], executedAt: null }
       });
       return retry.count === 1;
     }

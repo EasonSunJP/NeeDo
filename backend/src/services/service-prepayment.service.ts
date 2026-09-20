@@ -55,6 +55,20 @@ export class ServicePrepaymentService {
     private readonly now: () => Date = () => new Date()
   ) {}
 
+  public async confirmForSubject(input: Omit<ServicePrepaymentConfirmInput,
+    "baseAmountJpy" | "method" | "walletOwnerType" | "walletOwnerId" | "externalReference"
+  >): Promise<ServicePrepaymentRecord> {
+    const context = await this.repository.resolveSubjectContext(input.subject, input.actorIdentityId);
+    if (!context) {
+      throw new AppError({ code: ERROR_CODES.FORBIDDEN, message: "error.auth.permission_forbidden", statusCode: 403 });
+    }
+    return this.confirm({
+      ...input,
+      ...context,
+      method: "ndp"
+    });
+  }
+
   public async confirm(input: ServicePrepaymentConfirmInput): Promise<ServicePrepaymentRecord> {
     this.assertInput(input);
     const amountJpy = calculateRequiredPrepaymentJpy(input.baseAmountJpy, input.percent);

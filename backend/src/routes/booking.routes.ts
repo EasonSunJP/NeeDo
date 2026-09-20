@@ -3,6 +3,7 @@ import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { BookingController } from "../controllers/booking.controller";
+import { ServicePrepaymentController } from "../controllers/service-prepayment.controller";
 import {
   createAuthenticateMiddleware,
   createOptionalAuthenticateMiddleware
@@ -16,6 +17,7 @@ import { AffiliateCheckoutRepository } from "../repositories/affiliate-checkout.
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { FeeRuleRepository } from "../repositories/fee-rule.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
+import { ServicePrepaymentRepository } from "../repositories/service-prepayment.repository";
 import { NdpExchangeRateRepository } from "../repositories/ndp-exchange-rate.repository";
 import { PlatformFeePolicyRepository } from "../repositories/platform-fee-policy.repository";
 import { BookingService } from "../services/booking.service";
@@ -23,6 +25,7 @@ import { SchedulePreloadService } from "../services/schedule-preload.service";
 import { AuditLogService } from "../services/audit-log.service";
 import { FeeCalculationService } from "../services/fee-calculation.service";
 import { LedgerService } from "../services/ledger.service";
+import { ServicePrepaymentService } from "../services/service-prepayment.service";
 import { NdpExchangeRateService } from "../services/ndp-exchange-rate.service";
 import { PlatformFeePolicyService } from "../services/platform-fee-policy.service";
 import { AffiliateCheckoutService } from "../services/affiliate-checkout.service";
@@ -57,6 +60,7 @@ import {
   scheduleSlotUpdateBodySchema,
   technicianManualBookingBodySchema
 } from "../validators/booking.validator";
+import { servicePrepaymentCreateBodySchema } from "../validators/service-prepayment.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 import { createUserExperienceServiceForRoutes } from "./user-experience-service.factory";
 import { TechnicianAutomationRepository } from "../repositories/technician-automation.repository";
@@ -176,6 +180,14 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     bookingRepository
   );
   const controller = new BookingController(bookingService, automationProcessor, schedulePreloadService);
+  const prepaymentController = new ServicePrepaymentController(
+    new ServicePrepaymentService(
+      new ServicePrepaymentRepository(),
+      ledgerService ?? new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository()),
+      ndpExchangeRateService
+    ),
+    automationProcessor
+  );
 
   router.get(
     "/schedule/availability",
@@ -195,6 +207,13 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.create),
     validateRequest({ body: bookingCreateBodySchema }),
     controller.createBooking
+  );
+  router.post(
+    "/bookings/:id/service-prepayment",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.create),
+    validateRequest({ params: orderIdParamSchema, body: servicePrepaymentCreateBodySchema }),
+    prepaymentController.createBooking
   );
   router.post(
     "/technician/manual-bookings",

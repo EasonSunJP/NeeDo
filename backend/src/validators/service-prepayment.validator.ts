@@ -18,5 +18,16 @@ export const servicePrepaymentMethodSchema = z.enum([
   "other"
 ]);
 
+export const servicePrepaymentCreateBodySchema = z.object({
+  percent: z.number().int().min(10).max(100)
+}).strict();
+
+export const servicePrepaymentSubjectParamsSchema = z.object({
+  id: z.coerce.number().int().positive()
+}).strict();
+
+export const servicePrepaymentIdempotencyKeySchema = z.string().trim().min(8).max(191).regex(/^[A-Za-z0-9:_-]+$/);
+
 export type ServicePrepaymentSubject = z.infer<typeof servicePrepaymentSubjectSchema>;
 export type ServicePrepaymentMethod = z.infer<typeof servicePrepaymentMethodSchema>;
+export type ServicePrepaymentCreateBody = z.infer<typeof servicePrepaymentCreateBodySchema>;

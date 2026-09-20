@@ -31025,6 +31025,60 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: { "200": { description: "Paginated IM friend identities" } }
       }
     },
+    [`${config.API_PREFIX}/bookings/{id}/service-prepayment`]: {
+      post: {
+        tags: ["Booking"],
+        summary: "Freeze a server-calculated NDP service prepayment for the current customer's Booking",
+        description: "The server loads the frozen JPY Booking price, applies the integer percentage with upward rounding, freezes the converted NDP amount, and re-evaluates technician automation. Client-calculated amounts are not accepted.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "booking:create",
+        parameters: [
+          idPathParameter(),
+          { name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", minLength: 8, maxLength: 191 } }
+        ],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["percent"],
+            properties: { percent: { type: "integer", minimum: 10, maximum: 100 } }
+          } } }
+        },
+        responses: {
+          "201": { description: "Confirmed service prepayment; exact idempotent replay returns the saved aggregate" },
+          "403": { description: "Booking does not belong to the active identity" },
+          "409": { description: "Insufficient NDP, changed idempotent request, or existing subject prepayment" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/exchange/posts/{id}/service-prepayment`]: {
+      post: {
+        tags: ["Exchange"],
+        summary: "Freeze a server-calculated NDP service prepayment for the current publisher's Request",
+        description: "The base is the persisted maximum total budget, or maximum per-provider budget multiplied by target provider count. The Request publication fee is a separate hold and never qualifies as service prepayment.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "exchange:posts:create-demand",
+        parameters: [
+          idPathParameter(),
+          { name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", minLength: 8, maxLength: 191 } }
+        ],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["percent"],
+            properties: { percent: { type: "integer", minimum: 10, maximum: 100 } }
+          } } }
+        },
+        responses: {
+          "201": { description: "Confirmed service prepayment followed by Request automation re-evaluation" },
+          "403": { description: "Request does not belong to the active identity" },
+          "409": { description: "Insufficient NDP, changed idempotent request, or existing subject prepayment" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/im/conversations/{targetConversationId}/chat-records`]: {
       post: {
         tags: ["Step 13 Realtime"],

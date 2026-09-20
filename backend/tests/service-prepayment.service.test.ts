@@ -41,6 +41,7 @@ function fixture(existing: ServicePrepaymentRecord | null = null) {
     findBySubjectForUpdate: jest.fn(async (subject: ServicePrepaymentSubject) =>
       stored?.subject.type === subject.type && stored.subject.id === subject.id ? stored : null),
     subjectBelongsToIdentity: jest.fn(async (_subject: ServicePrepaymentSubject, _identityId: number) => true),
+    resolveSubjectContext: jest.fn(async () => ({ baseAmountJpy: 10_000, walletOwnerType: "user" as const, walletOwnerId: 4 })),
     create: jest.fn(async (input) => {
       stored = record({
         subject: input.subject,
@@ -119,6 +120,19 @@ describe("ServicePrepaymentService", () => {
     expect(repository.createAudit).toHaveBeenCalledWith(expect.objectContaining({
       action: "payment.service_prepayment.created"
     }));
+  });
+
+  it("resolves the payable base from the persisted subject instead of the caller", async () => {
+    const { service, repository } = fixture();
+    await expect(service.confirmForSubject({
+      subject: validInput.subject,
+      actorUserId: 4,
+      actorIdentityId: 5,
+      percent: 30,
+      idempotencyKey: validInput.idempotencyKey,
+      requestFingerprint: validInput.requestFingerprint
+    })).resolves.toMatchObject({ baseAmountJpy: 10_000, amountJpy: 3_000 });
+    expect(repository.resolveSubjectContext).toHaveBeenCalledWith(validInput.subject, 5);
   });
 
   it("returns an exact replay and rejects a mismatched fingerprint", async () => {

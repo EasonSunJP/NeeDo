@@ -54,6 +54,11 @@ export interface ServicePrepaymentRepositoryPort {
   findByIdempotencyKeyForUpdate(idempotencyKey: string): Promise<ServicePrepaymentRecord | null>;
   findBySubjectForUpdate(subject: ServicePrepaymentSubject): Promise<ServicePrepaymentRecord | null>;
   subjectBelongsToIdentity(subject: ServicePrepaymentSubject, identityId: number): Promise<boolean>;
+  resolveSubjectContext(subject: ServicePrepaymentSubject, identityId: number): Promise<{
+    baseAmountJpy: number;
+    walletOwnerType: "user";
+    walletOwnerId: number;
+  } | null>;
   create(input: ServicePrepaymentCreateInput): Promise<ServicePrepaymentRecord>;
   transition(input: {
     id: number;
@@ -142,6 +147,42 @@ export class ServicePrepaymentRepository implements ServicePrepaymentRepositoryP
       where: { id: identityId, userId: booking.customerUserId, deletedAt: null },
       select: { id: true }
     }));
+  }
+
+  public async resolveSubjectContext(subject: ServicePrepaymentSubject, identityId: number): Promise<{
+    baseAmountJpy: number;
+    walletOwnerType: "user";
+    walletOwnerId: number;
+  } | null> {
+    if (subject.type === "exchange") {
+      const post = await this.client.exchangePost.findFirst({
+        where: { id: subject.id, ownerIdentityId: identityId, type: "DEMAND", deletedAt: null },
+        select: {
+          authorUserId: true,
+          demand: { select: { budgetMode: true, budgetMaxJpy: true, targetProviderCount: true } }
+        }
+      });
+      if (!post?.demand) return null;
+      const baseAmountJpy = post.demand.budgetMode === "PER_PROVIDER"
+        ? post.demand.budgetMaxJpy * post.demand.targetProviderCount
+        : post.demand.budgetMaxJpy;
+      return Number.isSafeInteger(baseAmountJpy)
+        ? { baseAmountJpy, walletOwnerType: "user", walletOwnerId: post.authorUserId }
+        : null;
+    }
+    const booking = await this.client.bookingOrder.findFirst({
+      where: { id: subject.id, currency: "JPY", deletedAt: null },
+      select: { customerUserId: true, priceAmount: true }
+    });
+    if (!booking) return null;
+    const identity = await this.client.userIdentity.findFirst({
+      where: { id: identityId, userId: booking.customerUserId, deletedAt: null },
+      select: { id: true }
+    });
+    const baseAmountJpy = Number(booking.priceAmount.toString());
+    return identity && Number.isSafeInteger(baseAmountJpy) && baseAmountJpy >= 0
+      ? { baseAmountJpy, walletOwnerType: "user", walletOwnerId: booking.customerUserId }
+      : null;
   }
 
   public async create(input: ServicePrepaymentCreateInput): Promise<ServicePrepaymentRecord> {
