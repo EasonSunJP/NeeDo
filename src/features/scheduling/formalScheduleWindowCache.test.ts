@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import type { BookingScheduleSlot } from "../booking/api";
 import {
+  getFormalMerchantScheduleCacheResourceKey,
   readFormalScheduleWindow,
   refreshFormalScheduleWindow,
   writeFormalScheduleWindow
@@ -19,6 +20,11 @@ const input = {
 describe("formal schedule window cache", () => {
   beforeEach(async () => {
     await persistentResourceCache.clearScope(input.cacheScope);
+  });
+
+  it("normalizes numeric and already-prefixed merchant store resource keys", () => {
+    expect(getFormalMerchantScheduleCacheResourceKey("11")).toBe("store-11");
+    expect(getFormalMerchantScheduleCacheResourceKey("store-11")).toBe("store-11");
   });
 
   it("keeps a fresh encrypted window available across cache instances", async () => {

@@ -17,6 +17,11 @@ type FormalScheduleWindowEnvelope = {
   slots: BookingScheduleSlot[];
 };
 
+export function getFormalMerchantScheduleCacheResourceKey(storeId: string | number) {
+  const value = String(storeId).trim();
+  return value.startsWith("store-") ? value : `store-${value}`;
+}
+
 function cacheKey(input: FormalScheduleWindowCacheInput) {
   return [
     "calendar:formal-schedule",

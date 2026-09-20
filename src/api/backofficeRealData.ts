@@ -221,6 +221,7 @@ export interface DashboardBucketPayload {
   scheduleTotalHours: number;
   scheduleAvailableHours: number;
   scheduleBookedHours: number;
+  scheduleAttendanceCount: number;
 }
 
 export interface DashboardMerchantSnapshot {

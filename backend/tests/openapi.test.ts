@@ -1235,7 +1235,8 @@ describe("GET /api/v1/openapi.json", () => {
       "shopEstimatedGrossProfitJpy",
       "scheduleTotalHours",
       "scheduleAvailableHours",
-      "scheduleBookedHours"
+      "scheduleBookedHours",
+      "scheduleAttendanceCount"
     ]);
     expect(dashboardSchemas.DashboardMembership).toMatchObject({
       type: "object",

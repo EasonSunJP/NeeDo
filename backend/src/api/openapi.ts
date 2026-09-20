@@ -4719,7 +4719,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "shopEstimatedGrossProfitJpy",
           "scheduleTotalHours",
           "scheduleAvailableHours",
-          "scheduleBookedHours"
+          "scheduleBookedHours",
+          "scheduleAttendanceCount"
         ],
         properties: {
           key: { type: "string", minLength: 1 },
@@ -4733,7 +4734,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           shopEstimatedGrossProfitJpy: { type: "integer" },
           scheduleTotalHours: { type: "number", minimum: 0 },
           scheduleAvailableHours: { type: "number", minimum: 0 },
-          scheduleBookedHours: { type: "number", minimum: 0 }
+          scheduleBookedHours: { type: "number", minimum: 0 },
+          scheduleAttendanceCount: { type: "integer", minimum: 0 }
         }
       },
       DashboardShopSnapshot: {

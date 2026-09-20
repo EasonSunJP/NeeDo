@@ -12,6 +12,7 @@ import {
   type DispatchCycle
 } from "../../dispatch-center/domain";
 import { ScheduleFloatingActions } from "./ScheduleFloatingActions";
+import { ScheduleStepProgress } from "./ScheduleStepProgress";
 
 type PlanningFeedbackRow = {
   technicianId: string;
@@ -46,9 +47,6 @@ const feedbackFilters: Array<{ key: FeedbackFilter; label: string }> = [
   { key: "pending", label: "未反馈" },
   { key: "exception", label: "异常数量" }
 ];
-
-const selfSchedulingSteps = ["模式选择", "规则设定", "最终确认"];
-const directSchedulingSteps = ["模式选择", "规则设定", "技师反馈", "最终确认"];
 
 function formatDateKey(dateKey: string, language: ReturnType<typeof useI18n>["language"]) {
   const locale = language === "zh-Hant" ? "zh-TW" : language === "zh" ? "zh-CN" : language;
@@ -163,7 +161,6 @@ export function SchedulePlanningOverview({
   const canCollectFeedback = cycle?.status === "collecting_feedback";
   const canCreateCycle = hasBuilderCycle || !limitSummary.limitReached;
   const isDirectScheduling = cycle?.mode === "STORE_ASSIGN_FINAL";
-  const lifecycleSteps = isDirectScheduling ? directSchedulingSteps : selfSchedulingSteps;
 
   useEffect(() => {
     setSelectedFilter("pending");
@@ -194,29 +191,10 @@ export function SchedulePlanningOverview({
           <>
             <p className="text-xs font-black tracking-[0.14em] text-ink/45">下一周期</p>
             <h2 className="mt-1 text-lg font-black">
-              下一周期 {formatDateKey(cycle.periodStart, language)} ～ {formatDateKey(cycle.periodEnd, language)}
+              {formatDateKey(cycle.periodStart, language)} - {formatDateKey(cycle.periodEnd, language)}
             </h2>
-            <div className={cn("mt-4 grid gap-2", isDirectScheduling ? "grid-cols-4" : "grid-cols-3")} aria-label="排班流程">
-              {lifecycleSteps.map((label, index) => {
-                const step = index + 1;
-                const active = cycle.currentStep === step;
-                const complete = cycle.currentStep > step;
-                return (
-                  <div className="min-w-0 text-center" key={label}>
-                    <span
-                      className={cn(
-                        "mx-auto grid h-9 w-9 place-items-center rounded-full border text-sm font-black",
-                        active || complete
-                          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
-                          : "border-line bg-white/65 text-ink/45"
-                      )}
-                    >
-                      {step}
-                    </span>
-                    <span className="mt-2 block text-[11px] font-black leading-4">{label}</span>
-                  </div>
-                );
-              })}
+            <div className="mt-4">
+              <ScheduleStepProgress cycle={cycle} surface={surface} />
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <Badge tone="yellow">{getCycleStatusLabel(cycle.status)}</Badge>

@@ -14,7 +14,8 @@ import {
 import { Button } from "../../components/ui/Button";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useAuth } from "../../auth/AuthProvider";
-import { DualAxisLineChart, GroupedBarChart } from "../../features/dashboard/DashboardCharts";
+import { DualAxisLineChart } from "../../features/dashboard/DashboardCharts";
+import { ScheduleStatusChart } from "../../features/dashboard/ScheduleStatusChart";
 import {
   DashboardFilterBar,
   type DashboardFilterValue
@@ -585,26 +586,9 @@ function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDa
               }}
               title={t("利润")}
             />
-            <GroupedBarChart
+            <ScheduleStatusChart
               buckets={dashboard.series.buckets}
-              description={t("总排班、空闲可预约与已预约时长")}
-              series={[
-                {
-                  key: "scheduleTotalHours",
-                  label: t("总排班时长"),
-                  unit: t("小时")
-                },
-                {
-                  key: "scheduleAvailableHours",
-                  label: t("空闲可预约时长"),
-                  unit: t("小时")
-                },
-                {
-                  key: "scheduleBookedHours",
-                  label: t("已预约时长"),
-                  unit: t("小时")
-                }
-              ]}
+              description={t("空闲、已预约时长与出勤人数")}
               title={t("排班状态")}
             />
           </section>

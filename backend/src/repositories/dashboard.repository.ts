@@ -62,6 +62,8 @@ interface ScheduleBucketRow {
   schedule_available_hours?: NumericValue;
   scheduleBookedHours?: NumericValue;
   schedule_booked_hours?: NumericValue;
+  scheduleAttendanceCount?: NumericValue;
+  schedule_attendance_count?: NumericValue;
 }
 
 interface AvailableCityRow {
@@ -360,7 +362,8 @@ export class DashboardRepository {
         bucketKey(row),
         {
           available: this.toNumber(row.scheduleAvailableHours ?? row.schedule_available_hours),
-          booked: this.toNumber(row.scheduleBookedHours ?? row.schedule_booked_hours)
+          booked: this.toNumber(row.scheduleBookedHours ?? row.schedule_booked_hours),
+          attendance: this.toNumber(row.scheduleAttendanceCount ?? row.schedule_attendance_count)
         }
       ])
     );
@@ -390,7 +393,7 @@ export class DashboardRepository {
           orderCount: 0,
           serviceGmvJpy: 0
         };
-        const schedule = scheduleByBucket.get(bucket.key) ?? { available: 0, booked: 0 };
+        const schedule = scheduleByBucket.get(bucket.key) ?? { available: 0, booked: 0, attendance: 0 };
         return {
           key: bucket.key,
           label: bucket.label,
@@ -400,7 +403,8 @@ export class DashboardRepository {
           registeredTechnicianCount: techniciansByPeriod.get(bucket.key) ?? 0,
           scheduleTotalHours: schedule.available + schedule.booked,
           scheduleAvailableHours: schedule.available,
-          scheduleBookedHours: schedule.booked
+          scheduleBookedHours: schedule.booked,
+          scheduleAttendanceCount: schedule.attendance
         };
       })
     };
@@ -898,7 +902,8 @@ export class DashboardRepository {
               LEAST(slot.ends_at, bucket.to_exclusive)
             ) / 3600000000
           ELSE 0 END
-        ), 0) AS scheduleBookedHours
+        ), 0) AS scheduleBookedHours,
+        COUNT(DISTINCT slot.technician_profile_id) AS scheduleAttendanceCount
       FROM buckets AS bucket
       INNER JOIN schedule_slots AS slot
         ON slot.starts_at < bucket.to_exclusive

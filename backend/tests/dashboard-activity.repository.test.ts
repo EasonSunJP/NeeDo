@@ -124,12 +124,14 @@ const createClient = () => {
         {
           bucketKey: "2026-08-25",
           scheduleAvailableHours: 1.5,
-          scheduleBookedHours: 1
+          scheduleBookedHours: 1,
+          scheduleAttendanceCount: 3n
         },
         {
           bucketKey: "2026-08-26",
           scheduleAvailableHours: 0,
-          scheduleBookedHours: 2.25
+          scheduleBookedHours: 2.25,
+          scheduleAttendanceCount: 2n
         }
       ];
     }
@@ -304,7 +306,8 @@ describe("DashboardRepository activity and supply aggregates", () => {
       registeredTechnicianCount: 4,
       scheduleTotalHours: 2.5,
       scheduleAvailableHours: 1.5,
-      scheduleBookedHours: 1
+      scheduleBookedHours: 1,
+      scheduleAttendanceCount: 3
     });
     expect(result.buckets[1]).toMatchObject({
       key: "2026-08-26",
@@ -314,7 +317,8 @@ describe("DashboardRepository activity and supply aggregates", () => {
       registeredTechnicianCount: 5,
       scheduleTotalHours: 2.25,
       scheduleAvailableHours: 0,
-      scheduleBookedHours: 2.25
+      scheduleBookedHours: 2.25,
+      scheduleAttendanceCount: 2
     });
     expect(result.buckets.at(-1)).toEqual({
       key: "2026-08-31",
@@ -325,7 +329,8 @@ describe("DashboardRepository activity and supply aggregates", () => {
       registeredTechnicianCount: 0,
       scheduleTotalHours: 0,
       scheduleAvailableHours: 0,
-      scheduleBookedHours: 0
+      scheduleBookedHours: 0,
+      scheduleAttendanceCount: 0
     });
 
     expect(fixture.scheduleCount).toHaveBeenCalledTimes(2);
@@ -334,6 +339,10 @@ describe("DashboardRepository activity and supply aggregates", () => {
     expect(fixture.pendingOrderCount).toHaveBeenCalledTimes(1);
     expect(fixture.orderAggregate).toHaveBeenCalledTimes(2);
     expect(fixture.queryRaw).toHaveBeenCalledTimes(6);
+    const scheduleQuery = fixture.queryRaw.mock.calls.find(([candidate]) =>
+      queryText(candidate as SqlQuery).includes("dashboard_schedule_series")
+    )?.[0] as SqlQuery;
+    expect(queryText(scheduleQuery)).toContain("COUNT(DISTINCT slot.technician_profile_id)");
   });
 
   it("excludes soft-deleted related shops from every all-city platform scalar and raw aggregate", async () => {

@@ -207,7 +207,13 @@ describe("merchant schedule planning home", () => {
     prepareNextCycle("TECH_SELF_FINAL");
     await renderWizard();
 
-    expect(container.textContent).toContain("下一周期 2026年4月28日 ～ 2026年5月27日");
+    const overview = container.querySelector<HTMLElement>('[data-schedule-planning-overview="true"]');
+    const heading = overview?.querySelector("h2");
+    const progress = overview?.querySelector<HTMLElement>('[data-schedule-stepper="true"]');
+
+    expect(heading?.textContent).toBe("2026年4月28日 - 2026年5月27日");
+    expect(progress).not.toBeNull();
+    expect(progress?.querySelectorAll("li")).toHaveLength(3);
     ["模式选择", "规则设定", "最终确认"].forEach((label) => {
       expect(container.textContent).toContain(label);
     });
@@ -244,6 +250,7 @@ describe("merchant schedule planning home", () => {
     expect(scheduleStyles).toMatch(/\.schedule-stepper-track\s*\{[^}]*display:\s*grid;/s);
     expect(scheduleStyles).toMatch(/grid-template-columns:\s*repeat\(var\(--schedule-step-count\),\s*minmax\(0,\s*1fr\)\)/);
     expect(scheduleStyles).toMatch(/\.schedule-stepper-step\s*\{[^}]*clip-path:\s*polygon/s);
+    expect(scheduleStyles).toMatch(/\.schedule-stepper-step:last-child\s*\{[^}]*clip-path:\s*polygon\(\s*0 0,\s*100% 0,\s*100% 100%,\s*0 100%,\s*var\(--schedule-step-arrow\) 50%\s*\)/s);
     expect(scheduleStyles).toMatch(/\.schedule-stepper-label\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
   });
 
