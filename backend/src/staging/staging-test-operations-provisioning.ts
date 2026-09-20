@@ -121,13 +121,30 @@ export const buildContinuousAvailabilityRanges = (input: {
   }));
 
 const STAGING_TEST_TECHNICIAN_COUNT = 6;
+const STAGING_TEST_REQUIRED_TECHNICIAN_EMAIL = "admin@lifedance.com";
 
-export const selectStagingTestTechnicianProfileIds = (ids: number[]): number[] => {
+export const selectStagingTestTechnicianProfileIds = (
+  ids: number[],
+  requiredTechnicianProfileId?: number
+): number[] => {
   const selected = [...new Set(ids)].sort((left, right) => left - right);
   if (selected.length < STAGING_TEST_TECHNICIAN_COUNT) {
     throw new Error(`STAGING_TEST_TECHNICIAN_COUNT_TOO_LOW:${selected.length}`);
   }
-  return selected.slice(0, STAGING_TEST_TECHNICIAN_COUNT);
+  if (requiredTechnicianProfileId === undefined) {
+    return selected.slice(0, STAGING_TEST_TECHNICIAN_COUNT);
+  }
+  if (!selected.includes(requiredTechnicianProfileId)) {
+    throw new Error(
+      `STAGING_TEST_REQUIRED_TECHNICIAN_MISSING:${requiredTechnicianProfileId}`
+    );
+  }
+  return [
+    ...selected
+      .filter((technicianProfileId) => technicianProfileId !== requiredTechnicianProfileId)
+      .slice(0, STAGING_TEST_TECHNICIAN_COUNT - 1),
+    requiredTechnicianProfileId
+  ].sort((left, right) => left - right);
 };
 
 export const parseStagingTestOperationsConfig = (
@@ -201,14 +218,28 @@ export class StagingTestOperationsProvisioner {
             }
           }
         },
-        select: { technicianProfileId: true },
+        select: {
+          technicianProfileId: true,
+          technicianProfile: { select: { user: { select: { email: true } } } }
+        },
         orderBy: { technicianProfileId: "asc" }
       });
       const allTechnicianProfileIds = [
         ...new Set(affiliations.map((item) => item.technicianProfileId))
       ];
+      const requiredTechnicianProfileId = affiliations.find(
+        (item) =>
+          item.technicianProfile.user.email.toLowerCase() ===
+          STAGING_TEST_REQUIRED_TECHNICIAN_EMAIL
+      )?.technicianProfileId;
+      if (!requiredTechnicianProfileId) {
+        throw new Error(
+          `STAGING_TEST_REQUIRED_TECHNICIAN_EMAIL_MISSING:${STAGING_TEST_REQUIRED_TECHNICIAN_EMAIL}`
+        );
+      }
       const technicianProfileIds = selectStagingTestTechnicianProfileIds(
-        allTechnicianProfileIds
+        allTechnicianProfileIds,
+        requiredTechnicianProfileId
       );
 
       const cyclePeriodStart = new Date(`${config.startDate}T00:00:00.000Z`);

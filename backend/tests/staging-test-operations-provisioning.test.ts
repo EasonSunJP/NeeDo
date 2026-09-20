@@ -71,6 +71,15 @@ describe("StagingTest operations provisioning gate", () => {
     );
   });
 
+  it("always includes the admin Eason technician in the six schedule targets", () => {
+    expect(
+      selectStagingTestTechnicianProfileIds([22, 23, 24, 25, 26, 27, 133], 133)
+    ).toEqual([22, 23, 24, 25, 26, 133]);
+    expect(() =>
+      selectStagingTestTechnicianProfileIds([22, 23, 24, 25, 26, 27], 133)
+    ).toThrow("STAGING_TEST_REQUIRED_TECHNICIAN_MISSING:133");
+  });
+
   it.each([
     ["NODE_ENV", "development"],
     ["DEPLOY_ENV", "production"],
