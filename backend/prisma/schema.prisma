@@ -1337,6 +1337,7 @@ model User {
   createdImChatRecordBundles            ImChatRecordBundle[]            @relation("ImChatRecordBundleCreator")
   sentImChatRecordItems                 ImChatRecordItem[]              @relation("ImChatRecordItemSender")
   imChatRecordFavorites                 ImChatRecordFavorite[]          @relation("ImChatRecordFavoriteOwner")
+  favoriteInteractions                  UserFavoriteInteraction[]
   imBatchDeleteCommands                 ImMessageBatchDeleteCommand[]   @relation("ImMessageBatchDeleteOwner")
   imPoliciesUpdated                     ImPolicy[]                          @relation("ImPolicyUpdater")
   conversationPrivacyUpdates            Conversation[]                      @relation("ConversationPrivacyUpdater")
@@ -2348,6 +2349,25 @@ model EntityFavorite {
   @@index([technicianServiceId, deletedAt], map: "entity_favorites_technician_service_deleted_idx")
   @@index([deletedAt], map: "entity_favorites_deleted_idx")
   @@map("entity_favorites")
+}
+
+model UserFavoriteInteraction {
+  id          Int       @id @default(autoincrement())
+  ownerUserId Int       @map("owner_user_id")
+  itemType    String    @map("item_type") @db.VarChar(40)
+  itemKey     String    @map("item_key") @db.VarChar(191)
+  pinnedAt    DateTime? @map("pinned_at")
+  reaction    String?   @db.VarChar(16)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  owner User @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+
+  @@unique([ownerUserId, itemType, itemKey], map: "user_favorite_interactions_owner_type_key")
+  @@index([ownerUserId, pinnedAt, updatedAt], map: "user_favorite_interactions_owner_sort_idx")
+  @@index([deletedAt], map: "user_favorite_interactions_deleted_idx")
+  @@map("user_favorite_interactions")
 }
 
 model EntityShareEvent {
