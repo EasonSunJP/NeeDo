@@ -25,9 +25,27 @@ const event: WorkStatusEvent = {
 describe("business timeline messages", () => {
   it("uses the current unified administration timeline without changing the technician layout", () => {
     for (const scope of ["backoffice", "merchant-admin"] as const) {
-      expect(renderToStaticMarkup(<WorkTimeline target={{ scope, technicianProfileId: 31 }} />)).toContain('class="admin-event-timeline"');
+      expect(
+        renderToStaticMarkup(
+          <WorkTimeline target={{ scope, technicianProfileId: 31 }} />,
+        ),
+      ).toContain('class="admin-event-timeline"');
     }
-    expect(renderToStaticMarkup(<WorkTimeline target={{ scope: "technician" }} />)).not.toContain('class="admin-event-timeline"');
+    expect(
+      renderToStaticMarkup(<WorkTimeline target={{ scope: "technician" }} />),
+    ).not.toContain('class="admin-event-timeline"');
+  });
+
+  it("inherits the active client theme when embedded in the mobile merchant surface", () => {
+    const html = renderToStaticMarkup(
+      <WorkTimeline
+        appearance="client"
+        target={{ scope: "merchant-admin", technicianProfileId: 31 }}
+      />,
+    );
+
+    expect(html).toContain('class="admin-event-timeline is-client-themed"');
+    expect(html).not.toContain("--client-surface:var(--admin-surface");
   });
   it("keeps affected booking links in a persisted early-departure incident", () => {
     const entry = workEventEntry(

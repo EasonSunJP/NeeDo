@@ -145,14 +145,18 @@ export function WorkTimeline({
   query: filter,
   comments = true,
   revision = 0,
+  appearance,
 }: {
   target: WorkStatusTarget;
   query?: Pick<WorkStatusQuery, "from" | "to" | "kind" | "incidentsOnly">;
   comments?: boolean;
   revision?: number;
+  appearance?: "admin" | "client";
 }) {
   const { language, t } = useWorkText();
-  const TimelinePanel = target.scope === "technician" ? ContactEventTimelinePanel : AdminEventTimeline;
+  const usesAdminTimeline = target.scope !== "technician";
+  const resolvedAppearance =
+    appearance ?? (usesAdminTimeline ? "admin" : "client");
   const auth = useOptionalAuth();
   const [page, setPage] = useState(1),
     [pageSize, setPageSize] = useState<FormalTimelinePageSize>(10),
@@ -232,7 +236,7 @@ export function WorkTimeline({
   return (
     <div
       className="min-w-0 space-y-3 [&>nav]:!bg-[color:var(--client-surface)] [&>nav_select]:!bg-[color:var(--client-elevated)]"
-      style={target.scope === "technician" ? undefined : workStatusAdminTheme}
+      style={resolvedAppearance === "admin" ? workStatusAdminTheme : undefined}
     >
       {error ? (
         <p role="alert" className="text-sm text-red-500">
@@ -246,18 +250,34 @@ export function WorkTimeline({
           </button>
         </p>
       ) : null}
-      <TimelinePanel
-        title={t("timeline")}
-        events={(data?.list ?? []).map((event) =>
-          workEventEntry(event, language, target),
-        )}
-        emptyLabel={loading ? t("loading") : error ? t("error") : t("empty")}
-        commentButtonLabel={t("comment")}
-        commentAuthorAvatarSrc={auth?.session?.avatarUrl ?? undefined}
-        commentAuthorName={auth?.session?.username}
-        showCommentComposer={comments}
-        onCommentButtonClick={() => setCommentOpen(true)}
-      />
+      {usesAdminTimeline ? (
+        <AdminEventTimeline
+          appearance={resolvedAppearance}
+          title={t("timeline")}
+          events={(data?.list ?? []).map((event) =>
+            workEventEntry(event, language, target),
+          )}
+          emptyLabel={loading ? t("loading") : error ? t("error") : t("empty")}
+          commentButtonLabel={t("comment")}
+          commentAuthorAvatarSrc={auth?.session?.avatarUrl ?? undefined}
+          commentAuthorName={auth?.session?.username}
+          showCommentComposer={comments}
+          onCommentButtonClick={() => setCommentOpen(true)}
+        />
+      ) : (
+        <ContactEventTimelinePanel
+          title={t("timeline")}
+          events={(data?.list ?? []).map((event) =>
+            workEventEntry(event, language, target),
+          )}
+          emptyLabel={loading ? t("loading") : error ? t("error") : t("empty")}
+          commentButtonLabel={t("comment")}
+          commentAuthorAvatarSrc={auth?.session?.avatarUrl ?? undefined}
+          commentAuthorName={auth?.session?.username}
+          showCommentComposer={comments}
+          onCommentButtonClick={() => setCommentOpen(true)}
+        />
+      )}
       {commentOpen ? (
         <form
           onSubmit={(event) => {

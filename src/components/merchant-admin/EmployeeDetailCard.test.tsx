@@ -256,16 +256,24 @@ describe("EmployeeDetailCard", () => {
   it("uses six mounted detail tabs and preserves an in-progress profile draft", async () => {
     await renderCard();
 
-    expect(container.querySelector('[data-formal-tabs-variant="flat"]')).not.toBeNull();
-    expect(container.querySelectorAll('[data-formal-tabs-page]')).toHaveLength(2);
-    expect(container.querySelectorAll('[data-navigation-page-indicator]')).toHaveLength(2);
     expect(
-      container.querySelector('[data-navigation-page-indicator][aria-current="page"]')
+      container.querySelector('[data-formal-tabs-variant="flat"]'),
+    ).not.toBeNull();
+    expect(container.querySelectorAll("[data-formal-tabs-page]")).toHaveLength(
+      2,
+    );
+    expect(
+      container.querySelectorAll("[data-navigation-page-indicator]"),
+    ).toHaveLength(2);
+    expect(
+      container
+        .querySelector('[data-navigation-page-indicator][aria-current="page"]')
         ?.getAttribute("data-navigation-page-index"),
     ).toBe("0");
     expect(button("基础资料").getAttribute("aria-selected")).toBe("true");
     expect(
-      container.querySelector<HTMLElement>('[data-testid="employee-schedule-panel"]')
+      container
+        .querySelector<HTMLElement>('[data-testid="employee-schedule-panel"]')
         ?.closest<HTMLElement>('[role="tabpanel"]')?.hidden,
     ).toBe(true);
 
@@ -274,7 +282,8 @@ describe("EmployeeDetailCard", () => {
     await act(async () => button("员工日程").click());
     expect(button("员工日程").getAttribute("aria-selected")).toBe("true");
     expect(
-      container.querySelector<HTMLElement>('[data-testid="employee-schedule-panel"]')
+      container
+        .querySelector<HTMLElement>('[data-testid="employee-schedule-panel"]')
         ?.closest<HTMLElement>('[role="tabpanel"]')?.hidden,
     ).toBe(false);
 
@@ -285,9 +294,14 @@ describe("EmployeeDetailCard", () => {
       )?.value,
     ).toBe("未提交的姓名");
     expect(
-      ["基础资料", "从属与账号", "员工日程", "薪酬与分成", "结算记录", "员工动态"].every(
-        (label) => button(label).getAttribute("role") === "tab",
-      ),
+      [
+        "基础资料",
+        "从属与账号",
+        "员工日程",
+        "薪酬与分成",
+        "结算记录",
+        "员工动态",
+      ].every((label) => button(label).getAttribute("role") === "tab"),
     ).toBe(true);
   });
 
@@ -310,7 +324,9 @@ describe("EmployeeDetailCard", () => {
     expect(container.textContent).toContain("薪酬与结算 · NEEDO-S-47");
     expect(container.textContent).not.toContain("时间线");
     expect(container.textContent).toContain("员工动态");
-    expect(container.textContent).toContain("LifeDance 管理员（基本资料）：更新了姓名、城市");
+    expect(container.textContent).toContain(
+      "LifeDance 管理员（基本资料）：更新了姓名、城市",
+    );
     expect(container.textContent).toContain("员工日程 · NEEDO-S-47");
   });
 
@@ -343,6 +359,23 @@ describe("EmployeeDetailCard", () => {
     await act(async () => button("发送").click());
 
     expect(onSubmitTimelineComment).toHaveBeenCalledWith("已确认本月结算。");
+  });
+
+  it("uses client-themed timelines on the mobile employee detail surface", async () => {
+    await renderCard({
+      employee: { ...employee, technicianProfileId: 31 },
+      scheduleSurface: "mobile",
+    });
+    await act(async () => button("员工动态").click());
+
+    expect(
+      container.querySelector(".admin-event-timeline:not(.is-client-themed)"),
+    ).toBeNull();
+    expect(
+      container.querySelectorAll(".admin-event-timeline.is-client-themed"),
+    ).toHaveLength(2);
+    expect(container.textContent).toContain("工作时间线");
+    expect(container.textContent).toContain("员工动态");
   });
 
   it("renders only lifecycle entries returned by the paginated timeline contract", async () => {
@@ -492,8 +525,6 @@ describe("EmployeeDetailCard", () => {
     expect(translateText("工作状态", "en")).toBe("Work Status");
     expect(translateText("保存从属关系", "ko")).toBe("소속 관계 저장");
     expect(translateText("工资结算周期", "ja")).toBe("給与締めサイクル");
-    expect(translateText("计划支付日", "en")).toBe(
-      "Planned payment date",
-    );
+    expect(translateText("计划支付日", "en")).toBe("Planned payment date");
   });
 });

@@ -1,4 +1,8 @@
 .admin-event-timeline {
+  min-width: 0;
+  container-type: inline-size;
+}
+.admin-event-timeline:not(.is-client-themed) {
   --client-bg: var(--admin-bg, #f7f8fb);
   --client-surface: var(--admin-surface, #ffffff);
   --client-elevated: var(--admin-elevated, #f0f3f6);
@@ -7,8 +11,6 @@
   --client-muted: var(--admin-muted, #61706d);
   --client-primary: var(--admin-accent, #3c887e);
   --client-primary-contrast: var(--admin-bg, #ffffff);
-  min-width: 0;
-  container-type: inline-size;
 }
 .admin-event-timeline > section {
   border-color: color-mix(in srgb, var(--client-line) 45%, transparent);

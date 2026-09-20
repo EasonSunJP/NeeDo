@@ -173,9 +173,11 @@ function localizeTimelineMessage(
 ) {
   if (actorRole === "财务备注") return message;
   if (actorRole === "基本资料" && message.startsWith("更新了")) {
-    const fields = message.slice(3).split("、").map(t).join(
-      language === "en" ? ", " : language === "ja" ? "・" : "、",
-    );
+    const fields = message
+      .slice(3)
+      .split("、")
+      .map(t)
+      .join(language === "en" ? ", " : language === "ja" ? "・" : "、");
     if (language === "ja") return `${fields}を更新しました`;
     if (language === "en") return `Updated ${fields}`;
     if (language === "ko") return `${fields} 업데이트`;
@@ -186,8 +188,10 @@ function localizeTimelineMessage(
     const relationship = t(affiliation[1]);
     const status = t(affiliation[2]);
     if (language === "ja") return `${relationship}、現在の状態：${status}`;
-    if (language === "en") return `Changed to ${relationship}; current status: ${status}`;
-    if (language === "ko") return `${relationship}(으)로 변경, 현재 상태: ${status}`;
+    if (language === "en")
+      return `Changed to ${relationship}; current status: ${status}`;
+    if (language === "ko")
+      return `${relationship}(으)로 변경, 현재 상태: ${status}`;
     return `${t("更新为")}${relationship}，${t("当前状态：")}${status}`;
   }
   return t(message);
@@ -341,23 +345,21 @@ export function EmployeeDetailCard({
   const affiliationSaving = saving === "affiliation";
   const blocked = saving !== null || payrollPolicySaving || compensationSaving;
   const timelineEvents = useMemo<ContactEventTimelineEntry[]>(() => {
-    return (timeline?.list ?? []).map(
-      (event) => ({
-        actorAvatarSrc: event.actorAvatarUrl ?? undefined,
-        actorName: event.actorName,
-        actorRole: t(event.actorRole),
-        atLabel: event.at,
-        id: event.id,
-        message: localizeTimelineMessage(
-          event.message,
-          event.actorRole,
-          language,
-          t,
-        ),
-        title: t(event.actorRole),
-        tone: event.tone,
-      }),
-    );
+    return (timeline?.list ?? []).map((event) => ({
+      actorAvatarSrc: event.actorAvatarUrl ?? undefined,
+      actorName: event.actorName,
+      actorRole: t(event.actorRole),
+      atLabel: event.at,
+      id: event.id,
+      message: localizeTimelineMessage(
+        event.message,
+        event.actorRole,
+        language,
+        t,
+      ),
+      title: t(event.actorRole),
+      tone: event.tone,
+    }));
   }, [language, timeline]);
 
   return (
@@ -405,7 +407,9 @@ export function EmployeeDetailCard({
                     {t(workStatusLabel(employee.affiliation.workStatus))}
                   </Badge>
                   <Badge className="border border-white/10" tone="blue">
-                    {t(relationshipLabel(employee.affiliation.relationshipType))}
+                    {t(
+                      relationshipLabel(employee.affiliation.relationshipType),
+                    )}
                   </Badge>
                 </div>
               </div>
@@ -790,7 +794,24 @@ export function EmployeeDetailCard({
         id={`${panelId}-panel-5`}
         role="tabpanel"
       >
-        {employee.technicianProfileId ? <div className="mb-4 space-y-4"><WorkStatusMetrics target={{scope:"merchant-admin",technicianProfileId:employee.technicianProfileId}}/><WorkTimeline target={{scope:"merchant-admin",technicianProfileId:employee.technicianProfileId}} comments={!readOnly}/></div> : null}
+        {employee.technicianProfileId ? (
+          <div className="mb-4 space-y-4">
+            <WorkStatusMetrics
+              target={{
+                scope: "merchant-admin",
+                technicianProfileId: employee.technicianProfileId,
+              }}
+            />
+            <WorkTimeline
+              appearance={scheduleSurface === "mobile" ? "client" : "admin"}
+              target={{
+                scope: "merchant-admin",
+                technicianProfileId: employee.technicianProfileId,
+              }}
+              comments={!readOnly}
+            />
+          </div>
+        ) : null}
         {timelineLoading ? (
           <div className="rounded-[24px] border border-line bg-white px-5 py-6 text-sm font-bold text-ink/50 shadow-sm">
             {t("正在读取员工动态...")}
@@ -804,6 +825,7 @@ export function EmployeeDetailCard({
           </div>
         ) : (
           <AdminEventTimeline
+            appearance={scheduleSurface === "mobile" ? "client" : "admin"}
             className="border-line bg-white shadow-sm"
             commentAuthorAvatarSrc={auth?.session?.avatarUrl ?? undefined}
             commentAuthorName={auth?.session?.username ?? t("当前管理员")}
@@ -839,7 +861,11 @@ export function EmployeeDetailCard({
         id={`${panelId}-panel-2`}
         role="tabpanel"
       >
-        <EmployeeSchedulePanel employee={employee} readOnly={readOnly} scheduleSurface={scheduleSurface} />
+        <EmployeeSchedulePanel
+          employee={employee}
+          readOnly={readOnly}
+          scheduleSurface={scheduleSurface}
+        />
       </div>
 
       <div
@@ -898,7 +924,10 @@ export function EmployeeDetailCard({
           role="dialog"
         >
           <div className="w-full max-w-sm rounded-[24px] border border-coral/35 bg-white p-5 text-ink shadow-2xl">
-            <h2 className="text-xl font-black" id={`${panelId}-termination-title`}>
+            <h2
+              className="text-xl font-black"
+              id={`${panelId}-termination-title`}
+            >
               {t("确认解约")}
             </h2>
             <p className="mt-3 text-sm font-bold leading-6 text-ink/65">
