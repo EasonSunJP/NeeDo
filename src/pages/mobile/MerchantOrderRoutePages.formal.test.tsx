@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 import type { BookingOrder, OrderCheckout } from "../../features/booking/api";
 import type { CoreServiceDetail } from "../../features/core-read/api";
+import merchantOrderRouteSource from "./MerchantOrderRoutePages.tsx?raw";
 
 const mocks = vi.hoisted(() => ({
   cancelOrder: vi.fn(),
@@ -54,7 +55,16 @@ vi.mock("../../state/scheduleStore", () => ({
 }));
 vi.mock("../../components/mobile/MobileShell", () => ({ MobileShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("../../components/mobile/MobileFullscreenPage", () => ({ MobileFullscreenPage: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
-vi.mock("../../components/mobile/MobileFullscreenHeader", () => ({ MobileFullscreenHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
+vi.mock("../../components/mobile/MobileFullscreenHeader", () => ({
+  MobileFullscreenHeader: ({ action, closeLabel, onBack, onClose, title }: { action?: React.ReactNode; closeLabel?: string; onBack?: () => void; onClose?: () => void; title: string }) => (
+    <header>
+      <button aria-label="返回" onClick={onBack} type="button">返回</button>
+      <h1>{title}</h1>
+      {action}
+      <button aria-label={closeLabel} onClick={onClose} type="button">关闭</button>
+    </header>
+  )
+}));
 vi.mock("../../components/mobile/MobileBottomActionBar", () => ({ MobileBottomActionBar: ({ children }: { children: React.ReactNode }) => <footer>{children}</footer> }));
 vi.mock("../../components/client-ui/AppScaffold", () => ({
   AppIcon: ({ name }: { name: string }) => <span data-app-icon={name} />,
@@ -105,6 +115,11 @@ vi.mock("../../shared/profile-card", () => ({
 
 import { buildFormalOrderPersonCard, MerchantOrderDetailRoutePage } from "./MerchantOrderRoutePages";
 
+const formalOrderDetailSource = merchantOrderRouteSource.slice(
+  merchantOrderRouteSource.indexOf("function FormalMerchantOrderDetailContent"),
+  merchantOrderRouteSource.indexOf("function MerchantOrderDetailContent")
+);
+
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const order: BookingOrder = {
@@ -144,6 +159,21 @@ const order: BookingOrder = {
   serviceSession: null,
   statusHistory: []
 };
+
+describe("formal merchant order detail layout", () => {
+  it("keeps the action bar viewport-docked while the safe-area padded detail body scrolls independently", () => {
+    expect(formalOrderDetailSource).toContain("<MobileFullscreenPage>");
+    expect(formalOrderDetailSource).toContain('showSpacer={false}');
+    expect(formalOrderDetailSource).toContain('data-testid="merchant-order-detail-scroll-region"');
+    expect(formalOrderDetailSource).toContain("min-h-0 flex-1");
+    expect(formalOrderDetailSource).toContain("overflow-y-auto");
+    expect(formalOrderDetailSource).toContain("overscroll-contain");
+    expect(formalOrderDetailSource).toContain("[-webkit-overflow-scrolling:touch]");
+    expect(formalOrderDetailSource).toContain("pb-[calc(env(safe-area-inset-bottom,0px)+10rem)]");
+    expect(formalOrderDetailSource).toContain("<MobileBottomActionBar");
+    expect(formalOrderDetailSource).not.toContain("<PageScaffold");
+  });
+});
 
 const checkout: OrderCheckout = {
   id: 9,

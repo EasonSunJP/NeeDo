@@ -6,7 +6,6 @@ import { backofficeRealDataApi, type BackofficeOrderPayload } from "../../api/ba
 import { ApiClientError } from "../../api/httpClient";
 import { shopAutoDispatchApi, type ShopAutoDispatchTechnician } from "../../api/shopAutoDispatch";
 import { useAuth } from "../../auth/AuthProvider";
-import { AppTopBar, PageScaffold } from "../../components/client-ui/AppScaffold";
 import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
 import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
@@ -1151,9 +1150,9 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
   };
 
   return (
-    <PageScaffold contentClassName="space-y-4 pb-36" navItems={[]}>
-      <AppTopBar
-        actions={canForceCancel ? (
+    <MobileFullscreenPage>
+      <MobileFullscreenHeader
+        action={canForceCancel ? (
           <button
             aria-label="取消预约"
             className="focus-ring h-10 rounded-full bg-red-500 px-4 text-sm font-black text-white shadow-[0_10px_24px_rgba(239,68,68,0.28)]"
@@ -1169,9 +1168,14 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
         closeLabel="关闭预约详情"
         onBack={() => navigate(-1)}
         onClose={() => navigate("/merchant", { replace: true })}
+        showSpacer={false}
         title="预约详情"
       />
 
+      <main
+        className="client-app-gutter scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pb-[calc(env(safe-area-inset-bottom,0px)+10rem)] pt-[calc(env(safe-area-inset-top,0px)+86px)] [-webkit-overflow-scrolling:touch]"
+        data-testid="merchant-order-detail-scroll-region"
+      >
       {loadStatus === "loading" ? (
         <section className="rounded-[24px] bg-[color:var(--client-surface)] px-4 py-10 text-center text-sm font-black">正在加载本店正式订单</section>
       ) : null}
@@ -1286,6 +1290,8 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
         </>
       ) : null}
 
+      </main>
+
       {loadStatus === "success" && order ? (
         <MobileBottomActionBar contentClassName="grid grid-cols-3 gap-2">
           <Button
@@ -1311,7 +1317,7 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
         pending={cancelPending}
         title="强制取消预约"
       />
-    </PageScaffold>
+    </MobileFullscreenPage>
   );
 }
 
