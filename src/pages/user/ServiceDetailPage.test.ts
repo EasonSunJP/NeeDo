@@ -17,6 +17,8 @@ import {
   ServiceReviewCard
 } from "./ServiceDetailPage";
 import serviceDetailSource from "./ServiceDetailPage.tsx?raw";
+import bookingActionBarSource from "../../components/mobile/ServiceBookingActionBar.tsx?raw";
+import detailHeaderFadeSource from "../../components/mobile/ServiceDetailHeaderFade.tsx?raw";
 
 const clientStyles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
@@ -112,9 +114,9 @@ describe("ServiceDetailPage formal service routes", () => {
     expect(serviceDetailSource).not.toContain('to={`/profiles/technician/${technician.id}`}');
   });
 
-  it("reserves only the fixed action footer height below the final content card", () => {
-    expect(serviceDetailSource).toContain("pb-[calc(env(safe-area-inset-bottom)+6rem)]");
-    expect(serviceDetailSource).not.toContain("pb-[calc(env(safe-area-inset-bottom)+8.5rem)]");
+  it("reserves the shared two-row booking footer height below the final content card", () => {
+    expect(serviceDetailSource).toContain("pb-[calc(env(safe-area-inset-bottom)+11rem)]");
+    expect(serviceDetailSource).not.toContain("pb-[calc(env(safe-area-inset-bottom)+6rem)]");
   });
 
   it("derives selectable technicians from the same formal availability used by checkout", () => {
@@ -259,13 +261,24 @@ describe("ServiceDetailPage formal service routes", () => {
     expect(markup.indexOf("手法细致")).toBeLessThan(markup.indexOf("5.0 / 5"));
   });
 
-  it("removes the service page dark top and bottom masks without changing the shared header", () => {
-    expect(serviceDetailSource).not.toContain('import { ClientEdgeMask }');
-    expect(serviceDetailSource).not.toContain('<ClientEdgeMask className="z-10" edge="bottom" mode="absolute" />');
+  it("keeps the shared glass header and fades its lower edge into the page background", () => {
     expect(serviceDetailSource).toContain('className="service-detail-header"');
-    expect(serviceDetailSource).toContain("border-t border-transparent bg-transparent");
-    expect(clientStyles).toMatch(
-      /\.service-detail-header\.client-floating-header-glass-frame\s*\{[^}]*background:\s*transparent\s*!important;[^}]*box-shadow:\s*none\s*!important;/s
-    );
+    expect(serviceDetailSource).toContain("<ServiceDetailHeaderFade />");
+    expect(detailHeaderFadeSource).toContain("service-detail-header-fade");
+    expect(clientStyles).not.toMatch(/\.service-detail-header\.client-floating-header-glass-frame\s*\{/s);
+    expect(clientStyles).toMatch(/\.service-detail-header-fade\s*\{[^}]*linear-gradient/s);
+  });
+
+  it("uses the shared booking footer with amount, configured payment types, contact, and confirmation", () => {
+    expect(serviceDetailSource).toContain("ServiceBookingActionBar");
+    expect(serviceDetailSource).toContain("amountJpy={selectedPackage?.price ?? service.priceFrom}");
+    expect(serviceDetailSource).toContain('contactTo="/messages"');
+    expect(serviceDetailSource).toContain("confirmTo={checkoutHref}");
+    for (const copy of ["应付金额", "支付方式", "联系", "确定预约"]) {
+      expect(bookingActionBarSource).toContain(copy);
+    }
+    expect(bookingActionBarSource).toContain("usePlatformSettings");
+    expect(bookingActionBarSource).toContain("MobileBottomActionBar");
+    expect(bookingActionBarSource).not.toContain("PayPay");
   });
 });

@@ -203,12 +203,19 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).toContain('inactiveIcon={unavailable ? "x" : "plus"}');
   });
 
+  it("derives technician-pricing availability from any bookable technician slot on the selected day", () => {
+    expect(pageSource).toContain("serviceId: isTechnicianPricingActive ? undefined : formalServiceId ?? undefined");
+    expect(pageSource).toContain("slot.technicianServiceId !== null");
+    expect(pageSource).toContain("isTechnicianPricingActive || getTokyoSlotParts(slot.startsAt)?.time === selectedTime");
+    expect(pageSource).not.toContain("if (isMerchantEditable || isTechnicianPricingActive)");
+  });
+
   it("keeps technician-tab row right content linked to technician service lists with a service info affordance", () => {
     const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
 
     expect(technicianRowSource).toContain('className="absolute left-2 top-2 z-20"');
     expect(technicianRowSource).toContain('"pointer-events-none absolute top-2 z-20 flex items-start gap-1');
-    expect(technicianRowSource).toContain('(isMerchantEditable || showSelectionAction) ? "right-[58px]" : "right-2"');
+    expect(technicianRowSource).toContain('isMerchantEditable ? "right-[58px]" : "right-2"');
     expect(technicianRowSource).not.toContain("absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1");
     expect(technicianRowSource).not.toContain("-space-x-[4px]");
     expect(technicianRowSource).toContain("<SimpleRatingBadge compact");
@@ -219,9 +226,10 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).not.toContain("quoteRatePercent");
     expect(technicianRowSource).toContain("yen(price)");
     expect(technicianRowSource).toContain('className="flex min-w-0 flex-col justify-between rounded-[14px] py-1 pl-1.5 pr-1.5 text-left active:scale-[0.99]"');
-    expect(technicianRowSource).toContain('className={cn("min-w-0", (isMerchantEditable || showSelectionAction) && "pr-12")}');
-    expect(technicianRowSource).toContain("py-2 pl-3 pr-11");
+    expect(technicianRowSource).toContain('className={cn("min-w-0", isMerchantEditable && "pr-12")}');
+    expect(technicianRowSource).toContain("py-1.5 pl-3 pr-9");
     expect(technicianRowSource).toContain('name="info"');
+    expect(technicianRowSource).not.toContain("rounded-full border border-[color:var(--client-primary)]");
     expect(technicianRowSource).not.toContain("onServiceSelect");
     expect(technicianRowSource).not.toContain("查看店铺服务项目");
   });
@@ -247,6 +255,13 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).toContain('inactiveIcon="eyeOff"');
     expect(technicianRowSource).toContain('label={technicianVisible ? "隐藏技师" : "显示技师"}');
     expect(pageSource).toContain("onToggleVisibility={() => toggleTechnicianDisplayVisibility(technician)}");
+  });
+
+  it("places the unavailable selection mark on the avatar like the technician small card", () => {
+    const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
+
+    expect(technicianRowSource).toContain('className="absolute bottom-2 right-2 z-30 h-11 w-11"');
+    expect(technicianRowSource).not.toContain('className="absolute right-2 top-2 z-30 h-11 w-11"\n          disabled={unavailable}');
   });
 
   it("keeps technician age in the profile detail line instead of a name-side badge", () => {

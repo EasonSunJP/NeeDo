@@ -5,6 +5,10 @@ const migrationPath = resolve(
   __dirname,
   "../prisma/migrations/20260829150000_employee_schedule_privacy/migration.sql"
 );
+const visibilityRenameMigrationPath = resolve(
+  __dirname,
+  "../prisma/migrations/20260921113000_rename_availability_visibility/migration.sql"
+);
 
 describe("employee schedule privacy migration", () => {
   it("separates shop-private planning from technician-published availability", () => {
@@ -15,6 +19,13 @@ describe("employee schedule privacy migration", () => {
       "`visibility` ENUM('shop_only', 'affiliated_shops') NOT NULL DEFAULT 'shop_only'"
     );
     expect(migration).toContain("availability_technician_visibility_range_idx");
+  });
+
+  it("renames the shared visibility without reusing affiliate-marketing terminology", () => {
+    const migration = readFileSync(visibilityRenameMigrationPath, "utf8");
+
+    expect(migration).toContain("SET `visibility` = 'technician_shops'");
+    expect(migration).toContain("ENUM('shop_only', 'technician_shops')");
   });
 
   it("adds bounded overlap indexes for plans and confirmed bookings", () => {

@@ -346,7 +346,7 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
           shopId: { not: input.shopId },
           technicianProfileId,
           sourceType: "TECHNICIAN",
-          visibility: "AFFILIATED_SHOPS",
+          visibility: "TECHNICIAN_SHOPS",
           isActive: true,
           startsAt: { lt: input.to },
           endsAt: { gt: input.from },
@@ -428,7 +428,7 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       .map((range) => ({
         projectionId: `availability:${range.startsAt.toISOString()}:${range.endsAt.toISOString()}`,
         kind: "availability",
-        visibility: "affiliated_shops",
+        visibility: "technician_shops",
         status: "available",
         startsAt: range.startsAt.toISOString(),
         endsAt: range.endsAt.toISOString(),

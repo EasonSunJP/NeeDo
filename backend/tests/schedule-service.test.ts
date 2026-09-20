@@ -37,7 +37,7 @@ const availabilityWindow = {
   shopId: 11,
   technicianProfileId: 31,
   sourceType: "technician" as const,
-  visibility: "affiliated_shops" as const,
+  visibility: "technician_shops" as const,
   startsAt: new Date("2026-08-26T09:00:00.000Z"),
   endsAt: new Date("2026-08-26T15:00:00.000Z"),
   capacity: 1,
@@ -57,7 +57,7 @@ const actor = (overrides: Partial<AuthenticatedAccessContext>): AuthenticatedAcc
   ...overrides
 });
 
-const repository = (result: "ok" | "conflict" = "ok") =>
+const repository = (result: "ok" | "conflict" | "outside_availability" = "ok") =>
   ({
     listAvailableSlots: jest.fn(),
     listAvailabilityWindows: jest.fn(async (input: AvailabilityWindowListInput) => {
@@ -102,7 +102,11 @@ const repository = (result: "ok" | "conflict" = "ok") =>
     }),
     createScheduleSlot: jest.fn(async (input: ScheduleSlotCreateInput) => {
       void input;
-      return result === "ok" ? { outcome: "ok" as const, slot } : { outcome: "conflict" as const };
+      return result === "ok"
+        ? { outcome: "ok" as const, slot }
+        : result === "outside_availability"
+          ? { outcome: "outside_availability" as const }
+          : { outcome: "conflict" as const };
     }),
     updateScheduleSlot: jest.fn(async (input: ScheduleSlotUpdateInput) => {
       void input;
@@ -265,6 +269,34 @@ describe("BookingService schedule scope", () => {
     ).rejects.toMatchObject({
       code: ERROR_CODES.SCHEDULE_CONFLICT,
       message: "error.schedule.conflict"
+    });
+  });
+
+  it("reports a merchant slot outside the technician-published availability window", async () => {
+    const merchant = actor({
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 11,
+      roles: ["merchant_owner"]
+    });
+
+    await expect(
+      new BookingService(repository("outside_availability"), undefined, undefined, audit)
+        .createScheduleSlot(
+          merchant,
+          {
+            serviceId: 20,
+            technicianProfileId: 31,
+            startsAt: slot.startsAt,
+            endsAt: slot.endsAt,
+            capacity: 1
+          },
+          context
+        )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.SCHEDULE_CONFLICT,
+      message: "error.schedule.outside_availability",
+      statusCode: 409
     });
   });
 });

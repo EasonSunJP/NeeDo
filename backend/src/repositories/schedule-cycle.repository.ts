@@ -456,7 +456,7 @@ export class ScheduleCycleRepository implements ScheduleCycleRepositoryPort {
               shopId,
               technicianProfileId: first.technicianProfileId,
               sourceType: current.mode === "TECH_SELF_FINAL" ? "TECHNICIAN" : "SHOP",
-              visibility: current.mode === "TECH_SELF_FINAL" ? "AFFILIATED_SHOPS" : "SHOP_ONLY",
+              visibility: current.mode === "TECH_SELF_FINAL" ? "TECHNICIAN_SHOPS" : "SHOP_ONLY",
               startsAt,
               endsAt,
               capacity: 1,

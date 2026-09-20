@@ -213,7 +213,7 @@ enum AvailabilitySourceType {
 
 enum AvailabilityVisibility {
   SHOP_ONLY        @map("shop_only")
-  AFFILIATED_SHOPS @map("affiliated_shops")
+  TECHNICIAN_SHOPS @map("technician_shops")
 
   @@map("availability_visibility")
 }
@@ -3785,6 +3785,7 @@ model TechnicianService {
   exchangeClaims            ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
   exchangeIntelligences ExchangeIntelligence[]
+  bookingOrderItems      BookingOrderServiceItem[]
   entityFavorites       EntityFavorite[]
   entityShareEvents     EntityShareEvent[]
 
@@ -4435,6 +4436,7 @@ model ScheduleSlot {
   routeEstimates    RouteEstimate[]
   exchangeClaims    ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
+  bookingOrderItems          BookingOrderServiceItem[]
 
   @@index([availabilityId])
   @@index([serviceId])
@@ -4533,6 +4535,7 @@ model BookingOrder {
   refundDisputeRevisions         OrderRefundDisputeRevision[]
   serviceLocation                BookingServiceLocation?
   servicePrepayment              ServicePrepayment?
+  serviceItems                   BookingOrderServiceItem[]
 
   @@index([customerUserId])
   @@index([serviceId])
@@ -4558,6 +4561,32 @@ model BookingOrder {
   @@map("booking_orders")
   sosAlerts SosAlert[]
   sosCommands SosCommand[]
+}
+
+model BookingOrderServiceItem {
+  id                  Int      @id @default(autoincrement())
+  bookingOrderId      Int      @map("booking_order_id")
+  technicianServiceId Int      @map("technician_service_id")
+  scheduleSlotId      Int      @map("schedule_slot_id")
+  position            Int
+  serviceNameSnapshot String   @map("service_name_snapshot") @db.VarChar(160)
+  priceAmountJpy      Int      @map("price_amount_jpy")
+  currency            String   @default("JPY") @db.VarChar(3)
+  durationMinutes     Int      @map("duration_minutes")
+  startsAt            DateTime @map("starts_at")
+  endsAt              DateTime @map("ends_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  bookingOrder      BookingOrder      @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  technicianService TechnicianService @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  scheduleSlot      ScheduleSlot      @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([bookingOrderId, position], map: "booking_order_service_items_order_position_key")
+  @@unique([bookingOrderId, scheduleSlotId], map: "booking_order_service_items_order_slot_key")
+  @@index([technicianServiceId], map: "booking_order_service_items_technician_service_idx")
+  @@index([scheduleSlotId], map: "booking_order_service_items_schedule_slot_idx")
+  @@map("booking_order_service_items")
 }
 
 model OrderRefundCase {

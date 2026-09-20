@@ -62,6 +62,18 @@ describe("availabilityListQuerySchema", () => {
       availabilityListQuerySchema.safeParse({ ...base, includeUnavailable: "yes" }).success
     ).toBe(false);
   });
+
+  it("allows a shop-scoped availability projection for technician-pricing stores", () => {
+    expect(availabilityListQuerySchema.safeParse({
+      shopId: "11",
+      from: base.from,
+      to: base.to
+    }).success).toBe(true);
+    expect(availabilityListQuerySchema.safeParse({
+      from: base.from,
+      to: base.to
+    }).success).toBe(false);
+  });
 });
 
 describe("bookingCreateBodySchema", () => {
@@ -133,6 +145,31 @@ describe("bookingCreateBodySchema", () => {
     expect(bookingCreateBodySchema.parse(base)).toMatchObject({ expectedPriceAmountJpy: 8_800 });
     expect(bookingCreateBodySchema.safeParse({ ...base, expectedPriceAmountJpy: undefined }).success).toBe(false);
     expect(bookingCreateBodySchema.safeParse({ ...base, expectedPriceAmountJpy: 8_800.5 }).success).toBe(false);
+  });
+
+  it("accepts an ordered store-only technician-service bundle and rejects mismatched selectors", () => {
+    const bundle = {
+      expectedPriceAmountJpy: 15_400,
+      technicianServiceId: 101,
+      technicianServiceIds: [101, 102],
+      scheduleSlotId: 201,
+      scheduleSlotIds: [201, 202],
+      fulfillmentMode: "store" as const
+    };
+
+    expect(bookingCreateBodySchema.parse(bundle)).toMatchObject(bundle);
+    expect(bookingCreateBodySchema.safeParse({
+      ...bundle,
+      technicianServiceIds: [102, 101]
+    }).success).toBe(false);
+    expect(bookingCreateBodySchema.safeParse({
+      ...bundle,
+      scheduleSlotIds: [201]
+    }).success).toBe(false);
+    expect(bookingCreateBodySchema.safeParse({
+      ...bundle,
+      fulfillmentMode: "home"
+    }).success).toBe(false);
   });
 });
 

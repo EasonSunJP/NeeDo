@@ -473,6 +473,63 @@ const createPendingReplacementHarness = (
 };
 
 describe("BookingRepository order list scope", () => {
+  it("rejects a multi-service bundle unless its selected slots form one continuous technician timeline", async () => {
+    const firstStartsAt = new Date("2026-10-01T01:00:00.000Z");
+    const firstEndsAt = new Date("2026-10-01T02:00:00.000Z");
+    const secondStartsAt = new Date("2026-10-01T02:30:00.000Z");
+    const secondEndsAt = new Date("2026-10-01T03:00:00.000Z");
+    const slot = (id: number, technicianServiceId: number, startsAt: Date, endsAt: Date) => ({
+      id,
+      availabilityId: 900,
+      serviceId: null,
+      technicianServiceId,
+      shopId: 16,
+      technicianProfileId: 47,
+      startsAt,
+      endsAt,
+      capacity: 1,
+      bookedCount: 0,
+      status: "AVAILABLE",
+      createdAt: firstStartsAt,
+      updatedAt: firstStartsAt,
+      deletedAt: null,
+      availability: { sourceType: "TECHNICIAN" },
+      service: null,
+      technicianService: {
+        id: technicianServiceId,
+        name: `Service ${technicianServiceId}`,
+        priceAmount: 5_000,
+        currency: "JPY",
+        durationMinutes: 60
+      },
+      shop: { id: 16, pricingMode: "TECHNICIAN", serviceLocation: null },
+      technicianProfile: { id: 47, userId: 707 }
+    });
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 101 }]),
+      scheduleSlot: {
+        findMany: jest.fn().mockResolvedValue([
+          slot(201, 101, firstStartsAt, firstEndsAt),
+          slot(202, 102, secondStartsAt, secondEndsAt)
+        ])
+      }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(repository.createBooking({
+      customerUserId: 101,
+      technicianServiceId: 101,
+      technicianServiceIds: [101, 102],
+      scheduleSlotId: 201,
+      scheduleSlotIds: [201, 202],
+      expectedPriceAmountJpy: 10_000,
+      fulfillmentMode: "store",
+      serviceLocation: { source: "SHOP_LOCATION" }
+    })).resolves.toBeNull();
+  });
+
   it("uses overlap bounds without dropping merchant and technician identity scope", async () => {
     const bookingOrder = { findMany: jest.fn(async () => []), count: jest.fn(async () => 0) };
     const repository = new BookingRepository({ bookingOrder } as never);
@@ -484,7 +541,7 @@ describe("BookingRepository order list scope", () => {
     expect(bookingOrder.count).toHaveBeenCalledWith({ where });
   });
 
-  it("creates an affiliated merchant plan without trimming it around an existing booking", async () => {
+  it("lets direct shop scheduling create a shop-owned slot without technician availability", async () => {
     const startsAt = new Date("2026-08-29T13:00:00.000Z");
     const endsAt = new Date("2026-08-29T14:00:00.000Z");
     const scheduleFindFirst = jest.fn().mockResolvedValue(null);
@@ -529,7 +586,9 @@ describe("BookingRepository order list scope", () => {
         create: jest.fn().mockResolvedValue(createdSlot)
       },
       bookingOrder: { findFirst: jest.fn().mockResolvedValue({ id: 700 }) },
-      availability: { create: availabilityCreate }
+      availability: {
+        create: availabilityCreate
+      }
     };
     const repository = new BookingRepository({
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
@@ -555,11 +614,11 @@ describe("BookingRepository order list scope", () => {
     }));
     expect(scheduleFindFirst.mock.calls[0]?.[0]?.where).not.toHaveProperty("shopId");
     expect(availabilityCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        sourceType: "SHOP",
-        visibility: "SHOP_ONLY"
-      })
+      data: expect.objectContaining({ sourceType: "SHOP", visibility: "SHOP_ONLY" })
     });
+    expect(tx.scheduleSlot.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ availabilityId: 501 }) })
+    );
   });
 
   it("projects technician-owned slots onto the selected technician service shop", async () => {
@@ -651,7 +710,7 @@ describe("BookingRepository order list scope", () => {
         shopId: 11,
         technicianProfileId: 22,
         sourceType: "TECHNICIAN",
-        visibility: "AFFILIATED_SHOPS"
+        visibility: "TECHNICIAN_SHOPS"
       })
     });
     expect(scheduleCreate).toHaveBeenCalledWith(
@@ -685,6 +744,105 @@ describe("BookingRepository order list scope", () => {
     })).resolves.toEqual({ outcome: "not_found" });
   });
 
+  it("rejects merchant schedule creation outside technician-owned availability", async () => {
+    const startsAt = new Date("2026-09-21T01:00:00.000Z");
+    const endsAt = new Date("2026-09-21T02:00:00.000Z");
+    const tx = {
+      entitySuspension: { findFirst: jest.fn().mockResolvedValue(null) },
+      shop: { findFirst: jest.fn().mockResolvedValue({ id: 16 }) },
+      service: { findFirst: jest.fn().mockResolvedValue({ id: 20, durationMinutes: 60 }) },
+      technicianShopAffiliation: {
+        findFirst: jest.fn().mockResolvedValue({ id: 91, relationshipType: "PARTNER" })
+      },
+      technicianProfile: { update: jest.fn().mockResolvedValue({ id: 47 }) },
+      scheduleCycle: { findFirst: jest.fn().mockResolvedValue({ id: 301 }) },
+      availability: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(repository.createScheduleSlot({
+      scope: "merchant",
+      shopId: 16,
+      serviceId: 20,
+      technicianProfileId: 47,
+      startsAt,
+      endsAt,
+      capacity: 1
+    })).resolves.toEqual({ outcome: "outside_availability" });
+
+    expect(tx.availability.findFirst).toHaveBeenCalledWith({
+      where: {
+        technicianProfileId: 47,
+        sourceType: "TECHNICIAN",
+        visibility: "TECHNICIAN_SHOPS",
+        isActive: true,
+        isScheduleControlWindow: true,
+        deletedAt: null,
+        startsAt: { lte: startsAt },
+        endsAt: { gte: endsAt }
+      },
+      select: { id: true }
+    });
+  });
+
+  it("rejects moving a merchant schedule outside technician-owned availability", async () => {
+    const startsAt = new Date("2026-09-22T01:00:00.000Z");
+    const endsAt = new Date("2026-09-22T02:00:00.000Z");
+    const existingStartsAt = new Date("2026-09-21T01:00:00.000Z");
+    const existingEndsAt = new Date("2026-09-21T02:00:00.000Z");
+    const tx = {
+      entitySuspension: { findFirst: jest.fn().mockResolvedValue(null) },
+      technicianProfile: { update: jest.fn().mockResolvedValue({ id: 47 }) },
+      scheduleCycle: { findFirst: jest.fn().mockResolvedValue({ id: 301 }) },
+      scheduleSlot: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 49019,
+          shopId: 16,
+          technicianProfileId: 47,
+          serviceId: 20,
+          technicianServiceId: null,
+          startsAt: existingStartsAt,
+          endsAt: existingEndsAt,
+          capacity: 1,
+          bookedCount: 0,
+          status: "AVAILABLE",
+          availabilityId: 49018,
+          availability: { sourceType: "TECHNICIAN" },
+          service: { durationMinutes: 60 },
+          technicianService: null
+        })
+      },
+      availability: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(repository.updateScheduleSlot({
+      scope: "merchant",
+      shopId: 16,
+      id: 49019,
+      startsAt,
+      endsAt
+    })).resolves.toEqual({ outcome: "outside_availability" });
+
+    expect(tx.availability.findFirst).toHaveBeenCalledWith({
+      where: {
+        technicianProfileId: 47,
+        sourceType: "TECHNICIAN",
+        visibility: "TECHNICIAN_SHOPS",
+        isActive: true,
+        isScheduleControlWindow: true,
+        deletedAt: null,
+        startsAt: { lte: startsAt },
+        endsAt: { gte: endsAt }
+      },
+      select: { id: true }
+    });
+  });
+
   it("does not resolve profile.shopId as an effective technician affiliation", async () => {
     const technicianProfile = { findFirst: jest.fn().mockResolvedValue({
       shopId: 16,
@@ -701,7 +859,7 @@ describe("BookingRepository order list scope", () => {
     );
 
     expect(source).toContain('input.scope === "technician" ? "TECHNICIAN" : "SHOP"');
-    expect(source).toContain('input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY"');
+    expect(source).toContain('input.scope === "technician" ? "TECHNICIAN_SHOPS" : "SHOP_ONLY"');
   });
 
   it("serializes and fingerprints technician manual-booking schedule creation for idempotent retries", async () => {
@@ -740,7 +898,10 @@ describe("BookingRepository order list scope", () => {
     const capacityField = Symbol("capacity");
     const scheduleSlot = {
       fields: { capacity: capacityField },
-      findMany: jest.fn(async () => []),
+      findMany: jest.fn(async (args: { where: Record<string, unknown> }) => {
+        void args;
+        return [];
+      }),
       count: jest.fn(async () => 0)
     };
     const repository = new BookingRepository(availabilityClient({
@@ -761,8 +922,10 @@ describe("BookingRepository order list scope", () => {
       status: "AVAILABLE",
       bookedCount: { lt: capacityField },
       technicianProfileId: 17,
-      startsAt: { gte: new Date("2026-08-31T15:00:00.000Z") },
-      endsAt: { lte: new Date("2026-10-01T15:00:00.000Z") },
+      startsAt: {
+        gte: new Date("2026-08-31T15:00:00.000Z"),
+        lt: new Date("2026-10-01T15:00:00.000Z")
+      },
       shop: {
         deletedAt: null,
         status: "published",
@@ -828,6 +991,8 @@ describe("BookingRepository order list scope", () => {
         }
       ])
     });
+    const actualWhere = scheduleSlot.findMany.mock.calls[0]?.[0]?.where;
+    expect(actualWhere).not.toHaveProperty("endsAt");
     expect(scheduleSlot.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expectedWhere
@@ -1094,8 +1259,10 @@ describe("BookingRepository order list scope", () => {
       expect.objectContaining({
         deletedAt: null,
         serviceId: 12,
-        startsAt: { gte: new Date("2026-09-02T15:00:00.000Z") },
-        endsAt: { lte: new Date("2026-09-03T15:00:00.000Z") },
+        startsAt: {
+          gte: new Date("2026-09-02T15:00:00.000Z"),
+          lt: new Date("2026-09-03T15:00:00.000Z")
+        },
         service: { deletedAt: null, status: "published" },
         shop: expect.objectContaining({ deletedAt: null, status: "published" })
       })

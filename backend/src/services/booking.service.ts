@@ -465,8 +465,10 @@ export class BookingService {
       orderType: input.orderType ?? "booking",
       serviceId: input.serviceId,
       technicianServiceId: input.technicianServiceId,
+      technicianServiceIds: input.technicianServiceIds,
       nominatedTechnicianProfileId: input.nominatedTechnicianProfileId,
       scheduleSlotId: input.scheduleSlotId,
+      scheduleSlotIds: input.scheduleSlotIds,
       fulfillmentMode: input.fulfillmentMode,
       serviceLocation:
         input.fulfillmentMode === "store"
@@ -2006,6 +2008,8 @@ export class BookingService {
       message:
         result.outcome === "duration_mismatch"
           ? "error.schedule.duration_mismatch"
+          : result.outcome === "outside_availability"
+            ? "error.schedule.outside_availability"
           : "error.schedule.conflict",
       statusCode: 409
     });

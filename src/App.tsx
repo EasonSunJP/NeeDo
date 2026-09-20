@@ -85,6 +85,7 @@ import { MessagesPage } from "./pages/user/MessagesPage";
 import { ProfileDetailPage } from "./pages/user/ProfileDetailPage";
 import { ServiceDetailPage } from "./pages/user/ServiceDetailPage";
 import { StoreDetailPage } from "./pages/user/StoreDetailPage";
+import { TechnicianServiceDetailPage } from "./pages/user/TechnicianServiceDetailPage";
 import { TechnicianServicesPage } from "./pages/user/TechnicianServicesPage";
 import { SupportPage } from "./pages/user/SupportPage";
 import { UserCenterPage } from "./pages/user/UserCenterPage";
@@ -1233,6 +1234,7 @@ export default function App() {
               <Route path="/stores" element={protect("user", <CategoryListRedirect type="store" />)} />
               <Route path="/stores/:id" element={protect("user", <StoreDetailPage />)} />
               <Route path="/stores/:shopId/technicians/:technicianId/services" element={protect("user", <TechnicianServicesPage scope="user" />)} />
+              <Route path="/technician-services/:id" element={protect("user", <TechnicianServiceDetailPage />)} />
               <Route path="/profiles/:entityType/:id/followers" element={protect("user", <SocialRelationshipsPage />)} />
               <Route path="/profiles/:entityType/:id/following" element={protect("user", <SocialRelationshipsPage />)} />
               <Route path="/profiles/:entityType/:id" element={protect("user", <ProfileDetailPage />)} />
@@ -1409,6 +1411,7 @@ export default function App() {
               <Route path="/merchant/profiles/:entityType/:id" element={protect("merchant", <ProfileDetailPage />)} />
               <Route path="/merchant/stores/:id" element={protect("merchant", <StoreDetailPage scope="merchant" />)} />
               <Route path="/merchant/stores/:shopId/technicians/:technicianId/services" element={protect("merchant", <TechnicianServicesPage scope="merchant" />)} />
+              <Route path="/merchant/technician-services/:id" element={protect("merchant", <TechnicianServiceDetailPage scope="merchant" />)} />
               <Route path="/merchant/settings" element={protect("merchant", <UnifiedSettingsPage portal="merchant" />)} />
               <Route path="/merchant/settings/theme" element={protect("merchant", <UnifiedSettingsThemePage portal="merchant" />)} />
               <Route path="/merchant/settings/language" element={protect("merchant", <UnifiedSettingsLanguagePage portal="merchant" />)} />
@@ -1525,6 +1528,7 @@ export default function App() {
               <Route path="/technician/profiles/:entityType/:id/following" element={protect("technician", <SocialRelationshipsPage />)} />
               <Route path="/technician/profiles/:entityType/:id" element={protect("technician", <ProfileDetailPage />)} />
               <Route path="/technician/stores/:shopId/technicians/:technicianId/services" element={protect("technician", <TechnicianServicesPage scope="technician" />)} />
+              <Route path="/technician/technician-services/:id" element={protect("technician", <TechnicianServiceDetailPage scope="technician" />)} />
               <Route path="/technician/settings" element={protect("technician", <UnifiedSettingsPage portal="technician" />)} />
               <Route path="/technician/settings/theme" element={protect("technician", <UnifiedSettingsThemePage portal="technician" />)} />
               <Route path="/technician/settings/language" element={protect("technician", <UnifiedSettingsLanguagePage portal="technician" />)} />

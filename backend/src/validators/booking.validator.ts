@@ -98,11 +98,11 @@ export const availabilityListQuerySchema = z
         path: ["serviceId"]
       });
     }
-    if (!value.serviceId && !value.technicianServiceId && !value.technicianId) {
+    if (!value.serviceId && !value.technicianServiceId && !value.technicianId && !value.shopId) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "serviceId, technicianServiceId, or technicianId is required",
-        path: ["technicianId"]
+        message: "serviceId, technicianServiceId, technicianId, or shopId is required",
+        path: ["shopId"]
       });
     }
     if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
@@ -160,9 +160,11 @@ const bookingBaseSchema = z.object({
   expectedPriceAmountJpy: z.coerce.number().int().nonnegative(),
   serviceId: z.coerce.number().int().positive().optional(),
   technicianServiceId: z.coerce.number().int().positive().optional(),
+  technicianServiceIds: z.array(z.coerce.number().int().positive()).min(2).max(10).optional(),
   nominatedTechnicianProfileId: z.coerce.number().int().positive().optional(),
   exchangeIntelligencePostId: z.coerce.number().int().positive().optional(),
   scheduleSlotId: z.coerce.number().int().positive(),
+  scheduleSlotIds: z.array(z.coerce.number().int().positive()).min(2).max(10).optional(),
   orderType: z.enum(["booking", "request"]).optional(),
   paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
   note: z.string().trim().max(500).optional(),
@@ -193,6 +195,26 @@ export const bookingCreateBodySchema = z
     path: ["serviceId"]
   })
   .superRefine((value, context) => {
+    const hasBundleSelectors = value.technicianServiceIds !== undefined || value.scheduleSlotIds !== undefined;
+    if (hasBundleSelectors) {
+      if (
+        value.fulfillmentMode !== "store" ||
+        !value.technicianServiceId ||
+        !value.technicianServiceIds ||
+        !value.scheduleSlotIds ||
+        value.technicianServiceIds.length !== value.scheduleSlotIds.length ||
+        value.technicianServiceIds[0] !== value.technicianServiceId ||
+        value.scheduleSlotIds[0] !== value.scheduleSlotId ||
+        new Set(value.technicianServiceIds).size !== value.technicianServiceIds.length ||
+        new Set(value.scheduleSlotIds).size !== value.scheduleSlotIds.length
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Technician service bundles require matching ordered store-only selectors",
+          path: ["technicianServiceIds"]
+        });
+      }
+    }
     if (
       value.exchangeIntelligencePostId &&
       (value.affiliateCode !== undefined || value.affiliatePublicToken !== undefined)

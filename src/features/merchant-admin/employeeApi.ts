@@ -102,7 +102,7 @@ interface EmployeeScheduleEventBase {
 
 export interface EmployeeScheduleVisibleEvent extends EmployeeScheduleEventBase {
   kind: "availability" | "schedule" | "booking";
-  visibility: "current_shop" | "affiliated_shops";
+  visibility: "current_shop" | "technician_shops";
   status:
     | "available"
     | "scheduled"

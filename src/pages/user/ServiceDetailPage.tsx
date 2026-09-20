@@ -4,11 +4,12 @@ import { AppIcon, floatingHeaderControlButtonClassName, type IconName } from "..
 import { MobileFullscreenCloseButton, MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
+import { ServiceBookingActionBar } from "../../components/mobile/ServiceBookingActionBar";
+import { ServiceDetailHeaderFade } from "../../components/mobile/ServiceDetailHeaderFade";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { ServiceFlowSection, mobileDetailCardClassName, mobileDetailInnerCardClassName } from "../../components/mobile/ServiceFlowSection";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
-import { Button } from "../../components/ui/Button";
 import { HighlightedTagText } from "../../components/ui/HighlightedTagText";
 import {
   coreReadApi,
@@ -209,6 +210,7 @@ function ServiceDetailStatus({
         closeLabel="关闭服务详情"
         onBack={() => navigate(-1)}
         onClose={() => navigate(-1)}
+        overlay={<ServiceDetailHeaderFade />}
         title="服务详情"
       />
       <main className="flex min-h-0 flex-1 items-center justify-center px-5 py-16">
@@ -314,10 +316,11 @@ function ServiceDetailContent() {
         info={`${service.fastestArrival} · ${service.serviceAreas.slice(0, 2).join(" / ")}`}
         onBack={() => navigate(-1)}
         onClose={() => navigate(-1)}
+        overlay={<ServiceDetailHeaderFade />}
         title="服务详情"
       />
 
-      <main className="client-app-gutter scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+6rem)] pt-4">
+      <main className="client-app-gutter scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+11rem)] pt-4">
         <ServiceDetailHero onPreview={() => setHeroPreviewOpen(true)} service={service} />
 
         <section className={mobileDetailCardClassName}>
@@ -467,15 +470,11 @@ function ServiceDetailContent() {
         </section>
       </main>
 
-      <footer className="absolute inset-x-0 bottom-0 z-20 grid grid-cols-[1fr,auto] items-center gap-3 border-t border-transparent bg-transparent px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-4">
-        <div>
-          <p className="text-xs font-bold text-ink/45">价格</p>
-          <strong className={`text-xl ${servicePriceHighlightClassName}`}>{yen(selectedPackage?.price ?? service.priceFrom)}</strong>
-        </div>
-        <Button className="min-w-[150px]" to={checkoutHref}>
-          立即预约
-        </Button>
-      </footer>
+      <ServiceBookingActionBar
+        amountJpy={selectedPackage?.price ?? service.priceFrom}
+        confirmTo={checkoutHref}
+        contactTo="/messages"
+      />
 
       {heroPreviewOpen ? (
         <div className="fixed inset-0 z-[96] bg-black/90 px-4 py-6">

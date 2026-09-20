@@ -15,6 +15,7 @@ import {
   createBookingIdempotencyKey,
   type AdministrativeRegionReference,
   type BookingScheduleSlot,
+  type CreateBookingInput,
   type ManualPaymentMethod,
   type TechnicianServiceBookingContext
 } from "../../features/booking/api";
@@ -64,6 +65,7 @@ import {
   isCheckoutSlotBookable,
   resolveInitialCheckoutSlotId
 } from "./formal-checkout/checkoutTimeSlots";
+import { parseTechnicianServiceBundleIds } from "./formal-checkout/checkoutServiceRoute";
 
 type LoadStatus = "loading" | "success" | "error";
 type TechnicianLoadStatus = "idle" | "loading" | "error";
@@ -227,12 +229,47 @@ function SectionTitle({ children }: { children: string }) {
   return <h2 className="px-1 text-sm font-black tracking-wide text-[color:var(--client-primary)]">{children}</h2>;
 }
 
+function technicianBookingContextToCheckoutService(
+  bookingContext: TechnicianServiceBookingContext,
+  serviceId: number,
+  t: (key: CheckoutTextKey, values?: CheckoutTextValues) => string
+): CheckoutServiceContext {
+  if (bookingContext.target.id !== serviceId) {
+    throw new CheckoutSourceError("technicianServiceMismatch");
+  }
+  return {
+    catalogRef: { type: "technician_service", id: serviceId },
+    publicId: bookingContext.serviceCard.publicId,
+    serviceInfo: mapTechnicianBookingContextServiceToUnifiedData(
+      bookingContext.serviceCard,
+      serviceModeLabel(bookingContext.serviceCard.serviceMode, t)
+    ),
+    serviceDetailPath: bookingContext.serviceCard.detailPath,
+    serviceMode: bookingContext.serviceCard.serviceMode,
+    shop: {
+      name: bookingContext.shopCard.name,
+      city: "",
+      address: bookingContext.shopCard.address,
+      contactPath: bookingContext.shopCard.detailPath
+    },
+    coreService: null,
+    technicianPublisher: bookingContext.technicianCard
+  };
+}
+
 export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalogRef }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const serviceId = catalogRef.type === "shop_service" ? catalogRef.id : null;
   const technicianServiceId = catalogRef.type === "technician_service" ? catalogRef.id : null;
+  const bundleParam = searchParams.get("serviceIds");
+  const technicianServiceIds = useMemo(
+    () => technicianServiceId === null
+      ? []
+      : parseTechnicianServiceBundleIds(technicianServiceId, bundleParam),
+    [bundleParam, technicianServiceId]
+  );
   const technicianServiceShopId = catalogRef.type === "technician_service" ? catalogRef.shopId : undefined;
   const technicianServiceTechnicianId = catalogRef.type === "technician_service" ? catalogRef.technicianId : undefined;
   const exchangePostParam = searchParams.get("exchangePost");
@@ -245,6 +282,8 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [loadError, setLoadError] = useState<CheckoutTextKey | null>(null);
   const [revision, setRevision] = useState(0);
   const [service, setService] = useState<CheckoutServiceContext | null>(null);
+  const [bundleServices, setBundleServices] = useState<CheckoutServiceContext[]>([]);
+  const [bundleSlotIds, setBundleSlotIds] = useState<Record<number, number[]>>({});
   const [intelligenceSource, setIntelligenceSource] = useState<NonNullable<ExchangePost["intelligence"]> | null>(null);
   const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
   const [slotSelectionInvalid, setSlotSelectionInvalid] = useState(false);
@@ -423,37 +462,28 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               technicianPublisher: null
             };
           })
-        : bookingApi.getTechnicianServiceBookingContext(technicianServiceId!).then((bookingContext: TechnicianServiceBookingContext) => {
-            if (bookingContext.target.id !== technicianServiceId) {
-              throw new CheckoutSourceError("technicianServiceMismatch");
-            }
-            return {
-              catalogRef,
-              publicId: bookingContext.serviceCard.publicId,
-              serviceInfo: mapTechnicianBookingContextServiceToUnifiedData(
-                bookingContext.serviceCard,
-                serviceModeLabel(bookingContext.serviceCard.serviceMode, t)
-              ),
-              serviceDetailPath: bookingContext.serviceCard.detailPath,
-              serviceMode: bookingContext.serviceCard.serviceMode,
-              shop: {
-                name: bookingContext.shopCard.name,
-                city: "",
-                address: bookingContext.shopCard.address,
-                contactPath: bookingContext.shopCard.detailPath
-              },
-              coreService: null,
-              technicianPublisher: bookingContext.technicianCard
-            };
-          });
+        : bookingApi.getTechnicianServiceBookingContext(technicianServiceId!)
+            .then((bookingContext) => technicianBookingContextToCheckoutService(
+              bookingContext,
+              technicianServiceId!,
+              t
+            ));
+    const bundleServicePromises = technicianServiceIds.length > 1
+      ? technicianServiceIds.map((id, index) => index === 0
+          ? servicePromise
+          : bookingApi.getTechnicianServiceBookingContext(id)
+              .then((context) => technicianBookingContextToCheckoutService(context, id, t)))
+      : [servicePromise];
     const exchangePromise = exchangePostParam === null
       ? Promise.resolve<ExchangePost | null>(null)
       : exchangePostId === null
         ? Promise.reject<ExchangePost | null>(new CheckoutSourceError("sourceLinkInvalid"))
         : getExchangePost(String(exchangePostId));
 
-    Promise.all([servicePromise, exchangePromise])
-      .then(async ([serviceContext, sourcePost]) => {
+    Promise.all([Promise.all(bundleServicePromises), exchangePromise])
+      .then(async ([serviceContexts, sourcePost]) => {
+        const serviceContext = serviceContexts[0]!;
+        if (serviceContexts.length > 1 && sourcePost) throw new CheckoutSourceError("sourceMismatch");
         const source = sourcePost ? ensureIntelligenceCheckoutSource(sourcePost, catalogRef) : null;
         const availabilityWindow = source
           ? {
@@ -461,25 +491,62 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               to: source.booking.serviceWindow.endsAt
             }
           : selectedDayWindow;
-        const availability = await loadAvailabilityWindow({
-          serviceId: serviceId ?? undefined,
-          technicianServiceId: technicianServiceId ?? undefined,
-          ...(serviceId && shopServiceTechnicianId ? { technicianId: shopServiceTechnicianId } : {}),
-          from: availabilityWindow.from,
-          to: availabilityWindow.to,
-          includeUnavailable: true
-        });
-        return { serviceContext, availability, source };
+        const bundleTailMs = serviceContexts.slice(1).reduce(
+          (total, item) => total + (item.serviceInfo.durationMinutes ?? 0) * 60_000,
+          0
+        );
+        const availabilitySets = await Promise.all(
+          (technicianServiceIds.length > 0 ? technicianServiceIds : [null]).map((bundleServiceId, index) =>
+            loadAvailabilityWindow({
+              serviceId: serviceId ?? undefined,
+              technicianServiceId: bundleServiceId ?? technicianServiceId ?? undefined,
+              ...(serviceId && shopServiceTechnicianId ? { technicianId: shopServiceTechnicianId } : {}),
+              from: availabilityWindow.from,
+              to: index === 0 || bundleTailMs === 0
+                ? availabilityWindow.to
+                : new Date(new Date(availabilityWindow.to).getTime() + bundleTailMs).toISOString(),
+              includeUnavailable: true
+            })
+          )
+        );
+        return { serviceContext, serviceContexts, availabilitySets, source };
       })
-      .then(({ serviceContext, availability, source }) => {
+      .then(({ serviceContext, serviceContexts, availabilitySets, source }) => {
         if (!active) return;
-        const formalSlots = availability
+        const primarySlots = availabilitySets[0]!
           .filter((slot) => catalogRef.type === "shop_service"
             ? slot.serviceId === catalogRef.id && slot.technicianServiceId === null
             : slot.technicianServiceId === catalogRef.id && slot.serviceId === null)
           .filter((slot) => source ? slotInsideIntelligenceWindow(slot, source) : true)
           .slice()
           .sort((left, right) => left.startsAt.localeCompare(right.startsAt) || left.id - right.id);
+        const nextBundleSlotIds: Record<number, number[]> = {};
+        const formalSlots = technicianServiceIds.length <= 1
+          ? primarySlots
+          : primarySlots.flatMap((primarySlot) => {
+              const sequence = [primarySlot];
+              let nextStart = primarySlot.endsAt;
+              for (let index = 1; index < technicianServiceIds.length; index += 1) {
+                const next = availabilitySets[index]!.find((candidate) =>
+                  candidate.technicianServiceId === technicianServiceIds[index] &&
+                  candidate.shopId === primarySlot.shopId &&
+                  candidate.technicianProfileId === primarySlot.technicianProfileId &&
+                  candidate.startsAt === nextStart &&
+                  isCheckoutSlotBookable(candidate, Date.now())
+                );
+                if (!next) return [];
+                sequence.push(next);
+                nextStart = next.endsAt;
+              }
+              if (!sequence.every((slot) => isCheckoutSlotBookable(slot, Date.now()))) return [];
+              nextBundleSlotIds[primarySlot.id] = sequence.map((slot) => slot.id);
+              return [{
+                ...primarySlot,
+                endsAt: sequence[sequence.length - 1]!.endsAt,
+                priceAmount: String(sequence.reduce((sum, slot) => sum + Number(slot.priceAmount), 0)),
+                durationMinutes: sequence.reduce((sum, slot) => sum + slot.durationMinutes, 0)
+              }];
+            });
         const requestedTime = searchParams.get("time");
         const explicitSlotId = requestedSlotParam !== null ? requestedSlotId : persistedSlotId;
         const resolvedSlotId = requestedDateInvalid || (requestedSlotParam !== null && requestedSlotId === null)
@@ -487,6 +554,8 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           : resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime, explicitSlotId);
 
         setService(serviceContext);
+        setBundleServices(serviceContexts);
+        setBundleSlotIds(nextBundleSlotIds);
         setIntelligenceSource(source);
         setSlots(formalSlots);
         setSelectedSlotId(resolvedSlotId);
@@ -497,6 +566,8 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       .catch((error: unknown) => {
         if (!active) return;
         setService(null);
+        setBundleServices([]);
+        setBundleSlotIds({});
         setIntelligenceSource(null);
         setSlots([]);
         setSelectedSlotId(null);
@@ -506,7 +577,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     return () => {
       active = false;
     };
-  }, [catalogRef.id, catalogRef.type, exchangePostId, exchangePostParam, hasRequestedSlotSelection, language, persistedSlotId, requestedDateInvalid, requestedSlotId, requestedSlotParam, revision, searchParams, selectedDate, selectedDayWindow, serviceId, shopServiceTechnicianId, technicianServiceId, technicianServiceShopId, technicianServiceTechnicianId]);
+  }, [bundleParam, catalogRef.id, catalogRef.type, exchangePostId, exchangePostParam, hasRequestedSlotSelection, language, persistedSlotId, requestedDateInvalid, requestedSlotId, requestedSlotParam, revision, searchParams, selectedDate, selectedDayWindow, serviceId, shopServiceTechnicianId, technicianServiceId, technicianServiceIds, technicianServiceShopId, technicianServiceTechnicianId]);
 
   useEffect(() => {
     const nextBoundaryMs = slots.reduce<number | null>((earliest, slot) => {
@@ -707,6 +778,8 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     ? serviceFulfillmentModes(checkoutServiceMode).length === 2
     : false;
   const canSubmitBooking = Boolean(selectedSlot) && (
+    technicianServiceIds.length <= 1 || Boolean(selectedSlot && bundleSlotIds[selectedSlot.id])
+  ) && (
     fulfillmentMode === "store" ||
     Boolean(homeAddress.addressLine1.trim() && selectedAdmin1Code && selectedAdmin2Code && estimateStatus === "success")
   );
@@ -755,6 +828,9 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       : service?.serviceInfo ?? null,
     [intelligenceSource, language, service?.serviceInfo]
   );
+  const displayServiceInfos = bundleServices.length > 1
+    ? bundleServices.map((item) => item.serviceInfo)
+    : displayServiceInfo ? [displayServiceInfo] : [];
   const sourcePublisherData = useMemo(() => {
     const publisher = intelligenceSource?.publisherCard ?? fixedTechnicianPublisher;
     if (!publisher) return null;
@@ -875,6 +951,11 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       setSlotSelectionInvalid(true);
       return;
     }
+    if (technicianServiceIds.length > 1 && !bundleSlotIds[freshSelectedSlot.id]) {
+      setSelectedSlotId(null);
+      setSlotSelectionInvalid(true);
+      return;
+    }
     if (!isAuthenticated) {
       navigate(`/login/user?redirect=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
       return;
@@ -901,22 +982,33 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       const fulfillment = fulfillmentMode === "home"
         ? { fulfillmentMode: "home" as const, serviceLocation: { countryCode: "JP" as const, admin1Code: selectedAdmin1Code, admin2Code: selectedAdmin2Code }, fulfillmentAddress: Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress, travelEstimatePublicId: estimate!.publicId }
         : { fulfillmentMode: "store" as const };
-      const bookingInput = {
-        ...(catalogRef.type === "shop_service"
-          ? { serviceId: catalogRef.id }
-          : { technicianServiceId: catalogRef.id }),
+      const bookingCommon = {
         ...(exchangePostId ? { exchangeIntelligencePostId: exchangePostId } : {}),
         ...(selectedTechnicianProfileId ? { nominatedTechnicianProfileId: selectedTechnicianProfileId } : {}),
         expectedPriceAmountJpy:
-          Number(displayServiceInfo?.priceAmount ?? freshSelectedSlot.priceAmount) +
+          Number(technicianServiceIds.length > 1
+            ? freshSelectedSlot.priceAmount
+            : displayServiceInfo?.priceAmount ?? freshSelectedSlot.priceAmount) +
           (selectedTechnicianProfileId ? freshSelectedSlot.nominationFeeJpy ?? 0 : 0),
         scheduleSlotId: freshSelectedSlot.id,
         ...fulfillment,
         paymentMethod,
         note: note.trim() || undefined
       };
+      const bookingInput: CreateBookingInput = catalogRef.type === "shop_service"
+        ? { ...bookingCommon, serviceId: catalogRef.id }
+        : {
+            ...bookingCommon,
+            technicianServiceId: catalogRef.id,
+            ...(technicianServiceIds.length > 1
+              ? {
+                  technicianServiceIds,
+                  scheduleSlotIds: bundleSlotIds[freshSelectedSlot.id]
+                }
+              : {})
+          };
       const fingerprint = JSON.stringify(bookingInput);
-      const idempotency = exchangePostId
+      const idempotency = exchangePostId || technicianServiceIds.length > 1
         ? resolveBookingIdempotencyKey(bookingIdempotencyRef.current, fingerprint)
         : null;
       bookingIdempotencyRef.current = idempotency;
@@ -996,7 +1088,15 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                 <p className="mt-1 text-sm font-bold text-[color:var(--client-text)]" data-no-i18n>{t("sourceLocked")}</p>
               </SurfacePanel>
             ) : null}
-            <UnifiedServiceInfoCard data={displayServiceInfo} detailTo={intelligenceSource?.serviceCard?.detailPath ?? service.serviceDetailPath} />
+            {displayServiceInfos.map((serviceInfo, index) => (
+              <UnifiedServiceInfoCard
+                data={serviceInfo}
+                detailTo={index === 0
+                  ? intelligenceSource?.serviceCard?.detailPath ?? service.serviceDetailPath
+                  : bundleServices[index]?.serviceDetailPath}
+                key={`${serviceInfo.id}-${index}`}
+              />
+            ))}
             {intelligenceSource?.publisherCard?.type === "shop" && sourcePublisherData ? (
               <UnifiedProfileCard
                 data={sourcePublisherData}

@@ -7,7 +7,7 @@ export type AvailabilityWindow = {
   shopId: number;
   technicianProfileId: number;
   sourceType: "shop" | "technician";
-  visibility: "shop_only" | "affiliated_shops";
+  visibility: "shop_only" | "technician_shops";
   startsAt: string;
   endsAt: string;
   capacity: number;

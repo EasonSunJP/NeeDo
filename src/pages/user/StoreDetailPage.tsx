@@ -1390,34 +1390,36 @@ function StoreTechnicianServiceListRow({
           onSelect={onToggleVisibility}
         />
       ) : null}
-      {showSelectionAction && onSelect ? (
-        <StoreSelectionIconButton
-          active={Boolean(selected) && !unavailable}
-          activeIcon="check"
-          className="absolute right-2 top-2 z-30 h-11 w-11"
-          disabled={unavailable}
-          inactiveIcon={unavailable ? "x" : "plus"}
-          label={unavailable ? "当前时间不可约" : selected ? "已选技师" : "待选技师"}
-          onSelect={onSelect}
-        />
-      ) : null}
-      <Link
-        aria-label={`查看${displayName}信息卡`}
-        className="group relative min-h-[158px] overflow-hidden rounded-[14px] bg-black active:scale-[0.99]"
-        title="查看技师信息卡"
-        to={profileTo}
-      >
-        <img
-          alt={displayName}
-          className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
-          src={getGeneratedImageThumbnailUrl(getStoreTechnicianPhoto(technician))}
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/32" />
-        <div className="absolute left-2 top-2 z-20">
-          <SimpleRatingBadge compact value={formatStoreTechnicianRating(technician.rating).toFixed(1)} />
-        </div>
-      </Link>
-      <div className={cn("pointer-events-none absolute top-2 z-20 flex items-start gap-1", (isMerchantEditable || showSelectionAction) ? "right-[58px]" : "right-2")}>
+      <div className="relative min-h-[158px]">
+        <Link
+          aria-label={`查看${displayName}信息卡`}
+          className="group absolute inset-0 overflow-hidden rounded-[14px] bg-black active:scale-[0.99]"
+          title="查看技师信息卡"
+          to={profileTo}
+        >
+          <img
+            alt={displayName}
+            className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
+            src={getGeneratedImageThumbnailUrl(getStoreTechnicianPhoto(technician))}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/32" />
+          <div className="absolute left-2 top-2 z-20">
+            <SimpleRatingBadge compact value={formatStoreTechnicianRating(technician.rating).toFixed(1)} />
+          </div>
+        </Link>
+        {showSelectionAction && onSelect ? (
+          <StoreSelectionIconButton
+            active={Boolean(selected) && !unavailable}
+            activeIcon="check"
+            className="absolute bottom-2 right-2 z-30 h-11 w-11"
+            disabled={unavailable}
+            inactiveIcon={unavailable ? "x" : "plus"}
+            label={unavailable ? "当前时间不可约" : selected ? "已选技师" : "待选技师"}
+            onSelect={onSelect}
+          />
+        ) : null}
+      </div>
+      <div className={cn("pointer-events-none absolute top-2 z-20 flex items-start gap-1", isMerchantEditable ? "right-[58px]" : "right-2")}>
         <IconMetricAction count={favoriteCount} icon="heart" label={`关注 ${favoriteCount}`} size="cluster" />
         <IconMetricAction count={shareCount} icon="share" label={`转发 ${shareCount}`} size="cluster" />
       </div>
@@ -1428,7 +1430,7 @@ function StoreTechnicianServiceListRow({
         title="查看技师服务列表"
         to={serviceListTo}
       >
-        <div className={cn("min-w-0", (isMerchantEditable || showSelectionAction) && "pr-12")}>
+        <div className={cn("min-w-0", isMerchantEditable && "pr-12")}>
           <div className="flex min-w-0 items-center gap-2">
             <h3 className="min-w-0 truncate text-[18px] font-black leading-6 text-[color:var(--client-text)]">{displayName}</h3>
           </div>
@@ -1438,12 +1440,12 @@ function StoreTechnicianServiceListRow({
           </p>
         </div>
 
-        <div className="relative mt-3 rounded-[13px] border border-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)] py-2 pl-3 pr-11">
+        <div className="relative mt-2 rounded-[13px] border border-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)] py-1.5 pl-3 pr-9">
           <span
             aria-hidden="true"
-            className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary-soft)_58%,transparent)] text-[color:var(--client-primary)]"
+            className="absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center justify-center text-[color:var(--client-primary)]"
           >
-            <AppIcon className="h-4 w-4" name="info" />
+            <AppIcon className="h-6 w-6" name="info" />
           </span>
           {hideServicePreview ? (
             <p className="py-2 text-[13px] font-black text-[color:var(--client-text)]">选择该技师并查看服务</p>
@@ -3189,7 +3191,7 @@ export function StoreDetailExperience({
   const selectedCheckoutTarget = menuCards.some((item) => item.sourceServiceId === selectedMenuCardId) ? selectedMenuCardId : primaryCheckoutTarget;
   const formalServiceId = /^[1-9]\d*$/u.test(selectedCheckoutTarget) ? Number(selectedCheckoutTarget) : null;
   useEffect(() => {
-    if (!formalApiOnly || isMerchantEditable || !storeApiId || !formalServiceId) {
+    if (!formalApiOnly || isMerchantEditable || !storeApiId || (!isTechnicianPricingActive && !formalServiceId)) {
       setFormalSlots([]);
       setFormalSlotsStatus("idle");
       return;
@@ -3207,13 +3209,16 @@ export function StoreDetailExperience({
     void loadAvailabilityWindow({
       from: dayWindow.from,
       includeUnavailable: true,
-      serviceId: formalServiceId,
+      serviceId: isTechnicianPricingActive ? undefined : formalServiceId ?? undefined,
       shopId: storeApiId,
       to: dayWindow.to
     })
       .then((slots) => {
         if (!active) return;
-        setFormalSlots(slots.filter((slot) => slot.serviceId === formalServiceId && slot.shopId === storeApiId));
+        setFormalSlots(slots.filter((slot) => (
+          slot.shopId === storeApiId
+          && (isTechnicianPricingActive ? slot.technicianServiceId !== null : slot.serviceId === formalServiceId)
+        )));
         setFormalAvailabilityNowMs(Date.now());
         setFormalSlotsStatus("success");
       })
@@ -3225,15 +3230,15 @@ export function StoreDetailExperience({
     return () => {
       active = false;
     };
-  }, [formalApiOnly, formalServiceId, isMerchantEditable, selectedVisitDate, storeApiId]);
+  }, [formalApiOnly, formalServiceId, isMerchantEditable, isTechnicianPricingActive, selectedVisitDate, storeApiId]);
 
   const formalBookableSlots = useMemo(
     () => formalSlots.filter((slot) => (
-      slot.serviceId === formalServiceId
+      (isTechnicianPricingActive ? slot.technicianServiceId !== null : slot.serviceId === formalServiceId)
       && slot.shopId === storeApiId
       && isCheckoutSlotBookable(slot, formalAvailabilityNowMs)
     )),
-    [formalAvailabilityNowMs, formalServiceId, formalSlots, storeApiId]
+    [formalAvailabilityNowMs, formalServiceId, formalSlots, isTechnicianPricingActive, storeApiId]
   );
   const formalAvailableDateKeys = useMemo(
     () => Array.from(new Set(formalBookableSlots.map((slot) => getTokyoSlotParts(slot.startsAt)?.date).filter((date): date is string => Boolean(date)))),
@@ -3294,7 +3299,7 @@ export function StoreDetailExperience({
         formalBookableSlots
           .filter((slot) => (
             getTokyoSlotParts(slot.startsAt)?.date === formatDateParam(selectedVisitDate)
-            && getTokyoSlotParts(slot.startsAt)?.time === selectedTime
+            && (isTechnicianPricingActive || getTokyoSlotParts(slot.startsAt)?.time === selectedTime)
           ))
           .map((slot) => String(slot.technicianProfileId ?? ""))
       );
@@ -3314,7 +3319,7 @@ export function StoreDetailExperience({
         )
         .map((technician) => technician.id)
     );
-  }, [formalApiOnly, formalBookableSlots, isMerchantEditable, selectedBookingDurationMinutes, selectedTime, selectedVisitDate, store, storeTechnicians]);
+  }, [formalApiOnly, formalBookableSlots, isMerchantEditable, isTechnicianPricingActive, selectedBookingDurationMinutes, selectedTime, selectedVisitDate, store, storeTechnicians]);
   const selectedBookingTechnician = useMemo(
     () => {
       const selected = displayedTechnicians.find(

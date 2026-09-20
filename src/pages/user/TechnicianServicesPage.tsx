@@ -1,177 +1,183 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { PageScaffold, PrimaryButton } from "../../components/client-ui/AppScaffold";
-import { SectionTitle } from "../../components/mobile/SectionTitle";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
+import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
+import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
+import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
+import { MobileShell } from "../../components/mobile/MobileShell";
+import { coreReadApi } from "../../features/core-read/api";
+import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type TechnicianServicePayload } from "../../features/pricing-mode/api";
-import { navItemsForSocialScope, SocialProfileHeader, SocialProfileTopBar } from "../../features/social/components/UnifiedSocialUi";
-import { useSocial } from "../../features/social/context";
-import type { SocialPortalScope, SocialProfile } from "../../features/social/types";
-import { profileKey } from "../../features/social/utils";
+import { socialPaths } from "../../features/social/paths";
+import type { SocialPortalScope } from "../../features/social/types";
 import { cn } from "../../lib/utils";
-import { getScopedTechnicianDynamicPath } from "../../shared/profile-card";
 import { mapTechnicianServiceToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
 import { useEntityStore } from "../../state/entityStore";
-import type { Technician } from "../../types/domain";
-import { buildTechnicianServiceCheckoutRoute } from "./formal-checkout/checkoutServiceRoute";
+import { buildTechnicianServiceCheckoutRoute, getTechnicianServiceDetailPath } from "./formal-checkout/checkoutServiceRoute";
 
 function routeEntityIdToApiId(value: string | undefined) {
-  if (!value) {
-    return null;
-  }
-
-  if (/^[1-9]\d*$/.test(value)) {
-    return Number(value);
-  }
-
+  if (!value) return null;
+  if (/^[1-9]\d*$/.test(value)) return Number(value);
   const suffix = value.match(/(\d+)$/)?.[1];
   return suffix ? Number(suffix) : null;
 }
 
-function buildTechnicianServiceSocialProfile(technician: Technician): SocialProfile {
-  const displayName = technician.nickname?.trim() || technician.name;
-  const coverImages = [...(technician.gallery ?? []), technician.avatar].filter(Boolean);
-
-  return {
-    id: technician.id,
-    entityType: "technician",
-    displayName,
-    handle: displayName,
-    avatar: technician.avatar,
-    coverImage: coverImages[0] ?? technician.avatar,
-    coverImages,
-    bio: technician.bio || "公开同步服务记录、空档更新和专业建议，让预约前的判断更轻松。",
-    location: technician.serviceAreas[0] ? `${technician.serviceAreas[0]} · 东京` : "东京",
-    birthday: technician.age ? `${Math.max(1, 2026 - Number.parseInt(technician.age, 10) || 28)}-05-01` : undefined,
-    joinedAt: new Date(2021, 0, 1).toISOString(),
-    verifiedStatus: "verified",
-    followerCount: Math.max(0, technician.orderCount),
-    followingCount: 0,
-    extraProfileFields: {
-      bookingAction: "可预约服务",
-      languages: technician.languages,
-      nextAvailability: technician.status === "available" ? "今天可约" : technician.status === "busy" ? "稍后可约" : "离线中",
-      serviceFocus: technician.skills.slice(0, 4),
-      serviceTags: [...(technician.profileTags ?? []), ...technician.skills].slice(0, 4)
-    },
-    headline: technician.identityLabel ?? "认证技师"
-  };
-}
-
-function getTechnicianServiceFallbackPath(scope: SocialPortalScope) {
-  return scope === "user" ? "/stores" : `/${scope}`;
+function ServiceSelectionButton({
+  disabled,
+  name,
+  onToggle,
+  selected
+}: {
+  disabled: boolean;
+  name: string;
+  onToggle: () => void;
+  selected: boolean;
+}) {
+  return (
+    <button
+      aria-label={selected ? `取消选择 ${name}` : `选择 ${name}`}
+      aria-pressed={selected}
+      className={cn(
+        "focus-ring grid h-10 w-10 place-items-center rounded-full border-2 transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40",
+        selected
+          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
+          : "border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] text-[color:var(--client-primary)]"
+      )}
+      disabled={disabled}
+      onClick={onToggle}
+      type="button"
+    >
+      {selected ? <AppIcon className="h-5 w-5" name="check" /> : null}
+    </button>
+  );
 }
 
 export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPortalScope } = {}) {
   const { shopId, technicianId } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const apiShopId = routeEntityIdToApiId(shopId);
   const apiTechnicianId = routeEntityIdToApiId(technicianId);
   const { stores, technicians } = useEntityStore();
-  const { getActorForScope, profiles } = useSocial();
   const store = stores.find((item) => item.id === shopId) ?? stores[0];
   const technician = technicians.find((item) => item.id === technicianId) ?? technicians[0];
-  const actorKey = getActorForScope(scope);
-  const technicianProfileKey = technician ? profileKey({ entityType: "technician", id: technician.id }) : "";
-  const technicianProfile = useMemo(
-    () => (technician ? profiles[technicianProfileKey] ?? buildTechnicianServiceSocialProfile(technician) : null),
-    [profiles, technician, technicianProfileKey]
-  );
   const [services, setServices] = useState<TechnicianServicePayload[]>([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const detailQuery = useCoreReadQuery(
+    () => apiTechnicianId ? coreReadApi.getTechnicianDetail(apiTechnicianId) : null,
+    [apiTechnicianId],
+    { enabled: Boolean(apiTechnicianId), key: `core:technician:${apiTechnicianId ?? "missing"}:service-list` }
+  );
 
   useEffect(() => {
-    if (!apiShopId || !apiTechnicianId) {
-      return;
-    }
-
+    if (!apiShopId || !apiTechnicianId) return;
     let mounted = true;
     setLoading(true);
     setFailed(false);
     pricingModeApi
       .listPublicTechnicianServices(apiShopId, apiTechnicianId, { page: 1, pageSize: 20 })
       .then((result) => {
-        if (mounted) {
-          setServices(result.list);
-        }
+        if (!mounted) return;
+        setServices(result.list);
+        setSelectedServiceIds((current) => current.filter((id) => result.list.some((service) => service.id === id)));
       })
       .catch(() => {
-        if (mounted) {
-          setFailed(true);
-        }
+        if (mounted) setFailed(true);
       })
       .finally(() => {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       });
-
     return () => {
       mounted = false;
     };
   }, [apiShopId, apiTechnicianId]);
 
-  return (
-    <PageScaffold contentClassName="space-y-0 pb-32 pt-0" navItems={navItemsForSocialScope(scope)} showTopEdgeMask={false}>
-      {technicianProfile ? (
-        <>
-          <div className="client-app-breakout">
-            <SocialProfileTopBar
-              actorKey={actorKey}
-              onBack={() => navigate(-1)}
-              postCount={services.length}
-              profile={technicianProfile}
-              scope={scope}
-            />
-          </div>
-          <SocialProfileHeader actorKey={actorKey} profile={technicianProfile} scope={scope} />
-        </>
-      ) : null}
+  const toggleServiceSelection = (serviceId: number) => {
+    setSelectedServiceIds((current) => current.includes(serviceId)
+      ? current.filter((id) => id !== serviceId)
+      : [...current, serviceId]);
+  };
+  const selectedServices = useMemo(
+    () => selectedServiceIds.flatMap((id) => services.find((service) => service.id === id) ?? []),
+    [selectedServiceIds, services]
+  );
+  const selectedService = selectedServices[0] ?? null;
+  const checkoutTo = selectedService ? buildTechnicianServiceCheckoutRoute(selectedService.id, {
+    date: searchParams.get("date"),
+    people: searchParams.get("people"),
+    scheduleSlotId: searchParams.get("scheduleSlotId"),
+    serviceIds: selectedServiceIds,
+    time: searchParams.get("time")
+  }) : null;
+  const socialDetail = detailQuery.data;
+  const activityPath = socialDetail?.socialAccountUserId && socialDetail.socialIdentityId
+    ? socialPaths.accountProfile(scope, socialDetail.socialAccountUserId, socialDetail.socialIdentityId)
+    : null;
+  const closePage = () => navigate(scope === "user" ? "/" : `/${scope}`);
 
-      <section className="space-y-4 border-t border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-4 py-4">
-        <SectionTitle
-          caption={store ? `${store.name} · ${technician?.name ?? "技师"}` : "技师可预约服务"}
+  return (
+    <MobileShell showBottomNav={false}>
+      <MobileFullscreenPage>
+        <MobileFullscreenHeader
+          info={store ? `${store.name} · ${technician?.name ?? socialDetail?.displayName ?? "技师"}` : "技师可预约服务"}
+          onBack={() => navigate(-1)}
+          onClose={closePage}
           title="服务内容"
         />
-        {failed ? (
-          <div className="rounded-[18px] border border-line bg-white p-4 text-sm font-bold text-ink/58">
-            暂时无法读取技师服务，稍后再试。
-          </div>
-        ) : null}
-        <div className="grid gap-3">
-          {services.length > 0 ? services.map((service) => (
-            <UnifiedServiceInfoCard
-              actionSlot={scope === "user" ? (
-                <PrimaryButton
-                  className="h-9 px-3 text-xs"
-                  to={buildTechnicianServiceCheckoutRoute(service.id, {
-                    date: searchParams.get("date"),
-                    people: searchParams.get("people"),
-                    scheduleSlotId: searchParams.get("scheduleSlotId"),
-                    time: searchParams.get("time")
-                  })}
-                >
-                  预约这个服务
-                </PrimaryButton>
-              ) : undefined}
-              className={cn(loading && "opacity-70")}
-              data={mapTechnicianServiceToUnifiedData(service)}
-              key={service.id || service.name}
-            />
-          )) : (
+        <main className="client-app-gutter scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto pb-[calc(env(safe-area-inset-bottom,0px)+112px)] pt-4">
+          {failed ? (
             <div className="rounded-[18px] border border-line bg-white p-4 text-sm font-bold text-ink/58">
-              {loading ? "正在读取技师服务..." : "该技师暂未开放可预约服务。"}
+              暂时无法读取技师服务，稍后再试。
             </div>
-          )}
-        </div>
-        <Link
-          className="block text-center text-xs font-bold text-[color:var(--client-muted)]"
-          to={technician ? getScopedTechnicianDynamicPath(scope, technician) : getTechnicianServiceFallbackPath(scope)}
-        >
-          查看技师动态
-        </Link>
-      </section>
-    </PageScaffold>
+          ) : null}
+          <div className="grid gap-3">
+            {services.length > 0 ? services.map((service) => {
+              const selected = selectedServiceIds.includes(service.id);
+              return (
+                <UnifiedServiceInfoCard
+                  actionSlot={scope === "user" ? (
+                    <ServiceSelectionButton
+                      disabled={!service.isBookable}
+                      name={service.name}
+                      onToggle={() => toggleServiceSelection(service.id)}
+                      selected={selected}
+                    />
+                  ) : undefined}
+                  className={cn(loading && "opacity-70", selected && "ring-2 ring-[color:var(--client-primary)]")}
+                  data={mapTechnicianServiceToUnifiedData(service)}
+                  detailTo={getTechnicianServiceDetailPath(service.id, scope)}
+                  key={service.id || service.name}
+                />
+              );
+            }) : (
+              <div className="rounded-[18px] border border-line bg-white p-4 text-sm font-bold text-ink/58">
+                {loading ? "正在读取技师服务..." : "该技师暂未开放可预约服务。"}
+              </div>
+            )}
+          </div>
+          {activityPath ? (
+            <Link className="block text-center text-xs font-bold text-[color:var(--client-muted)]" state={{ from: location.pathname }} to={activityPath}>
+              查看技师动态
+            </Link>
+          ) : null}
+        </main>
+        {scope === "user" ? (
+          <MobileBottomActionBar>
+            {checkoutTo ? (
+              <Link className="focus-ring flex min-h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_14px_34px_color-mix(in_srgb,var(--client-primary)_34%,transparent)]" to={checkoutTo}>
+                预约已选服务
+              </Link>
+            ) : (
+              <button className="min-h-12 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] opacity-50" disabled type="button">
+                请选择服务
+              </button>
+            )}
+          </MobileBottomActionBar>
+        ) : null}
+      </MobileFullscreenPage>
+    </MobileShell>
   );
 }

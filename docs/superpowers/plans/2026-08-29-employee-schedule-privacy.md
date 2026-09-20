@@ -52,7 +52,7 @@
 - Test: `backend/tests/booking-repository-scope.test.ts`
 
 1. Write failing tests proving merchant schedule targets require an active affiliation and partner plans may overlap only across different shops.
-2. Mark merchant-created availability `shop/shop_only` and technician-created availability `technician/affiliated_shops`.
+2. Mark merchant-created availability `shop/shop_only` and technician-created availability `technician/technician_shops`.
 3. Preserve customer overlap protection but stop treating another shop's pending booking as a technician hard lock.
 4. Before creating or moving a shop plan, reject any overlap with a confirmed/in-service booking for that technician.
 5. Add a guarded transition result. On pending-to-confirmed, lock the technician row, re-check global confirmed/in-service overlaps, and return a non-leaking conflict outcome before any settlement or status mutation.

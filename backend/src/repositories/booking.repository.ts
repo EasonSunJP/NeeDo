@@ -331,7 +331,7 @@ export type AvailabilityWindowPayload = {
   shopId: number;
   technicianProfileId: number;
   sourceType: "shop" | "technician";
-  visibility: "shop_only" | "affiliated_shops";
+  visibility: "shop_only" | "technician_shops";
   startsAt: Date;
   endsAt: Date;
   capacity: number;
@@ -374,8 +374,10 @@ export interface BookingCreateRepositoryInput {
   orderType?: BookingOrderTypePayload;
   serviceId?: number;
   technicianServiceId?: number;
+  technicianServiceIds?: number[];
   nominatedTechnicianProfileId?: number;
   scheduleSlotId: number;
+  scheduleSlotIds?: number[];
   fulfillmentMode: BookingFulfillmentMode;
   serviceLocation: BookingServiceLocationInput;
   paymentMethod?: LegacyServicePaymentMethodPayload;
@@ -455,6 +457,13 @@ class BookingPriceChangedError extends Error {
   public constructor(public readonly currentPriceAmountJpy: number) {
     super("error.booking.price_changed");
     this.name = "BookingPriceChangedError";
+  }
+}
+
+class BookingBundleSlotUnavailableError extends Error {
+  public constructor() {
+    super("error.booking.bundle_slot_unavailable");
+    this.name = "BookingBundleSlotUnavailableError";
   }
 }
 
@@ -579,6 +588,7 @@ export type ScheduleMutationResult =
         | "conflict"
         | "in_use"
         | "duration_mismatch"
+        | "outside_availability"
         | "suspended"
         | "idempotency_conflict";
     };
@@ -1306,6 +1316,9 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
       };
     };
     technicianProfile: true;
+    serviceItems: {
+      orderBy: { position: "asc" };
+    };
     serviceSession: {
       include: {
         addOns: {
@@ -1583,8 +1596,7 @@ export class BookingRepository implements BookingRepositoryPort {
         ? { technicianServiceId: input.technicianServiceId, serviceId: null }
         : {}),
       ...(resolvedShopId ? { shopId: resolvedShopId } : {}),
-      startsAt: { gte: input.from },
-      endsAt: { lte: input.to },
+      startsAt: { gte: input.from, lt: input.to },
       ...(input.serviceId
         ? {
             service: {
@@ -1710,7 +1722,7 @@ export class BookingRepository implements BookingRepositoryPort {
                 WHERE participant.booking_order_id = pending.id)
           )` : Prisma.sql`0`} AS releasedCount
         FROM schedule_slots s
-        WHERE s.deleted_at IS NULL AND s.starts_at >= ${input.from} AND s.ends_at <= ${input.to}
+        WHERE s.deleted_at IS NULL AND s.starts_at >= ${input.from} AND s.starts_at < ${input.to}
           ${input.shopId ? Prisma.sql`AND s.shop_id = ${input.shopId}` : Prisma.empty}
           ${input.serviceId ? Prisma.sql`AND s.service_id = ${input.serviceId}` : Prisma.empty}
           ${input.technicianServiceId ? Prisma.sql`AND s.technician_service_id = ${input.technicianServiceId}` : Prisma.empty}
@@ -1734,8 +1746,7 @@ export class BookingRepository implements BookingRepositoryPort {
           scheduleSlots: {
             some: {
               deletedAt: null,
-              startsAt: { gte: input.from },
-              endsAt: { lte: input.to },
+              startsAt: { gte: input.from, lt: input.to },
               ...(input.shopId ? { shopId: input.shopId } : {}),
               ...(input.serviceId ? { serviceId: input.serviceId } : {}),
               ...(input.technicianServiceId
@@ -1858,7 +1869,7 @@ export class BookingRepository implements BookingRepositoryPort {
           shopId: target.shopId,
           technicianProfileId: target.technicianProfileId,
           sourceType: input.scope === "technician" ? "TECHNICIAN" : "SHOP",
-          visibility: input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY",
+          visibility: input.scope === "technician" ? "TECHNICIAN_SHOPS" : "SHOP_ONLY",
           startsAt: input.startsAt,
           endsAt: input.endsAt,
           capacity: input.capacity,
@@ -2058,6 +2069,28 @@ export class BookingRepository implements BookingRepositoryPort {
         if (!this.matchesServiceDuration(input.startsAt, input.endsAt, target.durationMinutes)) {
           return { outcome: "duration_mismatch" };
         }
+        const technicianSelfScheduling =
+          input.scope === "merchant" && target.technicianProfileId
+            ? await this.usesTechnicianSelfScheduling(
+                transaction,
+                target.shopId,
+                target.technicianProfileId,
+                input.startsAt,
+                input.endsAt
+              )
+            : false;
+        const controllingAvailability =
+          technicianSelfScheduling && target.technicianProfileId
+            ? await this.findCoveringTechnicianAvailability(
+                transaction,
+                target.technicianProfileId,
+                input.startsAt,
+                input.endsAt
+              )
+            : null;
+        if (technicianSelfScheduling && !controllingAvailability) {
+          return { outcome: "outside_availability" };
+        }
         const manualBookingRequestFingerprint = input.manualBookingIdempotencyKey
           ? this.manualBookingScheduleRequestFingerprint(input, target)
           : null;
@@ -2087,26 +2120,27 @@ export class BookingRepository implements BookingRepositoryPort {
             input.startsAt,
             input.endsAt,
             undefined,
-            input.scope === "technician" ? "TECHNICIAN" : "SHOP"
+            input.scope === "technician" || controllingAvailability ? "TECHNICIAN" : "SHOP"
           ))
         ) {
           return { outcome: "conflict" };
         }
         const availability =
-          input.createAvailability === false
+          controllingAvailability ??
+          (input.createAvailability === false
             ? null
             : await transaction.availability.create({
                 data: {
                   shopId: target.shopId,
                   technicianProfileId: target.technicianProfileId,
                   sourceType: input.scope === "technician" ? "TECHNICIAN" : "SHOP",
-                  visibility: input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY",
+                  visibility: input.scope === "technician" ? "TECHNICIAN_SHOPS" : "SHOP_ONLY",
                   startsAt: input.startsAt,
                   endsAt: input.endsAt,
                   capacity: input.capacity,
                   isActive: true
                 }
-              });
+              }));
         const created = await transaction.scheduleSlot.create({
           data: {
             availabilityId: availability?.id ?? null,
@@ -2162,6 +2196,28 @@ export class BookingRepository implements BookingRepositoryPort {
         ) {
           return { outcome: "duration_mismatch" };
         }
+        const technicianSelfScheduling =
+          timeChanged && input.scope === "merchant" && existing.technicianProfileId
+            ? await this.usesTechnicianSelfScheduling(
+                transaction,
+                existing.shopId,
+                existing.technicianProfileId,
+                startsAt,
+                endsAt
+              )
+            : false;
+        const controllingAvailability =
+          technicianSelfScheduling && existing.technicianProfileId
+            ? await this.findCoveringTechnicianAvailability(
+                transaction,
+                existing.technicianProfileId,
+                startsAt,
+                endsAt
+              )
+            : null;
+        if (technicianSelfScheduling && !controllingAvailability) {
+          return { outcome: "outside_availability" };
+        }
         if (
           timeChanged &&
           existing.technicianProfileId &&
@@ -2198,7 +2254,35 @@ export class BookingRepository implements BookingRepositoryPort {
             : requestedStatus === "BOOKED"
               ? "AVAILABLE"
               : requestedStatus;
-        if (existing.availabilityId) {
+        let availabilityId = existing.availabilityId;
+        if (
+          timeChanged &&
+          input.scope === "merchant" &&
+          !technicianSelfScheduling &&
+          existing.technicianProfileId &&
+          existing.availability?.sourceType === "TECHNICIAN"
+        ) {
+          const availability = await transaction.availability.create({
+            data: {
+              shopId: existing.shopId,
+              technicianProfileId: existing.technicianProfileId,
+              sourceType: "SHOP",
+              visibility: "SHOP_ONLY",
+              startsAt,
+              endsAt,
+              capacity,
+              isActive: status !== "BLOCKED"
+            }
+          });
+          availabilityId = availability.id;
+        } else if (controllingAvailability) {
+          availabilityId = controllingAvailability.id;
+        }
+        if (
+          existing.availabilityId &&
+          availabilityId === existing.availabilityId &&
+          !existing.availability?.isScheduleControlWindow
+        ) {
           await transaction.availability.updateMany({
             where: { id: existing.availabilityId, deletedAt: null },
             data: { startsAt, endsAt, capacity, isActive: status !== "BLOCKED" }
@@ -2206,7 +2290,7 @@ export class BookingRepository implements BookingRepositoryPort {
         }
         const updated = await transaction.scheduleSlot.update({
           where: { id: existing.id },
-          data: { startsAt, endsAt, capacity, status },
+          data: { startsAt, endsAt, capacity, status, availabilityId },
           include: this.slotInclude()
         });
         return { outcome: "ok", slot: this.mapSlot(updated) };
@@ -2238,7 +2322,7 @@ export class BookingRepository implements BookingRepositoryPort {
           data: { status: "BLOCKED", deletedAt },
           include: this.slotInclude()
         });
-        if (existing.availabilityId) {
+        if (existing.availabilityId && !existing.availability?.isScheduleControlWindow) {
           await transaction.availability.updateMany({
             where: { id: existing.availabilityId, deletedAt: null },
             data: { isActive: false, deletedAt }
@@ -2263,6 +2347,9 @@ export class BookingRepository implements BookingRepositoryPort {
   > {
     if (Boolean(options.prepareAffiliate) !== Boolean(options.persistAffiliate)) {
       throw new Error("error.affiliate.checkout_hook_invalid");
+    }
+    if (input.technicianServiceIds && input.scheduleSlotIds) {
+      return this.createTechnicianServiceBundleBooking(input, options);
     }
     try {
       return await runWithTransactionConflictRetry(() =>
@@ -2387,10 +2474,15 @@ export class BookingRepository implements BookingRepositoryPort {
 
               const slotReleaseCounts = new Map<number, number>();
               for (const pendingOrder of supersededPendingOrders) {
-                slotReleaseCounts.set(
-                  pendingOrder.scheduleSlotId,
-                  (slotReleaseCounts.get(pendingOrder.scheduleSlotId) ?? 0) + 1
-                );
+                const reservedSlotIds = (pendingOrder.serviceItems ?? []).length > 0
+                  ? pendingOrder.serviceItems.map((item) => item.scheduleSlotId)
+                  : [pendingOrder.scheduleSlotId];
+                for (const scheduleSlotId of reservedSlotIds) {
+                  slotReleaseCounts.set(
+                    scheduleSlotId,
+                    (slotReleaseCounts.get(scheduleSlotId) ?? 0) + 1
+                  );
+                }
               }
               for (const [scheduleSlotId, releaseCount] of slotReleaseCounts) {
                 const supersededSlot = await tx.scheduleSlot.findUnique({
@@ -2965,6 +3057,374 @@ export class BookingRepository implements BookingRepositoryPort {
           currentPriceAmountJpy: error.currentPriceAmountJpy
         };
       }
+      if (error instanceof BookingBundleSlotUnavailableError) {
+        return { bookingConflict: "concurrent_occupancy" };
+      }
+      throw error;
+    }
+  }
+
+  private async createTechnicianServiceBundleBooking(
+    input: BookingCreateRepositoryInput,
+    options: BookingCreateRepositoryOptions
+  ): Promise<
+    BookingCreateMutationResult | BookingPriceChangedResult | BookingConflictFailureResult | null
+  > {
+    const technicianServiceIds = input.technicianServiceIds ?? [];
+    const scheduleSlotIds = input.scheduleSlotIds ?? [];
+    if (
+      input.fulfillmentMode !== "store" ||
+      input.serviceId ||
+      !input.technicianServiceId ||
+      technicianServiceIds.length < 2 ||
+      technicianServiceIds.length !== scheduleSlotIds.length ||
+      technicianServiceIds[0] !== input.technicianServiceId ||
+      scheduleSlotIds[0] !== input.scheduleSlotId ||
+      options.prepareAffiliate ||
+      options.persistAffiliate ||
+      input.exchangeIntelligencePostId ||
+      input.travelEstimatePublicId ||
+      input.fulfillmentAddress
+    ) {
+      return null;
+    }
+
+    try {
+      return await runWithTransactionConflictRetry(() =>
+        this.client.$transaction(async (tx) => {
+          if (!(await this.lockCustomerUser(tx, input.customerUserId))) return null;
+          const createRequestFingerprint = input.idempotencyKey
+            ? this.bookingCreateRequestFingerprint(input)
+            : null;
+          if (input.idempotencyKey) {
+            const replay = await tx.bookingOrder.findFirst({
+              where: {
+                customerUserId: input.customerUserId,
+                createIdempotencyKey: input.idempotencyKey,
+                deletedAt: null
+              },
+              include: this.orderInclude()
+            });
+            if (replay) {
+              if (replay.createRequestFingerprint !== createRequestFingerprint) {
+                throw new BookingIntelligenceAbort("idempotency_conflict");
+              }
+              return {
+                order: this.mapOrder(replay),
+                recipientUserIds: this.providerUserIds(replay),
+                supersededOrders: [],
+                idempotentReplay: true
+              };
+            }
+          }
+
+          const loadSlots = () => tx.scheduleSlot.findMany({
+            where: {
+              id: { in: scheduleSlotIds },
+              technicianServiceId: { in: technicianServiceIds },
+              serviceId: null,
+              deletedAt: null,
+              startsAt: { gt: new Date() },
+              status: { in: ["AVAILABLE", "BOOKED"] },
+              technicianService: {
+                deletedAt: null,
+                isActive: true,
+                isBookable: true,
+                reviewStatus: "APPROVED"
+              },
+              shop: {
+                deletedAt: null,
+                status: "published",
+                pricingMode: "TECHNICIAN",
+                entitySuspensions: {
+                  none: { activeKey: { not: null }, status: "active", deletedAt: null }
+                }
+              }
+            },
+            include: this.slotInclude()
+          });
+          const orderSlots = (rows: SlotRecord[]) => {
+            const byId = new Map(rows.map((row) => [row.id, row]));
+            return scheduleSlotIds.map((id) => byId.get(id)).filter((row): row is SlotRecord => Boolean(row));
+          };
+          let slots = orderSlots(await loadSlots());
+          if (slots.length !== scheduleSlotIds.length) return null;
+          const firstSlot = slots[0]!;
+          const firstCurrency = firstSlot.technicianService?.currency;
+          if (
+            !firstSlot.technicianProfileId ||
+            slots.some((slot, index) =>
+              slot.technicianServiceId !== technicianServiceIds[index] ||
+              slot.shopId !== firstSlot.shopId ||
+              slot.technicianProfileId !== firstSlot.technicianProfileId ||
+              slot.technicianService?.currency !== firstCurrency ||
+              (index > 0 && slot.startsAt.getTime() !== slots[index - 1]!.endsAt.getTime())
+            )
+          ) return null;
+
+          await this.lockScheduleOwner(tx, firstSlot.shopId, firstSlot.technicianProfileId);
+          if (!(await this.hasActiveScheduleAffiliation(
+            tx,
+            firstSlot.shopId,
+            firstSlot.technicianProfileId,
+            { requirePublic: true }
+          ))) return null;
+
+          const customerProfile = await tx.customerProfile.findFirst({
+            where: { userId: input.customerUserId, deletedAt: null },
+            select: { membershipLevel: true }
+          });
+          const isBlackMember = customerProfile?.membershipLevel.toLowerCase() === "black";
+          const supersededPendingOrders = !isBlackMember
+            ? await tx.bookingOrder.findMany({
+                where: {
+                  customerUserId: input.customerUserId,
+                  status: "PENDING",
+                  deletedAt: null,
+                  exchangeMatchParticipant: { is: null }
+                },
+                include: this.orderInclude(),
+                orderBy: { id: "asc" }
+              })
+            : [];
+          const supersededOrderIds = supersededPendingOrders.map((order) => order.id);
+          if (supersededOrderIds.length > 0) {
+            const cancelled = await tx.bookingOrder.updateMany({
+              where: {
+                id: { in: supersededOrderIds },
+                customerUserId: input.customerUserId,
+                status: "PENDING",
+                deletedAt: null,
+                exchangeMatchParticipant: { is: null }
+              },
+              data: { status: "CANCELLED", cancelReason: "superseded_by_new_pending_order" }
+            });
+            if (cancelled.count !== supersededOrderIds.length) {
+              throw new BookingPendingReplacementUnavailableError();
+            }
+            const releaseCounts = new Map<number, number>();
+            for (const order of supersededPendingOrders) {
+              const reservedSlotIds = (order.serviceItems ?? []).length > 0
+                ? order.serviceItems.map((item) => item.scheduleSlotId)
+                : [order.scheduleSlotId];
+              for (const slotId of reservedSlotIds) {
+                releaseCounts.set(slotId, (releaseCounts.get(slotId) ?? 0) + 1);
+              }
+              await options.invalidateSupersededAffiliate?.({
+                transactionClient: tx,
+                bookingOrderId: order.id,
+                actorUserId: input.customerUserId
+              });
+            }
+            for (const [slotId, releaseCount] of releaseCounts) {
+              const released = await tx.scheduleSlot.updateMany({
+                where: { id: slotId, bookedCount: { gte: releaseCount }, deletedAt: null },
+                data: { bookedCount: { decrement: releaseCount }, status: "AVAILABLE" }
+              });
+              if (released.count !== 1) throw new BookingPendingReplacementUnavailableError();
+            }
+          }
+
+          slots = orderSlots(await loadSlots());
+          if (
+            slots.length !== scheduleSlotIds.length ||
+            slots.some((slot, index) =>
+              slot.status !== "AVAILABLE" ||
+              slot.bookedCount >= slot.capacity ||
+              slot.technicianServiceId !== technicianServiceIds[index] ||
+              slot.shopId !== firstSlot.shopId ||
+              slot.technicianProfileId !== firstSlot.technicianProfileId ||
+              (index > 0 && slot.startsAt.getTime() !== slots[index - 1]!.endsAt.getTime())
+            )
+          ) throw new BookingBundleSlotUnavailableError();
+
+          const startsAt = slots[0]!.startsAt;
+          const endsAt = slots[slots.length - 1]!.endsAt;
+          const conflict = await tx.bookingOrder.findFirst({
+            where: {
+              deletedAt: null,
+              OR: [
+                {
+                  customerUserId: input.customerUserId,
+                  status: { in: isBlackMember ? [...ACTIVE_ORDER_DB_STATUSES] : [...HARD_LOCK_ORDER_DB_STATUSES] },
+                  startsAt: { lt: endsAt },
+                  endsAt: { gt: startsAt }
+                },
+                {
+                  technicianProfileId: firstSlot.technicianProfileId,
+                  status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] },
+                  startsAt: { lt: endsAt },
+                  endsAt: { gt: startsAt }
+                }
+              ]
+            },
+            select: { id: true }
+          });
+          if (conflict || await this.hasExchangeMatchParticipantOverlap(
+            tx,
+            firstSlot.technicianProfileId,
+            startsAt,
+            endsAt
+          )) throw new BookingBundleSlotUnavailableError();
+
+          const serviceItems = slots.map((slot, position) => {
+            const service = slot.technicianService!;
+            return {
+              position,
+              technicianServiceId: service.id,
+              scheduleSlotId: slot.id,
+              serviceNameSnapshot: service.name,
+              priceAmountJpy: service.priceAmount,
+              currency: service.currency,
+              durationMinutes: service.durationMinutes,
+              startsAt: slot.startsAt,
+              endsAt: slot.endsAt
+            };
+          });
+          const originalPriceJpy = serviceItems.reduce((sum, item) => sum + item.priceAmountJpy, 0);
+          const nominationFeeJpy = await this.resolveNominationFeeJpy(
+            tx,
+            firstSlot.shopId,
+            firstSlot.technicianProfileId
+          );
+          const totalPriceJpy = originalPriceJpy + nominationFeeJpy;
+          if (
+            input.expectedPriceAmountJpy !== undefined &&
+            input.expectedPriceAmountJpy !== totalPriceJpy
+          ) throw new BookingPriceChangedError(totalPriceJpy);
+
+          for (const slot of slots) {
+            const reserved = await tx.scheduleSlot.updateMany({
+              where: {
+                id: slot.id,
+                deletedAt: null,
+                startsAt: { gt: new Date() },
+                status: "AVAILABLE",
+                bookedCount: { lt: slot.capacity }
+              },
+              data: {
+                bookedCount: { increment: 1 },
+                status: slot.bookedCount + 1 >= slot.capacity ? "BOOKED" : "AVAILABLE"
+              }
+            });
+            if (reserved.count !== 1) throw new BookingBundleSlotUnavailableError();
+          }
+
+          const compensationBasisVersion = await this.resolveCompensationBasisVersion(
+            tx,
+            firstSlot.shopId,
+            firstSlot.technicianProfileId
+          );
+          const primaryService = firstSlot.technicianService!;
+          const serviceLocation = await this.resolveBookingServiceLocation(tx, firstSlot, input);
+          const order = await tx.bookingOrder.create({
+            data: {
+              orderNo: this.createOrderNo(),
+              orderType: this.orderTypeToDb(input.orderType ?? "booking"),
+              customerUserId: input.customerUserId,
+              serviceId: null,
+              technicianServiceId: primaryService.id,
+              createIdempotencyKey: input.idempotencyKey ?? null,
+              createRequestFingerprint,
+              shopId: firstSlot.shopId,
+              technicianProfileId: firstSlot.technicianProfileId,
+              scheduleSlotId: firstSlot.id,
+              status: "PENDING",
+              fulfillmentMode: "store",
+              priceAmount: totalPriceJpy,
+              currency: firstCurrency ?? "JPY",
+              pricingModeSnapshot: "TECHNICIAN",
+              serviceOwnerType: "TECHNICIAN",
+              serviceOwnerId: firstSlot.technicianProfileId,
+              serviceNameSnapshot: serviceItems
+                .map((item) => item.serviceNameSnapshot)
+                .join(" + ")
+                .slice(0, 160),
+              servicePriceSnapshot: originalPriceJpy,
+              serviceDurationSnapshot: serviceItems.reduce((sum, item) => sum + item.durationMinutes, 0),
+              serviceSnapshotJson: appendCompensationBasis({
+                bundle: serviceItems.map((item) => ({
+                  technicianServiceId: item.technicianServiceId,
+                  scheduleSlotId: item.scheduleSlotId,
+                  name: item.serviceNameSnapshot,
+                  priceAmountJpy: item.priceAmountJpy,
+                  durationMinutes: item.durationMinutes,
+                  startsAt: item.startsAt.toISOString(),
+                  endsAt: item.endsAt.toISOString()
+                })),
+                wasTechnicianNominated: true,
+                nominationChargeAmountJpy: nominationFeeJpy
+              }, compensationBasisVersion) as Prisma.InputJsonValue,
+              startsAt,
+              endsAt,
+              paymentMethod: servicePaymentMethodToDb(input.paymentMethod ?? "onsite"),
+              paymentAmountJpy: totalPriceJpy,
+              note: input.note?.trim() || null,
+              serviceItems: { create: serviceItems },
+              statusHistory: {
+                create: {
+                  fromStatus: null,
+                  toStatus: "PENDING",
+                  actorUserId: input.createdByUserId ?? input.customerUserId
+                }
+              }
+            },
+            include: this.orderInclude()
+          });
+          await tx.bookingServiceLocation.create({
+            data: {
+              bookingOrderId: order.id,
+              countryCode: serviceLocation.countryCode,
+              admin1RegionCode: serviceLocation.admin1Code,
+              admin1Name: serviceLocation.admin1NameJa,
+              admin2RegionCode: serviceLocation.admin2Code,
+              admin2Name: serviceLocation.admin2NameJa,
+              source: "SHOP_LOCATION",
+              resolutionStatus: "VERIFIED",
+              datasetVersion: serviceLocation.datasetVersion,
+              resolvedAt: new Date()
+            }
+          });
+          if (supersededOrderIds.length > 0) {
+            await tx.orderStatusHistory.createMany({
+              data: supersededOrderIds.map((bookingOrderId) => ({
+                bookingOrderId,
+                fromStatus: "PENDING" as const,
+                toStatus: "CANCELLED" as const,
+                actorUserId: input.customerUserId,
+                reason: "superseded_by_new_pending_order",
+                metadata: { supersededByBookingOrderId: order.id }
+              }))
+            });
+          }
+          const cancelledOrders = supersededOrderIds.length > 0
+            ? await tx.bookingOrder.findMany({
+                where: { id: { in: supersededOrderIds }, deletedAt: null },
+                include: this.orderInclude(),
+                orderBy: { id: "asc" }
+              })
+            : [];
+          return {
+            order: this.mapOrder(order),
+            recipientUserIds: this.providerUserIds(order),
+            supersededOrders: cancelledOrders.map((cancelledOrder) => ({
+              order: this.mapOrder(cancelledOrder),
+              recipientUserIds: this.providerUserIds(cancelledOrder)
+            }))
+          };
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted })
+      );
+    } catch (error) {
+      if (error instanceof BookingPendingReplacementUnavailableError) return null;
+      if (error instanceof BookingIntelligenceAbort) {
+        return { bookingConflict: "concurrent_occupancy" };
+      }
+      if (error instanceof BookingPriceChangedError) {
+        return { outcome: "price_changed", currentPriceAmountJpy: error.currentPriceAmountJpy };
+      }
+      if (error instanceof BookingBundleSlotUnavailableError) {
+        return { bookingConflict: "concurrent_occupancy" };
+      }
       throw error;
     }
   }
@@ -3183,8 +3643,10 @@ export class BookingRepository implements BookingRepositoryPort {
           orderType: input.orderType ?? "booking",
           serviceId: input.serviceId ?? null,
           technicianServiceId: input.technicianServiceId ?? null,
+          technicianServiceIds: input.technicianServiceIds ?? null,
           nominatedTechnicianProfileId: input.nominatedTechnicianProfileId ?? null,
           scheduleSlotId: input.scheduleSlotId,
+          scheduleSlotIds: input.scheduleSlotIds ?? null,
           fulfillmentMode: input.fulfillmentMode,
           paymentMethod: input.paymentMethod ?? "onsite",
           note: input.note?.trim() || null,
@@ -5280,16 +5742,15 @@ export class BookingRepository implements BookingRepositoryPort {
         }
 
         if (input.toStatus === "cancelled") {
-          await tx.scheduleSlot.updateMany({
-            where: {
-              id: current.scheduleSlotId,
-              bookedCount: { gt: 0 }
-            },
-            data: {
-              bookedCount: { decrement: 1 },
-              status: "AVAILABLE"
-            }
-          });
+          const reservedSlotIds = (current.serviceItems ?? []).length > 0
+            ? current.serviceItems.map((item) => item.scheduleSlotId)
+            : [current.scheduleSlotId];
+          for (const scheduleSlotId of reservedSlotIds) {
+            await tx.scheduleSlot.updateMany({
+              where: { id: scheduleSlotId, bookedCount: { gt: 0 } },
+              data: { bookedCount: { decrement: 1 }, status: "AVAILABLE" }
+            });
+          }
         }
 
         const actorIdentity = actor.identityId === null
@@ -5710,6 +6171,55 @@ export class BookingRepository implements BookingRepositoryPort {
       },
       select: { id: true, sourceType: true, shopId: true }
     });
+  }
+
+  private findCoveringTechnicianAvailability(
+    transaction: Prisma.TransactionClient,
+    technicianProfileId: number,
+    startsAt: Date,
+    endsAt: Date
+  ) {
+    return transaction.availability.findFirst({
+      where: {
+        technicianProfileId,
+        sourceType: "TECHNICIAN",
+        visibility: "TECHNICIAN_SHOPS",
+        isActive: true,
+        isScheduleControlWindow: true,
+        deletedAt: null,
+        startsAt: { lte: startsAt },
+        endsAt: { gte: endsAt }
+      },
+      select: { id: true }
+    });
+  }
+
+  private async usesTechnicianSelfScheduling(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    technicianProfileId: number,
+    startsAt: Date,
+    endsAt: Date
+  ): Promise<boolean> {
+    const periodStart = new Date(`${toTokyoCalendarDate(startsAt)}T00:00:00.000Z`);
+    const periodEnd = new Date(
+      `${toTokyoCalendarDate(new Date(Math.max(startsAt.getTime(), endsAt.getTime() - 1)))}T00:00:00.000Z`
+    );
+    const scheduleCycle = await transaction.scheduleCycle?.findFirst({
+      where: {
+        shopId,
+        mode: "TECH_SELF_FINAL",
+        status: { in: ["CONFIRMED", "ACTIVE"] },
+        periodStart: { lte: periodStart },
+        periodEnd: { gte: periodEnd },
+        deletedAt: null,
+        targets: {
+          some: { technicianProfileId, deletedAt: null }
+        }
+      },
+      select: { id: true }
+    });
+    return Boolean(scheduleCycle);
   }
 
   private manualPaymentScopeWhere(scope: ManualPaymentScope): Prisma.BookingOrderWhereInput {
@@ -7147,6 +7657,9 @@ export class BookingRepository implements BookingRepositoryPort {
         }
       },
       technicianProfile: true,
+      serviceItems: {
+        orderBy: { position: "asc" as const }
+      },
       serviceSession: {
         include: {
           addOns: {
@@ -7538,7 +8051,7 @@ export class BookingRepository implements BookingRepositoryPort {
       shopId: record.shopId,
       technicianProfileId: record.technicianProfileId!,
       sourceType: record.sourceType === "SHOP" ? "shop" : "technician",
-      visibility: record.visibility === "SHOP_ONLY" ? "shop_only" : "affiliated_shops",
+      visibility: record.visibility === "SHOP_ONLY" ? "shop_only" : "technician_shops",
       startsAt: record.startsAt,
       endsAt: record.endsAt,
       capacity: record.capacity,

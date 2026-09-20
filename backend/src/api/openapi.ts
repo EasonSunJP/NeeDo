@@ -11913,7 +11913,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           shopId: { type: "integer", minimum: 1 },
           technicianProfileId: { type: "integer", minimum: 1 },
           sourceType: { type: "string", enum: ["shop", "technician"] },
-          visibility: { type: "string", enum: ["shop_only", "affiliated_shops"] },
+          visibility: { type: "string", enum: ["shop_only", "technician_shops"] },
           startsAt: { type: "string", format: "date-time" },
           endsAt: { type: "string", format: "date-time" },
           capacity: { type: "integer", minimum: 1, maximum: 100 },
@@ -15331,7 +15331,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           projectionId: { type: "string" },
           kind: { type: "string", enum: ["availability", "schedule", "booking"] },
-          visibility: { type: "string", enum: ["current_shop", "affiliated_shops"] },
+          visibility: { type: "string", enum: ["current_shop", "technician_shops"] },
           status: {
             type: "string",
             enum: [
@@ -22951,7 +22951,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Paginated available schedule slots",
         security: [{}, { bearerAuth: [] }],
         description:
-          "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. The from/to window must not exceed 93 days. Results use one uncached database snapshot and filter current service/pricing/affiliation eligibility, future start time, capacity, technician hard locks and Exchange reservations before pagination. An authenticated booking-capable viewer also receives customer-specific overlap checks; ordinary customers' replaceable pending capacity is deducted from the returned bookedCount, while black members retain pending occupancy. This read does not reserve capacity: Booking revalidates inside its locking transaction.",
+          "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. shopId alone returns the shop's eligible slots for technician-pricing availability displays. The from/to window selects slots by start time and must not exceed 93 days, so a late-night service may finish after the window boundary. Results use one uncached database snapshot and filter current service/pricing/affiliation eligibility, future start time, capacity, technician hard locks and Exchange reservations before pagination. An authenticated booking-capable viewer also receives customer-specific overlap checks; ordinary customers' replaceable pending capacity is deducted from the returned bookedCount, while black members retain pending occupancy. This read does not reserve capacity: Booking revalidates inside its locking transaction.",
         parameters: [
           {
             name: "serviceId",
@@ -23070,8 +23070,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       expectedPriceAmountJpy: { type: "integer", minimum: 0 },
                       serviceId: { type: "integer", minimum: 1 },
                       technicianServiceId: { type: "integer", minimum: 1 },
+                      technicianServiceIds: {
+                        type: "array",
+                        minItems: 2,
+                        maxItems: 10,
+                        uniqueItems: true,
+                        items: { type: "integer", minimum: 1 }
+                      },
                       nominatedTechnicianProfileId: { type: "integer", minimum: 1 },
                       scheduleSlotId: { type: "integer", minimum: 1 },
+                      scheduleSlotIds: {
+                        type: "array",
+                        minItems: 2,
+                        maxItems: 10,
+                        uniqueItems: true,
+                        items: { type: "integer", minimum: 1 }
+                      },
                       orderType: { type: "string", enum: ["booking", "request"] },
                       fulfillmentMode: { type: "string", enum: ["store"] },
                       paymentMethod: {

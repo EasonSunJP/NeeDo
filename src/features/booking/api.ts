@@ -384,9 +384,13 @@ type CreateBookingBaseInput = {
   orderType?: "booking" | "request";
   paymentMethod?: ManualPaymentMethod;
   scheduleSlotId: number;
+  scheduleSlotIds?: number[];
   nominatedTechnicianProfileId?: number;
 } &
-  ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
+  (
+    | { serviceId: number; technicianServiceId?: never; technicianServiceIds?: never }
+    | { serviceId?: never; technicianServiceId: number; technicianServiceIds?: number[] }
+  );
 
 export type CreateBookingInput = CreateBookingBaseInput &
   (

@@ -2466,12 +2466,17 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   backdrop-filter: blur(18px) saturate(1.7) contrast(1.04) brightness(1.03) !important;
 }
 
-.client-shell .service-detail-header.client-floating-header-glass-frame {
-  border-color: transparent !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
+.client-shell .service-detail-header-fade {
+  height: 52px;
+  margin-top: -1px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgb(var(--client-edge-mask-rgb) / 1) 0%,
+    rgb(var(--client-edge-mask-rgb) / 0.72) 30%,
+    rgb(var(--client-edge-mask-rgb) / 0.28) 68%,
+    rgb(var(--client-edge-mask-rgb) / 0) 100%
+  );
 }
 
 .client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header, .client-store-display-editor-glass-header).client-floating-header-glass-frame {

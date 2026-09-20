@@ -161,7 +161,7 @@ const createFixture = async (options: { technicianPermissions?: string[] } = {})
     shopId: 11,
     technicianProfileId: 31,
     sourceType: "technician",
-    visibility: "affiliated_shops",
+    visibility: "technician_shops",
     startsAt,
     endsAt: new Date(startsAt.getTime() + 6 * 60 * 60_000),
     capacity: 1,

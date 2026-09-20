@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTechnicianServiceCheckoutRoute,
+  parseTechnicianServiceBundleIds,
   parseCheckoutServiceRoute
 } from "./checkoutServiceRoute";
 
@@ -48,5 +49,19 @@ describe("parseCheckoutServiceRoute", () => {
     })).toBe(
       "/checkout/technician-service/202?mode=store&date=2026-09-28&time=11%3A30"
     );
+  });
+
+  it("keeps the ordered technician-service bundle in the checkout route", () => {
+    expect(buildTechnicianServiceCheckoutRoute(202, {
+      serviceIds: [202, 204, 203]
+    })).toBe(
+      "/checkout/technician-service/202?mode=store&serviceIds=202%2C204%2C203"
+    );
+  });
+
+  it("parses only an ordered unique bundle anchored to the primary service", () => {
+    expect(parseTechnicianServiceBundleIds(202, "202,204,203")).toEqual([202, 204, 203]);
+    expect(parseTechnicianServiceBundleIds(202, "204,202")).toEqual([202]);
+    expect(parseTechnicianServiceBundleIds(202, "202,202")).toEqual([202]);
   });
 });

@@ -117,6 +117,7 @@
     "repair:staging-shop-public-identifier": "node dist/staging/staging-shop-public-identifier-repair.cli.js",
     "provision:staging-test-super-admins": "node dist/staging/staging-test-super-admin-provisioning.cli.js",
     "provision:staging-test-operations": "node dist/staging/staging-test-operations-provisioning.cli.js",
+    "provision:staging-test-chiba-shop": "node dist/staging/staging-test-chiba-shop-provisioning.cli.js",
     "prisma:status": "prisma migrate status",
     "prisma:seed": "prisma db seed",
     "seed": "prisma db seed",

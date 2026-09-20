@@ -155,7 +155,7 @@ describe("EmployeeSchedulePanel", () => {
           {
             projectionId: "availability:2026-09-10T01:00:00.000Z:2026-09-10T02:00:00.000Z",
             kind: "availability",
-            visibility: "affiliated_shops",
+            visibility: "technician_shops",
             status: "available",
             startsAt: "2026-09-10T01:00:00.000Z",
             endsAt: "2026-09-10T02:00:00.000Z",
