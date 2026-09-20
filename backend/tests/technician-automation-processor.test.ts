@@ -83,6 +83,30 @@ describe("TechnicianAutomationProcessor", () => {
     }));
   });
 
+  it("revalidates confirmed prepayment immediately before automatic acceptance", async () => {
+    const repository = makeRepository();
+    const rules = { ...bookingCandidate.rules, minimumPrepaymentPercent: 30 };
+    repository.loadBookingCandidate
+      .mockResolvedValueOnce({
+        ...bookingCandidate,
+        rules,
+        context: { ...evaluationContext, prepaidServiceAmountJpy: 3_600, prepaymentConfirmed: true }
+      })
+      .mockResolvedValueOnce({
+        ...bookingCandidate,
+        rules,
+        context: { ...evaluationContext, prepaidServiceAmountJpy: 3_599, prepaymentConfirmed: true }
+      });
+    const confirmBooking = jest.fn();
+    await new TechnicianAutomationProcessor(repository, { confirmBooking }, { applyRequest: jest.fn() })
+      .processBooking(505);
+    expect(confirmBooking).not.toHaveBeenCalled();
+    expect(repository.completeDecision).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: "not_matched",
+      failedReasons: expect.arrayContaining(["payment:prepayment_too_low"])
+    }));
+  });
+
   it("creates a real Request application with quick matching suppressed so the user still chooses", async () => {
     const repository = makeRepository();
     const applyRequest = jest.fn(async () => undefined);

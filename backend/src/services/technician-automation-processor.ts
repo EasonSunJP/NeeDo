@@ -88,13 +88,13 @@ export class TechnicianAutomationProcessor {
   public async processBooking(orderId: number): Promise<void> {
     const candidate = await this.repository.loadBookingCandidate(orderId);
     if (!candidate) return;
-    await this.processCandidate("booking", orderId, candidate, async (idempotencyKey) => {
+    await this.processCandidate("booking", orderId, candidate, async () => this.repository.loadBookingCandidate(orderId), async (idempotencyKey, current) => {
       await this.bookingAuthority.confirmBooking({
         orderId,
-        technicianUserId: candidate.technicianUserId,
-        technicianIdentityId: candidate.technicianIdentityId,
-        technicianProfileId: candidate.technicianProfileId,
-        ruleVersion: candidate.ruleVersion
+        technicianUserId: current.technicianUserId,
+        technicianIdentityId: current.technicianIdentityId,
+        technicianProfileId: current.technicianProfileId,
+        ruleVersion: current.ruleVersion
       });
       void idempotencyKey;
     });
@@ -103,16 +103,20 @@ export class TechnicianAutomationProcessor {
   public async processRequest(postId: number): Promise<void> {
     const candidates = await this.repository.loadRequestCandidates(postId);
     for (const candidate of candidates) {
-      await this.processCandidate("request", postId, candidate, async (idempotencyKey) => {
+      await this.processCandidate("request", postId, candidate, async () => {
+        const current = await this.repository.loadRequestCandidates(postId);
+        return current.find((item) => item.technicianProfileId === candidate.technicianProfileId) ?? null;
+      }, async (idempotencyKey, currentCandidate) => {
+        const current = currentCandidate as TechnicianRequestAutomationCandidate;
         await this.requestAuthority.applyRequest({
           postId,
-          technicianUserId: candidate.technicianUserId,
-          technicianIdentityId: candidate.technicianIdentityId,
-          technicianProfileId: candidate.technicianProfileId,
-          technicianPublicId: candidate.technicianPublicId,
-          scheduleSlotId: candidate.scheduleSlotId,
-          quoteAmountJpy: candidate.quoteAmountJpy,
-          message: candidate.message,
+          technicianUserId: current.technicianUserId,
+          technicianIdentityId: current.technicianIdentityId,
+          technicianProfileId: current.technicianProfileId,
+          technicianPublicId: current.technicianPublicId,
+          scheduleSlotId: current.scheduleSlotId,
+          quoteAmountJpy: current.quoteAmountJpy,
+          message: current.message,
           idempotencyKey,
           suppressQuickMatching: true
         });
@@ -124,7 +128,8 @@ export class TechnicianAutomationProcessor {
     kind: "booking" | "request",
     targetId: number,
     candidate: TechnicianAutomationCandidate,
-    action: (idempotencyKey: string) => Promise<void>
+    reload: () => Promise<TechnicianAutomationCandidate | null>,
+    action: (idempotencyKey: string, candidate: TechnicianAutomationCandidate) => Promise<void>
   ): Promise<void> {
     const actionType = kind === "booking" ? "accept_booking" : "apply_request";
     const targetType = kind === "booking" ? "booking_order" : "exchange_request";
@@ -141,8 +146,32 @@ export class TechnicianAutomationProcessor {
     });
     if (!reserved) return;
 
-    const rules = technicianAutomationRulesSchema.parse(candidate.rules);
-    const evaluation = evaluateTechnicianAutomationRules(kind, rules, candidate.context);
+    const initialRules = technicianAutomationRulesSchema.parse(candidate.rules);
+    const initialEvaluation = evaluateTechnicianAutomationRules(kind, initialRules, candidate.context);
+    if (!initialEvaluation.matched) {
+      await this.repository.completeDecision({
+        idempotencyKey,
+        outcome: "not_matched",
+        matchedConditions: initialEvaluation.matchedConditions,
+        failedReasons: initialEvaluation.failedReasons,
+        executedAt: null
+      });
+      return;
+    }
+
+    const currentCandidate = await reload();
+    if (!currentCandidate) {
+      await this.repository.completeDecision({
+        idempotencyKey,
+        outcome: "not_matched",
+        matchedConditions: [],
+        failedReasons: ["automation_candidate_stale"],
+        executedAt: null
+      });
+      return;
+    }
+    const rules = technicianAutomationRulesSchema.parse(currentCandidate.rules);
+    const evaluation = evaluateTechnicianAutomationRules(kind, rules, currentCandidate.context);
     if (!evaluation.matched) {
       await this.repository.completeDecision({
         idempotencyKey,
@@ -155,7 +184,7 @@ export class TechnicianAutomationProcessor {
     }
 
     try {
-      await action(idempotencyKey);
+      await action(idempotencyKey, currentCandidate);
       const executedAt = this.now();
       await this.repository.completeDecision({
         idempotencyKey,
@@ -166,8 +195,8 @@ export class TechnicianAutomationProcessor {
       });
       try {
         await this.repository.notifyAutomaticAction({
-          technicianUserId: candidate.technicianUserId,
-          technicianIdentityId: candidate.technicianIdentityId,
+          technicianUserId: currentCandidate.technicianUserId,
+          technicianIdentityId: currentCandidate.technicianIdentityId,
           kind,
           targetId
         });

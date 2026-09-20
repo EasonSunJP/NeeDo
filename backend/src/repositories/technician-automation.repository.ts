@@ -184,6 +184,9 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         priceAmount: true,
         fulfillmentMode: true,
         paymentMethod: true,
+        servicePrepayment: {
+          select: { baseAmountJpy: true, confirmedAmountJpy: true, status: true, deletedAt: true }
+        },
         serviceLocation: { select: { admin1RegionCode: true, admin2RegionCode: true } },
         scheduleSlot: {
           select: {
@@ -294,9 +297,17 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         distanceKm: null,
         grossAmountJpy: Math.round(Number(order.priceAmount.toString())),
         netAmountJpy: null,
-        prepaidServiceAmountJpy: 0,
+        prepaidServiceAmountJpy:
+          order.servicePrepayment && !order.servicePrepayment.deletedAt
+          && (order.servicePrepayment.status === "CONFIRMED" || order.servicePrepayment.status === "CAPTURED")
+            ? order.servicePrepayment.confirmedAmountJpy
+            : 0,
         prepaymentBaseAmountJpy: Math.round(Number(order.priceAmount.toString())),
-        prepaymentConfirmed: false,
+        prepaymentConfirmed: Boolean(
+          order.servicePrepayment && !order.servicePrepayment.deletedAt
+          && order.servicePrepayment.baseAmountJpy === Math.round(Number(order.priceAmount.toString()))
+          && (order.servicePrepayment.status === "CONFIRMED" || order.servicePrepayment.status === "CAPTURED")
+        ),
         customerRating: customer.rating,
         customerCompletedOrders: customer.completed,
         customerHistoricalOrders: customer.total,
@@ -319,9 +330,17 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     const now = new Date();
     const post = await this.client.exchangePost.findFirst({
       where: { id: postId, type: "DEMAND", status: "PUBLISHED", expiresAt: { gt: now }, deletedAt: null },
-      include: { demand: true }
+      include: { demand: true, servicePrepayment: true }
     });
     if (!post?.demand) return [];
+    const prepaymentBaseAmountJpy = post.demand.budgetMode === "PER_PROVIDER"
+      ? post.demand.budgetMaxJpy * post.demand.targetProviderCount
+      : post.demand.budgetMaxJpy;
+    const confirmedPrepayment = Boolean(
+      post.servicePrepayment && !post.servicePrepayment.deletedAt
+      && post.servicePrepayment.baseAmountJpy === prepaymentBaseAmountJpy
+      && (post.servicePrepayment.status === "CONFIRMED" || post.servicePrepayment.status === "CAPTURED")
+    );
     const slotQuery = {
       where: {
         technicianProfileId: { not: null },
@@ -493,9 +512,9 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           distanceKm: null,
           grossAmountJpy: post.demand.budgetMaxJpy,
           netAmountJpy: null,
-          prepaidServiceAmountJpy: 0,
-          prepaymentBaseAmountJpy: post.demand.budgetMaxJpy,
-          prepaymentConfirmed: false,
+          prepaidServiceAmountJpy: confirmedPrepayment ? post.servicePrepayment!.confirmedAmountJpy : 0,
+          prepaymentBaseAmountJpy,
+          prepaymentConfirmed: confirmedPrepayment,
           customerRating: customerEvidence.rating,
           customerCompletedOrders: customerEvidence.completed,
           customerHistoricalOrders: customerEvidence.total,
