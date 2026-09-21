@@ -325,7 +325,7 @@ function ShopApiProfilePage({ id, sourcePostId }: { id: number | string; sourceP
   return (
     <PageScaffold contentClassName="space-y-5 pb-28">
       <AppTopBar subtitle="真实 API 数据源" title="店铺资料" />
-      <UnifiedSimpleProfileCard detailTo={sourcePostId ? undefined : `/stores/${query.data.id}`} entityType="shop" store={mapCoreShopToStore(query.data)} technicians={query.data.technicians.map(mapCoreTechnicianToTechnician)} variant="list" />
+      <UnifiedSimpleProfileCard detailTo={sourcePostId ? "" : `/stores/${query.data.id}`} entityType="shop" store={mapCoreShopToStore(query.data)} technicians={query.data.technicians.map(mapCoreTechnicianToTechnician)} variant="list" />
       <SurfacePanel>
         <h2 className="text-lg font-black text-[color:var(--client-text)]">店铺简介</h2>
         <p className="mt-2 text-sm leading-7 text-[color:var(--client-muted)]">{query.data.description ?? "当前店铺暂未填写公开简介。"}</p>
