@@ -722,16 +722,18 @@ describe("formal checkout technician-card round trip", () => {
       nominatedTechnicianProfileId: 17,
       scheduleSlotId: 151,
       technicianServiceId: 51
-    })));
+    }), expect.stringMatching(/^[a-f0-9]{32}$/)));
     expect(createBooking.mock.calls[0]?.[0]).not.toHaveProperty("serviceId");
   });
 
-  it("adds every selected technician service to the displayed and submitted amount", async () => {
+  it("retries the 301/307 service bundle with the same key after an uncertain response", async () => {
     vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
     const primaryContext: TechnicianServiceBookingContext = {
       ...technicianBookingContext,
+      target: { type: "technician_service", id: 301 },
       serviceCard: {
         ...technicianBookingContext.serviceCard,
+        publicId: "technician-service0000000301",
         name: "全身もみほぐし 60分",
         catalogPriceJpy: 6_600,
         durationMinutes: 60
@@ -739,29 +741,31 @@ describe("formal checkout technician-card round trip", () => {
     };
     const extensionContext: TechnicianServiceBookingContext = {
       ...technicianBookingContext,
-      target: { type: "technician_service", id: 52 },
+      target: { type: "technician_service", id: 307 },
       serviceCard: {
         ...technicianBookingContext.serviceCard,
-        publicId: "technician-service0000000052",
+        publicId: "technician-service0000000307",
         name: "施術延長 30分",
         catalogPriceJpy: 3_300,
         durationMinutes: 30
       }
     };
     vi.spyOn(bookingApi, "getTechnicianServiceBookingContext").mockImplementation(async (id) => {
-      if (id === 51) return primaryContext;
-      if (id === 52) return extensionContext;
+      if (id === 301) return primaryContext;
+      if (id === 307) return extensionContext;
       throw new Error(`Unexpected technician service ${id}`);
     });
     const primarySlot = {
       ...technicianSlot,
+      id: 3011,
+      technicianServiceId: 301,
       priceAmount: "6600.00",
       serviceName: "全身もみほぐし 60分"
     };
     const extensionSlot: BookingScheduleSlot = {
       ...technicianSlot,
-      id: 152,
-      technicianServiceId: 52,
+      id: 3071,
+      technicianServiceId: 307,
       startsAt: primarySlot.endsAt,
       endsAt: new Date(new Date(primarySlot.endsAt).getTime() + 30 * 60_000).toISOString(),
       priceAmount: "3300.00",
@@ -769,27 +773,29 @@ describe("formal checkout technician-card round trip", () => {
       serviceName: "施術延長 30分"
     };
     vi.spyOn(bookingApi, "listAvailability").mockImplementation(async ({ technicianServiceId }) => ({
-      list: technicianServiceId === 52 ? [extensionSlot] : [primarySlot],
+      list: technicianServiceId === 307 ? [extensionSlot] : [primarySlot],
       total: 1,
       page: 1,
       page_size: 100
     }));
-    const createBooking = vi.spyOn(bookingApi, "createBooking").mockResolvedValue({
-      ...createdOrder,
-      serviceId: null,
-      technicianServiceId: 51,
-      scheduleSlotId: 151,
-      technicianProfileId: 17,
-      serviceName: "全身もみほぐし 60分 + 施術延長 30分",
-      paymentAmountJpy: 9_900,
-      priceAmount: "9900.00"
-    });
+    const createBooking = vi.spyOn(bookingApi, "createBooking")
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({
+        ...createdOrder,
+        serviceId: null,
+        technicianServiceId: 301,
+        scheduleSlotId: 3011,
+        technicianProfileId: 17,
+        serviceName: "全身もみほぐし 60分 + 施術延長 30分",
+        paymentAmountJpy: 9_900,
+        priceAmount: "9900.00"
+      });
 
     await act(async () => {
       root.render(
         <ClientThemeProvider>
           <MemoryRouter initialEntries={[
-            "/checkout/technician-service/51?mode=store&date=2026-09-03&time=11%3A30&serviceIds=51%2C52"
+            "/checkout/technician-service/301?mode=store&date=2026-09-03&time=11%3A30&serviceIds=301%2C307"
           ]}>
             <Routes>
               <Route element={<CheckoutPage />} path="/checkout/technician-service/:technicianServiceId" />
@@ -810,11 +816,16 @@ describe("formal checkout technician-card round trip", () => {
 
     await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({
       expectedPriceAmountJpy: 9_900,
-      scheduleSlotId: 151,
-      scheduleSlotIds: [151, 152],
-      technicianServiceId: 51,
-      technicianServiceIds: [51, 52]
+      scheduleSlotId: 3011,
+      scheduleSlotIds: [3011, 3071],
+      technicianServiceId: 301,
+      technicianServiceIds: [301, 307]
     }), expect.stringMatching(/^[a-f0-9]{32}$/)));
+    await waitFor(() => expect(container.textContent).toContain("预约提交结果暂未确认"));
+
+    await click(confirm);
+    await waitFor(() => expect(createBooking).toHaveBeenCalledTimes(2));
+    expect(createBooking.mock.calls[0]?.[1]).toBe(createBooking.mock.calls[1]?.[1]);
   });
 
   it("reuses the same Intelligence idempotency key after an uncertain network failure", async () => {
@@ -844,11 +855,74 @@ describe("formal checkout technician-card round trip", () => {
       .find((button) => button.textContent?.includes("确定预约"))!;
 
     await click(confirm());
-    await waitFor(() => expect(container.textContent).toContain("预约页加载失败，请检查网络后重试"));
+    await waitFor(() => expect(container.textContent).toContain("预约提交结果暂未确认"));
     await click(confirm());
     await waitFor(() => expect(createBooking).toHaveBeenCalledTimes(2));
 
     expect(createBooking.mock.calls[0]?.[1]).toBe(createBooking.mock.calls[1]?.[1]);
+  });
+
+  it("uses a stable idempotency key when retrying an ordinary booking after an uncertain network failure", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technicianDetail);
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({ list: slots, total: 3, page: 1, page_size: 100 });
+    const createBooking = vi.spyOn(bookingApi, "createBooking")
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(createdOrder);
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=11%3A30"]}>
+            <Routes>
+              <Route element={<CheckoutPage />} path="/checkout/:serviceId" />
+              <Route element={<LocationProbe />} path="/orders/:orderId" />
+            </Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+    await waitFor(() => expect(container.textContent).toContain("肩颈调理"));
+    const confirm = () => Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确定预约"))!;
+
+    await click(confirm());
+    await waitFor(() => expect(container.textContent).toContain("预约提交结果暂未确认"));
+    await click(confirm());
+    await waitFor(() => expect(createBooking).toHaveBeenCalledTimes(2));
+
+    expect(createBooking.mock.calls[0]?.[1]).toMatch(/^[a-f0-9]{32}$/);
+    expect(createBooking.mock.calls[0]?.[1]).toBe(createBooking.mock.calls[1]?.[1]);
+  });
+
+  it("reports an expired slot as stale availability instead of a checkout load failure", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technicianDetail);
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({ list: slots, total: 3, page: 1, page_size: 100 });
+    vi.spyOn(bookingApi, "createBooking").mockRejectedValue(
+      new ApiClientError("error.booking.slot_unavailable", 409, 40905)
+    );
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=11%3A30"]}>
+            <Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+    await waitFor(() => expect(container.textContent).toContain("肩颈调理"));
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确定预约"))!;
+
+    await click(confirm);
+
+    await waitFor(() => expect(container.textContent).toContain("所选预约时段已失效"));
+    expect(container.textContent).not.toContain("预约页加载失败");
+    expect(confirm.disabled).toBe(true);
   });
 
   it("creates and submits a home booking only after a valid formal route estimate", async () => {
@@ -870,7 +944,7 @@ describe("formal checkout technician-card round trip", () => {
     expect(createEstimate).toHaveBeenCalledWith({ servicePublicId: "svc0000000031", scheduleSlotId: 101, destination: expect.objectContaining({ countryCode: "JP", postalCode: "104-0061", prefecture: "東京都", city: "中央区", addressLine1: "銀座1-2-3" }) });
     expect(container.querySelector('iframe[src*="google.com/maps"]')).toBeNull();
     await click(confirmBefore);
-    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({ fulfillmentMode: "home", scheduleSlotId: 101, serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13102" }, travelEstimatePublicId: "00000000-0000-4000-8000-000000000077", fulfillmentAddress: expect.objectContaining({ countryCode: "JP", postalCode: "104-0061", prefecture: "東京都", city: "中央区", addressLine1: "銀座1-2-3" }) })));
+    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({ fulfillmentMode: "home", scheduleSlotId: 101, serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13102" }, travelEstimatePublicId: "00000000-0000-4000-8000-000000000077", fulfillmentAddress: expect.objectContaining({ countryCode: "JP", postalCode: "104-0061", prefecture: "東京都", city: "中央区", addressLine1: "銀座1-2-3" }) }), expect.stringMatching(/^[a-f0-9]{32}$/)));
   });
 
   it("prefills home checkout from the authenticated customer's persistent default address", async () => {
@@ -1014,7 +1088,7 @@ describe("formal checkout technician-card round trip", () => {
     await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({
       serviceId: 31,
       scheduleSlotId: 103
-    })));
+    }), expect.stringMatching(/^[a-f0-9]{32}$/)));
     const storePayload = createBooking.mock.calls[0]![0];
     expect(storePayload).not.toHaveProperty("serviceLocation");
     expect(storePayload).not.toHaveProperty("fulfillmentAddress");
@@ -1124,7 +1198,7 @@ describe("formal checkout technician-card round trip", () => {
       serviceId: 31,
       scheduleSlotId: 102,
       nominatedTechnicianProfileId: 16
-    })));
+    }), expect.stringMatching(/^[a-f0-9]{32}$/)));
   });
 
   it("renders complete natural Japanese checkout copy and localized accessibility labels", async () => {

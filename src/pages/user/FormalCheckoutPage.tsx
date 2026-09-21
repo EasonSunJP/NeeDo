@@ -122,7 +122,10 @@ function requestedCheckoutScheduleSlotId(value: string | null) {
   return value && /^-?[1-9]\d*$/u.test(value) ? Number(value) : null;
 }
 
-function describeCheckoutError(error: unknown): CheckoutTextKey {
+function describeCheckoutError(
+  error: unknown,
+  networkFallback: CheckoutTextKey = "checkoutLoadNetworkError"
+): CheckoutTextKey {
   if (error instanceof CheckoutSourceError) return error.copyKey;
   if (error instanceof ApiClientError) {
     if (error.code === 41038) return "priceUpdated";
@@ -139,7 +142,7 @@ function describeCheckoutError(error: unknown): CheckoutTextKey {
     if (error.status === 409) return "bookingStateChanged";
     if (error.status >= 500) return "bookingServiceUnavailable";
   }
-  return "checkoutLoadNetworkError";
+  return networkFallback;
 }
 
 function describeEstimateError(error: unknown): CheckoutTextKey {
@@ -1051,19 +1054,15 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               : {})
           };
       const fingerprint = JSON.stringify(bookingInput);
-      const idempotency = exchangePostId || technicianServiceIds.length > 1
-        ? resolveBookingIdempotencyKey(bookingIdempotencyRef.current, fingerprint)
-        : null;
+      const idempotency = resolveBookingIdempotencyKey(bookingIdempotencyRef.current, fingerprint);
       bookingIdempotencyRef.current = idempotency;
-      const order = idempotency
-        ? await bookingApi.createBooking(bookingInput, idempotency.key)
-        : await bookingApi.createBooking(bookingInput);
+      const order = await bookingApi.createBooking(bookingInput, idempotency.key);
       navigate(`/orders/${order.id}`, {
         replace: true,
         state: { notice: t("bookingCreated") }
       });
     } catch (error) {
-      const errorKey = describeCheckoutError(error);
+      const errorKey = describeCheckoutError(error, "bookingSubmitNetworkError");
       setSubmitError(errorKey);
       if (
         error instanceof ApiClientError &&
