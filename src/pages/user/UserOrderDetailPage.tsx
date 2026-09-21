@@ -20,6 +20,10 @@ import {
   type OverdueAppointmentBlock,
   type OverdueAppointmentResolutionKind
 } from "../../features/booking/api";
+import {
+  buildFormalOrderPersonCard,
+  translateAssignedTechnicianUnavailable
+} from "../../features/booking/formalOrderPersonCard";
 import { OverdueAppointmentResolutionDialog } from "../../features/booking/OverdueAppointmentResolutionDialog";
 import {
   coreReadApi,
@@ -313,7 +317,9 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       const [serviceResult, shopResult, technicianResult] = await Promise.allSettled([
         order.serviceId ? coreReadApi.getServiceDetail(order.serviceId) : Promise.resolve(null),
         coreReadApi.getShopDetail(order.shopId),
-        order.technicianProfileId ? coreReadApi.getTechnicianDetail(order.technicianProfileId) : Promise.resolve(null)
+        order.assignedTechnician === undefined && order.technicianProfileId
+          ? coreReadApi.getTechnicianDetail(order.technicianProfileId)
+          : Promise.resolve(null)
       ]);
       if (!active) return;
       setOrderService(serviceResult.status === "fulfilled" ? serviceResult.value : null);
@@ -605,7 +611,17 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           </OrderDetailSection>
 
           <OrderDetailSection title="技师 / 担当">
-            {displayTechnician ? (
+            {order.assignedTechnician ? (
+              <SocialProfileMiniCard
+                data={buildFormalOrderPersonCard(order.assignedTechnician, "technician")}
+                detailTo={getScopedTechnicianDynamicPath("user", {
+                  id: String(order.assignedTechnician.id),
+                  systemId: order.assignedTechnician.publicId
+                })}
+                showAction={false}
+                topTags={[{ label: "本次担当", tone: "green" }]}
+              />
+            ) : displayTechnician ? (
               <SocialProfileMiniCard
                 detailTo={getScopedTechnicianDynamicPath("user", displayTechnician)}
                 showAction={false}
@@ -615,7 +631,11 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
             ) : (
               <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
                 <p className="text-sm font-black">{order.technicianName ?? "尚未指定担当技师"}</p>
-                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺确认担当后将在此显示正式技师资料。</p>
+                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">
+                  {order.technicianProfileId
+                    ? translateAssignedTechnicianUnavailable(language)
+                    : "店铺确认担当后将在此显示正式技师资料。"}
+                </p>
               </section>
             )}
           </OrderDetailSection>

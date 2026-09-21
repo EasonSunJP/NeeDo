@@ -2561,6 +2561,103 @@ serviceLocation: { source: "SHOP_LOCATION" }
     );
   });
 
+  it("projects the assigned public technician from the same authoritative order relation", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("CONFIRMED"),
+      technicianProfile: {
+        id: 31,
+        userId: 707,
+        displayName: "Eason",
+        city: "东京",
+        bio: "正式担当技师",
+        serviceArea: "港区",
+        languages: ["日本語", "中文"],
+        visibility: "public",
+        status: "published",
+        deletedAt: null,
+        mediaAssets: [{ url: "/uploads/technicians/eason.jpg" }],
+        reviewSummary: { ratingAverage: 4.9, reviewCount: 18 },
+        performanceSummary: { completedOrderCount: 42, deletedAt: null },
+        _count: { entityFavorites: 7, entityShareEvents: 5 },
+        user: {
+          isActive: true,
+          deletedAt: null,
+          avatarUrl: null,
+          avatarBootstrapUrl: null,
+          identities: [
+            {
+              isActive: true,
+              deletedAt: null,
+              scopeType: "technician_profile",
+              scopeId: 99,
+              publicIdentifier: { kind: "S", publicId: "s0000000099", status: "ACTIVE", deletedAt: null }
+            },
+            {
+              isActive: true,
+              deletedAt: null,
+              scopeType: "technician_profile",
+              scopeId: 31,
+              publicIdentifier: { kind: "S", publicId: "s0000000031", status: "ACTIVE", deletedAt: null }
+            }
+          ]
+        }
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: { findFirst: jest.fn().mockResolvedValue(order) }
+    } as never);
+
+    await expect(repository.findOrderById(701)).resolves.toMatchObject({
+      technicianProfileId: 31,
+      technicianName: "Eason",
+      assignedTechnician: {
+        id: 31,
+        publicId: "s0000000031",
+        displayName: "Eason",
+        avatarUrl: "/uploads/technicians/eason.jpg",
+        city: "东京",
+        bio: "正式担当技师",
+        serviceArea: "港区",
+        languages: ["日本語", "中文"],
+        reviewSummary: { ratingAverage: "4.90", reviewCount: 18 },
+        completedOrderCount: 42,
+        favoriteCount: 7,
+        shareCount: 5
+      }
+    });
+  });
+
+  it("keeps unassigned and non-public assigned technician states distinct", async () => {
+    const unassigned = {
+      ...makeTransitionOrderRecord("CONFIRMED"),
+      technicianProfileId: null,
+      technicianProfile: null
+    };
+    const privateAssigned = {
+      ...makeTransitionOrderRecord("CONFIRMED"),
+      technicianProfile: {
+        ...makeTransitionOrderRecord("CONFIRMED").technicianProfile,
+        visibility: "privateAll",
+        status: "published",
+        deletedAt: null
+      }
+    };
+    const findFirst = jest.fn()
+      .mockResolvedValueOnce(unassigned)
+      .mockResolvedValueOnce(privateAssigned);
+    const repository = new BookingRepository({ bookingOrder: { findFirst } } as never);
+
+    await expect(repository.findOrderById(701)).resolves.toMatchObject({
+      technicianProfileId: null,
+      assignedTechnician: null
+    });
+    await expect(repository.findOrderById(701)).resolves.toMatchObject({
+      technicianProfileId: 31,
+      technicianName: "Misaki",
+      assignedTechnician: null
+    });
+  });
+
   it("projects only a structurally valid fulfillment address snapshot", async () => {
     const order = {
       ...makeTransitionOrderRecord("PENDING"),

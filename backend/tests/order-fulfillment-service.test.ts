@@ -595,6 +595,40 @@ describe("formal order fulfillment service", () => {
     expect(JSON.stringify(customerDetail)).not.toContain("verificationHash");
     expect(JSON.stringify(technicianDetail)).not.toContain("verificationHash");
   });
+
+  it("returns one authoritative assigned-technician projection to customer, technician, and merchant actors", async () => {
+    const assignedTechnicianProjection = {
+      id: 702,
+      publicId: "s0000000702",
+      displayName: "Eason",
+      avatarUrl: "/uploads/technicians/eason.jpg",
+      city: "东京",
+      bio: "正式担当技师",
+      serviceArea: "港区",
+      languages: ["日本語", "中文"],
+      reviewSummary: { ratingAverage: "4.90", reviewCount: 18 },
+      completedOrderCount: 42,
+      favoriteCount: 7,
+      shareCount: 5
+    };
+    const order = makeOrder("confirmed", {
+      assignedTechnician: assignedTechnicianProjection
+    });
+    const service = new BookingService(createRepository(order));
+
+    const [customerDetail, technicianDetail, merchantDetail] = await Promise.all([
+      service.getOrder(customer, 41),
+      service.getOrder(assignedTechnician, 41),
+      service.getOrder(owningMerchant, 41)
+    ]);
+
+    expect(customerDetail.assignedTechnician).toEqual(assignedTechnicianProjection);
+    expect(technicianDetail.assignedTechnician).toEqual(assignedTechnicianProjection);
+    expect(merchantDetail.assignedTechnician).toEqual(assignedTechnicianProjection);
+    expect(customerDetail.technicianProfileId).toBe(assignedTechnicianProjection.id);
+    expect(technicianDetail.technicianProfileId).toBe(assignedTechnicianProjection.id);
+    expect(merchantDetail.technicianProfileId).toBe(assignedTechnicianProjection.id);
+  });
 });
 
 type RepositoryHarnessOptions = {
