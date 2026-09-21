@@ -546,7 +546,7 @@ describe("DashboardCommissionRepository", () => {
     ).rejects.toThrow("Dashboard commission aggregate must be a non-negative safe integer");
   });
 
-  it("rejects a projected profile-history anomaly alongside otherwise valid aggregates", async () => {
+  it("degrades only technician commission metrics when projected profile history is anomalous", async () => {
     await expect(
       createReader([
         {
@@ -560,7 +560,23 @@ describe("DashboardCommissionRepository", () => {
           affiliatePlatformNdp: 80
         }
       ]).reader.getCommissionFacts(input)
-    ).rejects.toThrow("Dashboard commission compensation anomaly detected");
+    ).resolves.toEqual({
+      dedicatedTechnicianCommission: {
+        current: null,
+        previous: null,
+        dataStatus: "not_available"
+      },
+      partTimeTechnicianCommission: {
+        current: null,
+        previous: null,
+        dataStatus: "not_available"
+      },
+      marketingCommission: { current: 500, previous: 0, dataStatus: "ready" },
+      agentCommission: { current: 62_000, previous: 0, dataStatus: "ready" },
+      ndpIncome: { current: 900, previous: 0, dataStatus: "ready" },
+      affiliatePlatformIncome: { current: 80, previous: 0, dataStatus: "ready" },
+      consumablesProfit: { current: null, previous: null, dataStatus: "not_connected" }
+    });
   });
 
   it("delegates through DashboardRepository without composing Task 4", async () => {

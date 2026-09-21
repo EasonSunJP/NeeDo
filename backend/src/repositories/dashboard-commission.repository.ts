@@ -10,9 +10,15 @@ export interface DashboardReadyFact {
   dataStatus: "ready";
 }
 
+export interface DashboardUnavailableFact {
+  current: null;
+  previous: null;
+  dataStatus: "not_available";
+}
+
 export interface CommissionFacts {
-  dedicatedTechnicianCommission: DashboardReadyFact;
-  partTimeTechnicianCommission: DashboardReadyFact;
+  dedicatedTechnicianCommission: DashboardReadyFact | DashboardUnavailableFact;
+  partTimeTechnicianCommission: DashboardReadyFact | DashboardUnavailableFact;
   marketingCommission: DashboardReadyFact;
   agentCommission: DashboardReadyFact;
   ndpIncome: DashboardReadyFact;
@@ -83,7 +89,6 @@ interface CommissionRow {
 
 const allocationError = "Technician commission allocation is invalid";
 const aggregateError = "Dashboard commission aggregate must be a non-negative safe integer";
-const compensationAnomalyError = "Dashboard commission compensation anomaly detected";
 const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/u;
 const formalWageModes = new Set([
   "fixed_per_order",
@@ -328,6 +333,7 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
         agent: number;
         ndpIncome: number;
         affiliatePlatform: number;
+        salaryAnomaly: boolean;
       }
     >();
     for (const row of rows) {
@@ -336,7 +342,6 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
         throw new RangeError(aggregateError);
       }
       const anomalyCount = this.toSafeAggregate(row.salaryAnomalyCount ?? row.salary_anomaly_count);
-      if (anomalyCount !== 0) throw new RangeError(compensationAnomalyError);
       periods.set(key, {
         dedicated: this.toSafeAggregate(row.dedicatedJpy ?? row.dedicated_jpy),
         partTime: this.toSafeAggregate(row.partTimeJpy ?? row.part_time_jpy),
@@ -345,7 +350,8 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
         ndpIncome: this.toSafeAggregate(row.ndpIncomeNdp ?? row.ndp_income_ndp),
         affiliatePlatform: this.toSafeAggregate(
           row.affiliatePlatformNdp ?? row.affiliate_platform_ndp
-        )
+        ),
+        salaryAnomaly: anomalyCount !== 0
       });
     }
     const zero = {
@@ -354,21 +360,32 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
       marketing: 0,
       agent: 0,
       ndpIncome: 0,
-      affiliatePlatform: 0
+      affiliatePlatform: 0,
+      salaryAnomaly: false
     };
     const current = periods.get("current") ?? zero;
     const previous = periods.get("previous") ?? zero;
+    const technicianCommissionUnavailable = current.salaryAnomaly || previous.salaryAnomaly;
+    const unavailable = {
+      current: null,
+      previous: null,
+      dataStatus: "not_available" as const
+    };
     return {
-      dedicatedTechnicianCommission: {
-        current: current.dedicated,
-        previous: previous.dedicated,
-        dataStatus: "ready"
-      },
-      partTimeTechnicianCommission: {
-        current: current.partTime,
-        previous: previous.partTime,
-        dataStatus: "ready"
-      },
+      dedicatedTechnicianCommission: technicianCommissionUnavailable
+        ? unavailable
+        : {
+            current: current.dedicated,
+            previous: previous.dedicated,
+            dataStatus: "ready"
+          },
+      partTimeTechnicianCommission: technicianCommissionUnavailable
+        ? unavailable
+        : {
+            current: current.partTime,
+            previous: previous.partTime,
+            dataStatus: "ready"
+          },
       marketingCommission: {
         current: current.marketing,
         previous: previous.marketing,
