@@ -51,7 +51,11 @@ import {
   type CoreShopDetail
 } from "../../features/core-read/api";
 import type { BookingAvailabilityStartSummary } from "../../features/booking/api";
-import { loadAvailabilityDateKeys, loadAvailabilityStartSummaries } from "../../features/booking/window-loaders";
+import {
+  loadAvailabilityDateSummaries,
+  loadAvailabilityStartSummaries,
+  type AvailabilityDateSummary
+} from "../../features/booking/window-loaders";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
 import { mapBookingNavigationServiceToMenuCard } from "../../features/pricing-mode/bookingServiceCards";
@@ -994,6 +998,21 @@ function parseStoreBookingDateParam(value: string | null) {
 
   const date = new Date(`${value}T00:00:00`);
   return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function getCalendarMonthAvailabilityWindow(monthDate: Date, now = new Date()) {
+  const todayKey = getTokyoSlotParts(now.toISOString())?.date;
+  if (!todayKey) return null;
+  const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const nextMonthStart = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1);
+  const monthStartKey = formatDateParam(monthStart);
+  const nextMonthStartKey = formatDateParam(nextMonthStart);
+  const todayMonthKey = todayKey.slice(0, 7);
+  const monthKey = monthStartKey.slice(0, 7);
+  if (monthKey < todayMonthKey) return null;
+  const fromWindow = getTokyoDayWindow(monthKey === todayMonthKey ? todayKey : monthStartKey);
+  const toWindow = getTokyoDayWindow(nextMonthStartKey);
+  return fromWindow && toWindow ? { from: fromWindow.from, to: toWindow.from } : null;
 }
 
 function normalizeStoreBookingTimeParam(value: string | null) {
@@ -2865,8 +2884,8 @@ export function StoreDetailExperience({
   const [bookingNavigationStatus, setBookingNavigationStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [formalStartSummaries, setFormalStartSummaries] = useState<BookingAvailabilityStartSummary[]>([]);
   const [formalStartSummariesStatus, setFormalStartSummariesStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [formalAvailableDateKeys, setFormalAvailableDateKeys] = useState<string[]>([]);
-  const [formalAvailableDateKeysStatus, setFormalAvailableDateKeysStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [formalAvailabilityDateSummaries, setFormalAvailabilityDateSummaries] = useState<AvailabilityDateSummary[]>([]);
+  const [formalAvailabilityDateSummariesStatus, setFormalAvailabilityDateSummariesStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [formalAvailabilityNowMs, setFormalAvailabilityNowMs] = useState(() => Date.now());
   const { getActorForScope, getProfilePosts } = useSocial();
   const currentCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
@@ -3121,6 +3140,9 @@ export function StoreDetailExperience({
   const [activeTab, setActiveTab] = useState<StoreTab>("home");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedVisitDate, setSelectedVisitDate] = useState(() => routeVisitDate ?? getInitialSelectedDate(store.nextSlot, store.alwaysBookable));
+  const [formalAvailabilityViewMonth, setFormalAvailabilityViewMonth] = useState(
+    () => new Date(selectedVisitDate.getFullYear(), selectedVisitDate.getMonth(), 1)
+  );
   const [selectedPeople, setSelectedPeople] = useState(industry === "dining" ? "2名" : "1名");
   const [selectedTime, setSelectedTime] = useState(routeTime ?? timeOptions[0] ?? nextSlotTime(store.nextSlot));
   const [selectedMenuCardId, setSelectedMenuCardId] = useState(primaryCheckoutTarget);
@@ -3139,10 +3161,12 @@ export function StoreDetailExperience({
   const [displayedTaxonomyLabels, setDisplayedTaxonomyLabels] = useState(() => store.tags);
 
   useEffect(() => {
+    const nextVisitDate = routeVisitDate ?? getInitialSelectedDate(store.nextSlot, store.alwaysBookable);
     setActiveTab("home");
     setActiveMetricDetail(null);
     setActiveImageIndex(0);
-    setSelectedVisitDate(routeVisitDate ?? getInitialSelectedDate(store.nextSlot, store.alwaysBookable));
+    setSelectedVisitDate(nextVisitDate);
+    setFormalAvailabilityViewMonth(new Date(nextVisitDate.getFullYear(), nextVisitDate.getMonth(), 1));
     setSelectedPeople(industry === "dining" ? "2名" : "1名");
     setSelectedTime(routeTime ?? buildTimeOptions(industry, store.nextSlot, store.alwaysBookable)[0] ?? nextSlotTime(store.nextSlot));
     setSelectedMenuCardId(primaryCheckoutTarget);
@@ -3209,6 +3233,16 @@ export function StoreDetailExperience({
   const shareCount = baseShareCount + shareBoost;
   const selectedCheckoutTarget = menuCards.some((item) => item.sourceServiceId === selectedMenuCardId) ? selectedMenuCardId : primaryCheckoutTarget;
   const formalServiceId = /^[1-9]\d*$/u.test(selectedCheckoutTarget) ? Number(selectedCheckoutTarget) : null;
+  const selectFormalAvailabilityViewMonth = (month: Date) => {
+    if (
+      month.getFullYear() !== formalAvailabilityViewMonth.getFullYear()
+      || month.getMonth() !== formalAvailabilityViewMonth.getMonth()
+    ) {
+      setFormalAvailabilityDateSummaries([]);
+      setFormalAvailabilityDateSummariesStatus("loading");
+    }
+    setFormalAvailabilityViewMonth(new Date(month.getFullYear(), month.getMonth(), 1));
+  };
   const selectFormalVisitDate = (date: Date) => {
     if (
       formalApiOnly
@@ -3220,46 +3254,64 @@ export function StoreDetailExperience({
       setFormalStartSummaries([]);
       setFormalStartSummariesStatus("loading");
     }
+    selectFormalAvailabilityViewMonth(date);
     setSelectedVisitDate(date);
   };
   useEffect(() => {
     if (!formalApiOnly || isMerchantEditable || !storeApiId || (!isTechnicianPricingActive && !formalServiceId)) {
-      setFormalAvailableDateKeys([]);
-      setFormalAvailableDateKeysStatus("idle");
+      setFormalAvailabilityDateSummaries([]);
+      setFormalAvailabilityDateSummariesStatus("idle");
       return;
     }
 
-    const todayDate = getTokyoSlotParts(new Date().toISOString())?.date;
-    const startWindow = todayDate ? getTokyoDayWindow(todayDate) : null;
-    if (!startWindow) {
-      setFormalAvailableDateKeys([]);
-      setFormalAvailableDateKeysStatus("error");
+    const monthWindow = getCalendarMonthAvailabilityWindow(formalAvailabilityViewMonth);
+    if (!monthWindow) {
+      setFormalAvailabilityDateSummaries([]);
+      setFormalAvailabilityDateSummariesStatus("success");
       return;
     }
 
     let active = true;
-    setFormalAvailableDateKeysStatus("loading");
-    void loadAvailabilityDateKeys({
-      from: startWindow.from,
+    setFormalAvailabilityDateSummaries([]);
+    setFormalAvailabilityDateSummariesStatus("loading");
+    void loadAvailabilityDateSummaries({
+      from: monthWindow.from,
       includeUnavailable: false,
       serviceId: isTechnicianPricingActive ? undefined : formalServiceId ?? undefined,
       shopId: storeApiId,
-      to: new Date(new Date(startWindow.from).getTime() + 93 * 24 * 60 * 60 * 1000).toISOString()
+      to: monthWindow.to
     })
-      .then((dateKeys) => {
+      .then((summaries) => {
         if (!active) return;
-        setFormalAvailableDateKeys(dateKeys);
-        setFormalAvailableDateKeysStatus("success");
+        setFormalAvailabilityDateSummaries(summaries);
+        setFormalAvailabilityDateSummariesStatus("success");
       })
       .catch(() => {
         if (!active) return;
-        setFormalAvailableDateKeys([]);
-        setFormalAvailableDateKeysStatus("error");
+        setFormalAvailabilityDateSummaries([]);
+        setFormalAvailabilityDateSummariesStatus("error");
       });
     return () => {
       active = false;
     };
-  }, [formalApiOnly, formalServiceId, isMerchantEditable, isTechnicianPricingActive, storeApiId]);
+  }, [formalApiOnly, formalAvailabilityViewMonth, formalServiceId, isMerchantEditable, isTechnicianPricingActive, storeApiId]);
+
+  const formalAvailableDateKeys = useMemo(
+    () => formalAvailabilityDateSummaries
+      .filter((summary) => (
+        summary.availableStartCount > 0
+        && (!isTechnicianPricingActive || summary.availableTechnicianCount > 0)
+      ))
+      .map((summary) => summary.dateKey),
+    [formalAvailabilityDateSummaries, isTechnicianPricingActive]
+  );
+  const formalAvailabilityByDate = useMemo(
+    () => Object.fromEntries(formalAvailabilityDateSummaries.map((summary) => [summary.dateKey, {
+      availableStartCount: summary.availableStartCount,
+      availableTechnicianCount: summary.availableTechnicianCount
+    }])),
+    [formalAvailabilityDateSummaries]
+  );
 
   useEffect(() => {
     if (!formalApiOnly || isMerchantEditable || !storeApiId || (!isTechnicianPricingActive && !formalServiceId)) {
@@ -3337,20 +3389,32 @@ export function StoreDetailExperience({
       bookingNavigationStatus === "success"
       && canLoadFormalAvailability
       && (
-        formalAvailableDateKeysStatus === "idle"
-        || formalAvailableDateKeysStatus === "loading"
+        formalAvailabilityDateSummariesStatus === "idle"
+        || formalAvailabilityDateSummariesStatus === "loading"
         || formalStartSummariesStatus === "idle"
         || formalStartSummariesStatus === "loading"
       )
     )
   );
+  const formalDateAvailabilityLoading = Boolean(formalApiOnly) && !isMerchantEditable && (
+    bookingNavigationStatus === "idle"
+    || bookingNavigationStatus === "loading"
+    || (
+      bookingNavigationStatus === "success"
+      && canLoadFormalAvailability
+      && (
+        formalAvailabilityDateSummariesStatus === "idle"
+        || formalAvailabilityDateSummariesStatus === "loading"
+      )
+    )
+  );
   useEffect(() => {
-    if (!formalApiOnly || formalAvailableDateKeysStatus !== "success" || formalAvailableDateKeys.length === 0) return;
+    if (!formalApiOnly || formalAvailabilityDateSummariesStatus !== "success" || formalAvailableDateKeys.length === 0) return;
     const selectedDateKey = formatDateParam(selectedVisitDate);
     if (formalAvailableDateKeys.includes(selectedDateKey)) return;
     const firstDate = parseStoreBookingDateParam(formalAvailableDateKeys[0]);
     if (firstDate) selectFormalVisitDate(firstDate);
-  }, [formalApiOnly, formalAvailableDateKeys, formalAvailableDateKeysStatus, selectedVisitDate]);
+  }, [formalApiOnly, formalAvailabilityDateSummariesStatus, formalAvailableDateKeys, selectedVisitDate]);
 
   useEffect(() => {
     if (!formalApiOnly || formalStartSummariesStatus !== "success") return;
@@ -4319,11 +4383,14 @@ export function StoreDetailExperience({
                     onTimeChange={setSelectedTime}
                     alwaysAvailable={store.alwaysBookable}
                     availableDateKeys={formalApiOnly ? formalAvailableDateKeys : undefined}
-                    availabilityLoading={formalAvailabilityLoading}
+                    availabilityByDate={formalApiOnly ? formalAvailabilityByDate : undefined}
+                    availabilityLoading={formalDateAvailabilityLoading}
                     authoritativeAvailability={formalApiOnly}
+                    onViewMonthChange={selectFormalAvailabilityViewMonth}
                     people={selectedPeople}
                     selectedDate={selectedVisitDate}
                     selectedDay={selectedVisitDate.getDate()}
+                    technicianCountRelevant={isTechnicianPricingActive}
                     time={selectedTime}
                     timeOptions={displayedTimeOptions}
                     title="来店日"

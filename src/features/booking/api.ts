@@ -250,6 +250,12 @@ export type BookingAvailabilityStartSummary = {
   options: BookingAvailabilityStartOption[];
 };
 
+export type BookingAvailabilityDateSummary = {
+  startsAt: string;
+  availableStartCount: number;
+  availableTechnicianCount: number;
+};
+
 export type AdministrativeRegionReference = {
   code: string;
   name: string;
@@ -524,7 +530,7 @@ export const bookingApi = {
       }
     );
   },
-  listAvailability<TItem extends BookingScheduleSlot | BookingAvailabilityStartSummary = BookingScheduleSlot>(query: AvailabilityQuery) {
+  listAvailability<TItem extends BookingScheduleSlot | BookingAvailabilityStartSummary | BookingAvailabilityDateSummary = BookingScheduleSlot>(query: AvailabilityQuery) {
     return httpClient.request<PaginatedBookingData<TItem>>("/schedule/availability", {
       query
     });

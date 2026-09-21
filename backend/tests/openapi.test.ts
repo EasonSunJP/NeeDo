@@ -1112,11 +1112,24 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths["/api/v1/schedule/availability"].get.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          name: "summaryByDate",
+          description: expect.stringMatching(/availableTechnicianCount.*availableStartCount/i)
+        }),
+        expect.objectContaining({
           name: "summaryByStart",
           description: expect.stringMatching(/30-minute.*technicianProfileId.*technicianServiceId/i)
         })
       ])
     );
+    expect(response.body.components.schemas.AvailabilityDateSummary).toMatchObject({
+      additionalProperties: false,
+      required: ["startsAt", "availableTechnicianCount", "availableStartCount"],
+      properties: {
+        startsAt: { type: "string", format: "date-time" },
+        availableTechnicianCount: { type: "integer", minimum: 0 },
+        availableStartCount: { type: "integer", minimum: 0 }
+      }
+    });
     expect(response.body.components.schemas).toHaveProperty("AvailabilityStartSummary");
     expect(response.body.paths).toHaveProperty("/api/v1/bookings");
     expect(response.body.paths).toHaveProperty("/api/v1/orders");

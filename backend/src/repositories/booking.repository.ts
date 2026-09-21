@@ -717,22 +717,68 @@ export interface AvailabilityStartSummaryPayload {
   options: AvailabilityStartSummaryOptionPayload[];
 }
 
-export type AvailabilityListPayload = ScheduleSlotPayload | AvailabilityStartSummaryPayload;
+export interface AvailabilityDateSummaryPayload {
+  startsAt: Date;
+  availableTechnicianCount: number;
+  availableStartCount: number;
+}
 
-function isCustomerBookableStart(slot: ScheduleSlotPayload) {
+export type AvailabilityListPayload =
+  | ScheduleSlotPayload
+  | AvailabilityDateSummaryPayload
+  | AvailabilityStartSummaryPayload;
+
+type CustomerBookableStart = Pick<
+  ScheduleSlotPayload,
+  "startsAt" | "technicianProfileId" | "status" | "bookedCount" | "capacity"
+>;
+
+function isCustomerBookableStart(slot: CustomerBookableStart) {
   return slot.status === "available"
     && slot.bookedCount < slot.capacity
     && slot.startsAt.getUTCMinutes() % 30 === 0;
 }
 
-export function summarizeAvailableDates(slots: ScheduleSlotPayload[]): ScheduleSlotPayload[] {
-  const firstAvailableByDate = new Map<string, ScheduleSlotPayload>();
-  for (const slot of slots) {
-    if (!isCustomerBookableStart(slot)) continue;
+class AvailabilityDateSummaryCollector {
+  private readonly dates = new Map<string, {
+    startsAt: Date;
+    technicianIds: Set<number>;
+    startsAtValues: Set<number>;
+  }>();
+
+  public add(slot: CustomerBookableStart): void {
+    if (!isCustomerBookableStart(slot)) return;
     const date = toTokyoCalendarDate(slot.startsAt);
-    if (!firstAvailableByDate.has(date)) firstAvailableByDate.set(date, slot);
+    const summary = this.dates.get(date) ?? {
+      startsAt: slot.startsAt,
+      technicianIds: new Set<number>(),
+      startsAtValues: new Set<number>()
+    };
+    if (slot.startsAt < summary.startsAt) summary.startsAt = slot.startsAt;
+    if (slot.technicianProfileId !== null) {
+      summary.technicianIds.add(slot.technicianProfileId);
+    }
+    summary.startsAtValues.add(slot.startsAt.getTime());
+    this.dates.set(date, summary);
   }
-  return [...firstAvailableByDate.values()];
+
+  public values(): AvailabilityDateSummaryPayload[] {
+    return [...this.dates.values()]
+      .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime())
+      .map((summary) => ({
+        startsAt: summary.startsAt,
+        availableTechnicianCount: summary.technicianIds.size,
+        availableStartCount: summary.startsAtValues.size
+      }));
+  }
+}
+
+export function summarizeAvailableDates(
+  slots: ScheduleSlotPayload[]
+): AvailabilityDateSummaryPayload[] {
+  const collector = new AvailabilityDateSummaryCollector();
+  slots.forEach((slot) => collector.add(slot));
+  return collector.values();
 }
 
 export function summarizeAvailableStarts(
@@ -2042,7 +2088,9 @@ export class BookingRepository implements BookingRepositoryPort {
     const releasesOwnPending = customer?.membershipLevel.toLowerCase() !== "black";
     const nominationFees = new Map(nominationFeeEntries);
     const candidates: ScheduleSlotPayload[] = [];
-    const summarizedDateKeys = new Set<string>();
+    const dateSummaries = input.summaryByDate
+      ? new AvailabilityDateSummaryCollector()
+      : null;
     for (const window of windows) {
       if (!window.technicianProfileId) continue;
       const nominationFeeJpy = nominationFees.get(window.technicianProfileId) ?? 0;
@@ -2066,10 +2114,6 @@ export class BookingRepository implements BookingRepositoryPort {
             (input.summaryByDate || input.summaryByStart)
             && candidate.startsAt.getUTCMinutes() % 30 !== 0
           ) continue;
-          const candidateDate = input.summaryByDate
-            ? toTokyoCalendarDate(candidate.startsAt)
-            : null;
-          if (candidateDate && summarizedDateKeys.has(candidateDate)) continue;
           const blocked = candidate.startsAt <= now || orders.some((order) => {
             if (order.technicianProfileId !== window.technicianProfileId) return false;
             if (
@@ -2087,7 +2131,16 @@ export class BookingRepository implements BookingRepositoryPort {
             reservation.estimatedEndsAt > candidate.occupiedStartsAt
           );
           if (blocked && (input.summaryByDate || !input.includeUnavailable)) continue;
-          if (candidateDate) summarizedDateKeys.add(candidateDate);
+          if (dateSummaries) {
+            dateSummaries.add({
+              startsAt: candidate.startsAt,
+              technicianProfileId: window.technicianProfileId,
+              capacity: 1,
+              bookedCount: blocked ? 1 : 0,
+              status: blocked ? "blocked" : "available"
+            });
+            continue;
+          }
           candidates.push({
             id: encodeDynamicAvailabilityId(window.id, candidate.offsetMinutes),
             serviceId: service?.id ?? null,
@@ -2110,6 +2163,14 @@ export class BookingRepository implements BookingRepositoryPort {
           });
         }
       }
+    }
+    if (dateSummaries) {
+      const summaries = dateSummaries.values();
+      return buildPaginatedResponse(
+        summaries.slice(pagination.skip, pagination.skip + pagination.take),
+        summaries.length,
+        pagination
+      );
     }
     candidates.sort((left, right) =>
       left.startsAt.getTime() - right.startsAt.getTime() || left.id - right.id

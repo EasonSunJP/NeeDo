@@ -91,6 +91,11 @@ function formatDateKey(date: Date) {
   ].join("-");
 }
 
+export type AvailabilityDateCapacity = {
+  availableStartCount: number;
+  availableTechnicianCount: number;
+};
+
 export function AvailabilityCalendar({
   title,
   selectedDay,
@@ -103,9 +108,12 @@ export function AvailabilityCalendar({
   onTimeChange,
   timeOptions,
   availableDateKeys,
+  availabilityByDate,
   authoritativeAvailability = false,
   availabilityLoading = false,
   alwaysAvailable = false,
+  onViewMonthChange,
+  technicianCountRelevant = true,
   className
 }: {
   title: string;
@@ -119,9 +127,12 @@ export function AvailabilityCalendar({
   onTimeChange: (time: string) => void;
   timeOptions: string[];
   availableDateKeys?: readonly string[];
+  availabilityByDate?: Readonly<Record<string, AvailabilityDateCapacity>>;
   authoritativeAvailability?: boolean;
   availabilityLoading?: boolean;
   alwaysAvailable?: boolean;
+  onViewMonthChange?: (month: Date) => void;
+  technicianCountRelevant?: boolean;
   className?: string;
 }) {
   const { language } = useI18n();
@@ -173,7 +184,11 @@ export function AvailabilityCalendar({
       <div className="mt-4 flex items-center justify-between px-1">
         <button
           className="grid h-9 w-9 place-items-center text-[30px] font-black text-ink/35"
-          onClick={() => setViewDate(new Date(year, month - 1, 1))}
+          onClick={() => {
+            const previousMonth = new Date(year, month - 1, 1);
+            setViewDate(previousMonth);
+            onViewMonthChange?.(previousMonth);
+          }}
           type="button"
           aria-label="上个月"
         >
@@ -182,7 +197,11 @@ export function AvailabilityCalendar({
         <h4 className="text-[19px] font-black text-ink/72">{formatMonthHeading(year, month, language)}</h4>
         <button
           className="grid h-9 w-9 place-items-center text-[30px] font-black text-ink/35"
-          onClick={() => setViewDate(new Date(year, month + 1, 1))}
+          onClick={() => {
+            const nextMonth = new Date(year, month + 1, 1);
+            setViewDate(nextMonth);
+            onViewMonthChange?.(nextMonth);
+          }}
           type="button"
           aria-label="下个月"
         >
@@ -202,14 +221,31 @@ export function AvailabilityCalendar({
         {monthCells.map((cell, index) => {
           const weekday = index % 7;
           const date = new Date(year, month, cell.day || 1);
+          const dateKey = formatDateKey(date);
+          const dateCapacity = availabilityByDate?.[dateKey];
+          const hasAuthoritativeCapacity = Boolean(
+            dateCapacity
+            && dateCapacity.availableStartCount > 0
+            && (!technicianCountRelevant || dateCapacity.availableTechnicianCount > 0)
+          );
           const selectable =
             !cell.ghost &&
             normalizeDate(date).getTime() >= today.getTime() &&
             (authoritativeAvailability
-              ? !availabilityLoading && Boolean(availableDates?.has(formatDateKey(date)))
+              ? !availabilityLoading && (availabilityByDate
+                ? hasAuthoritativeCapacity
+                : Boolean(availableDates?.has(dateKey)))
               : availableDates
-              ? availableDates.has(formatDateKey(date))
+              ? availableDates.has(dateKey)
               : alwaysAvailable || isAvailableDay(year, month, cell.day));
+          const scarce = Boolean(
+            selectable
+            && dateCapacity
+            && (
+              dateCapacity.availableStartCount < 4
+              || (technicianCountRelevant && dateCapacity.availableTechnicianCount < 4)
+            )
+          );
           const selected = selectable && cell.day === currentSelectedDay && year === selectedYear && month === selectedMonth;
           const mutedDay = !selectable && !cell.ghost && !availabilityLoading;
 
@@ -240,8 +276,10 @@ export function AvailabilityCalendar({
                   aria-hidden="true"
                   className="availability-calendar-loading-marker mt-2 h-3.5 w-7 animate-pulse rounded-full bg-ink/12"
                 />
+              ) : scarce ? (
+                <span className="availability-calendar-scarce-marker mt-1.5 h-0 w-0 border-x-[10px] border-b-[18px] border-x-transparent border-b-[#f08a00]" />
               ) : selectable ? (
-                <span className="mt-1.5 h-5 w-5 rounded-full border-[4px] border-[#f08a00]" />
+                <span className="availability-calendar-available-marker mt-1.5 h-5 w-5 rounded-full border-[4px] border-[#f08a00]" />
               ) : (
                 <span className="availability-calendar-dash mt-1.5 text-lg text-ink/20">－</span>
               )}

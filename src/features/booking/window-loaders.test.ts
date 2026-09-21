@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bookingApi, type BookingOrder, type BookingScheduleSlot } from "./api";
 import {
-  loadAvailabilityDateKeys,
+  loadAvailabilityDateSummaries,
   loadAvailabilityStartSummaries,
   loadCustomerOrderWindow,
   loadTechnicianAvailabilityWindow
@@ -72,24 +72,24 @@ describe("formal booking window loaders", () => {
   });
 
   it("loads the server-side daily availability index without downloading every start time", async () => {
-    const first = makeSlot(1);
-    first.startsAt = "2026-09-01T00:00:00.000Z";
-    const duplicateDay = makeSlot(2);
-    duplicateDay.startsAt = "2026-09-01T01:00:00.000Z";
-    const second = makeSlot(3);
-    second.startsAt = "2026-09-02T00:00:00.000Z";
     vi.spyOn(bookingApi, "listAvailability").mockResolvedValueOnce({
-      list: [first, duplicateDay, second],
-      total: 3,
+      list: [
+        { startsAt: "2026-09-01T00:00:00.000Z", availableStartCount: 8, availableTechnicianCount: 4 },
+        { startsAt: "2026-09-02T00:00:00.000Z", availableStartCount: 2, availableTechnicianCount: 1 }
+      ],
+      total: 2,
       page: 1,
       page_size: 100
     });
 
-    await expect(loadAvailabilityDateKeys({
+    await expect(loadAvailabilityDateSummaries({
       from: from.toISOString(),
       shopId: 16,
       to: to.toISOString()
-    })).resolves.toEqual(["2026-09-01", "2026-09-02"]);
+    })).resolves.toEqual([
+      { availableStartCount: 8, availableTechnicianCount: 4, dateKey: "2026-09-01" },
+      { availableStartCount: 2, availableTechnicianCount: 1, dateKey: "2026-09-02" }
+    ]);
     expect(bookingApi.listAvailability).toHaveBeenCalledWith({
       from: from.toISOString(),
       page: 1,
@@ -98,6 +98,17 @@ describe("formal booking window loaders", () => {
       summaryByDate: true,
       to: to.toISOString()
     });
+  });
+
+  it("rejects date-index windows longer than the 35-day calendar page limit", async () => {
+    const availability = vi.spyOn(bookingApi, "listAvailability");
+
+    await expect(loadAvailabilityDateSummaries({
+      from: "2026-09-01T00:00:00.000Z",
+      shopId: 16,
+      to: "2026-10-07T00:00:00.000Z"
+    })).rejects.toThrow("35 days");
+    expect(availability).not.toHaveBeenCalled();
   });
 
   it("loads every page in a bounded technician window exactly once", async () => {

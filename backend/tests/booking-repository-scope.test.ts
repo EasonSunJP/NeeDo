@@ -168,7 +168,55 @@ describe("schedule list projection", () => {
         ]
       }
     ]);
-    expect(summarizeAvailableDates(candidates).map((candidate) => candidate.id)).toEqual([2]);
+  });
+
+  it("summarizes distinct technicians and 30-minute starts for each Tokyo date", () => {
+    const slot = (
+      id: number,
+      startsAt: string,
+      technicianProfileId: number | null,
+      status: ScheduleSlotPayload["status"] = "available"
+    ): ScheduleSlotPayload => ({
+      id,
+      serviceId: null,
+      technicianServiceId: technicianProfileId ? 200 + technicianProfileId : null,
+      shopId: 11,
+      technicianProfileId,
+      startsAt: new Date(startsAt),
+      endsAt: new Date(new Date(startsAt).getTime() + 3_600_000),
+      capacity: 1,
+      bookedCount: status === "available" ? 0 : 1,
+      status,
+      serviceName: "service",
+      shopName: "StagingTest",
+      technicianName: technicianProfileId ? `technician-${technicianProfileId}` : null,
+      priceAmount: "6600.00",
+      currency: "JPY",
+      durationMinutes: 60
+    });
+
+    expect(summarizeAvailableDates([
+      slot(1, "2026-09-21T00:45:00.000Z", 22), // JST 09:45; hidden from customers
+      slot(2, "2026-09-21T01:00:00.000Z", 22),
+      slot(3, "2026-09-21T01:00:00.000Z", 23), // same start, distinct technician
+      slot(4, "2026-09-21T01:30:00.000Z", 22), // same technician, distinct start
+      slot(5, "2026-09-21T02:00:00.000Z", 24),
+      slot(6, "2026-09-21T02:30:00.000Z", 25),
+      slot(7, "2026-09-21T03:00:00.000Z", 26, "blocked"),
+      slot(8, "2026-09-21T15:00:00.000Z", 22), // JST next day
+      slot(9, "2026-09-21T15:00:00.000Z", null)
+    ])).toEqual([
+      {
+        startsAt: new Date("2026-09-21T01:00:00.000Z"),
+        availableTechnicianCount: 4,
+        availableStartCount: 4
+      },
+      {
+        startsAt: new Date("2026-09-21T15:00:00.000Z"),
+        availableTechnicianCount: 1,
+        availableStartCount: 1
+      }
+    ]);
   });
 
   it("uses dynamic availability for a technician-priced shop query before a service is selected", async () => {

@@ -8,6 +8,7 @@ import { coreReadApi, type CoreShopDetail } from "../../features/core-read/api";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import {
   bookingApi,
+  type BookingAvailabilityDateSummary,
   type BookingAvailabilityStartSummary,
   type BookingScheduleSlot
 } from "../../features/booking/api";
@@ -455,6 +456,11 @@ it("builds checkout actions only from an exact future formal slot", async () => 
       serviceId: formalSlot.serviceId
     }]
   };
+  const formalDateSummary: BookingAvailabilityDateSummary = {
+    startsAt: formalSlot.startsAt,
+    availableStartCount: 1,
+    availableTechnicianCount: 1
+  };
   vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-13T03:00:00.000Z").getTime());
   vi.spyOn(coreReadApi, "getShopDetail").mockResolvedValue(shop);
   pricingModeMock.getBookingNavigation.mockResolvedValue({
@@ -470,7 +476,7 @@ it("builds checkout actions only from an exact future formal slot", async () => 
     }
   });
   const listAvailability = vi.spyOn(bookingApi, "listAvailability").mockImplementation(async (query) => ({
-    list: query.summaryByStart ? [formalStartSummary] : [formalSlot],
+    list: query.summaryByDate ? [formalDateSummary] : query.summaryByStart ? [formalStartSummary] : [formalSlot],
     total: 1,
     page: 1,
     page_size: 100
@@ -519,16 +525,21 @@ it("routes an available technician selection to services using only 30-minute cu
     entry: "technician_list",
     technicians: { list: [], total: 2, page: 1, page_size: 20 }
   });
-  vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
-    list: [
-      makeTechnicianStart(951, 501, "09:45"),
-      makeTechnicianStart(952, 501, "10:00"),
-      makeTechnicianStart(953, 502, "10:30")
-    ] as never[],
-    total: 3,
+  const technicianStarts = [
+    makeTechnicianStart(951, 501, "09:45"),
+    makeTechnicianStart(952, 501, "10:00"),
+    makeTechnicianStart(953, 502, "10:30")
+  ];
+  vi.spyOn(bookingApi, "listAvailability").mockImplementation(async (query) => ({
+    list: query.summaryByDate ? [{
+      startsAt: technicianStarts[1]!.startsAt,
+      availableStartCount: 2,
+      availableTechnicianCount: 2
+    }] : technicianStarts,
+    total: query.summaryByDate ? 1 : 3,
     page: 1,
     page_size: 100
-  });
+  }) as never);
 
   await renderFormalMerchantPreview(2, "user");
   await vi.waitFor(() => {

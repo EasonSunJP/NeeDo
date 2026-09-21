@@ -1,6 +1,7 @@
 import {
   bookingApi,
   type AvailabilityQuery,
+  type BookingAvailabilityDateSummary,
   type BookingAvailabilityStartSummary,
   type BookingOrder,
   type BookingScheduleSlot,
@@ -8,7 +9,14 @@ import {
 } from "./api";
 
 const MAX_WINDOW_MS = 93 * 24 * 60 * 60 * 1000;
+const MAX_DATE_INDEX_WINDOW_MS = 35 * 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 100;
+
+export type AvailabilityDateSummary = {
+  availableStartCount: number;
+  availableTechnicianCount: number;
+  dateKey: string;
+};
 
 function assertWindow(from: Date, to: Date): void {
   const duration = to.getTime() - from.getTime();
@@ -39,24 +47,34 @@ export async function loadAvailabilityStartSummaries(
   return response.list;
 }
 
-export async function loadAvailabilityDateKeys(
+export async function loadAvailabilityDateSummaries(
   query: Omit<AvailabilityQuery, "page" | "pageSize" | "summaryByDate" | "summaryByStart">
-): Promise<string[]> {
-  const slots = await loadEveryPage((page) => bookingApi.listAvailability({
+): Promise<AvailabilityDateSummary[]> {
+  const from = new Date(query.from);
+  const to = new Date(query.to);
+  const duration = to.getTime() - from.getTime();
+  if (!Number.isFinite(duration) || duration <= 0 || duration > MAX_DATE_INDEX_WINDOW_MS) {
+    throw new Error("Formal availability date index must be between 1 ms and 35 days.");
+  }
+  const response = await bookingApi.listAvailability<BookingAvailabilityDateSummary>({
     ...query,
-    page,
+    page: 1,
     pageSize: PAGE_SIZE,
     summaryByDate: true
-  }));
-  return Array.from(new Set(slots.flatMap((slot) => {
+  });
+  return response.list.flatMap((summary) => {
     const date = new Intl.DateTimeFormat("en-CA", {
       day: "2-digit",
       month: "2-digit",
       timeZone: "Asia/Tokyo",
       year: "numeric"
-    }).format(new Date(slot.startsAt));
-    return date ? [date] : [];
-  })));
+    }).format(new Date(summary.startsAt));
+    return date ? [{
+      availableStartCount: summary.availableStartCount,
+      availableTechnicianCount: summary.availableTechnicianCount,
+      dateKey: date
+    }] : [];
+  });
 }
 
 async function loadEveryPage<TItem>(

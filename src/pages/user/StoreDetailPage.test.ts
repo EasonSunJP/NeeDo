@@ -225,14 +225,18 @@ describe("StoreDetailPage routed booking defaults", () => {
 
   it("loads a separate authoritative availability-date index instead of treating one selected day as the whole calendar", () => {
     const dateIndexEffectSource = pageSource.slice(
-      pageSource.indexOf("void loadAvailabilityDateKeys"),
+      pageSource.indexOf("void loadAvailabilityDateSummaries"),
       pageSource.indexOf("void loadAvailabilityStartSummaries")
     );
 
-    expect(pageSource).toContain("loadAvailabilityDateKeys");
-    expect(pageSource).toContain("formalAvailableDateKeysStatus");
-    expect(pageSource).toContain("availabilityLoading={formalAvailabilityLoading}");
+    expect(pageSource).toContain("loadAvailabilityDateSummaries");
+    expect(pageSource).toContain("formalAvailabilityDateSummariesStatus");
+    expect(pageSource).toContain("availabilityByDate={formalApiOnly ? formalAvailabilityByDate : undefined}");
+    expect(pageSource).toContain("onViewMonthChange={selectFormalAvailabilityViewMonth}");
+    expect(pageSource).toContain("getCalendarMonthAvailabilityWindow(formalAvailabilityViewMonth)");
+    expect(dateIndexEffectSource).not.toContain("93 * 24 * 60 * 60 * 1000");
     expect(pageSource).not.toContain("formalBookableSlots.map((slot) => getTokyoSlotParts(slot.startsAt)?.date)");
+    expect(pageSource).not.toContain("formalAvailabilityMonthCacheRef");
     expect(dateIndexEffectSource).not.toContain("technicianId");
     expect(dateIndexEffectSource).not.toContain("selectedTechnicianId");
   });

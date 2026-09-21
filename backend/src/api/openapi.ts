@@ -11782,6 +11782,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      AvailabilityDateSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["startsAt", "availableTechnicianCount", "availableStartCount"],
+        properties: {
+          startsAt: { type: "string", format: "date-time" },
+          availableTechnicianCount: { type: "integer", minimum: 0 },
+          availableStartCount: { type: "integer", minimum: 0 }
+        }
+      },
       ShopAutoDispatchRuleInput: {
         type: "object",
         additionalProperties: false,
@@ -22996,7 +23006,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "summaryByDate",
             in: "query",
             description:
-              "When true, return one representative real bookable slot per Tokyo date. Only customer-facing 30-minute starts are considered.",
+              "When true, return one row per Tokyo date with a representative startsAt plus availableTechnicianCount and availableStartCount. Both counts are distinct across real bookable customer-facing 30-minute starts.",
             schema: { type: "boolean", default: false }
           },
           {
@@ -23041,6 +23051,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                           items: {
                             oneOf: [
                               { $ref: "#/components/schemas/ScheduleSlot" },
+                              { $ref: "#/components/schemas/AvailabilityDateSummary" },
                               { $ref: "#/components/schemas/AvailabilityStartSummary" }
                             ]
                           }

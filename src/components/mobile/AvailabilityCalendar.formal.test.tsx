@@ -57,6 +57,103 @@ it("enables only dates present in the authoritative availability index", async (
   expect(container.textContent).not.toContain("TEL");
 });
 
+it("renders a triangle when fewer than four technicians or starts remain", async () => {
+  await act(async () => {
+    root.render(
+      <AvailabilityCalendar
+        availabilityByDate={{
+          "2026-09-14": { availableStartCount: 4, availableTechnicianCount: 3 },
+          "2026-09-15": { availableStartCount: 4, availableTechnicianCount: 4 }
+        }}
+        availableDateKeys={["2026-09-14", "2026-09-15"]}
+        authoritativeAvailability
+        onPeopleChange={() => undefined}
+        onSelectDate={() => undefined}
+        onSelectDay={() => undefined}
+        onTimeChange={() => undefined}
+        people="1名"
+        selectedDate={new Date(2026, 8, 14)}
+        selectedDay={14}
+        time="21:00"
+        timeOptions={["21:00"]}
+        title="来店日"
+      />
+    );
+  });
+
+  const day14 = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => button.querySelector(".availability-calendar-day")?.textContent === "14")!;
+  const day15 = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => button.querySelector(".availability-calendar-day")?.textContent === "15")!;
+  const day16 = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => button.querySelector(".availability-calendar-day")?.textContent === "16")!;
+
+  expect(day14.querySelector(".availability-calendar-scarce-marker")).not.toBeNull();
+  expect(day14.querySelector(".availability-calendar-available-marker")).toBeNull();
+  expect(day15.querySelector(".availability-calendar-available-marker")).not.toBeNull();
+  expect(day16.disabled).toBe(true);
+  expect(day16.querySelector(".availability-calendar-dash")).not.toBeNull();
+});
+
+it("requests only the newly visible month when the user changes months", async () => {
+  const onViewMonthChange = vi.fn();
+  await act(async () => {
+    root.render(
+      <AvailabilityCalendar
+        authoritativeAvailability
+        onPeopleChange={() => undefined}
+        onSelectDate={() => undefined}
+        onSelectDay={() => undefined}
+        onTimeChange={() => undefined}
+        onViewMonthChange={onViewMonthChange}
+        people="1名"
+        selectedDate={new Date(2026, 8, 14)}
+        selectedDay={14}
+        time=""
+        timeOptions={[]}
+        title="来店日"
+      />
+    );
+  });
+
+  const nextMonthButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => button.getAttribute("aria-label") === "下个月")!;
+  await act(async () => nextMonthButton.click());
+
+  expect(onViewMonthChange).toHaveBeenCalledTimes(1);
+  expect(onViewMonthChange.mock.calls[0]?.[0]).toEqual(new Date(2026, 9, 1));
+});
+
+it("keeps merchant-priced dates bookable when their formal starts are not technician-specific", async () => {
+  await act(async () => {
+    root.render(
+      <AvailabilityCalendar
+        availabilityByDate={{
+          "2026-09-14": { availableStartCount: 4, availableTechnicianCount: 0 }
+        }}
+        availableDateKeys={["2026-09-14"]}
+        authoritativeAvailability
+        onPeopleChange={() => undefined}
+        onSelectDate={() => undefined}
+        onSelectDay={() => undefined}
+        onTimeChange={() => undefined}
+        people="1名"
+        selectedDate={new Date(2026, 8, 14)}
+        selectedDay={14}
+        technicianCountRelevant={false}
+        time="21:00"
+        timeOptions={["21:00"]}
+        title="来店日"
+      />
+    );
+  });
+
+  const day14 = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => button.querySelector(".availability-calendar-day")?.textContent === "14")!;
+  expect(day14.disabled).toBe(false);
+  expect(day14.querySelector(".availability-calendar-available-marker")).not.toBeNull();
+});
+
 it("shows an explicit loading state while the authoritative date index is loading", async () => {
   await act(async () => {
     root.render(
