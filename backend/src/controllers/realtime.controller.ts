@@ -39,7 +39,8 @@ import {
   socialPostShareBodySchema,
   socialPostUpdateBodySchema,
   socialActivityStatusQuerySchema,
-  socialUserIdParamSchema
+  socialUserIdParamSchema,
+  technicianBusinessConversationParamSchema
 } from "../validators/realtime.validator";
 
 export class RealtimeController {
@@ -60,6 +61,14 @@ export class RealtimeController {
       ),
     201
   );
+
+  public ensureTechnicianBusinessConversation = this.createHandler((request, response) => {
+    const params = technicianBusinessConversationParamSchema.parse(request.params);
+    return this.service.ensureTechnicianBusinessConversation(
+      getAuthenticatedAccess(response),
+      params.technicianPublicId
+    );
+  });
 
   public listMessages = this.createHandler((request, response) => {
     const params = conversationIdParamSchema.parse(request.params);

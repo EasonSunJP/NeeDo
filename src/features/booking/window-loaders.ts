@@ -26,6 +26,26 @@ export async function loadAvailabilityWindow(
   }));
 }
 
+export async function loadAvailabilityDateKeys(
+  query: Omit<AvailabilityQuery, "page" | "pageSize" | "summaryByDate">
+): Promise<string[]> {
+  const slots = await loadEveryPage((page) => bookingApi.listAvailability({
+    ...query,
+    page,
+    pageSize: PAGE_SIZE,
+    summaryByDate: true
+  }));
+  return Array.from(new Set(slots.flatMap((slot) => {
+    const date = new Intl.DateTimeFormat("en-CA", {
+      day: "2-digit",
+      month: "2-digit",
+      timeZone: "Asia/Tokyo",
+      year: "numeric"
+    }).format(new Date(slot.startsAt));
+    return date ? [date] : [];
+  })));
+}
+
 async function loadEveryPage<TItem>(
   request: (page: number) => Promise<PaginatedBookingData<TItem>>
 ): Promise<TItem[]> {

@@ -63,6 +63,13 @@ describe("availabilityListQuerySchema", () => {
     ).toBe(false);
   });
 
+  it("parses the opt-in daily availability summary flag strictly", () => {
+    expect(availabilityListQuerySchema.parse(base)).not.toHaveProperty("summaryByDate");
+    expect(availabilityListQuerySchema.parse({ ...base, summaryByDate: "true" }).summaryByDate).toBe(true);
+    expect(availabilityListQuerySchema.parse({ ...base, summaryByDate: "false" }).summaryByDate).toBe(false);
+    expect(availabilityListQuerySchema.safeParse({ ...base, summaryByDate: "1" }).success).toBe(false);
+  });
+
   it("allows a shop-scoped availability projection for technician-pricing stores", () => {
     expect(availabilityListQuerySchema.safeParse({
       shopId: "11",

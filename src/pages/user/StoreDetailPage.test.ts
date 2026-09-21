@@ -28,6 +28,11 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain('aria-label={unavailable ? "当前时间不可约" : active ? "已选技师" : "待选技师"}');
   });
 
+  it("keeps the complete public shop technician roster instead of truncating it to eight entries", () => {
+    expect(pageSource).toContain("return scopedTechnicians;");
+    expect(pageSource).not.toContain("scopedTechnicians.slice(0, 8)");
+  });
+
   it("selects service packages through an icon control instead of a booking CTA", () => {
     expect(pageSource).toContain("selectedMenuCardId");
     expect(pageSource).toContain('const serviceSelectLabel = active ? "已选服务套餐" : "选择服务套餐";');
@@ -206,8 +211,16 @@ describe("StoreDetailPage routed booking defaults", () => {
   it("derives technician-pricing availability from any bookable technician slot on the selected day", () => {
     expect(pageSource).toContain("serviceId: isTechnicianPricingActive ? undefined : formalServiceId ?? undefined");
     expect(pageSource).toContain("slot.technicianServiceId !== null");
-    expect(pageSource).toContain("isTechnicianPricingActive || getTokyoSlotParts(slot.startsAt)?.time === selectedTime");
+    expect(pageSource).toContain("getTokyoSlotParts(slot.startsAt)?.time === selectedTime");
+    expect(pageSource).not.toContain("isTechnicianPricingActive || getTokyoSlotParts(slot.startsAt)?.time === selectedTime");
     expect(pageSource).not.toContain("if (isMerchantEditable || isTechnicianPricingActive)");
+  });
+
+  it("loads a separate authoritative availability-date index instead of treating one selected day as the whole calendar", () => {
+    expect(pageSource).toContain("loadAvailabilityDateKeys");
+    expect(pageSource).toContain("formalAvailableDateKeysStatus");
+    expect(pageSource).toContain("availabilityLoading={formalAvailableDateKeysStatus === \"loading\"}");
+    expect(pageSource).not.toContain("formalBookableSlots.map((slot) => getTokyoSlotParts(slot.startsAt)?.date)");
   });
 
   it("keeps technician-tab row right content linked to technician service lists with a service info affordance", () => {

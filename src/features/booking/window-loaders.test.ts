@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bookingApi, type BookingOrder, type BookingScheduleSlot } from "./api";
 import {
+  loadAvailabilityDateKeys,
   loadCustomerOrderWindow,
   loadTechnicianAvailabilityWindow
 } from "./window-loaders";
@@ -36,6 +37,35 @@ afterEach(() => {
 });
 
 describe("formal booking window loaders", () => {
+  it("loads the server-side daily availability index without downloading every start time", async () => {
+    const first = makeSlot(1);
+    first.startsAt = "2026-09-01T00:00:00.000Z";
+    const duplicateDay = makeSlot(2);
+    duplicateDay.startsAt = "2026-09-01T01:00:00.000Z";
+    const second = makeSlot(3);
+    second.startsAt = "2026-09-02T00:00:00.000Z";
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValueOnce({
+      list: [first, duplicateDay, second],
+      total: 3,
+      page: 1,
+      page_size: 100
+    });
+
+    await expect(loadAvailabilityDateKeys({
+      from: from.toISOString(),
+      shopId: 16,
+      to: to.toISOString()
+    })).resolves.toEqual(["2026-09-01", "2026-09-02"]);
+    expect(bookingApi.listAvailability).toHaveBeenCalledWith({
+      from: from.toISOString(),
+      page: 1,
+      pageSize: 100,
+      shopId: 16,
+      summaryByDate: true,
+      to: to.toISOString()
+    });
+  });
+
   it("loads every page in a bounded technician window exactly once", async () => {
     const firstHundred = Array.from({ length: 100 }, (_, index) => makeSlot(index + 1));
     const lastSlot = makeSlot(101);

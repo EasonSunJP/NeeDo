@@ -11,4 +11,9 @@ describe("TechnicianServiceDetailPage shared detail chrome", () => {
     expect(pageSource).toContain("confirmTo={buildTechnicianServiceCheckoutRoute(serviceId)}");
     expect(pageSource).not.toContain("MobileBottomActionBar");
   });
+
+  it("loads the protected booking context directly instead of reusing a public cached payload", () => {
+    expect(pageSource).toContain("bookingApi.getTechnicianServiceBookingContext(serviceId)");
+    expect(pageSource).toContain("scope: null");
+  });
 });

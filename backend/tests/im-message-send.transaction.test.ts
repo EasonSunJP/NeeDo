@@ -5,6 +5,225 @@ import { persistImMessageInTransaction } from "../src/repositories/im-message-se
 const transactionNow = new Date("2026-08-31T09:00:00.000Z");
 
 describe("persistImMessageInTransaction", () => {
+  it("expires a non-friend booking contact after its temporary window", async () => {
+    const tx = {
+      conversationParticipant: {
+        findFirst: jest.fn(async () => ({
+          id: 1,
+          conversation: {
+            type: ConversationType.DIRECT,
+            accessPolicy: "BUSINESS_CONTEXT",
+            businessContextType: "booking_contact",
+            businessContextExpiresAt: new Date("2026-08-31T08:59:59.000Z"),
+            businessContextCustomerUserId: 41,
+            businessContextTechnicianProfileId: 13,
+            privacyModeEnabled: false,
+            disappearingTtlSeconds: null,
+            privacyPolicyVersion: 1,
+            participants: [
+              { userId: 41, identityId: 71, identity: { ownedContacts: [] } },
+              { userId: 52, identityId: 82, identity: { ownedContacts: [] } }
+            ]
+          }
+        })),
+        updateMany: jest.fn()
+      },
+      contact: { count: jest.fn(async () => 0) },
+      bookingOrder: { count: jest.fn(async () => 0) },
+      imPolicy: { findFirst: jest.fn() },
+      message: { create: jest.fn() },
+      conversation: { update: jest.fn() }
+    };
+
+    await expect(
+      persistImMessageInTransaction(tx as never, {
+        content: "hello",
+        conversationId: 91,
+        metadata: null,
+        senderIdentityId: 71,
+        senderUserId: 41,
+        transactionNow,
+        type: MessageType.TEXT
+      })
+    ).resolves.toEqual({ status: "business_context_expired" });
+    expect(tx.message.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps an expired booking contact writable while an order is still active", async () => {
+    const createdMessage = { id: 803 };
+    const tx = {
+      conversationParticipant: {
+        findFirst: jest.fn(async () => ({
+          id: 1,
+          conversation: {
+            type: ConversationType.DIRECT,
+            accessPolicy: "BUSINESS_CONTEXT",
+            businessContextType: "booking_contact",
+            businessContextExpiresAt: new Date("2026-08-31T08:59:59.000Z"),
+            businessContextCustomerUserId: 41,
+            businessContextTechnicianProfileId: 13,
+            privacyModeEnabled: false,
+            disappearingTtlSeconds: null,
+            privacyPolicyVersion: 1,
+            participants: [
+              { userId: 41, identityId: 71, identity: { ownedContacts: [] } },
+              { userId: 52, identityId: 82, identity: { ownedContacts: [] } }
+            ]
+          }
+        })),
+        updateMany: jest.fn()
+      },
+      contact: { count: jest.fn(async () => 0) },
+      bookingOrder: { count: jest.fn(async () => 1) },
+      imPolicy: {
+        findFirst: jest.fn(async () => ({
+          textRetentionSeconds: 3600,
+          imageRetentionSeconds: 3600,
+          videoRetentionSeconds: 3600,
+          recallWindowSeconds: 180,
+          version: 1
+        }))
+      },
+      mediaAsset: { findFirst: jest.fn(), updateMany: jest.fn() },
+      message: { create: jest.fn(async () => createdMessage) },
+      conversation: { update: jest.fn() }
+    };
+
+    await expect(
+      persistImMessageInTransaction(tx as never, {
+        content: "hello",
+        conversationId: 91,
+        metadata: null,
+        senderIdentityId: 71,
+        senderUserId: 41,
+        transactionNow,
+        type: MessageType.TEXT
+      })
+    ).resolves.toMatchObject({ status: "created", message: createdMessage });
+    expect(tx.bookingOrder.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        customerUserId: 41,
+        technicianProfileId: 13,
+        status: { in: expect.arrayContaining(["PENDING", "IN_SERVICE"]) }
+      })
+    });
+  });
+
+  it("keeps an expired booking contact writable for reciprocal friends", async () => {
+    const createdMessage = { id: 804 };
+    const tx = {
+      conversationParticipant: {
+        findFirst: jest.fn(async () => ({
+          id: 1,
+          conversation: {
+            type: ConversationType.DIRECT,
+            accessPolicy: "BUSINESS_CONTEXT",
+            businessContextType: "booking_contact",
+            businessContextExpiresAt: new Date("2026-08-31T08:59:59.000Z"),
+            businessContextCustomerUserId: 41,
+            businessContextTechnicianProfileId: 13,
+            privacyModeEnabled: false,
+            disappearingTtlSeconds: null,
+            privacyPolicyVersion: 1,
+            participants: [
+              { userId: 41, identityId: 71, identity: { ownedContacts: [] } },
+              { userId: 52, identityId: 82, identity: { ownedContacts: [] } }
+            ]
+          }
+        })),
+        updateMany: jest.fn()
+      },
+      contact: { count: jest.fn(async () => 2) },
+      bookingOrder: { count: jest.fn() },
+      imPolicy: {
+        findFirst: jest.fn(async () => ({
+          textRetentionSeconds: 3600,
+          imageRetentionSeconds: 3600,
+          videoRetentionSeconds: 3600,
+          recallWindowSeconds: 180,
+          version: 1
+        }))
+      },
+      mediaAsset: { findFirst: jest.fn(), updateMany: jest.fn() },
+      message: { create: jest.fn(async () => createdMessage) },
+      conversation: { update: jest.fn() }
+    };
+
+    await expect(
+      persistImMessageInTransaction(tx as never, {
+        content: "hello",
+        conversationId: 91,
+        metadata: null,
+        senderIdentityId: 71,
+        senderUserId: 41,
+        transactionNow,
+        type: MessageType.TEXT
+      })
+    ).resolves.toMatchObject({ status: "created", message: createdMessage });
+    expect(tx.bookingOrder.count).not.toHaveBeenCalled();
+  });
+
+  it("allows a refreshed 24-hour contact window after an older terminal order", async () => {
+    const createdMessage = { id: 805 };
+    const tx = {
+      conversationParticipant: {
+        findFirst: jest.fn(async () => ({
+          id: 1,
+          conversation: {
+            type: ConversationType.DIRECT,
+            accessPolicy: "BUSINESS_CONTEXT",
+            businessContextType: "booking_contact",
+            businessContextExpiresAt: new Date("2026-09-01T09:00:00.000Z"),
+            businessContextCustomerUserId: 41,
+            businessContextTechnicianProfileId: 13,
+            createdAt: new Date("2026-08-01T09:00:00.000Z"),
+            privacyModeEnabled: false,
+            disappearingTtlSeconds: null,
+            privacyPolicyVersion: 1,
+            participants: [
+              { userId: 41, identityId: 71, identity: { ownedContacts: [] } },
+              { userId: 52, identityId: 82, identity: { ownedContacts: [] } }
+            ]
+          }
+        })),
+        updateMany: jest.fn()
+      },
+      contact: { count: jest.fn(async () => 0) },
+      bookingOrder: {
+        count: jest.fn(async ({ where }: { where: { status: { in: string[] }; updatedAt?: { gte: Date } } }) => {
+          if (where.status.in.includes("COMPLETED")) {
+            return where.updatedAt?.gte.toISOString() === "2026-08-31T09:00:00.000Z" ? 0 : 1;
+          }
+          return 0;
+        })
+      },
+      imPolicy: {
+        findFirst: jest.fn(async () => ({
+          textRetentionSeconds: 3600,
+          imageRetentionSeconds: 3600,
+          videoRetentionSeconds: 3600,
+          recallWindowSeconds: 180,
+          version: 1
+        }))
+      },
+      mediaAsset: { findFirst: jest.fn(), updateMany: jest.fn() },
+      message: { create: jest.fn(async () => createdMessage) },
+      conversation: { update: jest.fn() }
+    };
+
+    await expect(
+      persistImMessageInTransaction(tx as never, {
+        content: "new inquiry",
+        conversationId: 91,
+        metadata: null,
+        senderIdentityId: 71,
+        senderUserId: 41,
+        transactionNow,
+        type: MessageType.TEXT
+      })
+    ).resolves.toMatchObject({ status: "created", message: createdMessage });
+  });
+
   it("applies reciprocal-friendship authorization before any message lifecycle write", async () => {
     const tx = {
       conversationParticipant: {

@@ -335,6 +335,7 @@ export type AvailabilityQuery = {
   serviceId?: number;
   technicianServiceId?: number;
   shopId?: number;
+  summaryByDate?: boolean;
   technicianId?: number;
   to: string;
 };

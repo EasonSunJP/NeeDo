@@ -19,7 +19,11 @@ export function TechnicianServiceDetailPage({ scope = "user" }: { scope?: Social
   const query = useCoreReadQuery(
     () => serviceId ? bookingApi.getTechnicianServiceBookingContext(serviceId) : null,
     [serviceId],
-    { enabled: Boolean(serviceId), key: `technician-service:${serviceId ?? "invalid"}:detail` }
+    {
+      enabled: Boolean(serviceId),
+      key: `technician-service:${serviceId ?? "invalid"}:detail`,
+      scope: null
+    }
   );
   const context = query.data;
   const service = context?.serviceCard;
@@ -73,6 +77,7 @@ export function TechnicianServiceDetailPage({ scope = "user" }: { scope?: Social
             amountJpy={service.catalogPriceJpy}
             confirmTo={buildTechnicianServiceCheckoutRoute(serviceId)}
             contactTo="/messages"
+            contactTechnicianPublicId={context.technicianCard.publicId}
           />
         ) : null}
       </MobileFullscreenPage>

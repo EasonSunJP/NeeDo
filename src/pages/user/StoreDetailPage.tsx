@@ -51,7 +51,7 @@ import {
   type CoreShopDetail
 } from "../../features/core-read/api";
 import type { BookingScheduleSlot } from "../../features/booking/api";
-import { loadAvailabilityWindow } from "../../features/booking/window-loaders";
+import { loadAvailabilityDateKeys, loadAvailabilityWindow } from "../../features/booking/window-loaders";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
 import { mapBookingNavigationServiceToMenuCard } from "../../features/pricing-mode/bookingServiceCards";
@@ -2852,6 +2852,8 @@ export function StoreDetailExperience({
   const [bookingNavigation, setBookingNavigation] = useState<BookingNavigationResponse | null>(null);
   const [formalSlots, setFormalSlots] = useState<BookingScheduleSlot[]>([]);
   const [formalSlotsStatus, setFormalSlotsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [formalAvailableDateKeys, setFormalAvailableDateKeys] = useState<string[]>([]);
+  const [formalAvailableDateKeysStatus, setFormalAvailableDateKeysStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [formalAvailabilityNowMs, setFormalAvailabilityNowMs] = useState(() => Date.now());
   const { getActorForScope, getProfilePosts } = useSocial();
   const currentCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
@@ -2983,7 +2985,7 @@ export function StoreDetailExperience({
         (item.storeId === store.id || item.relatedStoreIds?.includes(store.id)) &&
         (isMerchantEditable || isTechnicianDisplayVisible(item))
     );
-    return isMerchantEditable ? scopedTechnicians : scopedTechnicians.slice(0, 8);
+    return scopedTechnicians;
   }, [displayedTechnicians, isMerchantEditable, store.id]);
   const config = useMemo(
     () => presentationOverride ?? buildStoreProfileConfig(store, industry),
@@ -3192,6 +3194,46 @@ export function StoreDetailExperience({
   const formalServiceId = /^[1-9]\d*$/u.test(selectedCheckoutTarget) ? Number(selectedCheckoutTarget) : null;
   useEffect(() => {
     if (!formalApiOnly || isMerchantEditable || !storeApiId || (!isTechnicianPricingActive && !formalServiceId)) {
+      setFormalAvailableDateKeys([]);
+      setFormalAvailableDateKeysStatus("idle");
+      return;
+    }
+
+    const todayDate = getTokyoSlotParts(new Date().toISOString())?.date;
+    const startWindow = todayDate ? getTokyoDayWindow(todayDate) : null;
+    if (!startWindow) {
+      setFormalAvailableDateKeys([]);
+      setFormalAvailableDateKeysStatus("error");
+      return;
+    }
+
+    let active = true;
+    setFormalAvailableDateKeysStatus("loading");
+    void loadAvailabilityDateKeys({
+      from: startWindow.from,
+      includeUnavailable: false,
+      serviceId: isTechnicianPricingActive ? undefined : formalServiceId ?? undefined,
+      shopId: storeApiId,
+      technicianId: /^[1-9]\d*$/u.test(selectedTechnicianId) ? Number(selectedTechnicianId) : undefined,
+      to: new Date(new Date(startWindow.from).getTime() + 93 * 24 * 60 * 60 * 1000).toISOString()
+    })
+      .then((dateKeys) => {
+        if (!active) return;
+        setFormalAvailableDateKeys(dateKeys);
+        setFormalAvailableDateKeysStatus("success");
+      })
+      .catch(() => {
+        if (!active) return;
+        setFormalAvailableDateKeys([]);
+        setFormalAvailableDateKeysStatus("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [formalApiOnly, formalServiceId, isMerchantEditable, isTechnicianPricingActive, selectedTechnicianId, storeApiId]);
+
+  useEffect(() => {
+    if (!formalApiOnly || isMerchantEditable || !storeApiId || (!isTechnicianPricingActive && !formalServiceId)) {
       setFormalSlots([]);
       setFormalSlotsStatus("idle");
       return;
@@ -3240,10 +3282,6 @@ export function StoreDetailExperience({
     )),
     [formalAvailabilityNowMs, formalServiceId, formalSlots, isTechnicianPricingActive, storeApiId]
   );
-  const formalAvailableDateKeys = useMemo(
-    () => Array.from(new Set(formalBookableSlots.map((slot) => getTokyoSlotParts(slot.startsAt)?.date).filter((date): date is string => Boolean(date)))),
-    [formalBookableSlots]
-  );
   const formalSelectedDateSlots = useMemo(() => {
     const sameDay = slotsForCheckoutDate(formalBookableSlots, formatDateParam(selectedVisitDate));
     return selectedTechnicianId
@@ -3258,16 +3296,22 @@ export function StoreDetailExperience({
     () => formalSelectedDateSlots.find((slot) => getTokyoSlotParts(slot.startsAt)?.time === selectedTime) ?? null,
     [formalSelectedDateSlots, selectedTime]
   );
-  const hasExplicitRouteSelection = routeDateParam !== null || routeTimeParam !== null;
+  useEffect(() => {
+    if (!formalApiOnly || formalAvailableDateKeysStatus !== "success" || formalAvailableDateKeys.length === 0) return;
+    const selectedDateKey = formatDateParam(selectedVisitDate);
+    if (formalAvailableDateKeys.includes(selectedDateKey)) return;
+    const firstDate = parseStoreBookingDateParam(formalAvailableDateKeys[0]);
+    if (firstDate) setSelectedVisitDate(firstDate);
+  }, [formalApiOnly, formalAvailableDateKeys, formalAvailableDateKeysStatus, selectedVisitDate]);
 
   useEffect(() => {
-    if (!formalApiOnly || formalSlotsStatus !== "success" || selectedFormalSlot || hasExplicitRouteSelection) return;
-    const firstSlot = formalBookableSlots[0];
-    const slotParts = firstSlot ? getTokyoSlotParts(firstSlot.startsAt) : null;
-    if (!slotParts) return;
-    setSelectedVisitDate(parseStoreBookingDateParam(slotParts.date) ?? selectedVisitDate);
-    setSelectedTime(slotParts.time);
-  }, [formalApiOnly, formalBookableSlots, formalSlotsStatus, hasExplicitRouteSelection, selectedFormalSlot, selectedVisitDate]);
+    if (!formalApiOnly || formalSlotsStatus !== "success") return;
+    if (formalTimeOptions.length === 0) {
+      if (selectedTime) setSelectedTime("");
+      return;
+    }
+    if (!formalTimeOptions.includes(selectedTime)) setSelectedTime(formalTimeOptions[0]);
+  }, [formalApiOnly, formalSlotsStatus, formalTimeOptions, selectedTime]);
 
   useEffect(() => {
     if (!formalApiOnly) return undefined;
@@ -3299,7 +3343,7 @@ export function StoreDetailExperience({
         formalBookableSlots
           .filter((slot) => (
             getTokyoSlotParts(slot.startsAt)?.date === formatDateParam(selectedVisitDate)
-            && (isTechnicianPricingActive || getTokyoSlotParts(slot.startsAt)?.time === selectedTime)
+            && getTokyoSlotParts(slot.startsAt)?.time === selectedTime
           ))
           .map((slot) => String(slot.technicianProfileId ?? ""))
       );
@@ -4212,6 +4256,7 @@ export function StoreDetailExperience({
                     onTimeChange={setSelectedTime}
                     alwaysAvailable={store.alwaysBookable}
                     availableDateKeys={formalApiOnly ? formalAvailableDateKeys : undefined}
+                    availabilityLoading={formalAvailableDateKeysStatus === "loading"}
                     authoritativeAvailability={formalApiOnly}
                     people={selectedPeople}
                     selectedDate={selectedVisitDate}

@@ -47,7 +47,8 @@ import {
   socialPostShareBodySchema,
   socialPostUpdateBodySchema,
   socialActivityStatusQuerySchema,
-  socialUserIdParamSchema
+  socialUserIdParamSchema,
+  technicianBusinessConversationParamSchema
 } from "../validators/realtime.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -121,6 +122,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.createConversation),
     validateRequest({ body: conversationCreateBodySchema }),
     controller.createConversation
+  );
+  router.post(
+    "/im/business-conversations/technicians/:technicianPublicId",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.createConversation),
+    validateRequest({ params: technicianBusinessConversationParamSchema }),
+    controller.ensureTechnicianBusinessConversation
   );
   router.get(
     "/im/conversations/:conversationId/messages",

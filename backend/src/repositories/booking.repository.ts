@@ -243,6 +243,7 @@ export interface AvailabilityListInput extends PaginationInput {
   shopId?: number;
   technicianId?: number;
   includeUnavailable?: boolean;
+  summaryByDate?: boolean;
   from: Date;
   to: Date;
 }
@@ -1660,16 +1661,15 @@ export class BookingRepository implements BookingRepositoryPort {
       },
       ...(input.technicianId ? { technicianProfileId: input.technicianId } : {})
     };
-    const [list, total] = await Promise.all([
-      transaction.scheduleSlot.findMany({
+    const list = await transaction.scheduleSlot.findMany({
         where,
         include: this.slotInclude(),
-        skip: pagination.skip,
-        take: pagination.take,
+        ...(input.summaryByDate ? {} : { skip: pagination.skip, take: pagination.take }),
         orderBy: [{ startsAt: "asc" }, { id: "asc" }]
-      }),
-      transaction.scheduleSlot.count({ where })
-    ]);
+      });
+    const total = input.summaryByDate
+      ? 0
+      : await transaction.scheduleSlot.count({ where });
 
     const pageOccupancy = input.includeUnavailable && list.length > 0
       ? await this.listAvailabilityOccupancy(
@@ -1686,8 +1686,7 @@ export class BookingRepository implements BookingRepositoryPort {
 
     const nominationFees = await this.resolveNominationFeesForSlots(transaction, list, now);
 
-    return buildPaginatedResponse(
-      list.map((slot) => {
+    const payloads = list.map((slot) => {
         const payload = this.mapSlot(slot);
         const pricedPayload = {
           ...payload,
@@ -1705,10 +1704,22 @@ export class BookingRepository implements BookingRepositoryPort {
         return payload.status === "available" && slot.bookedCount >= slot.capacity
           ? { ...pricedPayload, status: "booked" as const }
           : pricedPayload;
-      }),
-      total,
-      pagination
-    );
+      });
+    if (input.summaryByDate) {
+      const firstAvailableByDate = new Map<string, ScheduleSlotPayload>();
+      for (const payload of payloads) {
+        if (payload.status !== "available" || payload.bookedCount >= payload.capacity) continue;
+        const date = toTokyoCalendarDate(payload.startsAt);
+        if (!firstAvailableByDate.has(date)) firstAvailableByDate.set(date, payload);
+      }
+      const summaries = [...firstAvailableByDate.values()];
+      return buildPaginatedResponse(
+        summaries.slice(pagination.skip, pagination.skip + pagination.take),
+        summaries.length,
+        pagination
+      );
+    }
+    return buildPaginatedResponse(payloads, total, pagination);
   }
 
   private async findDynamicAvailabilityCycle(
@@ -1923,6 +1934,7 @@ export class BookingRepository implements BookingRepositoryPort {
     const releasesOwnPending = customer?.membershipLevel.toLowerCase() !== "black";
     const nominationFees = new Map(nominationFeeEntries);
     const candidates: ScheduleSlotPayload[] = [];
+    const summarizedDateKeys = new Set<string>();
     for (const window of windows) {
       if (!window.technicianProfileId) continue;
       const nominationFeeJpy = nominationFees.get(window.technicianProfileId) ?? 0;
@@ -1942,6 +1954,10 @@ export class BookingRepository implements BookingRepositoryPort {
           postBufferMinutes,
           startIntervalMinutes
         })) {
+          const candidateDate = input.summaryByDate
+            ? toTokyoCalendarDate(candidate.startsAt)
+            : null;
+          if (candidateDate && summarizedDateKeys.has(candidateDate)) continue;
           const blocked = candidate.startsAt <= now || orders.some((order) => {
             if (order.technicianProfileId !== window.technicianProfileId) return false;
             if (
@@ -1958,7 +1974,8 @@ export class BookingRepository implements BookingRepositoryPort {
             reservation.estimatedStartsAt < candidate.occupiedEndsAt &&
             reservation.estimatedEndsAt > candidate.occupiedStartsAt
           );
-          if (blocked && !input.includeUnavailable) continue;
+          if (blocked && (input.summaryByDate || !input.includeUnavailable)) continue;
+          if (candidateDate) summarizedDateKeys.add(candidateDate);
           candidates.push({
             id: encodeDynamicAvailabilityId(window.id, candidate.offsetMinutes),
             serviceId: service?.id ?? null,

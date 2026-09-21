@@ -43,7 +43,8 @@ export type PersistImContactCardOutcome =
   | { status: "idempotency_conflict" }
   | { status: "not_found" }
   | { status: "recipient_blocked" }
-  | { status: "not_friends" };
+  | { status: "not_friends" }
+  | { status: "business_context_expired" };
 
 export async function persistImContactCardInTransaction(
   tx: Prisma.TransactionClient,

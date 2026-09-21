@@ -41,7 +41,7 @@ export interface PersistImMessageInput {
 }
 
 export type PersistImMessageOutcome =
-  | { status: "not_found" | "recipient_blocked" | "not_friends" }
+  | { status: "not_found" | "recipient_blocked" | "not_friends" | "business_context_expired" }
   | {
       status: "created";
       message: PersistedImMessage;
@@ -69,6 +69,10 @@ export async function persistImMessageInTransaction(
           disappearingTtlSeconds: true,
           privacyPolicyVersion: true,
           accessPolicy: true,
+          businessContextType: true,
+          businessContextExpiresAt: true,
+          businessContextCustomerUserId: true,
+          businessContextTechnicianProfileId: true,
           participants: {
             where: { deletedAt: null },
             select: {
@@ -117,6 +121,69 @@ export async function persistImMessageInTransaction(
       }
     });
     if (reciprocalContactCount !== 2) return { status: "not_friends" };
+  }
+  if (
+    conversation.accessPolicy === ConversationAccessPolicy.BUSINESS_CONTEXT &&
+    conversation.businessContextType === "booking_contact"
+  ) {
+    const identityIds = conversation.participants.map(({ identityId }) => identityId);
+    const reciprocalFriendCount =
+      identityIds.length === 2
+        ? await transaction.contact.count({
+            where: {
+              source: "friend_request",
+              deletedAt: null,
+              OR: [
+                { ownerIdentityId: identityIds[0], contactIdentityId: identityIds[1] },
+                { ownerIdentityId: identityIds[1], contactIdentityId: identityIds[0] }
+              ]
+            }
+          })
+        : 0;
+    if (reciprocalFriendCount !== 2) {
+      const customerUserId = conversation.businessContextCustomerUserId;
+      const technicianProfileId = conversation.businessContextTechnicianProfileId;
+      if (!customerUserId || !technicianProfileId) {
+        return { status: "business_context_expired" };
+      }
+      const activeOrderCount = await transaction.bookingOrder.count({
+        where: {
+          customerUserId,
+          technicianProfileId,
+          status: {
+            in: [
+              "PENDING",
+              "CONFIRMED",
+              "IN_SERVICE",
+              "AWAITING_CHECKOUT",
+              "AWAITING_PAYMENT_CONFIRMATION"
+            ]
+          },
+          deletedAt: null
+        }
+      });
+      if (activeOrderCount === 0) {
+        const refreshedAt = conversation.businessContextExpiresAt
+          ? new Date(conversation.businessContextExpiresAt.getTime() - 24 * 60 * 60 * 1_000)
+          : null;
+        const terminalOrderCount = await transaction.bookingOrder.count({
+          where: {
+            customerUserId,
+            technicianProfileId,
+            status: { in: ["COMPLETED", "CANCELLED"] },
+            ...(refreshedAt ? { updatedAt: { gte: refreshedAt } } : {}),
+            deletedAt: null
+          }
+        });
+        if (
+          terminalOrderCount > 0 ||
+          !conversation.businessContextExpiresAt ||
+          conversation.businessContextExpiresAt.getTime() <= input.transactionNow.getTime()
+        ) {
+          return { status: "business_context_expired" };
+        }
+      }
+    }
   }
 
   const policy = await transaction.imPolicy.findFirst({

@@ -44,6 +44,24 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("opens a temporary technician booking conversation through the formal endpoint", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      conversationId: 92,
+      expiresAt: "2026-09-22T03:00:00.000Z"
+    }));
+
+    await expect(
+      realtimeApi.ensureTechnicianBusinessConversation("s0000000052")
+    ).resolves.toEqual({
+      conversationId: 92,
+      expiresAt: "2026-09-22T03:00:00.000Z"
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/im/business-conversations/technicians/s0000000052",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
   it("uses the paginated directory endpoint for add-friend discovery", async () => {
     const emptyPage = { list: [], total: 0, page: 1, page_size: 50 };
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(emptyPage));

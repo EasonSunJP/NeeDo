@@ -32,6 +32,7 @@ import {
 import { getExchangePost } from "../../features/exchange/api";
 import type { ExchangePost } from "../../features/exchange/types";
 import { pricingModeApi } from "../../features/pricing-mode/api";
+import { realtimeApi } from "../../features/realtime/api";
 import { resolveServiceFulfillmentMode, serviceFulfillmentModes } from "../../lib/serviceFulfillment";
 import { cn, yen } from "../../lib/utils";
 import {
@@ -316,6 +317,8 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [note, setNote] = useState(searchParams.get("remark") ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<CheckoutTextKey | null>(null);
+  const [contactingTechnician, setContactingTechnician] = useState(false);
+  const [contactError, setContactError] = useState(false);
   const [addressCopyLabel, setAddressCopyLabel] = useState<CheckoutTextKey>("copyAddress");
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -731,6 +734,31 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     : service?.technicianPublisher?.type === "technician"
       ? service.technicianPublisher
       : null;
+  const contactTechnicianPublicId =
+    fixedTechnicianPublisher?.publicId ??
+    coreService?.technician?.publicId ??
+    selectedTechnicianDetail?.publicId ??
+    null;
+
+  const openContactConversation = async () => {
+    if (!service) return;
+    if (!contactTechnicianPublicId) {
+      navigate(service.shop.contactPath);
+      return;
+    }
+    setContactingTechnician(true);
+    setContactError(false);
+    try {
+      const conversation = await realtimeApi.ensureTechnicianBusinessConversation(
+        contactTechnicianPublicId
+      );
+      navigate(`/messages/${conversation.conversationId}`);
+    } catch {
+      setContactError(true);
+    } finally {
+      setContactingTechnician(false);
+    }
+  };
 
   useEffect(() => {
     if (!selectedTechnicianProfileId || coreService?.technician?.id === selectedTechnicianProfileId || fixedTechnicianPublisher) {
@@ -1445,8 +1473,9 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                   ))}
                 </div>
               </div>
+              {contactError ? <p className="text-xs font-bold text-red-500" data-no-i18n role="alert">{t("contactChatFailed")}</p> : null}
               <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2.5">
-                <SecondaryButton className="w-full" onClick={() => navigate(service.shop.contactPath)}><span data-no-i18n>{t("contact")}</span></SecondaryButton>
+                <SecondaryButton className={cn("w-full", contactingTechnician && "pointer-events-none opacity-50")} onClick={() => contactingTechnician ? undefined : void openContactConversation()}><span data-no-i18n>{t("contact")}</span></SecondaryButton>
                 <button
                   className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!canSubmitBooking || submitting}

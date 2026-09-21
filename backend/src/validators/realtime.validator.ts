@@ -28,6 +28,10 @@ export const conversationIdParamSchema = z.object({
   conversationId: safePositiveIntegerSchema
 });
 
+export const technicianBusinessConversationParamSchema = z.object({
+  technicianPublicId: z.string().regex(/^s[0-9]{10}$/u)
+});
+
 export const messageReactionParamSchema = conversationIdParamSchema.extend({
   messageId: z.coerce.number().int().positive()
 });

@@ -193,6 +193,34 @@ export class RealtimeService
     return outcome.conversation;
   }
 
+  public async ensureTechnicianBusinessConversation(
+    auth: AuthenticatedAccessContext,
+    technicianPublicId: string
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    if (
+      !["customer", "user", "u"].includes(scope.identityType) ||
+      scope.scopeType !== "customer_profile" ||
+      !scope.scopeId
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.booking_contact_requires_customer_identity",
+        statusCode: 403
+      });
+    }
+    const result = await this.repository.ensureTechnicianBusinessConversation({
+      customerUserId: auth.userId,
+      customerIdentityId: scope.identityId,
+      technicianPublicId,
+      now: this.now()
+    });
+    if (!result) {
+      throw this.notFoundError("error.im.technician_not_found");
+    }
+    return result;
+  }
+
   public async updateConversationPrivacy(
     auth: AuthenticatedAccessContext,
     input: Omit<UpdateConversationPrivacyInput, "actorUserId">
@@ -336,6 +364,13 @@ export class RealtimeService
         statusCode: 403
       });
     }
+    if (eligibility === "business_context_expired") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.business_context_expired",
+        statusCode: 403
+      });
+    }
     return scope;
   }
 
@@ -368,6 +403,13 @@ export class RealtimeService
       throw new AppError({
         code: ERROR_CODES.FORBIDDEN,
         message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    if (outcome.status === "business_context_expired") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.business_context_expired",
         statusCode: 403
       });
     }
@@ -433,6 +475,13 @@ export class RealtimeService
       throw new AppError({
         code: ERROR_CODES.FORBIDDEN,
         message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    if (outcome.status === "business_context_expired") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.business_context_expired",
         statusCode: 403
       });
     }
@@ -513,6 +562,13 @@ export class RealtimeService
       throw new AppError({
         code: ERROR_CODES.FORBIDDEN,
         message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    if (outcome.status === "business_context_expired") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.business_context_expired",
         statusCode: 403
       });
     }

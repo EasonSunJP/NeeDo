@@ -22,28 +22,46 @@ function routeEntityIdToApiId(value: string | undefined) {
   return suffix ? Number(suffix) : null;
 }
 
+const supplementaryServicePattern = /(?:^|[\s|｜:：])(施術)?延長(?:[\s|｜:：]|$)|(?:^|[\s|｜:：])(オプション|追加|附加|加钟|加鐘|add[ -]?on|extension)(?:[\s|｜:：]|$)/iu;
+
+function isSupplementaryService(service: TechnicianServicePayload) {
+  return [service.name, ...service.tags]
+    .some((value) => supplementaryServicePattern.test(value.normalize("NFKC")));
+}
+
+export function findPrimaryTechnicianService(services: TechnicianServicePayload[]) {
+  const mainServices = services
+    .filter((service) => service.isBookable && !isSupplementaryService(service))
+    .slice()
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.id - right.id);
+  return mainServices.find((service) => service.isRecommended) ?? mainServices[0] ?? null;
+}
+
 function ServiceSelectionButton({
   disabled,
+  locked,
   name,
   onToggle,
   selected
 }: {
   disabled: boolean;
+  locked: boolean;
   name: string;
   onToggle: () => void;
   selected: boolean;
 }) {
   return (
     <button
-      aria-label={selected ? `取消选择 ${name}` : `选择 ${name}`}
+      aria-label={locked ? `主要服务 ${name}` : selected ? `取消选择 ${name}` : `选择 ${name}`}
       aria-pressed={selected}
       className={cn(
-        "focus-ring grid h-10 w-10 place-items-center rounded-full border-2 transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40",
+        "focus-ring grid h-10 w-10 place-items-center rounded-full border-2 transition active:scale-95 disabled:cursor-not-allowed",
+        disabled && !selected && "opacity-40",
         selected
           ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
           : "border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] text-[color:var(--client-primary)]"
       )}
-      disabled={disabled}
+      disabled={disabled || locked}
       onClick={onToggle}
       type="button"
     >
@@ -82,7 +100,9 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
       .then((result) => {
         if (!mounted) return;
         setServices(result.list);
-        setSelectedServiceIds((current) => current.filter((id) => result.list.some((service) => service.id === id)));
+        const primaryService = findPrimaryTechnicianService(result.list);
+        if (primaryService) setSelectedServiceIds([primaryService.id]);
+        else setSelectedServiceIds([]);
       })
       .catch(() => {
         if (mounted) setFailed(true);
@@ -95,7 +115,9 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
     };
   }, [apiShopId, apiTechnicianId]);
 
+  const primaryServiceId = useMemo(() => findPrimaryTechnicianService(services)?.id ?? null, [services]);
   const toggleServiceSelection = (serviceId: number) => {
+    if (serviceId === primaryServiceId) return;
     setSelectedServiceIds((current) => current.includes(serviceId)
       ? current.filter((id) => id !== serviceId)
       : [...current, serviceId]);
@@ -108,7 +130,6 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
   const checkoutTo = selectedService ? buildTechnicianServiceCheckoutRoute(selectedService.id, {
     date: searchParams.get("date"),
     people: searchParams.get("people"),
-    scheduleSlotId: searchParams.get("scheduleSlotId"),
     serviceIds: selectedServiceIds,
     time: searchParams.get("time")
   }) : null;
@@ -141,6 +162,7 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
                   actionSlot={scope === "user" ? (
                     <ServiceSelectionButton
                       disabled={!service.isBookable}
+                      locked={service.id === primaryServiceId}
                       name={service.name}
                       onToggle={() => toggleServiceSelection(service.id)}
                       selected={selected}

@@ -45,7 +45,10 @@ async function render() {
   await act(async () => root.render(<MemoryRouter><UnifiedFormalStoreDetail shopId={21} scope="user" embedded /></MemoryRouter>));
 }
 
-async function renderFormalMerchantPreview(technicianCount = 1) {
+async function renderFormalMerchantPreview(
+  technicianCount = 1,
+  scope: "merchant" | "user" = "merchant"
+) {
   const store = {
     id: "21",
     systemId: "shop7507769538",
@@ -122,7 +125,7 @@ async function renderFormalMerchantPreview(technicianCount = 1) {
             highlights: []
           }]
         }}
-        scope="merchant"
+        scope={scope}
         serviceCardsOverride={[]}
         store={store}
         techniciansOverride={technicians}
@@ -196,6 +199,15 @@ it("renders the complete merchant technician roster when more than eight employe
   expect(container.textContent).toContain("正式技师9号");
   expect(container.textContent).toContain("正式技师10号");
   expect(container.textContent?.match(/正式技师(?:一号|\d+号)/g)).toHaveLength(10);
+});
+
+it("renders the complete public technician roster instead of truncating it to eight entries", async () => {
+  await renderFormalMerchantPreview(26, "user");
+
+  expect(container.textContent).toContain("正式技师一号");
+  expect(container.textContent).toContain("正式技师9号");
+  expect(container.textContent).toContain("正式技师26号");
+  expect(container.textContent?.match(/正式技师(?:一号|\d+号)/g)).toHaveLength(26);
 });
 
 it("uses the complete merchant catalog count and keeps service creation available below twenty", async () => {

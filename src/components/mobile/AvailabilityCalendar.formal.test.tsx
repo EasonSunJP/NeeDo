@@ -27,7 +27,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-it("keeps future dates available for lazy formal lookup and never renders the legacy TEL marker", async () => {
+it("enables only dates present in the authoritative availability index", async () => {
   await act(async () => {
     root.render(
       <AvailabilityCalendar
@@ -52,9 +52,35 @@ it("keeps future dates available for lazy formal lookup and never renders the le
   const day14 = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
     .find((button) => button.querySelector(".availability-calendar-day")?.textContent === "14")!;
 
-  expect(day13.disabled).toBe(false);
+  expect(day13.disabled).toBe(true);
   expect(day14.disabled).toBe(false);
   expect(container.textContent).not.toContain("TEL");
+});
+
+it("shows an explicit loading state while the authoritative date index is loading", async () => {
+  await act(async () => {
+    root.render(
+      <AvailabilityCalendar
+        availabilityLoading
+        authoritativeAvailability
+        onPeopleChange={() => undefined}
+        onSelectDate={() => undefined}
+        onSelectDay={() => undefined}
+        onTimeChange={() => undefined}
+        people="1名"
+        selectedDate={new Date(2026, 8, 14)}
+        selectedDay={14}
+        time=""
+        timeOptions={[]}
+        title="来店日"
+      />
+    );
+  });
+
+  expect(container.textContent).toContain("予約可能日を読み込み中");
+  const day14 = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => button.querySelector(".availability-calendar-day")?.textContent === "14")!;
+  expect(day14.disabled).toBe(true);
 });
 
 it("localizes the empty formal-time state", async () => {

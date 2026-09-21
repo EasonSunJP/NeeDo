@@ -1371,6 +1371,7 @@ model User {
   approvedPayrollAdjustments            PayrollAdjustmentRequest[]          @relation("PayrollAdjustmentApprovedBy")
   rejectedPayrollAdjustments            PayrollAdjustmentRequest[]          @relation("PayrollAdjustmentRejectedBy")
   createdConversations                  Conversation[]                      @relation("ConversationCreator")
+  bookingContactConversations           Conversation[]                      @relation("ConversationBusinessContextCustomer")
   conversationParticipants              ConversationParticipant[]
   sentMessages                          Message[]                           @relation("MessageSender")
   messageReactions                      MessageReaction[]
@@ -2342,6 +2343,7 @@ model TechnicianProfile {
   entityShareEvents          EntityShareEvent[]
   automationSettings         TechnicianAutomationSetting[]
   automationDecisionLogs     TechnicianAutomationDecisionLog[]
+  bookingContactConversations Conversation[]                       @relation("ConversationBusinessContextTechnician")
 
   @@index([shopId])
   @@index([shopId, employmentType])
@@ -5447,6 +5449,10 @@ model Conversation {
   privacyPolicyVersion   Int                      @default(0) @map("privacy_policy_version")
   privacyUpdatedAt       DateTime?                @map("privacy_updated_at")
   privacyUpdatedByUserId Int?                     @map("privacy_updated_by_user_id")
+  businessContextType    String?                  @map("business_context_type") @db.VarChar(40)
+  businessContextExpiresAt DateTime?              @map("business_context_expires_at")
+  businessContextCustomerUserId Int?              @map("business_context_customer_user_id")
+  businessContextTechnicianProfileId Int?         @map("business_context_technician_profile_id")
   createdAt              DateTime                 @default(now()) @map("created_at")
   updatedAt              DateTime                 @updatedAt @map("updated_at")
   deletedAt              DateTime?                @map("deleted_at")
@@ -5454,6 +5460,8 @@ model Conversation {
   createdBy                 User?                         @relation("ConversationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   createdByIdentity         UserIdentity?                 @relation("ConversationCreatorIdentity", fields: [createdByIdentityId], references: [id], onDelete: SetNull)
   privacyUpdatedBy          User?                         @relation("ConversationPrivacyUpdater", fields: [privacyUpdatedByUserId], references: [id], onDelete: SetNull)
+  businessContextCustomer   User?                         @relation("ConversationBusinessContextCustomer", fields: [businessContextCustomerUserId], references: [id], onDelete: Restrict)
+  businessContextTechnician TechnicianProfile?            @relation("ConversationBusinessContextTechnician", fields: [businessContextTechnicianProfileId], references: [id], onDelete: Restrict)
   participants              ConversationParticipant[]
   messages                  Message[]
   contactCardSendCommands   ImContactCardSendCommand[]
@@ -5470,6 +5478,8 @@ model Conversation {
   @@index([createdByIdentityId])
   @@index([privacyUpdatedByUserId])
   @@index([privacyModeEnabled, deletedAt])
+  @@index([businessContextType, businessContextExpiresAt, deletedAt], map: "conversations_business_context_expiry_idx")
+  @@index([businessContextCustomerUserId, businessContextTechnicianProfileId, deletedAt], map: "conversations_booking_contact_pair_idx")
   @@index([updatedAt])
   @@index([deletedAt])
   @@map("conversations")

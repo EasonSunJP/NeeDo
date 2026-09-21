@@ -349,6 +349,12 @@ export const realtimeApi = {
   }) {
     return httpClient.request<RealtimeConversation>("/im/conversations", { body: input, method: "POST" });
   },
+  ensureTechnicianBusinessConversation(technicianPublicId: string) {
+    return httpClient.request<{ conversationId: number; expiresAt: string }>(
+      `/im/business-conversations/technicians/${encodeURIComponent(technicianPublicId)}`,
+      { method: "POST" },
+    );
+  },
   listMessages(conversationId: number, query: { beforeId?: number; pageSize?: number } = {}) {
     return httpClient.request<RealtimeMessageHistory>(`/im/conversations/${conversationId}/messages`, { query });
   },

@@ -1198,10 +1198,16 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
     return { checksumSha256, mimeType, size: size as number };
   }
 
-  private sendRejected(status: "not_found" | "recipient_blocked" | "not_friends"): AppError {
+  private sendRejected(
+    status: "not_found" | "recipient_blocked" | "not_friends" | "business_context_expired"
+  ): AppError {
     if (status === "not_found") return this.notFound("error.realtime.conversation_not_found");
     return this.forbidden(
-      status === "recipient_blocked" ? "error.im.recipient_blocked" : "error.im.not_friends"
+      status === "recipient_blocked"
+        ? "error.im.recipient_blocked"
+        : status === "business_context_expired"
+          ? "error.im.business_context_expired"
+          : "error.im.not_friends"
     );
   }
 

@@ -487,6 +487,7 @@ export type CreateMessageOutcome =
   | { status: "not_found" }
   | { status: "recipient_blocked" }
   | { status: "not_friends" }
+  | { status: "business_context_expired" }
   | { status: "media_invalid" };
 
 export interface CreateNeedoEntityShareInput {
@@ -510,7 +511,8 @@ export type CreateNeedoEntityShareOutcome =
         | "recipient_not_found"
         | "not_found"
         | "recipient_blocked"
-        | "not_friends";
+        | "not_friends"
+        | "business_context_expired";
     };
 
 export interface SendContactCardInput {
@@ -529,14 +531,32 @@ export type SendContactCardOutcome =
   | { status: "idempotency_conflict" }
   | { status: "not_found" }
   | { status: "recipient_blocked" }
-  | { status: "not_friends" };
+  | { status: "not_friends" }
+  | { status: "business_context_expired" };
 
-export type MessageSendEligibility = "allowed" | "not_found" | "recipient_blocked" | "not_friends";
+export type MessageSendEligibility =
+  | "allowed"
+  | "not_found"
+  | "recipient_blocked"
+  | "not_friends"
+  | "business_context_expired";
 
 export interface CheckMessageSendEligibilityInput {
   conversationId: number;
   senderUserId: number;
   senderIdentityId?: number;
+}
+
+export interface EnsureTechnicianBusinessConversationInput {
+  customerUserId: number;
+  customerIdentityId: number;
+  technicianPublicId: string;
+  now: Date;
+}
+
+export interface TechnicianBusinessConversationPayload {
+  conversationId: number;
+  expiresAt: string;
 }
 
 export interface RecallMessageInput {
@@ -818,6 +838,9 @@ export interface RealtimeRepositoryPort {
   ensureDirectContactConversation: (
     input: EnsureTechnicianApplicationContactInput
   ) => Promise<{ conversationId: number }>;
+  ensureTechnicianBusinessConversation: (
+    input: EnsureTechnicianBusinessConversationInput
+  ) => Promise<TechnicianBusinessConversationPayload | null>;
   getDirectoryProfile: (
     viewerUserId: number,
     viewerIdentityId: number,
@@ -1645,6 +1668,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         conversation: {
           select: {
             accessPolicy: true,
+            businessContextType: true,
+            businessContextExpiresAt: true,
+            businessContextCustomerUserId: true,
+            businessContextTechnicianProfileId: true,
             participants: {
               where: { deletedAt: null },
               select: { identityId: true }
@@ -1683,6 +1710,68 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       });
       if (reciprocalCount !== 2) {
         return "not_friends";
+      }
+    }
+    if (
+      participant.conversation.accessPolicy === ConversationAccessPolicy.BUSINESS_CONTEXT &&
+      participant.conversation.businessContextType === "booking_contact"
+    ) {
+      const identityIds = participant.conversation.participants.map(({ identityId }) => identityId);
+      const reciprocalFriendCount = identityIds.length === 2
+        ? await this.client.contact.count({
+            where: {
+              source: "friend_request",
+              deletedAt: null,
+              OR: [
+                { ownerIdentityId: identityIds[0], contactIdentityId: identityIds[1] },
+                { ownerIdentityId: identityIds[1], contactIdentityId: identityIds[0] }
+              ]
+            }
+          })
+        : 0;
+      if (reciprocalFriendCount !== 2) {
+        const customerUserId = participant.conversation.businessContextCustomerUserId;
+        const technicianProfileId = participant.conversation.businessContextTechnicianProfileId;
+        if (!customerUserId || !technicianProfileId) return "business_context_expired";
+        const activeOrderCount = await this.client.bookingOrder.count({
+          where: {
+            customerUserId,
+            technicianProfileId,
+            status: {
+              in: [
+                "PENDING",
+                "CONFIRMED",
+                "IN_SERVICE",
+                "AWAITING_CHECKOUT",
+                "AWAITING_PAYMENT_CONFIRMATION"
+              ]
+            },
+            deletedAt: null
+          }
+        });
+        if (activeOrderCount === 0) {
+          const refreshedAt = participant.conversation.businessContextExpiresAt
+            ? new Date(
+                participant.conversation.businessContextExpiresAt.getTime() - 24 * 60 * 60 * 1_000
+              )
+            : null;
+          const terminalOrderCount = await this.client.bookingOrder.count({
+            where: {
+              customerUserId,
+              technicianProfileId,
+              status: { in: ["COMPLETED", "CANCELLED"] },
+              ...(refreshedAt ? { updatedAt: { gte: refreshedAt } } : {}),
+              deletedAt: null
+            }
+          });
+          if (
+            terminalOrderCount > 0 ||
+            !participant.conversation.businessContextExpiresAt ||
+            participant.conversation.businessContextExpiresAt.getTime() <= Date.now()
+          ) {
+            return "business_context_expired";
+          }
+        }
       }
     }
     return "allowed";
@@ -3149,6 +3238,116 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         select: { id: true }
       });
       return { conversationId: created.id };
+    });
+  }
+
+  public ensureTechnicianBusinessConversation(
+    input: EnsureTechnicianBusinessConversationInput
+  ): Promise<TechnicianBusinessConversationPayload | null> {
+    return this.client.$transaction(async (transaction) => {
+      const technicianIdentity = await transaction.userIdentity.findFirst({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          type: { in: ["technician", "service", "s"] },
+          publicIdentifier: {
+            is: {
+              publicId: input.technicianPublicId,
+              kind: "S",
+              status: "ACTIVE",
+              deletedAt: null
+            }
+          },
+          user: {
+            is: {
+              isActive: true,
+              deletedAt: null,
+              technicianProfile: {
+                is: { status: "published", visibility: "public", deletedAt: null }
+              }
+            }
+          }
+        },
+        select: {
+          id: true,
+          userId: true,
+          user: { select: { technicianProfile: { select: { id: true } } } }
+        }
+      });
+      const technicianProfileId = technicianIdentity?.user.technicianProfile?.id;
+      if (!technicianIdentity || !technicianProfileId) return null;
+      if (technicianIdentity.userId === input.customerUserId) return null;
+
+      const expiresAt = new Date(input.now.getTime() + 24 * 60 * 60 * 1_000);
+      const existing = await transaction.conversation.findFirst({
+        where: {
+          type: ConversationType.DIRECT,
+          accessPolicy: ConversationAccessPolicy.BUSINESS_CONTEXT,
+          businessContextType: "booking_contact",
+          businessContextCustomerUserId: input.customerUserId,
+          businessContextTechnicianProfileId: technicianProfileId,
+          deletedAt: null,
+          participants: {
+            every: {
+              identityId: { in: [input.customerIdentityId, technicianIdentity.id] },
+              deletedAt: null
+            }
+          }
+        },
+        select: { id: true, businessContextExpiresAt: true }
+      });
+      if (existing) {
+        const refreshed = await transaction.conversation.update({
+          where: { id: existing.id },
+          data: { businessContextExpiresAt: expiresAt },
+          select: { id: true, businessContextExpiresAt: true }
+        });
+        await transaction.conversationParticipant.updateMany({
+          where: {
+            conversationId: existing.id,
+            identityId: { in: [input.customerIdentityId, technicianIdentity.id] },
+            deletedAt: null
+          },
+          data: { hiddenAt: null }
+        });
+        return {
+          conversationId: refreshed.id,
+          expiresAt: (refreshed.businessContextExpiresAt ?? expiresAt).toISOString()
+        };
+      }
+
+      const created = await transaction.conversation.create({
+        data: {
+          type: ConversationType.DIRECT,
+          accessPolicy: ConversationAccessPolicy.BUSINESS_CONTEXT,
+          friendshipPairKey: null,
+          createdByUserId: input.customerUserId,
+          createdByIdentityId: input.customerIdentityId,
+          businessContextType: "booking_contact",
+          businessContextExpiresAt: expiresAt,
+          businessContextCustomerUserId: input.customerUserId,
+          businessContextTechnicianProfileId: technicianProfileId,
+          participants: {
+            create: [
+              {
+                userId: input.customerUserId,
+                identityId: input.customerIdentityId,
+                role: "member"
+              },
+              {
+                userId: technicianIdentity.userId,
+                identityId: technicianIdentity.id,
+                role: "member"
+              }
+            ]
+          }
+        },
+        select: { id: true, businessContextExpiresAt: true }
+      });
+      return {
+        conversationId: created.id,
+        expiresAt: (created.businessContextExpiresAt ?? expiresAt).toISOString()
+      };
     });
   }
 

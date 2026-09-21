@@ -121,6 +121,7 @@ const copy = {
   payOnArrival: ["到店后支付", "到店後支付", "現地で支払う", "Pay onsite", "현장 결제"],
   bankTransfer: ["银行转账", "銀行轉帳", "銀行振込", "Bank transfer", "은행 이체"],
   contact: ["联系", "聯絡", "店舗に連絡", "Contact", "문의"],
+  contactChatFailed: ["暂时无法开启聊天，请稍后重试。", "暫時無法開啟聊天，請稍後再試。", "チャットを開始できませんでした。後でもう一度お試しください。", "Chat could not be opened. Try again later.", "채팅을 시작할 수 없습니다. 잠시 후 다시 시도해 주세요."],
   creatingBooking: ["创建预约中", "正在建立預約", "予約手続き中", "Creating booking", "예약 생성 중"],
   confirmBooking: ["确定预约", "確定預約", "この内容で予約", "Confirm booking", "예약 확정"],
   loginToConfirmBooking: ["登录后确定预约", "登入後確定預約", "ログインして予約", "Sign in to confirm", "로그인 후 예약 확정"],

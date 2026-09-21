@@ -25,8 +25,12 @@ describe("TechnicianServicesPage fullscreen service selection", () => {
     expect(pageSource).not.toContain("getTechnicianServiceFallbackPath");
   });
 
-  it("supports multi-select cards, detail navigation, and one floating booking action", () => {
+  it("selects the technician's primary service by default and only adds services from that technician", () => {
     expect(pageSource).toContain("selectedServiceIds");
+    expect(pageSource).toContain("primaryServiceId");
+    expect(pageSource).toContain("service.isRecommended");
+    expect(pageSource).toContain("setSelectedServiceIds([primaryService.id])");
+    expect(pageSource).toContain("if (serviceId === primaryServiceId)");
     expect(pageSource).toContain("toggleServiceSelection");
     expect(pageSource).toContain('aria-pressed={selected}');
     expect(pageSource).toContain('{selected ? <AppIcon className="h-5 w-5" name="check" /> : null}');
@@ -37,6 +41,7 @@ describe("TechnicianServicesPage fullscreen service selection", () => {
     expect(pageSource).toContain("serviceIds: selectedServiceIds");
     expect(pageSource).toContain('date: searchParams.get("date")');
     expect(pageSource).toContain('time: searchParams.get("time")');
+    expect(pageSource).not.toContain('scheduleSlotId: searchParams.get("scheduleSlotId")');
     expect(pageSource).not.toContain("预约这个服务");
   });
 

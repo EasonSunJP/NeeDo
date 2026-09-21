@@ -87,6 +87,7 @@ export const availabilityListQuerySchema = z
     shopId: z.coerce.number().int().positive().optional(),
     technicianId: z.coerce.number().int().positive().optional(),
     includeUnavailable: strictBooleanQuerySchema.optional(),
+    summaryByDate: strictBooleanQuerySchema.optional(),
     from: isoDateSchema,
     to: isoDateSchema
   })
