@@ -1,4 +1,7 @@
-import { buildFormalOrderPersonCard } from "../../features/booking/formalOrderPersonCard";
+import {
+  buildFormalOrderPersonCard,
+  translateAssignedTechnicianUnavailable
+} from "../../features/booking/formalOrderPersonCard";
 export { buildFormalOrderPersonCard } from "../../features/booking/formalOrderPersonCard";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
@@ -1097,7 +1100,9 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
       const [serviceResult, shopResult, technicianResult, customerResult] = await Promise.allSettled([
         formalOrder.serviceId ? coreReadApi.getServiceDetail(formalOrder.serviceId) : Promise.resolve(null),
         coreReadApi.getShopDetail(formalOrder.shopId),
-        formalOrder.technicianProfileId ? coreReadApi.getTechnicianDetail(formalOrder.technicianProfileId) : Promise.resolve(null),
+        formalOrder.assignedTechnician === undefined && formalOrder.technicianProfileId
+            ? coreReadApi.getTechnicianDetail(formalOrder.technicianProfileId)
+            : Promise.resolve(null),
         scopedOrder.customerProfileId ? coreReadApi.getCustomerProfile(scopedOrder.customerProfileId) : Promise.resolve(null)
       ]);
 
@@ -1131,6 +1136,7 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
 
   const store = shopProfile ? mapCoreShopToStore(shopProfile) : null;
   const technician = technicianProfile ? mapCoreTechnicianToTechnician(technicianProfile) : null;
+  const assignedTechnician = order?.assignedTechnician ?? null;
   const totalAmount = checkout?.checkoutAmountJpy ?? (order ? Number(order.priceAmount) : null);
   const paymentLabel = checkout?.paymentMethod === "other" ? checkout.otherMethod?.label ?? "其他方式" : checkout?.paymentMethod === "ndp" ? "NDP" : checkout?.paymentMethod === "cash" ? "现金" : order?.paymentMethod === "onsite" ? "到店支付" : order?.paymentMethod === "bank_transfer" ? "银行转账" : order?.paymentMethod === "ndp" ? "NDP" : order?.paymentMethod === "cash" ? "现金" : "未选择";
   const canForceCancel = Boolean(order && (order.status === "pending" || order.status === "confirmed") && exchangeOrderLinked === false);
@@ -1253,7 +1259,19 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
           </OrderDetailSection>
 
           <OrderDetailSection title="技师 / 担当">
-            {technician ? (
+            {assignedTechnician ? (
+              <SocialProfileMiniCard
+                data={buildFormalOrderPersonCard(assignedTechnician, "technician")}
+                detailTo={getScopedTechnicianDynamicPath("merchant", {
+                  id: String(assignedTechnician.id),
+                  systemId: assignedTechnician.publicId
+                })}
+                showAction={false}
+                showLevel={false}
+                showSocialStats={false}
+                topTags={[{ label: "担当技师", tone: "green" }]}
+              />
+            ) : technician ? (
               <SocialProfileMiniCard
                 data={buildFormalOrderPersonCard(technicianProfile!, "technician")}
                 detailTo={getScopedTechnicianDynamicPath("merchant", technician)}
@@ -1265,7 +1283,11 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
             ) : (
               <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
                 <p className="text-sm font-black">{order.technicianName ?? "尚未指定担当技师"}</p>
-                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺确认担当后将在此显示正式技师资料。</p>
+                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">
+                  {order.technicianProfileId
+                    ? translateAssignedTechnicianUnavailable(language)
+                    : "店铺确认担当后将在此显示正式技师资料。"}
+                </p>
               </section>
             )}
           </OrderDetailSection>
@@ -1315,8 +1337,8 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
           {isFormalMerchantOrderEditable(order.status) ? (
             <Button to={`/merchant/orders/${order.id}/change`} variant="secondary">变更</Button>
           ) : null}
-          {technician
-            ? <Button to={getMessagePath("merchant", getMerchantTechnicianConversationId(technician.id), `/merchant/orders/${order.id}`)}>联系技师</Button>
+          {order.technicianProfileId
+            ? <Button to={getMessagePath("merchant", getMerchantTechnicianConversationId(String(order.technicianProfileId)), `/merchant/orders/${order.id}`)}>联系技师</Button>
             : <Button to={`/merchant/orders/${order.id}/dispatch`}>派单</Button>}
         </MobileBottomActionBar>
       ) : null}

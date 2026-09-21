@@ -99,8 +99,8 @@ vi.mock("../../components/mobile/ContactEventTimeline", () => ({
 }));
 vi.mock("../../shared/profile-card/SocialProfileMiniCard", () => ({
   buildServiceMiniCardData: (service: unknown) => service,
-  SocialProfileMiniCard: ({ data, store, technician }: { data?: { name?: string }; store?: { name?: string }; technician?: { name?: string } }) => (
-    <article>{data?.name ?? store?.name ?? technician?.name}</article>
+  SocialProfileMiniCard: ({ data, store, technician }: { data?: { displayName?: string; name?: string }; store?: { name?: string }; technician?: { name?: string } }) => (
+    <article>{data?.displayName ?? data?.name ?? store?.name ?? technician?.name}</article>
   )
 }));
 vi.mock("../../shared/order-detail/ServiceSessionUi", () => ({
@@ -263,6 +263,21 @@ const coreTechnicianDetail = {
   updatedAt: "2026-01-01T00:00:00.000Z"
 };
 
+const assignedTechnician = {
+  id: 9,
+  publicId: "s0000000009",
+  displayName: "Eason",
+  avatarUrl: "/uploads/technicians/eason.jpg",
+  city: "东京",
+  bio: "正式担当技师",
+  serviceArea: "港区",
+  languages: ["日本語", "中文"],
+  reviewSummary: coreService.reviewSummary,
+  completedOrderCount: 12,
+  favoriteCount: 3,
+  shareCount: 2
+};
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -351,6 +366,49 @@ describe("formal user order detail", () => {
     await click("开始计算");
     await waitFor(() => expect(mocks.startService).toHaveBeenCalledWith(88, { actor: "customer", idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/) }));
     expect(container.textContent).toContain("正式延长服务");
+  });
+
+  it("keeps a genuinely unassigned order in the pending-assignment state", async () => {
+    mocks.getOrder.mockResolvedValue({
+      ...makeOrder("confirmed"),
+      technicianProfileId: null,
+      technicianName: null
+    });
+
+    await render();
+
+    expect(container.textContent).toContain("尚未指定担当技师");
+    expect(container.textContent).toContain("店铺确认担当后将在此显示正式技师资料。");
+    expect(mocks.getTechnicianDetail).not.toHaveBeenCalled();
+  });
+
+  it("renders the order-scoped assigned technician card even when the public directory lookup is unavailable", async () => {
+    mocks.getOrder.mockResolvedValue({
+      ...makeOrder("confirmed"),
+      technicianName: "Eason",
+      assignedTechnician
+    });
+    mocks.getTechnicianDetail.mockRejectedValue(new ApiClientError("error.technician.not_found", 404, 404));
+
+    await render();
+
+    await waitFor(() => expect(Array.from(container.querySelectorAll("article")).some((item) => item.textContent === "Eason")).toBe(true));
+    expect(container.textContent).not.toContain("店铺确认担当后将在此显示正式技师资料。");
+  });
+
+  it("distinguishes an assigned technician whose formal profile is not public from an unassigned order", async () => {
+    mocks.getOrder.mockResolvedValue({
+      ...makeOrder("confirmed"),
+      technicianName: "Eason",
+      assignedTechnician: null
+    });
+    mocks.getTechnicianDetail.mockRejectedValue(new ApiClientError("error.technician.not_found", 404, 404));
+
+    await render();
+
+    await waitFor(() => expect(container.textContent).toContain("担当技师已确认，公开资料暂不可用。"));
+    expect(container.textContent).toContain("Eason");
+    expect(container.textContent).not.toContain("店铺确认担当后将在此显示正式技师资料。");
   });
 
   it("immediately adopts an accepted Exchange cancellation and removes stale customer actions", async () => {
