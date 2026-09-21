@@ -14,6 +14,7 @@ import { FormalTechnicianOrdersPanel } from "../../components/technician/FormalT
 import { TechnicianDataCenterPanel } from "../../components/technician/TechnicianDataCenterPanel";
 import { Badge } from "../../components/ui/Badge";
 import { AvatarImage } from "../../components/ui/AvatarImage";
+import { AvatarCropEditor, createCroppedAvatarDataUrl, type AvatarCropState } from "../../components/ui/AvatarCropEditor";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
@@ -434,12 +435,13 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
   const [privacyConfirmOpen, setPrivacyConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [readingAvatar, setReadingAvatar] = useState(false);
+  const [avatarCrop, setAvatarCrop] = useState<AvatarCropState | null>(null);
   const [error, setError] = useState("");
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setDraft(profileDraft(profile)), [profile]);
   const saveProfile = async () => {
-    if (saving || readingAvatar) return;
+    if (saving || readingAvatar || avatarCrop) return;
     setSaving(true);
     setError("");
     try {
@@ -467,6 +469,7 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
     setEditing(false);
     setDraft(profileDraft(profile));
     setPrivacyConfirmOpen(false);
+    setAvatarCrop(null);
     setError("");
   };
   const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -476,12 +479,22 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
     setReadingAvatar(true);
     setError("");
     try {
-      const avatarDataUrl = await readImageFileAsDataUrl(file);
-      setDraft((current) => ({ ...current, avatarDataUrl }));
+      const source = await readImageFileAsDataUrl(file, { maxDimension: 1800, maxStoredBytes: 1_200_000 });
+      setAvatarCrop({ source, scale: 1, offsetX: 0, offsetY: 0, naturalWidth: 0, naturalHeight: 0 });
     } catch {
       setError(t("头像读取失败，请重新选择图片"));
     } finally {
       setReadingAvatar(false);
+    }
+  };
+  const applyAvatarCrop = async () => {
+    if (!avatarCrop || saving) return;
+    try {
+      const avatarDataUrl = await createCroppedAvatarDataUrl(avatarCrop);
+      setDraft((current) => ({ ...current, avatarDataUrl }));
+      setAvatarCrop(null);
+    } catch {
+      setError(t("头像读取失败，请重新选择图片"));
     }
   };
   const privacyEnabled = draft.visibility !== "public";
@@ -517,10 +530,10 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
             <p className={cn(surface.muted, "mt-1 text-xs font-bold")}>评价标签由正式订单评价生成，不可自行修改。</p>
           </div>
           <div className="mt-4 space-y-3">
-            <div className="flex items-center gap-4">
-              <AvatarImage alt={t("技师头像预览")} className="h-28 w-28 rounded-[24px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))]" src={draft.avatarDataUrl ?? profileAvatarSrc(profile)} />
-              <input accept="image/jpeg,image/png,image/webp" aria-label={t("技师头像")} className="hidden" disabled={saving || readingAvatar} onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
-              <button className={cn(surface.metric, "rounded-[16px] border px-4 py-3 text-sm font-black")} disabled={saving || readingAvatar} onClick={() => avatarInputRef.current?.click()} type="button">{readingAvatar ? t("正在读取头像") : t("更换头像")}</button>
+            <div className="relative h-36 w-36">
+              <AvatarImage alt={t("技师头像预览")} className="h-36 w-36 rounded-[28px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] shadow-[0_18px_36px_rgba(0,0,0,0.28)]" src={draft.avatarDataUrl ?? profileAvatarSrc(profile)} />
+              <input accept="image/*" aria-label={t("技师头像")} className="hidden" disabled={saving || readingAvatar} onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
+              <IconButton className={cn("absolute bottom-2 right-2 h-10 w-10 border-[2px] text-white shadow-[0_12px_26px_rgba(0,0,0,0.34)]", surface.metric)} icon="edit" label="更换头像" onClick={saving || readingAvatar ? undefined : () => avatarInputRef.current?.click()} />
             </div>
             <div className="grid grid-cols-3 gap-2">
               <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>性别</span><select className="mt-1 w-full bg-transparent text-sm font-black outline-none" onChange={(event) => setDraft((current) => ({ ...current, gender: event.target.value as TechnicianSelfProfile["gender"] }))} value={draft.gender}><option value="female">女性</option><option value="male">男性</option><option value="private">不公开</option></select></label>
@@ -542,6 +555,7 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
           </div>
         </section>
       ) : null}
+      {avatarCrop ? <AvatarCropEditor crop={avatarCrop} onApply={() => void applyAvatarCrop()} onCancel={() => setAvatarCrop(null)} onChange={setAvatarCrop} /> : null}
       <div id="technician-service-information">
         <FormalTechnicianServicesPanel
           defaultCategoryId={defaultCategoryId}
@@ -558,7 +572,7 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
           panelClassName="pointer-events-auto !rounded-none !border-0 !bg-transparent !p-0 !shadow-none !backdrop-blur-none"
           style={profileSaveBarStyle}
         >
-          <button className="w-full rounded-full bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60" data-testid="technician-profile-save-action" disabled={saving || readingAvatar} onClick={() => void saveProfile()} type="button">
+          <button className="w-full rounded-full bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60" disabled={saving || readingAvatar || Boolean(avatarCrop)} data-testid="technician-profile-save-action" onClick={() => void saveProfile()} type="button">
             {saving ? "正在保存资料" : "保存并退出编辑模式"}
           </button>
         </StickyBottomBar>

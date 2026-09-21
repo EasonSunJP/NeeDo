@@ -303,6 +303,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
   afterEach(async () => {
     if (root) await act(async () => root?.unmount());
     container.remove();
+    vi.unstubAllGlobals();
   });
 
   it("uses the shared formal profile composition", () => {
@@ -442,6 +443,14 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
       ...profile,
       avatarUrl: "/technician-avatar.png"
     });
+    class LoadedImage {
+      naturalWidth = 512;
+      naturalHeight = 512;
+      onload: (() => void) | null = null;
+      set src(_source: string) { queueMicrotask(() => this.onload?.()); }
+    }
+    vi.stubGlobal("Image", LoadedImage);
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
 
     await renderPortal();
     await flushUntil(() => expect(container.querySelector('button[aria-label="编辑信息卡"]')).not.toBeNull());
@@ -449,10 +458,21 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
 
     const avatarInput = container.querySelector<HTMLInputElement>('input[aria-label="技师头像"]');
     expect(avatarInput).not.toBeNull();
+    expect(avatarInput?.accept).toBe("image/*");
+    expect(container.querySelector('button[aria-label="更换头像"]')).not.toBeNull();
     const file = new File(["avatar"], "technician.png", { type: "image/png" });
     Object.defineProperty(avatarInput, "files", { configurable: true, value: [file] });
     await act(async () => avatarInput?.dispatchEvent(new Event("change", { bubbles: true })));
+    await flushUntil(() => expect(container.querySelector('[role="dialog"]')?.textContent).toContain("头像裁剪"));
+    expect(container.querySelector<HTMLImageElement>('img[alt="技师头像预览"]')?.src).toContain("/avatar.jpg");
+    await act(async () => Array.from(container.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')).find((button) => button.textContent === "取消裁剪")?.click());
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(container.querySelector<HTMLImageElement>('img[alt="技师头像预览"]')?.src).toContain("/avatar.jpg");
+    await act(async () => avatarInput?.dispatchEvent(new Event("change", { bubbles: true })));
+    await flushUntil(() => expect(container.querySelector('[role="dialog"]')).not.toBeNull());
+    await act(async () => Array.from(container.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')).find((button) => button.textContent === "套用头像")?.click());
     await flushUntil(() => expect(container.querySelector<HTMLImageElement>('img[alt="技师头像预览"]')?.src).toContain("data:image/png;base64,dGVjaG5pY2lhbg=="));
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
 
     await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="technician-profile-save-action"]')?.click());
     await flushUntil(() => expect(updateRequest).toHaveBeenCalledTimes(1));
