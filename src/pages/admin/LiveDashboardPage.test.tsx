@@ -17,6 +17,7 @@ vi.mock("../../features/live-dashboard/useLiveDashboard", () => ({
 
 const money = { jpy: 0, ndp: 0, testNdp: 0 };
 const snapshot = {
+  testNdpVisible: true,
   scope: { country: "JP", admin1: null, admin2: null, breadcrumbs: [{ level: "country", code: "JP", name: "日本" }] },
   evaluatedAt: "2026-09-06T03:04:05.000Z",
   cachedAt: "2026-09-06T03:04:05.000Z",

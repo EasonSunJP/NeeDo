@@ -42,15 +42,18 @@ describe("Exchange operations read API", () => {
       )
       .set("Authorization", `Bearer ${token}`)
       .expect(200, { code: 0, message: "success", data: page });
-    expect(service.list).toHaveBeenCalledWith({
-      type: "demand",
-      status: "published",
-      matchMode: "quick",
-      publisherIdentityType: "customer",
-      keyword: "ボディ",
-      page: 2,
-      page_size: 10
-    });
+    expect(service.list).toHaveBeenCalledWith(
+      {
+        type: "demand",
+        status: "published",
+        matchMode: "quick",
+        publisherIdentityType: "customer",
+        keyword: "ボディ",
+        page: 2,
+        page_size: 10
+      },
+      true
+    );
   });
 
   it("rejects invented states, unknown fields, and unbounded pages", async () => {
@@ -95,7 +98,10 @@ describe("Exchange operations read API", () => {
         .get(`/api/v1/backoffice/exchange/posts?publisher_identity_type=${identityType}&page=2&page_size=10`)
         .set("Authorization", `Bearer ${token}`)
         .expect(200);
-      expect(service.list).toHaveBeenCalledWith(expect.objectContaining({ publisherIdentityType: identityType }));
+      expect(service.list).toHaveBeenCalledWith(
+        expect.objectContaining({ publisherIdentityType: identityType }),
+        true
+      );
     }
   );
 
@@ -118,6 +124,6 @@ describe("Exchange operations read API", () => {
       .get("/api/v1/backoffice/exchange/posts/6")
       .set("Authorization", `Bearer ${token}`)
       .expect(200, { code: 0, message: "success", data: detail });
-    expect(service.detail).toHaveBeenCalledWith(6);
+    expect(service.detail).toHaveBeenCalledWith(6, true);
   });
 });

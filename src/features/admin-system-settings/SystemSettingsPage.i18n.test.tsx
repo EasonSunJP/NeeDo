@@ -5,7 +5,7 @@ describe("system settings localization", () => {
   it("defines every workspace label in all five UI languages", () => {
     expect(Object.keys(adminSystemSettingsCopy).sort()).toEqual(["en", "ja", "ko", "zh", "zh-Hant"].sort());
     for (const copy of Object.values(adminSystemSettingsCopy)) {
-      expect(copy.tabs).toHaveLength(5);
+      expect(copy.tabs).toHaveLength(6);
       expect(copy.title).toBeTruthy();
       expect(copy.save).toBeTruthy();
     }
@@ -20,6 +20,7 @@ describe("system settings localization", () => {
     expect(adminSystemSettingsText("下载当前图片", "ja")).toBe("現在の画像をダウンロード");
     expect(adminSystemSettingsText("下载当前图片", "en")).toBe("Download current image");
     expect(adminSystemSettingsText("下载当前图片", "ko")).toBe("현재 이미지 다운로드");
+    expect(adminSystemSettingsText("Test NDP 设置读取失败", "en")).not.toContain("读取失败");
     expect(
       adminSystemSettingsText(
         "开启后可忽略预约时间开始和完成服务，仅用于测试；关闭后最多提前 30 分钟开始，并须在服务结束时间后完成。",

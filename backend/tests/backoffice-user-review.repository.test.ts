@@ -157,6 +157,34 @@ describe("BackofficeUserReviewRepository", () => {
     );
   });
 
+  it("excludes TestNDP-backed reviews when an operations admin hides test data", async () => {
+    const queryRaw = jest.fn().mockResolvedValueOnce([{ total: 0n }]).mockResolvedValueOnce([]);
+    const findFirst = jest.fn(async () => null);
+    const repository = new BackofficeUserReviewRepository({
+      $queryRaw: queryRaw,
+      orderReview: { findFirst }
+    } as never);
+
+    await repository.listOperationsReviews({
+      page: 1,
+      pageSize: 20,
+      showTestNdpData: false
+    });
+    await repository.getOperationsReview(77, false);
+
+    const sql = queryRaw.mock.calls
+      .map(([query]) => String(query.sql ?? query.text ?? query))
+      .join("\n");
+    expect(sql).toContain("review.is_test_ndp_order = 0");
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          bookingOrder: expect.objectContaining({ NOT: expect.any(Array) })
+        })
+      })
+    );
+  });
+
   it("lists effective received customer reviews within the merchant shop scope", async () => {
     const findMany = jest.fn(async () => [review]);
     const count = jest.fn(async () => 1);

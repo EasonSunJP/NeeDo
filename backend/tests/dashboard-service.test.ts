@@ -109,6 +109,33 @@ const headlineBuckets = () => [
 ];
 
 describe("BackofficeService named dashboard contract", () => {
+  it("removes Test NDP values and passes source filtering for an administrator who disabled visibility", async () => {
+    const getDashboard = jest.fn(async () => aggregateFacts());
+    const getHeadlineSeries3d = jest.fn(async () => headlineBuckets());
+    const service = new BackofficeService(
+      { getDashboard, getHeadlineSeries3d } as never,
+      { record: jest.fn(async () => undefined) } as never,
+      createDirectShopContextRepository(),
+      () => now,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { getEffective: jest.fn(async () => ({ showTestNdpData: false, source: "explicit" as const })) }
+    );
+
+    const result = await service.getPlatformDashboard(platformActor, context, {
+      period: "last7days"
+    });
+
+    expect(getDashboard).toHaveBeenCalledWith(expect.objectContaining({ showTestNdpData: false }));
+    expect(getHeadlineSeries3d).toHaveBeenCalledWith(expect.objectContaining({ showTestNdpData: false }));
+    expect(result.testNdpVisible).toBe(false);
+    expect(result.finance.platformNetRevenue).toEqual({ ndp: 900, testNdp: 0 });
+    expect(result.finance.userReward).toEqual({ ndp: 100, testNdp: 0 });
+    expect(result.finance.walletStock).toMatchObject({ ndp: 5_000, testNdp: 0 });
+  });
+
   it("composes the platform DTO, comparison rules, buckets, global metadata, and audit scope", async () => {
     const getDashboard = jest.fn(async () => aggregateFacts());
     const getHeadlineSeries3d = jest.fn(async () => headlineBuckets());
@@ -126,6 +153,7 @@ describe("BackofficeService named dashboard contract", () => {
     });
 
     expect(result).toEqual({
+      testNdpVisible: true,
       filter: {
         period: "last7days",
         from: "2026-08-25",

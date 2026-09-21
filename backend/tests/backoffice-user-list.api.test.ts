@@ -46,7 +46,7 @@ describe("backoffice all-user API", () => {
 
     const response = await request(fixture.app)
       .get(
-        "/api/v1/backoffice/users?page=1&pageSize=20&identityType=customer&state=active&city=Tokyo&emailState=set&privacy=enabled&tiers=free&tiers=gold&identityTypes=customer&identityTypes=technician&cities=Tokyo&cities=Osaka&minBookings=2&maxBookings=20&sortBy=city&sortDirection=desc"
+        "/api/v1/backoffice/users?page=1&pageSize=20&identityType=customer&state=active&city=Tokyo&emailState=set&privacy=enabled&tiers=free&tiers=gold&identityTypes=customer&identityTypes=technician&cities=Tokyo&cities=Osaka&minBookings=2&maxBookings=20&sortBy=city&sortDirection=desc&isTestAccount=false"
       )
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
@@ -70,7 +70,8 @@ describe("backoffice all-user API", () => {
         minBookings: 2,
         maxBookings: 20,
         sortBy: "city",
-        sortDirection: "desc"
+        sortDirection: "desc",
+        isTestAccount: false
       }),
       expect.any(Date)
     );
@@ -155,7 +156,13 @@ describe("backoffice all-user API", () => {
     });
     expect(response.body.data.experience).toMatchObject({ currentLevel: 1, totalExp: "4" });
     expect(getManagedUser).toHaveBeenCalledWith(
-      { scope: "platform", userId: 41, audit_page: 2, audit_page_size: 50 },
+      {
+        scope: "platform",
+        userId: 41,
+        audit_page: 2,
+        audit_page_size: 50,
+        showTestNdpData: true
+      },
       expect.any(Date)
     );
   });

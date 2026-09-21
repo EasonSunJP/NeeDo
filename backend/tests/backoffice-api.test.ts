@@ -805,6 +805,14 @@ const createFixture = async (
       })
     )
   };
+  let showTestNdpData: boolean | null = null;
+  const backofficePreferenceRepository = {
+    findByUserId: jest.fn(async () => showTestNdpData === null ? null : { showTestNdpData }),
+    update: jest.fn(async (input: { showTestNdpData: boolean }) => {
+      showTestNdpData = input.showTestNdpData;
+      return { showTestNdpData };
+    })
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository,
@@ -813,6 +821,7 @@ const createFixture = async (
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
     backofficeRepository,
+    backofficePreferenceRepository,
     platformMembershipService,
     merchantShopContextRepository:
       options.merchantShopContextRepository ?? merchantShopContextRepository
@@ -830,6 +839,7 @@ const createFixture = async (
     app,
     auditLogs,
     backofficeRepository,
+    backofficePreferenceRepository,
     merchantShopContextRepository,
     platformMembershipService,
     login
@@ -837,6 +847,42 @@ const createFixture = async (
 };
 
 describe("Step 12 backoffice and merchant-admin real data APIs", () => {
+  it("stores Test NDP visibility separately for the authenticated administrator", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/preferences/test-ndp-visibility")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data).toEqual({ showTestNdpData: true, source: "environment_default" });
+      });
+
+    await request(fixture.app)
+      .put("/api/v1/backoffice/preferences/test-ndp-visibility")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ showTestNdpData: false })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data).toEqual({ showTestNdpData: false, source: "explicit" });
+      });
+
+    expect(fixture.backofficePreferenceRepository.update).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 1, showTestNdpData: false })
+    );
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/finance/ndp-summary?date=2026-05-25")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.testNdpVisible).toBe(false);
+        expect(body.data.todayNdpConsumption.testNdp).toBe(0);
+        expect(body.data.platformNetRevenue.testNdp).toBe(0);
+      });
+  });
+
   it("lists only safe manageable-shop fields with strict pagination, permission, and audit", async () => {
     const fixture = await createFixture();
     const merchantToken = await fixture.login("merchant@example.com");
@@ -1613,6 +1659,7 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       .expect(200);
 
     expect(response.body.data).toEqual({
+      testNdpVisible: true,
       period: { date: "2026-05-25", timeZone: "Asia/Tokyo" },
       todayNdpConsumption: { ndp: 5000, testNdp: 17600 },
       platformNetRevenue: { ndp: 860, testNdp: 1040 },
@@ -1686,7 +1733,8 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     ]);
     expect(fixture.backofficeRepository.findOrderById).toHaveBeenCalledWith({
       id: 31,
-      scope: "platform"
+      scope: "platform",
+      showTestNdpData: true
     });
     expect(fixture.auditLogs).toEqual(
       expect.arrayContaining([

@@ -198,6 +198,7 @@ import type { ImMessageTranslationRepositoryPort } from "./repositories/im-messa
 import type { RoleRepositoryPort } from "./repositories/role.repository";
 import type { UserRepositoryPort } from "./repositories/user.repository";
 import type { TestAccountRepositoryPort } from "./repositories/test-account.repository";
+import type { BackofficePreferenceRepositoryPort } from "./repositories/backoffice-preference.repository";
 import { createAuthRoutes } from "./routes/auth.routes";
 import { createAffiliateTaskRoutes } from "./routes/affiliate-task.routes";
 import { createMerchantAffiliateTaskContextRoutes } from "./routes/merchant-affiliate-task-context.routes";
@@ -205,6 +206,7 @@ import { createAffiliateMarketplaceRoutes } from "./routes/affiliate-marketplace
 import { createAffiliateProfileRoutes } from "./routes/affiliate-profile.routes";
 import { createAffiliateAllianceRoutes } from "./routes/affiliate-alliance.routes";
 import { createBackofficeRoutes } from "./routes/backoffice.routes";
+import { createBackofficePreferenceRoutes } from "./routes/backoffice-preference.routes";
 import { createShopPresentationRoutes } from "./routes/shop-presentation.routes";
 import { createBackofficeUserReviewRoutes } from "./routes/backoffice-user-review.routes";
 import { createBackofficeUserUsageRoutes } from "./routes/backoffice-user-usage.routes";
@@ -383,6 +385,7 @@ export interface AppDependencies {
   userRepository?: UserRepositoryPort;
   operationsMemberRepository?: OperationsMemberRepositoryPort;
   testAccountRepository?: TestAccountRepositoryPort;
+  backofficePreferenceRepository?: BackofficePreferenceRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
   searchQueryRecorderRepository?: SearchQueryRecorderRepositoryPort;
   searchQueryRecorder?: SearchQueryRecorderPort;
@@ -797,6 +800,7 @@ export const createApp = (
   mount("merchant-admin", createShopMembershipCardTopUpRoutes(config, resolvedDependencies));
   mount("merchant-admin", createShopMembershipCardRedemptionRoutes(config, resolvedDependencies));
   mount("backoffice", createReleasePublicationRoutes(config, resolvedDependencies));
+  mount("backoffice", createBackofficePreferenceRoutes(config, resolvedDependencies));
   mount("backoffice", createAnalyticsRankingRoutes(config, resolvedDependencies));
   mount("shared", createTechnicianProfileRoutes(config, resolvedDependencies));
   mount("shared", createTechnicianDataCenterRoutes(config, resolvedDependencies));

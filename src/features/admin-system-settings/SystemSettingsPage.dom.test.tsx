@@ -12,7 +12,14 @@ const mocked = vi.hoisted(() => ({
   updateBasic: vi.fn(),
   updatePayment: vi.fn(),
   updateRetention: vi.fn(),
-  uploadBrandImage: vi.fn()
+  uploadBrandImage: vi.fn(),
+  getTestNdpVisibility: vi.fn(),
+  updateTestNdpVisibility: vi.fn(),
+  listTestParticipants: vi.fn(),
+  searchParticipantCandidates: vi.fn(),
+  updateTestParticipant: vi.fn(),
+  creditTestNdp: vi.fn(),
+  createBackofficeTopup: vi.fn()
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({
@@ -29,7 +36,18 @@ vi.mock("./api", () => ({
     updateBasic: mocked.updateBasic,
     updatePayment: mocked.updatePayment,
     updateRetention: mocked.updateRetention,
-    uploadBrandImage: mocked.uploadBrandImage
+    uploadBrandImage: mocked.uploadBrandImage,
+    getTestNdpVisibility: mocked.getTestNdpVisibility,
+    updateTestNdpVisibility: mocked.updateTestNdpVisibility,
+    listTestParticipants: mocked.listTestParticipants,
+    searchParticipantCandidates: mocked.searchParticipantCandidates,
+    updateTestParticipant: mocked.updateTestParticipant
+  }
+}));
+vi.mock("../wallet/api", () => ({
+  walletApi: {
+    creditTestNdp: mocked.creditTestNdp,
+    createBackofficeTopup: mocked.createBackofficeTopup
   }
 }));
 
@@ -84,6 +102,28 @@ describe("SystemSettingsPage interactions", () => {
       mediaDays: 3,
       updatedAt: "2026-09-06T00:00:00.000Z"
     });
+    mocked.getTestNdpVisibility.mockResolvedValue({
+      showTestNdpData: false,
+      source: "environment_default"
+    });
+    mocked.updateTestNdpVisibility.mockResolvedValue({
+      showTestNdpData: true,
+      source: "explicit"
+    });
+    mocked.listTestParticipants.mockResolvedValue({
+      list: [{
+        id: 41,
+        needoId: "u0000000041",
+        displayName: "Staging Test",
+        email: "staging@example.test",
+        isTestAccount: true,
+        updatedAt: "2026-09-22T00:00:00.000Z",
+        testNdpBalance: { available: 2500, frozen: 0 }
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -113,6 +153,24 @@ describe("SystemSettingsPage interactions", () => {
     await act(async () => basic.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })));
     const selected = container.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]');
     expect(selected?.textContent).toContain("政策和协议");
+  });
+
+  it("loads the personal Test NDP setting and hides balance actions while it is off", async () => {
+    mocked.hasPermission.mockReturnValue(true);
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/admin/settings/system?tab=test-ndp"] }, createElement(SystemSettingsPage)));
+    });
+
+    expect(mocked.getTestNdpVisibility).toHaveBeenCalledTimes(1);
+    expect(mocked.listTestParticipants).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("Staging Test");
+    expect(container.textContent).not.toContain("Test NDP 2,500");
+    expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent === "添加 Test NDP")).toBe(false);
+
+    const visibility = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent === "已关闭");
+    await act(async () => visibility?.click());
+    expect(mocked.updateTestNdpVisibility).toHaveBeenCalledWith(true);
   });
 
   it("shows the effective default brand images and styled image pickers", async () => {

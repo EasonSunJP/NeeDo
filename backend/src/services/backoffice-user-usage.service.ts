@@ -24,10 +24,11 @@ export class BackofficeUserUsageService {
   public async listForOperations(
     actor: AuthenticatedAccessContext,
     userId: number,
-    input: BackofficeUserUsageListQuery
+    input: BackofficeUserUsageListQuery,
+    showTestNdpData = true
   ): Promise<UserUsagePage> {
     this.assertOperationsActor(actor);
-    return this.list({ scope: "platform" }, userId, input);
+    return this.list({ scope: "platform", showTestNdpData }, userId, input);
   }
 
   public async listForMerchant(
@@ -41,10 +42,11 @@ export class BackofficeUserUsageService {
   public async getTimelineForOperations(
     actor: AuthenticatedAccessContext,
     userId: number,
-    orderId: number
+    orderId: number,
+    showTestNdpData = true
   ): Promise<UserUsageTimeline> {
     this.assertOperationsActor(actor);
-    return this.getTimeline({ scope: "platform" }, userId, orderId);
+    return this.getTimeline({ scope: "platform", showTestNdpData }, userId, orderId);
   }
 
   public async getTimelineForMerchant(
@@ -142,7 +144,7 @@ export class BackofficeUserUsageService {
   }
 
   private async list(
-    scope: { scope: "platform" } | { scope: "merchant"; shopId: number },
+    scope: { scope: "platform"; showTestNdpData?: boolean } | { scope: "merchant"; shopId: number },
     userId: number,
     input: BackofficeUserUsageListQuery
   ): Promise<UserUsagePage> {
@@ -164,7 +166,7 @@ export class BackofficeUserUsageService {
   }
 
   private async getTimeline(
-    scope: { scope: "platform" } | { scope: "merchant"; shopId: number },
+    scope: { scope: "platform"; showTestNdpData?: boolean } | { scope: "merchant"; shopId: number },
     userId: number,
     orderId: number
   ): Promise<UserUsageTimeline> {

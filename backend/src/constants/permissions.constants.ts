@@ -419,6 +419,20 @@ export const SYSTEM_PERMISSIONS = [
     "user",
     "切换测试账号分类并审计双币种资金边界"
   ),
+  createPermission(
+    "backoffice:test-ndp:credit",
+    "Test NDP 人工入账",
+    "api",
+    "finance",
+    "向合格测试账号人工入账 Test NDP"
+  ),
+  createPermission(
+    "backoffice:wallet-adjustment:create",
+    "创建正式 NDP 入账申请",
+    "api",
+    "finance",
+    "为指定用户创建待复核的正式 NDP 入账申请"
+  ),
   createPermission("user:identity:list", "用户身份列表", "api", "user", "查看用户身份"),
   createPermission("user:identity:switch", "切换用户身份", "api", "user", "切换当前用户身份"),
   createPermission("page:user-management", "用户管理页面", "page", "user", "访问用户管理页面"),
@@ -2656,12 +2670,10 @@ export const buildRolePermissionAssignments = (): Record<
     "user:update",
     "user:status:update",
     "user:assign-role",
-    "user:test-account:update",
     "button:user:create",
     "button:user:update",
     "button:user:disable",
     "button:user:assign-role",
-    "button:user:test-account:update",
     "menu:admin-settings",
     "page:admin-settings",
     "backoffice:order:checkout:receipt-override",
@@ -2679,6 +2691,8 @@ export const buildRolePermissionAssignments = (): Record<
     "backoffice:finance-order:read",
     "backoffice:order-payment:write",
     "backoffice:payroll:read",
+    "backoffice:test-ndp:credit",
+    "backoffice:wallet-adjustment:create",
     "menu:admin-settings",
     "page:admin-settings"
   ],

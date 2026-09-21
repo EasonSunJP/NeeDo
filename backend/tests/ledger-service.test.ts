@@ -99,6 +99,7 @@ const createFeeService = (
 
 class InMemoryLedgerRepository implements LedgerRepositoryPort {
   public readonly accountClassifications = new Map<number, boolean>();
+  public readonly shopOwnerClassifications = new Map<number, boolean>();
   public readonly wallets = new Map<string, WalletPayload>();
   public readonly transactions = new Map<string, LedgerTransactionPayload>();
   public readonly holds = new Map<string, WalletHoldPayload>();
@@ -160,6 +161,15 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
     userId: number
   ): Promise<{ isTestAccount: boolean } | null> {
     return { isTestAccount: this.accountClassifications.get(userId) ?? false };
+  }
+
+  public async findShopOwnerAccountClassification(
+    shopId: number
+  ): Promise<{ ownerUserId: number; isTestAccount: boolean } | null> {
+    return {
+      ownerUserId: shopId,
+      isTestAccount: this.shopOwnerClassifications.get(shopId) ?? false
+    };
   }
 
   public async getOrCreateWallet(input: {
@@ -561,6 +571,7 @@ describe("LedgerService wallet mutations", () => {
     async (isTestAccount, currency) => {
       const repository = new InMemoryLedgerRepository();
       repository.accountClassifications.set(3, isTestAccount);
+      repository.shopOwnerClassifications.set(10, isTestAccount);
       repository.seedWallet({
         ownerType: "shop",
         ownerId: 10,
@@ -600,6 +611,7 @@ describe("LedgerService wallet mutations", () => {
   it("releases a booking in its snapshotted Test NDP currency after classification changes", async () => {
     const repository = new InMemoryLedgerRepository();
     repository.accountClassifications.set(3, true);
+    repository.shopOwnerClassifications.set(10, true);
     repository.seedWallet({
       ownerType: "shop",
       ownerId: 10,
@@ -640,6 +652,7 @@ describe("LedgerService wallet mutations", () => {
   it("completes a booking in its snapshotted Test NDP currency after classification changes", async () => {
     const repository = new InMemoryLedgerRepository();
     repository.accountClassifications.set(3, true);
+    repository.shopOwnerClassifications.set(10, true);
     repository.seedWallet({
       ownerType: "shop",
       ownerId: 10,
@@ -804,6 +817,7 @@ describe("LedgerService wallet mutations", () => {
   it("pays merchant-cancel compensation only in the booking's Test NDP currency", async () => {
     const repository = new InMemoryLedgerRepository();
     repository.accountClassifications.set(3, true);
+    repository.shopOwnerClassifications.set(10, true);
     repository.seedWallet({
       ownerType: "shop",
       ownerId: 10,
@@ -1368,6 +1382,7 @@ describe("LedgerService wallet mutations", () => {
     ) => {
       const repository = new InMemoryLedgerRepository();
       repository.accountClassifications.set(3, true);
+      repository.shopOwnerClassifications.set(10, true);
       repository.seedWallet({
         ownerType: "shop",
         ownerId: 10,
@@ -1733,6 +1748,7 @@ describe("LedgerService wallet mutations", () => {
     async (currency, isTestAccount) => {
       const repository = new InMemoryLedgerRepository();
       repository.accountClassifications.set(3, isTestAccount);
+      repository.shopOwnerClassifications.set(10, isTestAccount);
       repository.seedWallet({
         ownerType: "shop",
         ownerId: 10,

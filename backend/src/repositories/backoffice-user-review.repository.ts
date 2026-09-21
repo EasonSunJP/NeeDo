@@ -8,7 +8,9 @@ import {
 import { prisma } from "../prisma/client";
 import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 
-export type UserReviewScope = { scope: "platform" } | { scope: "merchant"; shopId: number };
+export type UserReviewScope =
+  | { scope: "platform"; showTestNdpData?: boolean }
+  | { scope: "merchant"; shopId: number };
 
 export interface ReceivedUserReview {
   reviewId: number;
@@ -78,6 +80,7 @@ export interface OperationsReviewListInput {
   targetType?: "customer" | "technician";
   from?: Date;
   to?: Date;
+  showTestNdpData?: boolean;
 }
 
 export type ReviewAmendmentMutationResult =
@@ -86,7 +89,7 @@ export type ReviewAmendmentMutationResult =
 
 export interface BackofficeUserReviewRepositoryPort {
   listOperationsReviews(input: OperationsReviewListInput): Promise<OperationsReviewPage>;
-  getOperationsReview(reviewId: number): Promise<OperationsReview | null>;
+  getOperationsReview(reviewId: number, showTestNdpData?: boolean): Promise<OperationsReview | null>;
   isUserVisibleInMerchantScope(userId: number, shopId: number): Promise<boolean>;
   listReceivedReviews(
     input: UserReviewScope & {
@@ -246,12 +249,19 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
     };
   }
 
-  public async getOperationsReview(reviewId: number): Promise<OperationsReview | null> {
+  public async getOperationsReview(
+    reviewId: number,
+    showTestNdpData = true
+  ): Promise<OperationsReview | null> {
     const row = await this.client.orderReview.findFirst({
       where: {
         id: reviewId,
         deletedAt: null,
-        bookingOrder: { status: BookingOrderStatus.COMPLETED, deletedAt: null }
+        bookingOrder: {
+          status: BookingOrderStatus.COMPLETED,
+          deletedAt: null,
+          ...this.visibleTestNdpOrderWhere({ scope: "platform", showTestNdpData })
+        }
       },
       select: reviewSelect
     });
@@ -283,6 +293,7 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
       customerProfile: { userId: input.userId, deletedAt: null },
       bookingOrder: {
         ...(input.scope === "merchant" ? { shopId: input.shopId } : {}),
+        ...this.visibleTestNdpOrderWhere(input),
         status: BookingOrderStatus.COMPLETED,
         deletedAt: null
       }
@@ -535,7 +546,23 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
           assigned_technician.display_name AS assigned_technician_name,
           assigned_technician_user.needo_id AS assigned_technician_needo_id,
           target_customer.display_name AS target_customer_name,
-          target_technician.display_name AS target_technician_name
+          target_technician.display_name AS target_technician_name,
+          CASE WHEN EXISTS (
+            SELECT 1
+            FROM order_financials AS test_financial
+            WHERE test_financial.booking_order_id = booking.id
+              AND test_financial.deleted_at IS NULL
+              AND test_financial.ndp_currency = ${"TEST_NDP"}
+          ) OR EXISTS (
+            SELECT 1
+            FROM order_checkouts AS test_checkout
+            INNER JOIN ledger_transactions AS test_ledger
+              ON test_ledger.id = test_checkout.ledger_transaction_id
+             AND test_ledger.deleted_at IS NULL
+            WHERE test_checkout.booking_order_id = booking.id
+              AND test_checkout.deleted_at IS NULL
+              AND test_ledger.currency = ${"TEST_NDP"}
+          ) THEN 1 ELSE 0 END AS is_test_ndp_order
         FROM order_reviews AS review
         INNER JOIN booking_orders AS booking
           ON booking.id = review.booking_order_id
@@ -576,6 +603,9 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
 
   private operationsReviewFilter(input: OperationsReviewListInput): Prisma.Sql {
     const filters: Prisma.Sql[] = [Prisma.sql`1 = 1`];
+    if (input.showTestNdpData === false) {
+      filters.push(Prisma.sql`review.is_test_ndp_order = 0`);
+    }
     if (input.keyword) {
       const keyword = `%${input.keyword}%`;
       filters.push(Prisma.sql`(
@@ -612,6 +642,23 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
     if (input.from) filters.push(Prisma.sql`review.created_at >= ${input.from}`);
     if (input.to) filters.push(Prisma.sql`review.created_at < ${input.to}`);
     return Prisma.join(filters, " AND ");
+  }
+
+  private visibleTestNdpOrderWhere(scope: UserReviewScope): Prisma.BookingOrderWhereInput {
+    if (scope.scope !== "platform" || scope.showTestNdpData !== false) return {};
+    return {
+      NOT: [
+        { financial: { is: { ndpCurrency: "TEST_NDP", deletedAt: null } } },
+        {
+          checkout: {
+            is: {
+              deletedAt: null,
+              ledgerTransaction: { is: { currency: "TEST_NDP", deletedAt: null } }
+            }
+          }
+        }
+      ]
+    };
   }
 
   private metadataObject(value: unknown): Record<string, unknown> {

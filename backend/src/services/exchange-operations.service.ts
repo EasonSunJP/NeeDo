@@ -18,11 +18,16 @@ export interface ExchangeOperationsRepositoryListInput {
   page: number;
   pageSize: number;
   now: Date;
+  showTestNdpData?: boolean;
 }
 
 export interface ExchangeOperationsRepositoryPort {
   list(input: ExchangeOperationsRepositoryListInput): Promise<ExchangeOperationsPage>;
-  findDetail(postId: number, now: Date): Promise<ExchangeOperationsDetail | null>;
+  findDetail(
+    postId: number,
+    now: Date,
+    showTestNdpData?: boolean
+  ): Promise<ExchangeOperationsDetail | null>;
 }
 
 export class ExchangeOperationsService {
@@ -31,7 +36,10 @@ export class ExchangeOperationsService {
     private readonly now: () => Date = () => new Date()
   ) {}
 
-  public list(query: ExchangeOperationsListQuery): Promise<ExchangeOperationsPage> {
+  public list(
+    query: ExchangeOperationsListQuery,
+    showTestNdpData = true
+  ): Promise<ExchangeOperationsPage> {
     return this.repository.list({
       ...(query.type ? { type: query.type } : {}),
       ...(query.status ? { status: query.status } : {}),
@@ -42,13 +50,14 @@ export class ExchangeOperationsService {
       ...(query.keyword ? { keyword: query.keyword } : {}),
       page: query.page,
       pageSize: query.page_size,
-      now: this.now()
+      now: this.now(),
+      showTestNdpData
     });
   }
 
-  public async detail(postId: number): Promise<ExchangeOperationsDetail> {
+  public async detail(postId: number, showTestNdpData = true): Promise<ExchangeOperationsDetail> {
     if (!Number.isSafeInteger(postId) || postId <= 0) throw this.notFound();
-    const detail = await this.repository.findDetail(postId, this.now());
+    const detail = await this.repository.findDetail(postId, this.now(), showTestNdpData);
     if (!detail) throw this.notFound();
     return detail;
   }
@@ -61,4 +70,3 @@ export class ExchangeOperationsService {
     });
   }
 }
-

@@ -2,7 +2,9 @@ import { Prisma, ServicePaymentStatus, type PrismaClient } from "@prisma/client"
 import { prisma } from "../prisma/client";
 import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 
-export type UserUsageScope = { scope: "platform" } | { scope: "merchant"; shopId: number };
+export type UserUsageScope =
+  | { scope: "platform"; showTestNdpData?: boolean }
+  | { scope: "merchant"; shopId: number };
 
 export interface UserUsageRow {
   id: number;
@@ -165,6 +167,7 @@ export class BackofficeUserUsageRepository implements BackofficeUserUsageReposit
     const where = {
       customerUserId: input.userId,
       ...(input.scope === "merchant" ? { shopId: input.shopId } : {}),
+      ...this.visibleTestNdpOrderWhere(input),
       startsAt: { gte: input.from, lt: input.to },
       deletedAt: null,
       ...(input.keyword
@@ -203,6 +206,7 @@ export class BackofficeUserUsageRepository implements BackofficeUserUsageReposit
         id: input.orderId,
         customerUserId: input.userId,
         ...(input.scope === "merchant" ? { shopId: input.shopId } : {}),
+        ...this.visibleTestNdpOrderWhere(input),
         deletedAt: null
       },
       select: orderTimelineSelect
@@ -349,6 +353,23 @@ export class BackofficeUserUsageRepository implements BackofficeUserUsageReposit
         note: refundExists ? (amendment ? amendment.note : order.paymentRefundReason) : null,
         amendmentVersion: amendment?.version ?? 0
       }
+    };
+  }
+
+  private visibleTestNdpOrderWhere(scope: UserUsageScope): Prisma.BookingOrderWhereInput {
+    if (scope.scope !== "platform" || scope.showTestNdpData !== false) return {};
+    return {
+      NOT: [
+        { financial: { is: { ndpCurrency: "TEST_NDP", deletedAt: null } } },
+        {
+          checkout: {
+            is: {
+              deletedAt: null,
+              ledgerTransaction: { is: { currency: "TEST_NDP", deletedAt: null } }
+            }
+          }
+        }
+      ]
     };
   }
 

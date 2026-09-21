@@ -101,6 +101,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
       SELECT COALESCE(SUM(incomplete_evidence), 0) AS anomalyCount
       FROM formal_order_evidence
       WHERE entity_eligible = 1
+        AND (${input.showTestNdpData !== false} OR is_test_order = 0)
     `);
     if (
       anomalyRows.length !== 1 ||
@@ -564,7 +565,9 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                      THEN ${"test"}
                    ELSE ${"mixed"}
                  END AS data_composition
-          FROM eligible_lines AS line WHERE ${categoryFilter}
+          FROM eligible_lines AS line
+          WHERE ${categoryFilter}
+            AND (${input.showTestNdpData !== false} OR line.is_test_order = 0)
           GROUP BY line.entity_type, line.entity_public_id, line.entity_numeric_id
         `
         : input.kind === "technician"
@@ -593,6 +596,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
           FROM formal_order_evidence AS evidence
           ${input.categoryId === null ? Prisma.empty : Prisma.sql`JOIN eligible_lines AS line ON line.booking_order_id = evidence.id AND ${categoryFilter}`}
           WHERE evidence.incomplete_evidence = 0 AND evidence.entity_eligible = 1
+            AND (${input.showTestNdpData !== false} OR evidence.is_test_order = 0)
           GROUP BY evidence.technician_needo_id, evidence.resolved_technician_id,
                    evidence.technician_display_name, evidence.technician_avatar_url,
                    evidence.technician_created_at
@@ -622,6 +626,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
           FROM formal_order_evidence AS evidence
           ${input.categoryId === null ? Prisma.empty : Prisma.sql`JOIN eligible_lines AS line ON line.booking_order_id = evidence.id AND ${categoryFilter}`}
           WHERE evidence.incomplete_evidence = 0 AND evidence.entity_eligible = 1
+            AND (${input.showTestNdpData !== false} OR evidence.is_test_order = 0)
           GROUP BY evidence.customer_needo_id, evidence.resolved_customer_id,
                    COALESCE(evidence.customer_display_name, evidence.customer_username),
                    evidence.customer_avatar_url, evidence.customer_created_at

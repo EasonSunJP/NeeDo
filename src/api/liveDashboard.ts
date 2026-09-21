@@ -40,6 +40,7 @@ const ranking = z.strictObject({
   completedCount: nonNegativeInteger
 });
 const snapshotSchema = z.strictObject({
+  testNdpVisible: z.boolean(),
   scope: z.strictObject({
     country: z.literal("JP"),
     admin1: code2.nullable(),

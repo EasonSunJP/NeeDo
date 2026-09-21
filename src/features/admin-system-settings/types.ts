@@ -66,6 +66,11 @@ export type ImRetentionInput = Pick<ImRetentionSettings, "messageDays" | "mediaD
   expectedVersion: number;
 };
 
+export type TestNdpVisibilityPreference = {
+  showTestNdpData: boolean;
+  source: "explicit" | "environment_default";
+};
+
 export type UploadedBrandMedia = {
   publicId: string;
   url: string;

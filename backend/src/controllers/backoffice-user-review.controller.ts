@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { BackofficeUserReviewService } from "../services/backoffice-user-review.service";
+import type { BackofficePreferenceService } from "../services/backoffice-preference.service";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
@@ -11,7 +12,15 @@ import {
 } from "../validators/backoffice-user-review.validator";
 
 export class BackofficeUserReviewController {
-  public constructor(private readonly service: BackofficeUserReviewService) {}
+  public constructor(
+    private readonly service: BackofficeUserReviewService,
+    private readonly preference?: Pick<BackofficePreferenceService, "getEffective">
+  ) {}
+
+  private async showTestNdpData(response: Response): Promise<boolean> {
+    const actor = getAuthenticatedAccess(response);
+    return (await this.preference?.getEffective(actor.userId))?.showTestNdpData ?? true;
+  }
 
   public listOperationsReviews = this.handle(async (request, response) => {
     response
@@ -20,7 +29,8 @@ export class BackofficeUserReviewController {
         successResponse(
           await this.service.listOperationsReviews(
             getAuthenticatedAccess(response),
-            backofficeOperationsReviewListQuerySchema.parse(request.query)
+            backofficeOperationsReviewListQuerySchema.parse(request.query),
+            await this.showTestNdpData(response)
           )
         )
       );
@@ -32,7 +42,11 @@ export class BackofficeUserReviewController {
       .status(200)
       .json(
         successResponse(
-          await this.service.getOperationsReview(getAuthenticatedAccess(response), reviewId)
+          await this.service.getOperationsReview(
+            getAuthenticatedAccess(response),
+            reviewId,
+            await this.showTestNdpData(response)
+          )
         )
       );
   });
@@ -46,7 +60,8 @@ export class BackofficeUserReviewController {
           await this.service.listForOperations(
             getAuthenticatedAccess(response),
             userId,
-            backofficeUserReviewListQuerySchema.parse(request.query)
+            backofficeUserReviewListQuerySchema.parse(request.query),
+            await this.showTestNdpData(response)
           )
         )
       );

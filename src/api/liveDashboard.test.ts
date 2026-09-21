@@ -16,6 +16,7 @@ const requestedScope: LiveDashboardScope = {
 };
 
 const payload = {
+  testNdpVisible: true,
   scope: {
     country: "JP",
     admin1: "13",

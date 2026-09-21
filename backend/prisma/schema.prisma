@@ -370,6 +370,7 @@ enum LedgerTransactionType {
   AFFILIATE_REWARD_REVERSAL            @map("affiliate_reward_reversal")
   AFFILIATE_REWARD_RECOVERY            @map("affiliate_reward_recovery")
   TEST_BALANCE_CALIBRATION             @map("test_balance_calibration")
+  TEST_NDP_MANUAL_CREDIT               @map("test_ndp_manual_credit")
   EXCHANGE_REQUEST_PUBLICATION_FREEZE  @map("exchange_request_publication_freeze")
   EXCHANGE_REQUEST_PUBLICATION_CAPTURE @map("exchange_request_publication_capture")
   EXCHANGE_REQUEST_PUBLICATION_RELEASE @map("exchange_request_publication_release")
@@ -1319,6 +1320,7 @@ model User {
   ledgerTransactions                    LedgerTransaction[]                 @relation("LedgerTransactionActor")
   requestedWalletAdjustments            WalletAdjustmentRequest[]           @relation("WalletAdjustmentRequestedBy")
   reviewedWalletAdjustments             WalletAdjustmentRequest[]           @relation("WalletAdjustmentReviewedBy")
+  backofficePreference                  BackofficePreference?
   ownedShops                            Shop[]                              @relation("ShopOwner")
   createdShops                          Shop[]                              @relation("ShopCreatedBy")
   updatedShopPresentationLocales        ShopPresentationLocale[]            @relation("ShopPresentationLocaleUpdatedBy")
@@ -1527,6 +1529,18 @@ model User {
   @@map("users")
   sentSosAlerts SosAlert[] @relation("SosSenderUser")
   resolvedSosAlerts SosAlert[] @relation("SosResolverUser")
+}
+
+model BackofficePreference {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique @map("user_id")
+  showTestNdpData Boolean  @map("show_test_ndp_data")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("backoffice_preferences")
 }
 
 model ExternalAuthAccount {

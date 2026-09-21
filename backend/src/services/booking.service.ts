@@ -1145,6 +1145,7 @@ export class BookingService {
               bookingOrderId: order.id,
               checkoutId: checkout.id,
               customerUserId: order.customerUserId,
+              shopId: order.shopId,
               payableNdp: checkout.payableNdp,
               idempotencyKey,
               actorUserId: actor.userId

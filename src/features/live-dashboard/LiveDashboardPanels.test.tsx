@@ -11,6 +11,7 @@ import { LiveDashboardPanels } from "./LiveDashboardPanels";
 const money = { jpy: 12000, ndp: 32, testNdp: 4 };
 const order = { orderNo: "NDO-100", status: "confirmed", serviceName: "家政服务", amountJpy: 12000, occurredAt: "2026-09-06T03:04:05.000Z" };
 const snapshot = {
+  testNdpVisible: true,
   scope: { country: "JP", admin1: "13", admin2: null, breadcrumbs: [{ level: "country", code: "JP", name: "日本" }, { level: "admin1", code: "13", name: "東京都" }] },
   evaluatedAt: "2026-09-06T03:04:05.000Z",
   cachedAt: "2026-09-06T03:04:05.000Z",
@@ -43,6 +44,11 @@ describe("LiveDashboardPanels", () => {
     act(() => root.unmount());
     container.remove();
     window.localStorage.clear();
+  });
+
+  it("does not render Test NDP money rows when the administrator hides test data", async () => {
+    await act(async () => root.render(<LiveDashboardPanels map={<div />} snapshot={{ ...snapshot, testNdpVisible: false }} />));
+    expect(container.textContent).not.toContain("Test NDP");
   });
 
   it("keeps all operating panels on the committed scope and separates currencies", () => {

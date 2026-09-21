@@ -45,6 +45,30 @@ describe("admin system settings API", () => {
     });
   });
 
+  it("reads and updates the current administrator's Test NDP visibility", async () => {
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce({ showTestNdpData: true, source: "environment_default" })
+      .mockResolvedValueOnce({ showTestNdpData: false, source: "explicit" });
+
+    await expect(adminSystemSettingsApi.getTestNdpVisibility()).resolves.toMatchObject({
+      showTestNdpData: true
+    });
+    await expect(adminSystemSettingsApi.updateTestNdpVisibility(false)).resolves.toMatchObject({
+      showTestNdpData: false
+    });
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/backoffice/preferences/test-ndp-visibility",
+      { auth: true, method: "GET", retryOnUnauthorized: true }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/backoffice/preferences/test-ndp-visibility",
+      { auth: true, body: { showTestNdpData: false }, method: "PUT", retryOnUnauthorized: false }
+    );
+  });
+
   it("fails closed when the service-testing switch is absent from the server projection", async () => {
     const { anytimeServiceTestEnabled: _missing, ...incomplete } = operationsSettings;
     vi.mocked(httpClient.request).mockResolvedValueOnce(incomplete);

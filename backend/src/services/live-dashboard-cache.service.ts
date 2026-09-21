@@ -128,9 +128,10 @@ export class LiveDashboardCache implements LiveDashboardCachePort {
         : [])
     ];
     const keys = scopeLevels.flatMap((level) =>
-      (["today", "last7days", "last30days"] as const).map((period) =>
-        liveDashboardCacheKey({ ...level, period })
-      )
+      (["today", "last7days", "last30days"] as const).flatMap((period) => {
+        const base = liveDashboardCacheKey({ ...level, period });
+        return [base, `${base}:all`, `${base}:formal`];
+      })
     );
     const result = await client.sendCommand([
       "EVAL",

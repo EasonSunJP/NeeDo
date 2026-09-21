@@ -1068,17 +1068,19 @@ describe("LiveDashboardCache regional invalidation", () => {
 
     expect(redis.sendCommand).toHaveBeenCalledTimes(1);
     const command = redis.sendCommand.mock.calls[0]?.[0] ?? [];
-    expect(command.slice(0, 3)).toEqual(["EVAL", expect.any(String), "18"]);
-    const keys = command.slice(3, 12);
-    const generationKeys = command.slice(12);
+    expect(command.slice(0, 3)).toEqual(["EVAL", expect.any(String), "54"]);
+    const keys = command.slice(3, 30);
+    const generationKeys = command.slice(30);
     expect(keys).toEqual(
       expect.arrayContaining([
         "dashboard:live:v1:JP:-:-:today",
+        "dashboard:live:v1:JP:-:-:today:all",
+        "dashboard:live:v1:JP:-:-:today:formal",
         "dashboard:live:v1:JP:13:-:last7days",
-        "dashboard:live:v1:JP:13:13104:last30days"
+        "dashboard:live:v1:JP:13:13104:last30days:formal"
       ])
     );
-    expect(keys).toHaveLength(9);
+    expect(keys).toHaveLength(27);
     expect(generationKeys).toEqual(keys.map((key) => `${key}:generation`));
     expect(keys.join(" ")).not.toContain(":27:");
     expect(keys.join(" ")).not.toContain(":13101:");

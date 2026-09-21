@@ -16,6 +16,7 @@ export interface AnalyticsRankingInput {
   categoryId: number | null;
   page: number;
   pageSize: number;
+  showTestNdpData?: boolean;
 }
 
 export interface AnalyticsRankingItem {

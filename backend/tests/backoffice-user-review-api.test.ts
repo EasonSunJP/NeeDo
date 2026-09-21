@@ -38,7 +38,8 @@ describe("backoffice received-review API", () => {
         targetType: "technician",
         from: "2026-09-10",
         to: "2026-09-10"
-      }
+      },
+      true
     );
 
     await request(fixture.app)
@@ -47,7 +48,8 @@ describe("backoffice received-review API", () => {
       .expect(200);
     expect(service.getOperationsReview).toHaveBeenCalledWith(
       expect.objectContaining({ userId: expect.any(Number) }),
-      77
+      77,
+      true
     );
 
     await request(fixture.app)
@@ -98,7 +100,8 @@ describe("backoffice received-review API", () => {
     expect(service.listForOperations).toHaveBeenCalledWith(
       expect.objectContaining({ userId: expect.any(Number) }),
       41,
-      { page: 1, page_size: 10 }
+      { page: 1, page_size: 10 },
+      true
     );
 
     await request(fixture.app)

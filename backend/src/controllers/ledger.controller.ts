@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import type { AuthenticatedAccessContext } from "../services/auth.service";
 import type { LedgerService } from "../services/ledger.service";
+import type { BackofficePreferenceService } from "../services/backoffice-preference.service";
 import { successResponse } from "../utils/api-response";
 import {
   createWalletAdjustmentRequestBodySchema,
@@ -11,11 +12,16 @@ import {
   walletAdjustmentListQuerySchema,
   walletAdjustmentMineQuerySchema,
   walletIdParamSchema,
-  walletLedgerQuerySchema
+  walletLedgerQuerySchema,
+  testNdpManualCreditBodySchema,
+  backofficeWalletTopupRequestBodySchema
 } from "../validators/ledger.validator";
 
 export class LedgerController {
-  public constructor(private readonly ledgerService: LedgerService) {}
+  public constructor(
+    private readonly ledgerService: LedgerService,
+    private readonly backofficePreferenceService?: Pick<BackofficePreferenceService, "getEffective">
+  ) {}
 
   public getMyWallet = async (
     _request: Request,
@@ -63,6 +69,38 @@ export class LedgerController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public creditTestNdp = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(201).json(successResponse(await this.ledgerService.creditTestNdp(
+        this.getActor(response),
+        testNdpManualCreditBodySchema.parse(request.body)
+      )));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public createBackofficeWalletTopupRequest = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(201).json(successResponse(
+        await this.ledgerService.createBackofficeWalletTopupRequest(
+          this.getActor(response),
+          backofficeWalletTopupRequestBodySchema.parse(request.body)
+        )
+      ));
     } catch (error) {
       next(error);
     }
@@ -138,12 +176,14 @@ export class LedgerController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const actor = this.getActor(response);
+      const showTestNdpData = (await this.backofficePreferenceService?.getEffective(actor.userId))?.showTestNdpData ?? true;
       response.status(200).json(
         successResponse(
-          await this.ledgerService.listWalletLedger(this.getActor(response), {
+          await this.ledgerService.listWalletLedger(actor, {
             walletId: walletIdParamSchema.parse(request.params).id,
             ...walletLedgerQuerySchema.parse(request.query)
-          })
+          }, showTestNdpData)
         )
       );
     } catch (error) {
@@ -161,9 +201,12 @@ export class LedgerController {
         .status(200)
         .json(
           successResponse(
-            await this.ledgerService.listLedgerTransactions(
-              ledgerTransactionListQuerySchema.parse(request.query)
-            )
+            await this.ledgerService.listLedgerTransactions({
+              ...ledgerTransactionListQuerySchema.parse(request.query),
+              ...((await this.backofficePreferenceService?.getEffective(this.getActor(response).userId))?.showTestNdpData === false
+                ? { currency: "NDP" as const }
+                : {})
+            })
           )
         );
     } catch (error) {

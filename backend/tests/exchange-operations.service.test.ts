@@ -118,7 +118,8 @@ describe("ExchangeOperationsService", () => {
       keyword: "ボディケア",
       page: 1,
       pageSize: 20,
-      now
+      now,
+      showTestNdpData: true
     });
   });
 
@@ -132,7 +133,7 @@ describe("ExchangeOperationsService", () => {
     expect(JSON.stringify(value)).not.toMatch(
       /authorUserId|authorIdentityId|claimantUserId|claimantIdentityId|email|phone|addressLine2|addressLine3/
     );
-    expect(repo.findDetail).toHaveBeenCalledWith(6, now);
+    expect(repo.findDetail).toHaveBeenCalledWith(6, now, true);
   });
 
   it("uses the standard not-found error for missing or soft-deleted posts", async () => {

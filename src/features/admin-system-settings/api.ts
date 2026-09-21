@@ -1,5 +1,7 @@
 import { contentPublicationApi } from "../../api/contentPublication";
 import { httpClient } from "../../api/httpClient";
+import { userManagementApi } from "../../api/userManagement";
+import { platformUserManagementApi } from "../platform-user-management/api";
 import type {
   BasicSettingsInput,
   ImRetentionInput,
@@ -13,6 +15,7 @@ import type {
   Page,
   PaymentSettingsInput,
   PublicLegalDocument,
+  TestNdpVisibilityPreference,
   UploadedBrandMedia
 } from "./types";
 
@@ -56,6 +59,44 @@ function parseRetention(value: unknown): ImRetentionSettings {
 }
 
 export const adminSystemSettingsApi = {
+  getTestNdpVisibility() {
+    return httpClient.request<TestNdpVisibilityPreference>(
+      "/backoffice/preferences/test-ndp-visibility",
+      { auth: true, method: "GET", retryOnUnauthorized: true }
+    );
+  },
+  updateTestNdpVisibility(showTestNdpData: boolean) {
+    return httpClient.request<TestNdpVisibilityPreference>(
+      "/backoffice/preferences/test-ndp-visibility",
+      {
+        auth: true,
+        body: { showTestNdpData },
+        method: "PUT",
+        retryOnUnauthorized: false
+      }
+    );
+  },
+  listTestParticipants(page = 1) {
+    return platformUserManagementApi.listUsers("operations", {
+      isTestAccount: true,
+      page,
+      page_size: 100,
+      sortBy: "createdAt",
+      sortDirection: "desc"
+    });
+  },
+  searchParticipantCandidates(keyword: string) {
+    return platformUserManagementApi.listUsers("operations", {
+      keyword,
+      page: 1,
+      page_size: 20,
+      sortBy: "createdAt",
+      sortDirection: "desc"
+    });
+  },
+  updateTestParticipant(userId: number, isTestAccount: boolean, expectedUpdatedAt: string) {
+    return userManagementApi.updateTestAccount(userId, { isTestAccount, expectedUpdatedAt });
+  },
   async getSettings() {
     return parseOperationsSettings(
       await httpClient.request<unknown>("/backoffice/system-settings", {

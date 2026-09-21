@@ -253,6 +253,7 @@ describe("live dashboard formal-flow checker contract", () => {
     };
     const snapshot = {
       evaluatedAt: facts.evaluatedAt.toISOString(),
+      testNdpVisible: true,
       scope: { country: "JP", admin1: "13", admin2: "13104", breadcrumbs: [] },
       children: facts.children,
       headline: facts.headline,

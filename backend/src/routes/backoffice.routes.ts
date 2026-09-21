@@ -20,6 +20,8 @@ import { BackofficeService } from "../services/backoffice.service";
 import { LiveDashboardCache } from "../services/live-dashboard-cache.service";
 import { LiveDashboardService } from "../services/live-dashboard.service";
 import { CustomerAvatarFileStorage } from "../services/customer-avatar.storage";
+import { BackofficePreferenceRepository } from "../repositories/backoffice-preference.repository";
+import { BackofficePreferenceService } from "../services/backoffice-preference.service";
 import { PlatformMembershipService } from "../services/platform-membership.service";
 import {
   backofficeAccountPostsQuerySchema,
@@ -92,6 +94,13 @@ export const createBackofficeRoutes = (
   const auditLogService = new AuditLogService(
     dependencies.auditLogRepository ?? new AuditLogRepository()
   );
+  const backofficePreferenceService =
+    dependencies.backofficePreferenceRepository || config.NODE_ENV !== "test"
+      ? new BackofficePreferenceService(
+          dependencies.backofficePreferenceRepository ?? new BackofficePreferenceRepository(),
+          config.DEPLOY_ENV
+        )
+      : undefined;
   const service = new BackofficeService(
     dependencies.backofficeRepository ?? new BackofficeRepository(),
     auditLogService,
@@ -110,7 +119,8 @@ export const createBackofficeRoutes = (
         undefined,
         dependencies.userExperienceService
       ),
-    dependencies.realtimeRepository ?? new RealtimeRepository()
+    dependencies.realtimeRepository ?? new RealtimeRepository(),
+    backofficePreferenceService
   );
   const controller = new BackofficeController(service);
   for (const merchant of [false, true]) {
@@ -131,7 +141,8 @@ export const createBackofficeRoutes = (
       dependencies.liveDashboardCache ?? new LiveDashboardCache(),
       auditLogService,
       dependencies.liveDashboardClock,
-      dependencies.liveDashboardEventGateway
+      dependencies.liveDashboardEventGateway,
+      backofficePreferenceService
     )
   );
 

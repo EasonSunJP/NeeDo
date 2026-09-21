@@ -56,6 +56,10 @@ const managedUserRow = () => ({
 });
 
 describe("BackofficeRepository managed users", () => {
+  it.each([true, false])("accepts the test-account filter %s", (isTestAccount) => {
+    expect(backofficeManagedUserListQuerySchema.safeParse({ isTestAccount }).success).toBe(true);
+  });
+
   it.each(["ndpBalance", "bookingCount"])("accepts the formal numeric sort %s", (sortBy) => {
     expect(backofficeManagedUserListQuerySchema.safeParse({ sortBy, sortDirection: "desc" }).success).toBe(true);
   });
@@ -113,6 +117,44 @@ describe("BackofficeRepository managed users", () => {
       select: expect.objectContaining({ currency: true })
     }));
     expect(JSON.stringify(page)).not.toMatch(/passwordHash|otp|accessToken|refreshToken/);
+  });
+
+  it("filters test participants and omits Test NDP wallet data when the administrator hides it", async () => {
+    const findMany = jest.fn(async () => [managedUserRow()]);
+    const walletFindMany = jest.fn(async () => [
+      { ownerId: 41, currency: "NDP", availableBalance: 900, frozenBalance: 100 }
+    ]);
+    const repository = new BackofficeRepository({
+      user: { findMany, count: jest.fn(async () => 1) },
+      wallet: { findMany: walletFindMany }
+    } as never);
+
+    const page = await repository.listManagedUsers(
+      {
+        scope: "platform",
+        page: 1,
+        pageSize: 20,
+        isTestAccount: true,
+        showTestNdpData: false
+      } as never,
+      now
+    );
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { deletedAt: null, AND: [{ isTestAccount: true }] }
+    }));
+    expect(walletFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        ownerType: "USER",
+        ownerId: { in: [41] },
+        currency: { in: ["NDP"] },
+        deletedAt: null
+      }
+    }));
+    expect(page.list[0]).toMatchObject({
+      ndpBalance: { available: 900, frozen: 100 },
+      testNdpBalance: null
+    });
   });
 
   it("uses identity personal names instead of shop labels and keeps active identities ahead of applications", async () => {

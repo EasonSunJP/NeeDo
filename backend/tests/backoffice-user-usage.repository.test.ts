@@ -34,6 +34,34 @@ describe("BackofficeUserUsageRepository", () => {
     );
   });
 
+  it("excludes TestNDP-backed orders from hidden operations usage reads", async () => {
+    const findMany = jest.fn(async () => []);
+    const count = jest.fn(async () => 0);
+    const repository = new BackofficeUserUsageRepository({
+      bookingOrder: { findMany, count }
+    } as never);
+
+    await repository.listUsage({
+      scope: "platform",
+      showTestNdpData: false,
+      userId: 41,
+      page: 1,
+      pageSize: 10,
+      from: new Date("2026-09-01T00:00:00.000Z"),
+      to: new Date("2026-10-01T00:00:00.000Z")
+    });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          NOT: expect.arrayContaining([
+            { financial: { is: { ndpCurrency: "TEST_NDP", deletedAt: null } } }
+          ])
+        })
+      })
+    );
+  });
+
   it("projects real actor avatars and hides operations-only comments from merchants", async () => {
     const at = new Date("2026-09-05T08:00:00.000Z");
     const findFirst = jest.fn(async () => ({

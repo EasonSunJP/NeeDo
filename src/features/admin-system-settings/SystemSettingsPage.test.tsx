@@ -7,8 +7,8 @@ const retentionSource = readFileSync(new URL("./RetentionSettingsTab.tsx", impor
 const paymentSource = readFileSync(new URL("./PaymentSettingsTab.tsx", import.meta.url), "utf8");
 
 describe("operations system settings workspace", () => {
-  it("provides four URL-addressable tabs with keyboard navigation", () => {
-    for (const tab of ["basic", "legal", "storage", "payment"]) {
+  it("provides six URL-addressable tabs with keyboard navigation", () => {
+    for (const tab of ["basic", "legal", "storage", "payment", "ekyc", "test-ndp"]) {
       expect(pageSource).toContain(`id: "${tab}"`);
     }
     expect(pageSource).toContain('role="tablist"');

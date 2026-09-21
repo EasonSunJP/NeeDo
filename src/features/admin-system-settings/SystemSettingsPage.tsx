@@ -14,6 +14,7 @@ import { LegalDocumentsTab } from "./LegalDocumentsTab";
 import { PaymentSettingsTab } from "./PaymentSettingsTab";
 import { EkycSettingsTab } from "./EkycSettingsTab";
 import { RetentionSettingsTab } from "./RetentionSettingsTab";
+import { TestNdpSettingsTab } from "./TestNdpSettingsTab";
 import type { ImRetentionSettings, OperationsPlatformSettings } from "./types";
 
 const tabs = [
@@ -21,7 +22,8 @@ const tabs = [
   { id: "legal", labelIndex: 1 },
   { id: "storage", labelIndex: 2 },
   { id: "payment", labelIndex: 3 },
-  { id: "ekyc", labelIndex: 4 }
+  { id: "ekyc", labelIndex: 4 },
+  { id: "test-ndp", labelIndex: 5 }
 ] as const;
 type TabId = (typeof tabs)[number]["id"];
 
@@ -96,7 +98,13 @@ export function SystemSettingsPage() {
   const dirtyChanged = (tab: TabId) => (dirty: boolean) => setDirtyTabs((current) => current[tab] === dirty ? current : { ...current, [tab]: dirty });
 
   let content;
-  if (activeTab === "ekyc") {
+  if (activeTab === "test-ndp") {
+    content = <TestNdpSettingsTab
+      canCreditTestNdp={hasPermission("backoffice:test-ndp:credit")}
+      canCreateFormalTopup={hasPermission("backoffice:wallet-adjustment:create")}
+      canManageParticipants={hasPermission("user:test-account:update")}
+    />;
+  } else if (activeTab === "ekyc") {
     content = <EkycSettingsTab onDirtyChange={dirtyChanged("ekyc")} />;
   } else if (activeTab === "legal") {
     content = <LegalDocumentsTab onDirtyChange={dirtyChanged("legal")} />;
@@ -122,7 +130,7 @@ export function SystemSettingsPage() {
     <AdminLayout>
     <ModuleShell description={labels.description} title={labels.title} actions={settings ? <Badge tone="blue">{labels.version} {settings.version}</Badge> : undefined}>
       <div className="rounded-2xl border border-line bg-white p-2 shadow-sm">
-        <div aria-label={labels.title} className="grid gap-2 md:grid-cols-5" role="tablist">
+        <div aria-label={labels.title} className="grid gap-2 md:grid-cols-6" role="tablist">
           {tabLabels.map((tab, index) => (
             <button aria-controls={`system-settings-panel-${tab.id}`} aria-selected={activeTab === tab.id} className={cn("admin-section-tab focus-ring relative rounded-xl px-4 py-3 text-sm font-black transition", activeTab === tab.id ? "is-active shadow-sm" : "bg-paper")} id={`system-settings-tab-${tab.id}`} key={tab.id} onClick={() => selectTab(tab.id)} onKeyDown={(event) => handleTabKeyDown(event, index)} ref={(node) => { tabRefs.current[index] = node; }} role="tab" tabIndex={activeTab === tab.id ? 0 : -1} type="button">
               {tab.label}

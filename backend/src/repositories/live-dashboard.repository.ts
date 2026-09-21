@@ -288,6 +288,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND booking.starts_at < ${window.toExclusive}
           AND booking.created_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
+          AND ${this.orderVisibility(input)}
           AND location.resolution_status = ${"VERIFIED"}
         GROUP BY ${childRegionCode}
       ), child_current_day_order_counts AS (
@@ -301,6 +302,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND booking.starts_at < ${dailyWindow.toExclusive}
           AND booking.created_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
+          AND ${this.orderVisibility(input)}
           AND location.resolution_status = ${"VERIFIED"}
         GROUP BY ${childRegionCode}
       ), child_previous_day_order_counts AS (
@@ -314,6 +316,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND booking.starts_at < ${dailyWindow.previousToExclusive}
           AND booking.created_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
+          AND ${this.orderVisibility(input)}
           AND location.resolution_status = ${"VERIFIED"}
         GROUP BY ${childRegionCode}
       ), child_confirmed_payments AS (
@@ -336,6 +339,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND booking.payment_confirmed_at < ${window.toExclusive}
           AND booking.payment_confirmed_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
+          AND ${this.orderVisibility(input)}
           AND ${formalConfirmedPaymentEvidence()}
           AND location.resolution_status = ${"VERIFIED"}
         GROUP BY ${childRegionCode}
@@ -392,6 +396,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
         ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
       WHERE booking.created_at <= ${input.evaluatedAt}
         AND booking.deleted_at IS NULL
+        AND ${this.orderVisibility(input)}
         AND (
           (booking.created_at >= ${window.fromInclusive} AND booking.created_at < ${window.toExclusive})
           OR (booking.starts_at >= ${window.fromInclusive} AND booking.starts_at < ${window.toExclusive})
@@ -417,6 +422,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
             ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
           WHERE booking.created_at <= ${input.evaluatedAt}
             AND booking.deleted_at IS NULL
+            AND ${this.orderVisibility(input)}
             AND location.deleted_at IS NULL
         )`
         : Prisma.empty;
@@ -482,6 +488,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND booking.starts_at < ${window.toExclusive}
           AND booking.created_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
+          AND ${this.orderVisibility(input)}
       ), eligible_payments AS (
         SELECT booking.id, checkout.checkout_amount_jpy, checkout.payable_ndp,
                ledger.currency AS ndp_currency
@@ -498,6 +505,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND booking.payment_confirmed_at < ${window.toExclusive}
           AND booking.payment_confirmed_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
+          AND ${this.orderVisibility(input)}
           AND ${formalConfirmedPaymentEvidence()}
       ), revenue AS (
         SELECT financial.ndp_currency,
@@ -517,6 +525,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND booking.starts_at < ${window.toExclusive}
           AND booking.created_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
+          AND ${this.orderVisibility(input)}
         GROUP BY financial.ndp_currency
       ), paid_reward AS (
         SELECT financial.ndp_currency,
@@ -535,6 +544,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND financial.user_reward_granted_at <= ${input.evaluatedAt}
           AND financial.user_reward_status = ${"paid"}
           AND financial.deleted_at IS NULL
+          AND ${this.orderVisibility(input)}
         GROUP BY financial.ndp_currency
       )
       SELECT
@@ -579,6 +589,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
         AND booking.created_at < ${window.toExclusive}
         AND booking.created_at <= ${input.evaluatedAt}
         AND booking.deleted_at IS NULL
+        AND ${this.orderVisibility(input)}
       ORDER BY booking.created_at DESC, booking.id DESC
       LIMIT 20
     `);
@@ -606,6 +617,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
         AND history.created_at < ${window.toExclusive}
         AND history.created_at <= ${input.evaluatedAt}
         AND history.deleted_at IS NULL
+        AND ${this.orderVisibility(input)}
       ORDER BY history.created_at DESC, history.id DESC
       LIMIT 20
     `);
@@ -635,6 +647,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
         WHERE booking.created_at <= ${input.evaluatedAt}
           AND booking.payment_confirmed_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
+          AND ${this.orderVisibility(input)}
           AND ${formalConfirmedPaymentEvidence()}
       )
       SELECT bucket.bucket_key AS bucketKey, bucket.label,
@@ -647,7 +660,8 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
               WHERE booking.starts_at >= bucket.from_inclusive
                 AND booking.starts_at < bucket.to_exclusive
                 AND booking.created_at <= ${input.evaluatedAt}
-                AND booking.deleted_at IS NULL) AS orderCount,
+                AND booking.deleted_at IS NULL
+                AND ${this.orderVisibility(input)}) AS orderCount,
              COALESCE(SUM(eligible.checkout_amount_jpy), 0) AS confirmedPaymentJpy,
              COALESCE(SUM(CASE WHEN eligible.ndp_currency = ${"NDP"}
                THEN eligible.payable_ndp ELSE 0 END), 0) AS confirmedPaymentNdp,
@@ -717,7 +731,8 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       city: null,
       categoryId: null,
       page: 1,
-      pageSize: MAX_RANKING_ITEMS
+      pageSize: MAX_RANKING_ITEMS,
+      showTestNdpData: input.showTestNdpData
     };
   }
 
@@ -750,7 +765,30 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
         AND booking.starts_at < ${window.toExclusive}
         AND booking.created_at <= ${input.evaluatedAt}
         AND booking.deleted_at IS NULL
+        AND ${this.orderVisibility(input)}
     `);
+  }
+
+  private orderVisibility(input: LiveDashboardInput): Prisma.Sql {
+    if (input.showTestNdpData !== false) return Prisma.sql`TRUE`;
+    return Prisma.sql`
+      NOT EXISTS (
+        SELECT 1
+        FROM order_financials AS visible_financial
+        WHERE visible_financial.booking_order_id = booking.id
+          AND visible_financial.ndp_currency = ${"TEST_NDP"}
+          AND visible_financial.deleted_at IS NULL
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM order_checkouts AS visible_checkout
+        INNER JOIN ledger_transactions AS visible_ledger
+          ON visible_ledger.id = visible_checkout.ledger_transaction_id
+          AND visible_ledger.deleted_at IS NULL
+        WHERE visible_checkout.booking_order_id = booking.id
+          AND visible_checkout.deleted_at IS NULL
+          AND visible_ledger.currency = ${"TEST_NDP"}
+      )`;
   }
 
   private bucketTable(window: DashboardWindow): Prisma.Sql {

@@ -155,7 +155,7 @@ const createPermissionApp = (input: {
 };
 
 describe("formal Auth account-security permissions", () => {
-  it("limits account-classification controls to admin and operator roles", () => {
+  it("limits account-classification controls to the admin role by default", () => {
     const assignments = buildRolePermissionAssignments();
     const classificationPermissions = [
       "user:test-account:update",
@@ -164,7 +164,7 @@ describe("formal Auth account-security permissions", () => {
 
     expect(SYSTEM_PERMISSION_CODES).toEqual(expect.arrayContaining(classificationPermissions));
     expect(assignments.admin).toEqual(expect.arrayContaining(classificationPermissions));
-    expect(assignments.operator).toEqual(expect.arrayContaining(classificationPermissions));
+    expect(assignments.operator).not.toEqual(expect.arrayContaining(classificationPermissions));
     for (const roleCode of SYSTEM_ROLE_CODES.filter(
       (code) => code !== "admin" && code !== "operator"
     )) {
