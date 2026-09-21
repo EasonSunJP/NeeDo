@@ -26,9 +26,11 @@ describe("MerchantAdminSettingsPage formal shop profile", () => {
     expect(source).not.toContain("封面与轮播尚未启用");
     expect(source).toContain("coreReadApi.getShopDetail(currentShop.id)");
     expect(source).toContain("mapCoreShopToStore(detail)");
+    expect(source).toContain("mapCoreTechnicianToTechnician(technician)");
     expect(source).toContain("五语言店铺展示");
     expect(source).toContain("店铺前端与店铺后台共用同一套展示数据");
-    expect(source).toContain('<StoreDetailExperience embedded scope="merchant" store={presentationStore} />');
+    expect(source).toContain('formalApiOnly');
+    expect(source).toContain('techniciansOverride={presentationTechnicians}');
     expect(source).toContain("与店铺前端同步");
     expect(source).toContain("营业时段尚未启用");
     expect(source).toContain("证照管理尚未启用");
