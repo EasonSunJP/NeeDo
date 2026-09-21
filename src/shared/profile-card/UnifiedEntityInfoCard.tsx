@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AppIcon } from "../../components/client-ui/AppScaffold";
 import type { Language } from "../../i18n/translations";
+import { cn } from "../../lib/utils";
 import type {
   EntityFavoriteState,
   EntityTarget,
@@ -57,17 +58,21 @@ export function UnifiedEntityInfoCard({
   actionSlot,
   className,
   data,
+  density = "default",
   detailTo,
   language = "zh",
   onOpenDetails,
+  showMetrics = true,
   showLanguageTags = true,
 }: {
   actionSlot?: ReactNode;
   className?: string;
   data: UnifiedEntityInfoCardData;
+  density?: "default" | "compact";
   detailTo?: string;
   language?: Language;
   onOpenDetails?: () => void;
+  showMetrics?: boolean;
   showLanguageTags?: boolean;
 }) {
   const text = getUnifiedCardCopy(language);
@@ -199,7 +204,7 @@ export function UnifiedEntityInfoCard({
         <SpecialReviewIconRow tags={data.specialReviewTags ?? []} />
       ) : undefined}
       description={data.description}
-      density={data.kind === "user" ? "name-card" : "default"}
+      density={density === "compact" || data.kind === "user" ? "name-card" : "default"}
       language={language}
       name={data.name}
       showEmptyTags={showLanguageTags}
@@ -224,7 +229,12 @@ export function UnifiedEntityInfoCard({
       ariaLabel={`${data.kind === "shop" ? text.viewShop : data.kind === "technician" ? text.viewTechnician : text.viewUser} ${data.name}`}
       body={
         <div
-          className={`grid grid-cols-[minmax(132px,38%)_minmax(0,1fr)] gap-3 p-3 sm:gap-7 sm:p-6 ${data.kind === "user" ? "" : "pt-0 sm:pt-0"}`}
+          className={cn(
+            "grid",
+            density === "compact"
+              ? "grid-cols-[72px_minmax(0,1fr)] gap-3 p-3 pr-11"
+              : `grid-cols-[minmax(132px,38%)_minmax(0,1fr)] gap-3 p-3 sm:gap-7 sm:p-6 ${data.kind === "user" ? "" : "pt-0 sm:pt-0"}`,
+          )}
           data-testid="unified-card-body"
         >
           <UnifiedCardImage alt={data.name} language={language} src={data.imageUrl} />
@@ -232,9 +242,10 @@ export function UnifiedEntityInfoCard({
         </div>
       }
       className={className}
+      density={density}
       detailTo={detailTo}
       kind={data.kind}
-      metrics={metrics}
+      metrics={showMetrics ? metrics : []}
       onOpenDetails={onOpenDetails}
     />
   );

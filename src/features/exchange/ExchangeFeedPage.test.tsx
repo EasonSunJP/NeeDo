@@ -1,6 +1,9 @@
+// @vitest-environment jsdom
 import { readFileSync } from "node:fs";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExchangePost } from "./types";
 import { useExchangeFeed } from "./useExchangeFeed";
@@ -9,6 +12,7 @@ import { ExchangeFeedPage, getDefaultExchangePostType } from "./ExchangeFeedPage
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
 vi.mock("../../theme/ClientThemeProvider", () => ({ useClientTheme: () => ({ theme: "dark-green" }) }));
 vi.mock("./useExchangeFeed", () => ({ useExchangeFeed: vi.fn() }));
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const demandPost: ExchangePost = {
   id: 41,
@@ -38,6 +42,58 @@ const demandPost: ExchangePost = {
     address: { line1: "東京都千代田区", line2: null, line3: null, line2GenerallyVisible: false, line3GenerallyVisible: false, disclosure: "owner" }
   },
   intelligence: null
+};
+
+const intelligencePost: ExchangePost = {
+  ...demandPost,
+  id: 61,
+  type: "intelligence",
+  title: "20:30 后还有 3 个空档，会员 8 折",
+  detail: "肩颈、足部、睡眠护理都可以约，支持双人房。",
+  publisher: {
+    publicId: "b0000000001",
+    identityType: "merchant_owner",
+    displayName: "LifeDance 管理员",
+    avatarUrl: "/private/admin-avatar.png"
+  },
+  demand: null,
+  intelligence: {
+    serviceMode: "store",
+    addressLabel: "東京都中央区銀座3-4-12",
+    serviceAreas: ["銀座", "中央区"],
+    originalPriceJpy: 12_250,
+    campaignPriceJpy: 9_800,
+    booking: {
+      available: true,
+      unavailableReason: null,
+      target: { type: "shop_service", id: 701 },
+      catalogPriceJpy: 12_250,
+      campaignPriceJpy: 9_800,
+      serviceName: "深层放松护理",
+      durationMinutes: 90,
+      serviceMode: "store",
+      serviceWindow: {
+        startsAt: "2026-08-31T04:00:00.000Z",
+        endsAt: "2026-08-31T06:00:00.000Z"
+      }
+    },
+    publisherCard: {
+      type: "shop",
+      publicId: "shop0000000061",
+      name: "GINZA Calm Body Lab",
+      avatarUrl: "/public/shop-avatar.png",
+      coverUrl: "/public/shop-cover.png",
+      imageUrls: ["/public/shop-cover.png"],
+      status: "published",
+      isBookable: true,
+      ratingAverage: "4.8",
+      reviewCount: 126,
+      address: "東京都中央区銀座3-4-12",
+      serviceMode: "store",
+      detailPath: "/profiles/shop/shop0000000061"
+    },
+    serviceCard: null
+  }
 };
 
 const baseResource: ReturnType<typeof useExchangeFeed> = {
@@ -124,6 +180,72 @@ describe("ExchangeFeedPage", () => {
     expect(markup).not.toContain("u0000000041");
   });
 
+  it.each(["user", "merchant", "technician"] as const)(
+    "renders the same privacy-safe shop summary for %s intelligence viewers",
+    (context) => {
+      const markup = renderFeed(
+        { activeType: "intelligence", posts: [intelligencePost] },
+        context
+      );
+      const noteIndex = markup.indexOf("肩颈、足部、睡眠护理都可以约，支持双人房。");
+      const shopIndex = markup.indexOf("GINZA Calm Body Lab");
+      const expiryIndex = markup.indexOf("有效期限");
+
+      expect(markup).toContain('data-testid="exchange-intelligence-shop-card"');
+      expect(markup).toContain('data-card-size="compact"');
+      expect(markup).toContain("銀座 · 中央区");
+      expect(markup).toContain("可预约");
+      expect(markup).toContain(`href="${context === "user" ? "" : `/${context}`}/profiles/shop/shop0000000061"`);
+      expect(markup).not.toContain("LifeDance 管理员");
+      expect(markup).not.toContain("b0000000001");
+      expect(markup).not.toContain("shop0000000061</");
+      expect(markup).not.toContain("東京都中央区銀座3-4-12");
+      expect(markup).not.toContain("/private/admin-avatar.png");
+      expect(markup).toContain('data-has-image="false"');
+      expect(noteIndex).toBeGreaterThan(-1);
+      expect(shopIndex).toBeGreaterThan(noteIndex);
+      expect(expiryIndex).toBeGreaterThan(shopIndex);
+    }
+  );
+
+  it("does not let the post keyboard handler hijack its nested shop link", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    vi.mocked(useExchangeFeed).mockReturnValue({
+      ...baseResource,
+      activeType: "intelligence",
+      posts: [intelligencePost]
+    });
+    function Destination() {
+      const location = useLocation();
+      return <div data-testid="destination">{location.pathname}</div>;
+    }
+
+    try {
+      await act(async () => root.render(
+        <MemoryRouter initialEntries={["/needo"]}>
+          <Routes>
+            <Route path="/needo" element={<><ExchangeFeedPage context="user" /><Destination /></>} />
+            <Route path="/profiles/shop/:id" element={<Destination />} />
+            <Route path="/needo/posts/:id" element={<Destination />} />
+          </Routes>
+        </MemoryRouter>
+      ));
+      const shopLink = container.querySelector<HTMLAnchorElement>('a[href="/profiles/shop/shop0000000061"]');
+      expect(shopLink).not.toBeNull();
+      await act(async () => shopLink?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+      expect(container.querySelector('[data-testid="destination"]')?.textContent).toBe("/needo");
+      await act(async () => shopLink?.click());
+      expect(container.querySelector('[data-testid="destination"]')?.textContent).toBe(
+        "/profiles/shop/shop0000000061"
+      );
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
   it("shows distinct loading, empty, permission, authentication, and unavailable states", () => {
     expect(renderFeed({ loading: true, posts: [] })).toContain("正在读取正式需求");
     expect(renderFeed({ posts: [], total: 0 })).toContain("还没有正式需求");
@@ -134,7 +256,7 @@ describe("ExchangeFeedPage", () => {
   });
 
   it("contains no deferred transaction controls or capability-gate copy", () => {
-    const source = readFileSync(new URL("./ExchangeFeedPage.tsx", import.meta.url), "utf8");
+    const source = readFileSync("src/features/exchange/ExchangeFeedPage.tsx", "utf8");
     expect(source).not.toMatch(/抢单|报价|匹配|预约|支付/u);
     expect(source).not.toContain("正式需求与情报功能尚未启用");
     expect(source).not.toContain("localStorage");

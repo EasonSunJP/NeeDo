@@ -260,6 +260,7 @@ export function OfferInfoCard({
   fields,
   noteLabel = "备注",
   noteValue,
+  supplementaryContent,
   expiryLabel = "有效期限",
   expiryValue,
   expiryCountdown,
@@ -271,8 +272,8 @@ export function OfferInfoCard({
   footer,
   className
 }: {
-  image: string;
-  imageAlt: string;
+  image?: string;
+  imageAlt?: string;
   imageLabel?: ReactNode;
   eyebrow?: ReactNode;
   tone?: "default" | "demand";
@@ -283,6 +284,7 @@ export function OfferInfoCard({
   fields: OfferInfoField[];
   noteLabel?: ReactNode;
   noteValue?: ReactNode;
+  supplementaryContent?: ReactNode;
   expiryLabel?: ReactNode;
   expiryValue?: ReactNode;
   expiryCountdown?: ReactNode;
@@ -354,17 +356,26 @@ export function OfferInfoCard({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-[90px,1fr] gap-3">
-        <div className="relative h-[90px] w-[90px] overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)]">
-          <img alt={imageAlt} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(image)} />
-          {imageLabel ? (
-            <div className={cn("absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-black backdrop-blur-sm", toneClasses.imageLabel)}>
-              {imageLabel}
-            </div>
-          ) : null}
-        </div>
+      <div
+        className={image ? "grid grid-cols-[90px,1fr] gap-3" : "block"}
+        data-has-image={image ? "true" : "false"}
+        data-testid="offer-info-header"
+      >
+        {image ? (
+          <div className="relative h-[90px] w-[90px] overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)]">
+            <img alt={imageAlt ?? ""} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(image)} />
+            {imageLabel ? (
+              <div className={cn("absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-black backdrop-blur-sm", toneClasses.imageLabel)}>
+                {imageLabel}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className={cn("min-w-0 pt-0.5", hasTopRightMeta ? (hasTopRightBadges ? "pr-16" : "pr-10") : undefined)}>
+          {!image && imageLabel ? (
+            <span className={cn("inline-flex rounded-full px-2.5 py-1 text-[10px] font-black", toneClasses.chip)}>{imageLabel}</span>
+          ) : null}
           {eyebrow ? <p className={cn("text-[11px] font-black", toneClasses.eyebrow)}>{eyebrow}</p> : null}
           <div className="mt-1">
             <h3
@@ -431,6 +442,8 @@ export function OfferInfoCard({
           ) : null}
         </div>
       ) : null}
+
+      {supplementaryContent ? <div className="mt-3">{supplementaryContent}</div> : null}
 
       {(expiryValue || expiryCountdown) ? (
         <div className={cn("mt-3 rounded-[18px] px-3.5 py-3", toneClasses.expirySurface)}>

@@ -408,7 +408,7 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("服务流程");
     expect(document.body.textContent).toContain("服务要求");
     expect(document.body.textContent).toContain("GINZA Calm Body Lab");
-    expect(document.body.textContent).toContain("shop0000000061");
+    expect(document.body.textContent).not.toContain("shop0000000061");
     expect(document.body.textContent).toContain("¥9,800");
     expect(document.body.textContent).toContain("可通过正式预约流程下单");
     expect(document.body.textContent).toContain("请通过平台保留沟通记录和服务凭证");
@@ -442,6 +442,60 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.querySelector('[data-testid="checkout-destination"]')?.textContent).toBe(
       "/checkout/701?date=2026-08-31&time=13%3A00&exchangePost=61"
     );
+  });
+
+  it.each(["user", "merchant", "technician"] as const)(
+    "keeps the merchant intelligence detail shop-owned and privacy-safe for %s viewers",
+    async (context) => {
+      vi.mocked(getExchangePost).mockResolvedValue({
+        ...intelligencePost,
+        publisher: {
+          publicId: "b0000000001",
+          identityType: "merchant_owner",
+          displayName: "LifeDance 管理员",
+          avatarUrl: "/private/admin-avatar.png"
+        }
+      });
+      await renderDetail(`${detailBasePath(context)}/posts/61`, context);
+      await waitFor(() => expect(document.body.textContent).toContain("GINZA Calm Body Lab"));
+
+      const shopCard = document.body.querySelector('[data-testid="exchange-intelligence-shop-card"]');
+      expect(shopCard).not.toBeNull();
+      expect(shopCard?.textContent).toContain("銀座");
+      expect(shopCard?.textContent).toContain("中央区");
+      expect(shopCard?.textContent).toContain("可预约");
+      expect(shopCard?.textContent).not.toContain("shop0000000061");
+      expect(document.body.textContent).not.toContain("LifeDance 管理员");
+      expect(document.body.textContent).not.toContain("b0000000001");
+      expect(document.body.textContent).not.toContain("東京都中央区銀座3-4-12");
+      expect(document.body.innerHTML).not.toContain("/private/admin-avatar.png");
+      expect(document.body.querySelector(`a[href="${context === "user" ? "" : `/${context}`}/profiles/shop/shop0000000061"]`)).not.toBeNull();
+    }
+  );
+
+  it("does not fall back to an administrator portrait when the shop projection is unavailable", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...intelligencePost,
+      publisher: {
+        publicId: "b0000000001",
+        identityType: "merchant_owner",
+        displayName: "LifeDance 管理员",
+        avatarUrl: "/private/admin-avatar.png"
+      },
+      intelligence: {
+        ...intelligencePost.intelligence!,
+        publisherCard: null
+      }
+    });
+    await renderDetail("/needo/posts/61");
+    await waitFor(() => expect(document.body.textContent).toContain(intelligencePost.title));
+
+    expect(document.body.querySelector('[data-testid="exchange-detail-hero"] img')?.getAttribute("src")).toBe(
+      "/icons/needo-nav-button-dark.png"
+    );
+    expect(document.body.innerHTML).not.toContain("/private/admin-avatar.png");
+    expect(document.body.textContent).not.toContain("LifeDance 管理员");
+    expect(document.body.textContent).not.toContain("b0000000001");
   });
 
   it("renders the canonical technician projection and opens technician-service checkout", async () => {

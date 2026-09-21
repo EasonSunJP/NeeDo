@@ -86,6 +86,7 @@ export function UnifiedInfoCardFrame({
   ariaLabel,
   body,
   className,
+  density = "default",
   detailTo,
   kind,
   metrics,
@@ -95,6 +96,7 @@ export function UnifiedInfoCardFrame({
   ariaLabel: string;
   body: ReactNode;
   className?: string;
+  density?: "default" | "compact";
   detailTo?: string;
   kind: "service" | "shop" | "technician" | "user";
   metrics?: UnifiedCardMetric[];
@@ -103,11 +105,14 @@ export function UnifiedInfoCardFrame({
   return (
     <article
       className={cn(
-        "relative overflow-hidden rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,var(--client-primary)_12%)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%)] text-[color:var(--client-text)] shadow-[0_24px_60px_color-mix(in_srgb,var(--client-bg)_32%,transparent)] sm:rounded-[30px]",
+        "relative overflow-hidden border border-[color:color-mix(in_srgb,var(--client-line)_72%,var(--client-primary)_12%)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%)] text-[color:var(--client-text)]",
+        density === "compact"
+          ? "rounded-[16px] shadow-[0_12px_28px_color-mix(in_srgb,var(--client-bg)_22%,transparent)]"
+          : "rounded-[20px] shadow-[0_24px_60px_color-mix(in_srgb,var(--client-bg)_32%,transparent)] sm:rounded-[30px]",
         className,
       )}
       data-card-kind={kind}
-      data-card-size="default"
+      data-card-size={density}
       data-testid="unified-info-card"
     >
       <UnifiedCardMetricRail metrics={metrics ?? []} />
@@ -115,13 +120,19 @@ export function UnifiedInfoCardFrame({
       {detailTo ? (
         <Link
           aria-label={ariaLabel}
-          className="focus-ring absolute inset-0 z-10 rounded-[20px] sm:rounded-[30px]"
+          className={cn(
+            "focus-ring absolute inset-0 z-10",
+            density === "compact" ? "rounded-[16px]" : "rounded-[20px] sm:rounded-[30px]",
+          )}
           to={detailTo}
         />
       ) : onOpenDetails ? (
         <button
           aria-label={ariaLabel}
-          className="focus-ring absolute inset-0 z-10 w-full rounded-[20px] text-left sm:rounded-[30px]"
+          className={cn(
+            "focus-ring absolute inset-0 z-10 w-full text-left",
+            density === "compact" ? "rounded-[16px]" : "rounded-[20px] sm:rounded-[30px]",
+          )}
           onClick={onOpenDetails}
           type="button"
         />
@@ -137,11 +148,16 @@ export function UnifiedInfoCardFrame({
       {!actionSlot && (detailTo || onOpenDetails) ? (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-3 right-3 z-20 grid h-9 w-9 place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_0_24px_color-mix(in_srgb,var(--client-primary)_32%,transparent)] sm:bottom-5 sm:right-5 sm:h-12 sm:w-12"
+          className={cn(
+            "pointer-events-none absolute z-20 grid place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_0_24px_color-mix(in_srgb,var(--client-primary)_32%,transparent)]",
+            density === "compact"
+              ? "bottom-2.5 right-2.5 h-8 w-8"
+              : "bottom-3 right-3 h-9 w-9 sm:bottom-5 sm:right-5 sm:h-12 sm:w-12",
+          )}
           data-icon="chevron-right"
           data-testid="unified-card-detail-arrow"
         >
-          <AppIcon className="h-5 w-5 rotate-180 sm:h-7 sm:w-7" name="back" />
+          <AppIcon className={cn("rotate-180", density === "compact" ? "h-4 w-4" : "h-5 w-5 sm:h-7 sm:w-7")} name="back" />
         </span>
       ) : null}
     </article>
