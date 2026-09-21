@@ -5109,8 +5109,7 @@ export function UnifiedFormalStoreDetail({
   const [revision, setRevision] = useState(0);
   const query = useCoreReadQuery(
     () => coreReadApi.getShopDetail(shopId, { locale: languageToShopPresentationLocale(language) }),
-    [language, shopId, revision],
-    { force: revision > 0, key: `core:shop:${shopId}:${languageToShopPresentationLocale(language)}` }
+    [language, shopId, revision]
   );
 
   if (query.loading) {
