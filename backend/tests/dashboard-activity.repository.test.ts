@@ -345,6 +345,36 @@ describe("DashboardRepository activity and supply aggregates", () => {
     expect(queryText(scheduleQuery)).toContain("COUNT(DISTINCT slot.technician_profile_id)");
   });
 
+  it("counts only accepted and currently uncancelled orders in trend buckets", async () => {
+    const fixture = createClient();
+    const repository = new DashboardRepository(fixture.client);
+
+    await repository.getActivityFacts({
+      scope: { kind: "platform" },
+      city: null,
+      window
+    });
+
+    const query = fixture.queryRaw.mock.calls.find(([candidate]) =>
+      queryText(candidate as SqlQuery).includes("dashboard_order_series")
+    )?.[0] as SqlQuery;
+    const sql = queryText(query);
+
+    expect(sql).not.toContain("COUNT(booking.id) AS orderCount");
+    expect(sql).toContain("WHEN booking.status IN");
+    expect(query.values).toEqual(
+      expect.arrayContaining([
+        "confirmed",
+        "in_service",
+        "awaiting_checkout",
+        "awaiting_payment_confirmation",
+        "completed"
+      ])
+    );
+    expect(query.values).not.toContain("pending");
+    expect(query.values).not.toContain("cancelled");
+  });
+
   it("excludes soft-deleted related shops from every all-city platform scalar and raw aggregate", async () => {
     const fixture = createClient();
     const repository = new DashboardRepository(fixture.client);
@@ -446,11 +476,20 @@ describe("DashboardRepository activity and supply aggregates", () => {
     const orders = queries.find(({ sql }) => sql.includes("dashboard_order_series"));
     expect(orders?.sql).toContain("booking.starts_at >= bucket.from_inclusive");
     expect(orders?.sql).toContain("booking.starts_at < bucket.to_exclusive");
-    expect(orders?.sql).toContain("COUNT(booking.id)");
+    expect(orders?.sql).toContain("WHEN booking.status IN");
     expect(orders?.sql).toContain("booking.status =");
     expect(orders?.sql).toContain("booking.payment_status NOT IN");
     expect(orders?.values).toEqual(
-      expect.arrayContaining(["completed", "refund_pending", "refunded", "Tokyo"])
+      expect.arrayContaining([
+        "confirmed",
+        "in_service",
+        "awaiting_checkout",
+        "awaiting_payment_confirmation",
+        "completed",
+        "refund_pending",
+        "refunded",
+        "Tokyo"
+      ])
     );
 
     const completedCustomers = queries.find(({ sql }) =>
