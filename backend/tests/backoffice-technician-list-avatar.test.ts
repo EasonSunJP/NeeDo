@@ -17,6 +17,7 @@ describe("merchant technician list identity data", () => {
             yearsExperience: 5,
             employmentType: "FULL_TIME",
             employmentStartedAt: createdAt,
+            visibility: "privateAll",
             status: "published",
             isRecommended: false,
             verifiedAt: createdAt,
@@ -60,6 +61,7 @@ describe("merchant technician list identity data", () => {
         avatarUrl: "/images/generated/profiles/technician-only.jpg",
         employmentType: "full_time",
         employmentStartedAt: "2026-08-25T00:00:00.000Z",
+        visibility: "privateAll",
         rating: 5,
         reviewCount: 0
       })

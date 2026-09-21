@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { StoreDetailExperience, UnifiedFormalStoreDetail } from "./StoreDetailPage";
 import { coreReadApi, type CoreShopDetail } from "../../features/core-read/api";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
+import { ApiClientError } from "../../api/httpClient";
 import {
   bookingApi,
   type BookingAvailabilityDateSummary,
@@ -22,10 +23,14 @@ const pricingModeMock = vi.hoisted(() => ({ getBookingNavigation: vi.fn() }));
 const backofficeMock = vi.hoisted(() => ({
   createService: vi.fn(),
   merchantShopPresentation: vi.fn(),
-  services: vi.fn()
+  services: vi.fn(),
+  updateTechnician: vi.fn()
 }));
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => locale, useOptionalI18n: () => locale }));
-vi.mock("../../state/entityStore", () => ({ useEntityStore: () => ({ customers: [], technicians: [] }) }));
+vi.mock("../../state/entityStore", () => ({
+  updateTechnicianEntity: vi.fn(),
+  useEntityStore: () => ({ customers: [], technicians: [] })
+}));
 vi.mock("../../features/social/context", () => ({ useSocial: () => ({ getActorForScope: () => null, getProfilePosts: () => [] }) }));
 vi.mock("../../features/pricing-mode/api", () => ({ pricingModeApi: pricingModeMock }));
 vi.mock("../../api/backofficeRealData", () => ({
@@ -41,6 +46,7 @@ beforeEach(async () => {
   backofficeMock.createService.mockReset();
   backofficeMock.merchantShopPresentation.mockReset().mockReturnValue(new Promise(() => {}));
   backofficeMock.services.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
+  backofficeMock.updateTechnician.mockReset();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -52,7 +58,8 @@ async function render() {
 
 async function renderFormalMerchantPreview(
   technicianCount = 1,
-  scope: "merchant" | "user" = "merchant"
+  scope: "merchant" | "user" = "merchant",
+  formalServiceId?: number
 ) {
   const store = {
     id: "21",
@@ -119,7 +126,7 @@ async function renderFormalMerchantPreview(
           offers: [],
           menuCards: [{
             id: "legacy-service",
-            sourceServiceId: "svc-fallback",
+            sourceServiceId: formalServiceId ? String(formalServiceId) : "svc-fallback",
             name: "标准到店服务",
             subtitle: "legacy",
             duration: "60 分钟",
@@ -155,6 +162,43 @@ it("keeps unavailable shop loading and retry inside the drawer", async () => {
   await act(async () => retry!.click());
   expect(request).toHaveBeenCalledTimes(2);
   expect(request).toHaveBeenLastCalledWith(21, { locale: "zh-CN" });
+});
+
+it("does not render a cached shop after the authoritative detail read is denied", async () => {
+  const cachedShop = {
+    id: 21,
+    publicId: "shop0000000021",
+    name: "不应继续显示的私密店铺",
+    city: "東京都",
+    address: "港区完整地址",
+    coverUrl: "/private-shop.jpg",
+    description: "私密店铺完整资料",
+    phone: null,
+    latitude: null,
+    longitude: null,
+    reviewSummary: { ratingAverage: "0", reviewCount: 0, latestReviewAt: null, highlights: [] },
+    completedOrderCount: 0,
+    favoriteCount: 0,
+    shareCount: 0,
+    serviceCategories: [],
+    businessKeywords: [],
+    mediaAssets: [],
+    services: [],
+    technicians: [],
+    createdAt: "2026-09-07T00:00:00Z",
+    updatedAt: "2026-09-07T00:00:00Z"
+  } satisfies CoreShopDetail;
+  await persistentResourceCache.write("public", "core:shop:21:zh-CN", cachedShop);
+  const request = vi.spyOn(coreReadApi, "getShopDetail").mockRejectedValue(
+    new ApiClientError("error.shop.not_found", 40400, 404)
+  );
+
+  await render();
+  await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+
+  expect(container.textContent).not.toContain(cachedShop.name);
+  expect(container.textContent).not.toContain(cachedShop.address);
+  expect(container.textContent).toContain("error.shop.not_found");
 });
 it("renders and switches all six public presentation tabs without a page shell", async () => {
   const shop = {
@@ -207,10 +251,58 @@ it("rejects legacy service cards while keeping the formal technician projection 
   await renderFormalMerchantPreview();
 
   expect(container.textContent).toContain("正式技师一号");
-  expect(container.textContent).toContain("暂无可预约服务");
+  expect(container.textContent).toContain("正在读取可预约服务");
+  expect(container.textContent).not.toContain("暂无可预约服务");
   expect(container.textContent).not.toContain("标准到店服务");
   expect(container.textContent).not.toContain("￥0");
   expect(container.querySelector('a[href*="svc-fallback"]')).toBeNull();
+});
+
+it("persists merchant technician visibility and reflects both hidden and visible server states", async () => {
+  backofficeMock.updateTechnician
+    .mockResolvedValueOnce({ id: 501, visibility: "privateAll" })
+    .mockResolvedValueOnce({ id: 501, visibility: "public" });
+
+  await renderFormalMerchantPreview();
+
+  const hideButton = container.querySelector<HTMLButtonElement>('button[aria-label="隐藏技师"]');
+  expect(hideButton?.getAttribute("aria-pressed")).toBe("true");
+
+  await act(async () => hideButton!.click());
+  expect(backofficeMock.updateTechnician).toHaveBeenNthCalledWith(
+    1,
+    "merchant-admin",
+    501,
+    { visibility: "privateAll" }
+  );
+  await vi.waitFor(() => {
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="显示技师"]')?.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  const showButton = container.querySelector<HTMLButtonElement>('button[aria-label="显示技师"]');
+  await act(async () => showButton!.click());
+  expect(backofficeMock.updateTechnician).toHaveBeenNthCalledWith(
+    2,
+    "merchant-admin",
+    501,
+    { visibility: "public" }
+  );
+  await vi.waitFor(() => {
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="隐藏技师"]')?.getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+it("keeps the server-confirmed technician visibility when the merchant update fails", async () => {
+  backofficeMock.updateTechnician.mockRejectedValueOnce(new Error("visibility update failed"));
+
+  await renderFormalMerchantPreview();
+  const hideButton = container.querySelector<HTMLButtonElement>('button[aria-label="隐藏技师"]');
+  await act(async () => hideButton!.click());
+
+  await vi.waitFor(() => {
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="隐藏技师"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("visibility update failed");
+  });
 });
 
 it("renders the complete merchant technician roster when more than eight employees are returned", async () => {
@@ -499,6 +591,97 @@ it("builds checkout actions only from an exact future formal slot", async () => 
   expect(checkoutHref).toContain("date=2026-09-13");
   expect(checkoutHref).toContain("time=21%3A00");
   expect(checkoutHref).not.toContain("time=00%3A00");
+});
+
+it("uses the same future server-authoritative availability in merchant previews", async () => {
+  const visitDate = new Date();
+  visitDate.setDate(visitDate.getDate() + 1);
+  const dateKey = [
+    visitDate.getFullYear(),
+    String(visitDate.getMonth() + 1).padStart(2, "0"),
+    String(visitDate.getDate()).padStart(2, "0")
+  ].join("-");
+  const startsAt = new Date(`${dateKey}T15:30:00+09:00`).toISOString();
+  const service = {
+    id: 31,
+    name: "正式肩颈调理",
+    description: "正式服务",
+    priceAmount: "8800",
+    currency: "JPY",
+    durationMinutes: 60,
+    coverMediaAssetPublicId: null
+  };
+  const content = {
+    storeName: "麻布十番超级按摩",
+    description: "正式店铺",
+    address: "港区",
+    area: "東京都",
+    rankLabel: "公开店铺",
+    businessHours: "请以店铺确认为准",
+    subtitle: "",
+    station: "",
+    distance: "",
+    parking: "",
+    routeGuide: "",
+    paymentMethods: [],
+    equipment: [],
+    carousel: [],
+    serviceMenus: [{
+      serviceId: service.id,
+      name: service.name,
+      description: service.description,
+      audience: "",
+      tags: [],
+      highlights: [],
+      coverMediaAssetPublicId: null
+    }]
+  };
+  backofficeMock.merchantShopPresentation.mockResolvedValue({
+    shopId: 21,
+    locales: Object.fromEntries(["ja", "en", "ko", "zh-CN", "zh-TW"].map((code) => [code, {
+      locale: code,
+      lockVersion: 1,
+      content,
+      updatedAt: "2026-09-21T00:00:00.000Z"
+    }])),
+    media: {},
+    services: [service]
+  });
+  const listAvailability = vi.spyOn(bookingApi, "listAvailability").mockImplementation(async (query) => ({
+    list: query.summaryByDate
+      ? [{ startsAt, availableStartCount: 1, availableTechnicianCount: 1 }]
+      : [{
+          startsAt,
+          options: [{
+            scheduleSlotId: 902,
+            technicianProfileId: 501,
+            technicianServiceId: null,
+            serviceId: 31
+          }]
+        }],
+    total: 1,
+    page: 1,
+    page_size: 100
+  }) as never);
+
+  await renderFormalMerchantPreview(1, "merchant", service.id);
+
+  await vi.waitFor(() => {
+    const timeSelect = container.querySelectorAll("select")[1];
+    expect(Array.from(timeSelect?.options ?? []).map((option) => option.value)).toEqual(["15:30"]);
+  });
+  expect(listAvailability).toHaveBeenCalledWith(expect.objectContaining({
+    includeUnavailable: false,
+    serviceId: 31,
+    shopId: 21,
+    summaryByDate: true
+  }));
+  expect(listAvailability).toHaveBeenCalledWith(expect.objectContaining({
+    serviceId: 31,
+    shopId: 21,
+    summaryByStart: true
+  }));
+  expect(container.textContent).not.toContain("暂无可预约时间");
 });
 
 it("routes an available technician selection to services using only 30-minute customer starts", async () => {

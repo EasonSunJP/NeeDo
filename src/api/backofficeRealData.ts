@@ -446,6 +446,7 @@ export interface BackofficeTechnicianPayload {
   employmentStartedAt: string | null;
   rating: number;
   reviewCount: number;
+  visibility?: "public" | "privateAll" | "limited" | "network";
   status: string;
   verifiedAt: string | null;
   createdAt: string;
@@ -765,7 +766,7 @@ export interface ShopPresentationMediaPayload {
 export type BackofficeTechnicianUpdateInput = Partial<
   Pick<
     BackofficeTechnicianPayload,
-    "displayName" | "city" | "serviceArea" | "employmentType" | "employmentStartedAt"
+    "displayName" | "city" | "serviceArea" | "employmentType" | "employmentStartedAt" | "visibility"
   >
 > & { shopId?: number | null; isRecommended?: boolean };
 export type BackofficeCustomerUpdateInput = Partial<
@@ -2106,6 +2107,7 @@ export function mapBackofficeTechnician(row: BackofficeTechnicianPayload): Techn
     acceptRate: 0,
     cancelRate: 0,
     reviewCount: row.reviewCount,
+    visible: row.visibility === undefined || row.visibility === "public",
     languages: ["日本語"],
     avatar: row.avatarUrl ?? "/images/generated/profiles/profile-12.jpg",
     accountUsername: row.email,

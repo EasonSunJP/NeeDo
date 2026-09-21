@@ -1,8 +1,105 @@
 import {
+  mapWorkEvent,
   WorkStatusRepository,
   WorkStatusSession
 } from "../src/repositories/work-status.repository";
 import type { PrismaClient } from "@prisma/client";
+
+const reassignedOrderEvent = {
+  id: "late-reassigned",
+  technicianProfileId: 12,
+  shopId: 16,
+  orderId: 24424,
+  incidentId: "incident-reassigned",
+  actorId: null,
+  kind: "late",
+  fromStatus: null,
+  toStatus: null,
+  at: new Date("2026-09-21T00:30:00.000Z"),
+  actualAt: null,
+  reason: null,
+  commandKey: null,
+  commandHash: null,
+  result: null,
+  createdAt: new Date("2026-09-21T00:30:00.000Z"),
+  updatedAt: new Date("2026-09-21T00:30:00.000Z"),
+  deletedAt: null,
+  actor: null,
+  order: {
+    id: 24424,
+    orderNo: "ND202609210621189522",
+    serviceNameSnapshot: "Care",
+    technicianProfileId: 99,
+    customer: { username: "Customer" }
+  },
+  incident: {
+    id: "incident-reassigned",
+    incidentKey: "v1:late:booking:24424",
+    technicianProfileId: 12,
+    shopId: 16,
+    orderId: 24424,
+    availabilityId: null,
+    kind: "late",
+    basis: "booking",
+    plannedAt: new Date("2026-09-21T00:30:00.000Z"),
+    plannedEndAt: new Date("2026-09-21T01:30:00.000Z"),
+    occurredAt: new Date("2026-09-21T00:30:00.000Z"),
+    actualAt: null,
+    ruleVersion: 1,
+    reason: null,
+    createdAt: new Date("2026-09-21T00:30:00.000Z"),
+    updatedAt: new Date("2026-09-21T00:30:00.000Z"),
+    deletedAt: null,
+    attendanceAffectedOrders: []
+  }
+} as Parameters<typeof mapWorkEvent>[0];
+
+it("does not project a reassigned order into the former technician's self timeline", () => {
+  expect(mapWorkEvent(reassignedOrderEvent, {
+    technicianProfileId: 12,
+    userId: 7
+  }).order).toBeNull();
+});
+
+it("does not project a reassigned affected order into the former technician's self timeline", () => {
+  const projected = mapWorkEvent({
+    ...reassignedOrderEvent,
+    order: null,
+    incident: {
+      ...reassignedOrderEvent.incident!,
+      basis: "shift",
+      attendanceAffectedOrders: [{
+        id: "affected-reassigned",
+        incidentId: "incident-reassigned",
+        orderId: 24424,
+        shopId: 16,
+        orderNo: "ND202609210621189522",
+        serviceName: "Care",
+        startsAt: new Date("2026-09-21T00:30:00.000Z"),
+        endsAt: new Date("2026-09-21T01:30:00.000Z"),
+        createdAt: new Date("2026-09-21T00:30:00.000Z"),
+        updatedAt: new Date("2026-09-21T00:30:00.000Z"),
+        deletedAt: null,
+        order: { technicianProfileId: 99 }
+      }]
+    }
+  }, {
+    technicianProfileId: 12,
+    userId: 7
+  });
+
+  expect(projected.affectedOrders).toEqual([]);
+});
+
+it("keeps the reassigned order in authorized merchant and operations history", () => {
+  expect(mapWorkEvent(reassignedOrderEvent, {
+    technicianProfileId: 12,
+    shopId: 16
+  }).order?.id).toBe(24424);
+  expect(mapWorkEvent(reassignedOrderEvent, {
+    technicianProfileId: 12
+  }).order?.id).toBe(24424);
+});
 it("returns an active service across midnight without restricting it to today", async () => {
   const active = jest.fn(async ({ where }: { where: { shopId?: number } }) =>
     where.shopId === 3 ? { id: 88, shopId: 3 } : null

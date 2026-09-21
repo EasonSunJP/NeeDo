@@ -172,6 +172,10 @@ export const availabilityWindowUpdateBodySchema = z.object({
   if (value.startsAt && value.endsAt && value.startsAt >= value.endsAt) context.addIssue({ code: z.ZodIssueCode.custom, message: "startsAt must be earlier than endsAt", path: ["endsAt"] });
 });
 
+const scheduleSlotSelectorSchema = z.coerce.number().int().refine((value) => value !== 0, {
+  message: "schedule slot selector must be a persisted positive id or a dynamic negative selector"
+});
+
 const bookingBaseSchema = z.object({
   expectedPriceAmountJpy: z.coerce.number().int().nonnegative(),
   serviceId: z.coerce.number().int().positive().optional(),
@@ -179,10 +183,8 @@ const bookingBaseSchema = z.object({
   technicianServiceIds: z.array(z.coerce.number().int().positive()).min(2).max(10).optional(),
   nominatedTechnicianProfileId: z.coerce.number().int().positive().optional(),
   exchangeIntelligencePostId: z.coerce.number().int().positive().optional(),
-  scheduleSlotId: z.coerce.number().int().refine((value) => value !== 0, {
-    message: "scheduleSlotId must be a persisted positive id or a dynamic negative selector"
-  }),
-  scheduleSlotIds: z.array(z.coerce.number().int().positive()).min(2).max(10).optional(),
+  scheduleSlotId: scheduleSlotSelectorSchema,
+  scheduleSlotIds: z.array(scheduleSlotSelectorSchema).min(2).max(10).optional(),
   orderType: z.enum(["booking", "request"]).optional(),
   paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
   note: z.string().trim().max(500).optional(),

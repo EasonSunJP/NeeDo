@@ -277,6 +277,7 @@ Both share commands require a UUID `idempotencyKey`. Replaying the same key and 
 `TechnicianDetail`
 
 - Includes `TechnicianCard` fields plus `bio`, `serviceArea`, `yearsExperience`, `mediaAssets`, `services`, `createdAt`, `updatedAt`
+- `TechnicianProfile.visibility` is the public-display authority. A shop-scoped merchant may set its own primary technician to `public` or `privateAll` with `PATCH /api/v1/merchant-admin/technicians/:id`; the response returns the persisted visibility and records the changed field in the existing technician audit event. Public shop rosters, availability, technician services, and booking validation accept only `public`, so hiding a technician cannot leave a separate customer-facing booking path visible.
 
 `CustomerProfile`
 

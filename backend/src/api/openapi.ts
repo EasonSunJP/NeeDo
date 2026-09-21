@@ -8016,6 +8016,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "employmentStartedAt",
           "rating",
           "reviewCount",
+          "visibility",
           "status",
           "verifiedAt",
           "createdAt",
@@ -8051,6 +8052,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           employmentStartedAt: { type: ["string", "null"], format: "date-time" },
           rating: { type: "number", minimum: 0, maximum: 5 },
           reviewCount: { type: "integer", minimum: 0 },
+          visibility: {
+            type: "string",
+            enum: ["public", "privateAll", "limited", "network"]
+          },
           status: { type: "string" },
           verifiedAt: { type: ["string", "null"], format: "date-time" },
           createdAt: { type: "string", format: "date-time" },
@@ -9437,7 +9442,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             enum: ["full_time", "temporary"]
           },
           employmentStartedAt: { type: ["string", "null"], format: "date-time" },
-          isRecommended: { type: "boolean" }
+          isRecommended: { type: "boolean" },
+          visibility: { type: "string", enum: ["public", "privateAll"] }
         }
       },
       BackofficeCustomerUpdateInput: {
@@ -12282,6 +12288,46 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           reviewCount: { type: "integer", minimum: 0 }
         }
       },
+      BookingOrderAssignedTechnician: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "publicId",
+          "displayName",
+          "avatarUrl",
+          "city",
+          "bio",
+          "serviceArea",
+          "languages",
+          "reviewSummary",
+          "completedOrderCount",
+          "favoriteCount",
+          "shareCount"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          publicId: { type: "string", pattern: "^s[0-9]{10}$" },
+          displayName: { type: "string" },
+          avatarUrl: { type: ["string", "null"] },
+          city: { type: "string" },
+          bio: { type: ["string", "null"] },
+          serviceArea: { type: ["string", "null"] },
+          languages: { type: "array", items: { type: "string" } },
+          reviewSummary: {
+            type: "object",
+            additionalProperties: false,
+            required: ["ratingAverage", "reviewCount"],
+            properties: {
+              ratingAverage: { type: "string", pattern: "^[0-9]+(?:\\.[0-9]{2})$" },
+              reviewCount: { type: "integer", minimum: 0 }
+            }
+          },
+          completedOrderCount: { type: "integer", minimum: 0 },
+          favoriteCount: { type: "integer", minimum: 0 },
+          shareCount: { type: "integer", minimum: 0 }
+        }
+      },
       BookingOrderRebook: {
         oneOf: [
           {
@@ -12349,6 +12395,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "technicianServiceId",
           "shopId",
           "technicianProfileId",
+          "assignedTechnician",
           "scheduleSlotId",
           "exchangeIntelligencePostId",
           "fulfillmentMode",
@@ -12428,6 +12475,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           technicianServiceId: { type: ["integer", "null"], minimum: 1 },
           shopId: { type: "integer" },
           technicianProfileId: { type: ["integer", "null"] },
+          assignedTechnician: {
+            anyOf: [
+              { $ref: "#/components/schemas/BookingOrderAssignedTechnician" },
+              { type: "null" }
+            ]
+          },
           scheduleSlotId: { type: "integer" },
           exchangeIntelligencePostId: { type: ["integer", "null"], minimum: 1 },
           fulfillmentMode: { type: "string", enum: ["home", "store"] },

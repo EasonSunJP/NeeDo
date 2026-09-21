@@ -742,6 +742,48 @@ const createPendingReplacementHarness = (
 };
 
 describe("BookingRepository order list scope", () => {
+  it("materializes every dynamic selector before loading a technician-service bundle", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 101 }]),
+      scheduleSlot: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+    const materialize = jest
+      .spyOn(repository as never, "materializeDynamicScheduleSlot" as never)
+      .mockResolvedValueOnce(201 as never)
+      .mockResolvedValueOnce(202 as never);
+
+    await expect(repository.createBooking({
+      customerUserId: 101,
+      technicianServiceId: 301,
+      technicianServiceIds: [301, 307],
+      scheduleSlotId: -64_320_701_317,
+      scheduleSlotIds: [-64_320_701_317, -64_320_701_377],
+      nominatedTechnicianProfileId: 133,
+      expectedPriceAmountJpy: 12_100,
+      fulfillmentMode: "store",
+      serviceLocation: { source: "SHOP_LOCATION" }
+    })).resolves.toBeNull();
+
+    expect(materialize).toHaveBeenNthCalledWith(1, tx, expect.objectContaining({
+      technicianServiceId: 301,
+      scheduleSlotId: -64_320_701_317,
+      technicianServiceIds: undefined,
+      scheduleSlotIds: undefined
+    }));
+    expect(materialize).toHaveBeenNthCalledWith(2, tx, expect.objectContaining({
+      technicianServiceId: 307,
+      scheduleSlotId: -64_320_701_377,
+      technicianServiceIds: undefined,
+      scheduleSlotIds: undefined
+    }));
+    expect(tx.scheduleSlot.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { in: [201, 202] } })
+    }));
+  });
+
   it("rejects a multi-service bundle unless its selected slots form one continuous technician timeline", async () => {
     const firstStartsAt = new Date("2026-10-01T01:00:00.000Z");
     const firstEndsAt = new Date("2026-10-01T02:00:00.000Z");
@@ -2517,6 +2559,103 @@ serviceLocation: { source: "SHOP_LOCATION" }
         })
       })
     );
+  });
+
+  it("projects the assigned public technician from the same authoritative order relation", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("CONFIRMED"),
+      technicianProfile: {
+        id: 31,
+        userId: 707,
+        displayName: "Eason",
+        city: "东京",
+        bio: "正式担当技师",
+        serviceArea: "港区",
+        languages: ["日本語", "中文"],
+        visibility: "public",
+        status: "published",
+        deletedAt: null,
+        mediaAssets: [{ url: "/uploads/technicians/eason.jpg" }],
+        reviewSummary: { ratingAverage: 4.9, reviewCount: 18 },
+        performanceSummary: { completedOrderCount: 42, deletedAt: null },
+        _count: { entityFavorites: 7, entityShareEvents: 5 },
+        user: {
+          isActive: true,
+          deletedAt: null,
+          avatarUrl: null,
+          avatarBootstrapUrl: null,
+          identities: [
+            {
+              isActive: true,
+              deletedAt: null,
+              scopeType: "technician_profile",
+              scopeId: 99,
+              publicIdentifier: { kind: "S", publicId: "s0000000099", status: "ACTIVE", deletedAt: null }
+            },
+            {
+              isActive: true,
+              deletedAt: null,
+              scopeType: "technician_profile",
+              scopeId: 31,
+              publicIdentifier: { kind: "S", publicId: "s0000000031", status: "ACTIVE", deletedAt: null }
+            }
+          ]
+        }
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: { findFirst: jest.fn().mockResolvedValue(order) }
+    } as never);
+
+    await expect(repository.findOrderById(701)).resolves.toMatchObject({
+      technicianProfileId: 31,
+      technicianName: "Eason",
+      assignedTechnician: {
+        id: 31,
+        publicId: "s0000000031",
+        displayName: "Eason",
+        avatarUrl: "/uploads/technicians/eason.jpg",
+        city: "东京",
+        bio: "正式担当技师",
+        serviceArea: "港区",
+        languages: ["日本語", "中文"],
+        reviewSummary: { ratingAverage: "4.90", reviewCount: 18 },
+        completedOrderCount: 42,
+        favoriteCount: 7,
+        shareCount: 5
+      }
+    });
+  });
+
+  it("keeps unassigned and non-public assigned technician states distinct", async () => {
+    const unassigned = {
+      ...makeTransitionOrderRecord("CONFIRMED"),
+      technicianProfileId: null,
+      technicianProfile: null
+    };
+    const privateAssigned = {
+      ...makeTransitionOrderRecord("CONFIRMED"),
+      technicianProfile: {
+        ...makeTransitionOrderRecord("CONFIRMED").technicianProfile,
+        visibility: "privateAll",
+        status: "published",
+        deletedAt: null
+      }
+    };
+    const findFirst = jest.fn()
+      .mockResolvedValueOnce(unassigned)
+      .mockResolvedValueOnce(privateAssigned);
+    const repository = new BookingRepository({ bookingOrder: { findFirst } } as never);
+
+    await expect(repository.findOrderById(701)).resolves.toMatchObject({
+      technicianProfileId: null,
+      assignedTechnician: null
+    });
+    await expect(repository.findOrderById(701)).resolves.toMatchObject({
+      technicianProfileId: 31,
+      technicianName: "Misaki",
+      assignedTechnician: null
+    });
   });
 
   it("projects only a structurally valid fulfillment address snapshot", async () => {

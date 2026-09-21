@@ -370,6 +370,55 @@ describe("BookingService state machine", () => {
     expect(repository.listAvailableSlots).toHaveBeenCalledWith(input, visibilityWhere, viewer.userId);
   });
 
+  it("keeps merchant previews on the same visibility projection without customer-only pending replacement", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.listAvailableSlots.mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20
+    });
+    const visibilityWhere = { id: 11 };
+    const visibility = {
+      canView: jest.fn(),
+      buildVisibilityWhere: jest.fn(async () => visibilityWhere)
+    };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      visibility as never
+    );
+    const input = {
+      page: 1,
+      pageSize: 20,
+      from: new Date("2026-09-21T00:00:00.000Z"),
+      to: new Date("2026-09-22T00:00:00.000Z"),
+      shopId: 11
+    };
+    const viewer = {
+      userId: 7,
+      identityId: 70,
+      identityType: "merchant_owner",
+      identityScopeType: "shop" as const,
+      identityScopeId: 11
+    };
+
+    await service.listAvailableSlots(input, viewer);
+
+    expect(visibility.buildVisibilityWhere).toHaveBeenCalledWith(viewer);
+    expect(repository.listAvailableSlots).toHaveBeenCalledWith(input, visibilityWhere);
+  });
+
   it("forwards an explicit technician nomination to the repository price transaction", async () => {
     const order = makeOrder("pending");
     const repository = createRepository(order);
