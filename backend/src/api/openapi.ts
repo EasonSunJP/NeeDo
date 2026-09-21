@@ -5400,6 +5400,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "isBookable",
           "ratingAverage",
           "reviewCount",
+          "completedOrderCount",
+          "favoriteCount",
+          "shareCount",
           "address",
           "serviceMode",
           "detailPath"
@@ -5418,6 +5421,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           isBookable: { type: "boolean" },
           ratingAverage: { type: ["string", "null"], pattern: "^[0-9]+(?:\\.[0-9]+)?$" },
           reviewCount: { type: "integer", minimum: 0 },
+          completedOrderCount: { type: "integer", minimum: 0 },
+          favoriteCount: { type: "integer", minimum: 0 },
+          shareCount: { type: "integer", minimum: 0 },
           address: { type: "string", minLength: 1, maxLength: 255 },
           serviceMode: { type: "string", enum: ["store", "onsite", "flexible"] },
           detailPath: { type: "string", pattern: "^/profiles/shop/shop[0-9]{10}$" }
@@ -22373,7 +22379,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               ]
             }
           },
-          { name: "locale", in: "query", required: false, schema: { type: "string", enum: ["ja", "en", "ko", "zh-CN", "zh-TW"] } }
+          { name: "locale", in: "query", required: false, schema: { type: "string", enum: ["ja", "en", "ko", "zh-CN", "zh-TW"] } },
+          { name: "sourcePostId", in: "query", required: false, description: "Live published Intelligence post bound to this shop; authenticated readers may open a limited shop detail through this source only.", schema: { type: "integer", minimum: 1 } }
         ],
         responses: {
           "200": { description: "Shop detail" },

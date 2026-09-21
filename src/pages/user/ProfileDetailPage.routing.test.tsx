@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   coreReadApi,
@@ -14,8 +14,8 @@ import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { ProfileDetailPage } from "./ProfileDetailPage";
 
-vi.mock("../../features/social/pages/SocialProfilePage", () => ({
-  SocialProfilePage: () => <main aria-label="社交资料页">社交资料页</main>
+vi.mock("../../features/social/route-pages", () => ({
+  SocialAccountProfilePage: () => <main aria-label="社交资料页">社交资料页</main>
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -52,7 +52,7 @@ const customer: CoreCustomerProfile = {
 
 const shop: CoreShopDetail = {
   id: 7,
-  publicId: "m0000000007",
+  publicId: "shop0000000007",
   name: "GINZA Calm Body Lab",
   city: "东京都",
   address: "东京都中央区银座 1-2-3",
@@ -201,6 +201,53 @@ describe("ProfileDetailPage routing behavior", () => {
     await renderRoute("/profiles/shop/7");
     await waitFor(() => expect(getShopDetail).toHaveBeenCalledWith(7));
     expect(container.textContent).toContain("店铺资料");
+  });
+
+  it.each([
+    "/profiles/shop/shop0000000007",
+    "/merchant/profiles/shop/shop0000000007",
+    "/technician/profiles/shop/shop0000000007"
+  ])("opens the formal shop profile from public ID route %s", async (path) => {
+    const getShopDetail = vi.spyOn(coreReadApi, "getShopDetail").mockResolvedValue(shop);
+
+    await renderRoute(path);
+
+    await waitFor(() => expect(getShopDetail).toHaveBeenCalledWith("shop0000000007"));
+    expect(container.textContent).toContain("店铺资料");
+    expect(container.querySelector('main[aria-label="社交资料页"]')).toBeNull();
+  });
+
+  it("passes an intelligence source only to the shop detail request and does not offer an inaccessible store link", async () => {
+    const getShopDetail = vi.spyOn(coreReadApi, "getShopDetail").mockResolvedValue(shop);
+
+    await renderRoute("/profiles/shop/shop0000000007?sourcePostId=61");
+
+    await waitFor(() => expect(getShopDetail).toHaveBeenCalledWith("shop0000000007", { sourcePostId: 61 }));
+    expect(container.textContent).toContain("店铺资料");
+    expect(container.querySelector('a[href="/stores/7"]')).toBeNull();
+  });
+
+  it("does not flash a previous source-scoped shop when navigating to another shop", async () => {
+    const getShopDetail = vi.spyOn(coreReadApi, "getShopDetail").mockImplementation((id) =>
+      id === "shop0000000007" ? Promise.resolve(shop) : new Promise(() => undefined)
+    );
+    await act(async () => root.render(
+      <ClientThemeProvider>
+        <MemoryRouter initialEntries={["/profiles/shop/shop0000000007?sourcePostId=61"]}>
+          <Routes>
+            <Route element={<ProfileDetailPage />} path="/profiles/:entityType/:id" />
+          </Routes>
+          <Link to="/profiles/shop/shop0000000008?sourcePostId=62">下一家店</Link>
+        </MemoryRouter>
+      </ClientThemeProvider>
+    ));
+    await waitFor(() => expect(container.textContent).toContain("GINZA Calm Body Lab"));
+
+    await act(async () => container.querySelector<HTMLAnchorElement>('a[href="/profiles/shop/shop0000000008?sourcePostId=62"]')?.click());
+
+    expect(getShopDetail).toHaveBeenCalledWith("shop0000000008", { sourcePostId: 62 });
+    expect(container.textContent).not.toContain("GINZA Calm Body Lab");
+    expect(container.textContent).toContain("正在载入店铺");
   });
 
   it("shows relationship-scoped customer basics and credit review history to the technician portal", async () => {

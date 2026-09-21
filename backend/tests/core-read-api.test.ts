@@ -665,6 +665,14 @@ describe("Step 08 core read API", () => {
     expect(fixture.coreReadRepository.findShopDetail).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed intelligence source identifiers on shop detail", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app).get("/api/v1/shops/shop5831047296?sourcePostId=0").expect(400);
+    await request(fixture.app).get("/api/v1/shops/shop5831047296?sourcePostId=not-a-post").expect(400);
+    expect(fixture.coreReadRepository.findShopDetail).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed Service identifiers without treating numeric strings as UUIDs", async () => {
     const fixture = createFixture();
 

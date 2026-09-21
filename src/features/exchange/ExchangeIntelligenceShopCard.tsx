@@ -5,27 +5,24 @@ import { UnifiedShopInfoCard, type UnifiedShopInfoCardData } from "../../shared/
 import { exchangeText } from "./i18n";
 import type { ExchangePost } from "./types";
 
-function publicAreaSummary(post: ExchangePost) {
-  const areas = post.intelligence?.serviceAreas
-    .map((area) => area.trim())
-    .filter(Boolean) ?? [];
-  return Array.from(new Set(areas)).slice(0, 3).join(" · ") || null;
-}
-
 function shopCardData(post: ExchangePost, language: Language): UnifiedShopInfoCardData | null {
   const shop = post.intelligence?.publisherCard;
   if (!shop || shop.type !== "shop") return null;
   const rating = shop.ratingAverage === null ? null : Number.parseFloat(shop.ratingAverage);
-  const ratingTag = rating !== null && Number.isFinite(rating) ? `★ ${rating.toFixed(1)}` : null;
   return {
     kind: "shop",
     id: shop.publicId,
     name: shop.name,
     imageUrl: shop.coverUrl ?? shop.imageUrls[0] ?? shop.avatarUrl,
     description: exchangeText(shop.isBookable ? "bookable" : "currentUnavailable", language),
-    address: publicAreaSummary(post),
+    address: shop.address.trim() || null,
     languages: [],
-    tags: [exchangeText(shop.serviceMode, language), ratingTag].filter((tag): tag is string => Boolean(tag)),
+    tags: [],
+    rating: rating !== null && Number.isFinite(rating) ? rating : null,
+    reviewCount: shop.reviewCount,
+    completedOrderCount: shop.completedOrderCount ?? null,
+    favoriteCount: shop.favoriteCount ?? null,
+    shareCount: shop.shareCount ?? null,
   };
 }
 
@@ -49,10 +46,8 @@ export function ExchangeIntelligenceShopCard({
     >
       <UnifiedShopInfoCard
         data={data}
-        density="compact"
-        detailTo={getScopedProfileDetailPath(context, "shop", shop.publicId)}
+        detailTo={`${getScopedProfileDetailPath(context, "shop", shop.publicId)}?sourcePostId=${post.id}`}
         language={language}
-        showMetrics={false}
       />
     </div>
   );

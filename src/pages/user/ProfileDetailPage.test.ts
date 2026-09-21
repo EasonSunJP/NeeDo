@@ -33,4 +33,12 @@ describe("ProfileDetailPage technician routes", () => {
     expect(customerPageSource).not.toContain("core:customer-profile:");
     expect(customerPageSource).toContain("coreReadApi.getCustomerProfile(id)");
   });
+
+  it("does not persist source-scoped shop details in the public cache", () => {
+    const shopPageSource = profileDetailSource.slice(
+      profileDetailSource.indexOf("function ShopApiProfilePage")
+    );
+    expect(shopPageSource).not.toContain("core:shop:");
+    expect(shopPageSource).toContain("coreReadApi.getShopDetail(id, { sourcePostId })");
+  });
 });

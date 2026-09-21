@@ -58,4 +58,17 @@ describe("shop visibility OpenAPI contract", () => {
       expect(document.paths[path].get.security).toEqual([{}, { bearerAuth: [] }]);
     }
   });
+
+  it("documents the source-scoped intelligence shop detail query", () => {
+    const document = createOpenApiDocument(env) as {
+      paths: Record<string, { get: { parameters: Array<{ name: string; in: string; schema: Record<string, unknown> }> } }>;
+    };
+    expect(document.paths["/api/v1/shops/{id}"].get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: "sourcePostId",
+        in: "query",
+        schema: expect.objectContaining({ type: "integer", minimum: 1 })
+      })
+    );
+  });
 });

@@ -88,6 +88,9 @@ const intelligencePost: ExchangePost = {
       isBookable: true,
       ratingAverage: "4.8",
       reviewCount: 126,
+      completedOrderCount: 73,
+      favoriteCount: 8,
+      shareCount: 6,
       address: "東京都中央区銀座3-4-12",
       serviceMode: "store",
       detailPath: "/profiles/shop/shop0000000061"
@@ -230,7 +233,7 @@ describe("ExchangeFeedPage", () => {
   );
 
   it.each(["user", "merchant", "technician"] as const)(
-    "renders the same privacy-safe shop summary for %s intelligence viewers",
+    "reuses the full shop information card for %s intelligence viewers",
     (context) => {
       const markup = renderFeed(
         { activeType: "intelligence", posts: [intelligencePost] },
@@ -241,14 +244,18 @@ describe("ExchangeFeedPage", () => {
       const expiryIndex = markup.indexOf("有效期限");
 
       expect(markup).toContain('data-testid="exchange-intelligence-shop-card"');
-      expect(markup).toContain('data-card-size="compact"');
-      expect(markup).toContain("銀座 · 中央区");
-      expect(markup).toContain("可预约");
-      expect(markup).toContain(`href="${context === "user" ? "" : `/${context}`}/profiles/shop/shop0000000061"`);
+      expect(markup).toContain('data-card-size="default"');
+      expect(markup).toContain('data-testid="unified-card-metrics"');
+      expect(markup).toContain('data-testid="unified-card-detail-arrow"');
+      expect(markup).toContain("4.8");
+      expect(markup).toContain(">73<");
+      expect(markup).toContain(">8<");
+      expect(markup).toContain(">6<");
+      expect(markup).toContain("東京都中央区銀座3-4-12");
+      expect(markup).toContain(`href="${context === "user" ? "" : `/${context}`}/profiles/shop/shop0000000061?sourcePostId=61"`);
       expect(markup).not.toContain("LifeDance 管理员");
       expect(markup).not.toContain("b0000000001");
       expect(markup).not.toContain("shop0000000061</");
-      expect(markup).not.toContain("東京都中央区銀座3-4-12");
       expect(markup).not.toContain("/private/admin-avatar.png");
       expect(markup).toContain('data-has-image="false"');
       expect(noteIndex).toBeGreaterThan(-1);
@@ -256,6 +263,24 @@ describe("ExchangeFeedPage", () => {
       expect(expiryIndex).toBeGreaterThan(shopIndex);
     }
   );
+
+  it("omits the location row when the shop has not set an address", () => {
+    const post = {
+      ...intelligencePost,
+      intelligence: {
+        ...intelligencePost.intelligence!,
+        publisherCard: {
+          ...intelligencePost.intelligence!.publisherCard!,
+          address: "   "
+        }
+      }
+    } as ExchangePost;
+
+    const markup = renderFeed({ activeType: "intelligence", posts: [post] }, "user");
+
+    expect(markup).toContain('data-testid="exchange-intelligence-shop-card"');
+    expect(markup).not.toContain('data-testid="unified-card-location-icon"');
+  });
 
   it("does not let the post keyboard handler hijack its nested shop link", async () => {
     const container = document.createElement("div");
@@ -281,7 +306,7 @@ describe("ExchangeFeedPage", () => {
           </Routes>
         </MemoryRouter>
       ));
-      const shopLink = container.querySelector<HTMLAnchorElement>('a[href="/profiles/shop/shop0000000061"]');
+      const shopLink = container.querySelector<HTMLAnchorElement>('a[href="/profiles/shop/shop0000000061?sourcePostId=61"]');
       expect(shopLink).not.toBeNull();
       await act(async () => shopLink?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
       expect(container.querySelector('[data-testid="destination"]')?.textContent).toBe("/needo");

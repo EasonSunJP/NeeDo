@@ -171,10 +171,10 @@ export class CoreReadService {
     return buildPaginatedResponse(cards, ranked.length, pagination);
   }
 
-  public async getShopDetail(id: number | string, locale?: ContentLocaleCode, viewer?: ShopVisibilityViewer): Promise<ShopDetailPayload> {
-    const shop = locale === undefined
-      ? await this.repository.findShopDetail(id, undefined, viewer)
-      : await this.repository.findShopDetail(id, locale, viewer);
+  public async getShopDetail(id: number | string, locale?: ContentLocaleCode, viewer?: ShopVisibilityViewer, sourcePostId?: number): Promise<ShopDetailPayload> {
+    const shop = sourcePostId === undefined
+      ? await this.repository.findShopDetail(id, locale, viewer)
+      : await this.repository.findShopDetail(id, locale, viewer, sourcePostId);
 
     if (!shop) {
       throw this.notFoundError("error.shop.not_found");

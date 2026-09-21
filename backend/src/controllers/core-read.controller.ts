@@ -156,13 +156,15 @@ export class CoreReadController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const query = coreReadShopDetailQuerySchema.parse(request.query);
+      const shopId = this.getShopId(request);
+      const viewer = this.shopVisibilityViewer(response);
+      const detail = query.sourcePostId === undefined
+        ? await this.coreReadService.getShopDetail(shopId, query.locale, viewer)
+        : await this.coreReadService.getShopDetail(shopId, query.locale, viewer, query.sourcePostId);
       response
         .status(200)
-        .json(successResponse(await this.coreReadService.getShopDetail(
-          this.getShopId(request),
-          coreReadShopDetailQuerySchema.parse(request.query).locale,
-          this.shopVisibilityViewer(response)
-        )));
+        .json(successResponse(detail));
     } catch (error) {
       next(error);
     }

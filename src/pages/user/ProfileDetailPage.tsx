@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import { AppTopBar, EmptyStatePanel, PageScaffold, SurfacePanel } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { coreReadApi, coreReadIdFromRoute, mapCoreCustomerToCustomer, mapCoreShopToStore, mapCoreTechnicianToTechnician, type CoreCustomerProfile } from "../../features/core-read/api";
+import { coreReadApi, coreReadIdFromRoute, coreReadShopIdFromRoute, mapCoreCustomerToCustomer, mapCoreShopToStore, mapCoreTechnicianToTechnician, type CoreCustomerProfile } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi } from "../../features/pricing-mode/api";
 import { socialPaths } from "../../features/social/paths";
@@ -29,19 +29,25 @@ function technicianDetailIdFromRoute(id: string | undefined) {
 
 export function ProfileDetailPage() {
   const { entityType, id } = useParams();
+  const [searchParams] = useSearchParams();
 
   if (entityType === "technician") {
     return <TechnicianApiProfilePage id={technicianDetailIdFromRoute(id)} />;
   }
 
-  const apiId = coreReadIdFromRoute(id);
-
-  if (!apiId || (entityType !== "user" && entityType !== "shop")) {
-    return <SocialAccountProfilePage />;
+  if (entityType === "shop") {
+    const shopId = coreReadShopIdFromRoute(id);
+    const sourcePostId = Number(searchParams.get("sourcePostId"));
+    const validSourcePostId = Number.isSafeInteger(sourcePostId) && sourcePostId > 0 ? sourcePostId : undefined;
+    return shopId
+      ? <ShopApiProfilePage id={shopId} key={`${shopId}:${validSourcePostId ?? "direct"}`} sourcePostId={validSourcePostId} />
+      : <SocialAccountProfilePage />;
   }
 
-  if (entityType === "shop") {
-    return <ShopApiProfilePage id={apiId} />;
+  const apiId = coreReadIdFromRoute(id);
+
+  if (!apiId || entityType !== "user") {
+    return <SocialAccountProfilePage />;
   }
 
   return <CustomerApiProfilePage id={apiId} />;
@@ -298,11 +304,10 @@ function CustomerCreditReview({
   );
 }
 
-function ShopApiProfilePage({ id }: { id: number }) {
+function ShopApiProfilePage({ id, sourcePostId }: { id: number | string; sourcePostId?: number }) {
   const query = useCoreReadQuery(
-    () => coreReadApi.getShopDetail(id),
-    [id],
-    { key: `core:shop:${id}` }
+    () => sourcePostId ? coreReadApi.getShopDetail(id, { sourcePostId }) : coreReadApi.getShopDetail(id),
+    [id, sourcePostId]
   );
 
   if (query.loading) {
@@ -320,7 +325,7 @@ function ShopApiProfilePage({ id }: { id: number }) {
   return (
     <PageScaffold contentClassName="space-y-5 pb-28">
       <AppTopBar subtitle="真实 API 数据源" title="店铺资料" />
-      <UnifiedSimpleProfileCard detailTo={`/stores/${query.data.id}`} entityType="shop" store={mapCoreShopToStore(query.data)} technicians={query.data.technicians.map(mapCoreTechnicianToTechnician)} variant="list" />
+      <UnifiedSimpleProfileCard detailTo={sourcePostId ? undefined : `/stores/${query.data.id}`} entityType="shop" store={mapCoreShopToStore(query.data)} technicians={query.data.technicians.map(mapCoreTechnicianToTechnician)} variant="list" />
       <SurfacePanel>
         <h2 className="text-lg font-black text-[color:var(--client-text)]">店铺简介</h2>
         <p className="mt-2 text-sm leading-7 text-[color:var(--client-muted)]">{query.data.description ?? "当前店铺暂未填写公开简介。"}</p>

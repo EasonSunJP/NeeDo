@@ -19,7 +19,8 @@ export const coreReadShopIdParamSchema = z.object({
 });
 
 export const coreReadShopDetailQuerySchema = z.object({
-  locale: z.enum(CONTENT_LOCALES).optional()
+  locale: z.enum(CONTENT_LOCALES).optional(),
+  sourcePostId: z.coerce.number().int().positive().safe().optional()
 }).strict();
 
 export const coreReadTechnicianIdParamSchema = z.object({

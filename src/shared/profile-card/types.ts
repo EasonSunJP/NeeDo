@@ -59,6 +59,9 @@ export type ExchangeIntelligenceShopPublisherProfileProjection = {
   isBookable: boolean;
   ratingAverage: string | null;
   reviewCount: number;
+  completedOrderCount?: number;
+  favoriteCount?: number;
+  shareCount?: number;
   address: string;
   serviceMode: "store" | "onsite" | "flexible";
   detailPath: string;

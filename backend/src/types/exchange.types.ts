@@ -127,6 +127,9 @@ export interface ExchangeIntelligenceShopPublisherCardPayload {
   isBookable: boolean;
   ratingAverage: string | null;
   reviewCount: number;
+  completedOrderCount: number;
+  favoriteCount: number;
+  shareCount: number;
   address: string;
   serviceMode: ExchangeServiceMode;
   detailPath: string;

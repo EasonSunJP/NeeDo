@@ -598,7 +598,7 @@ export const coreReadApi = {
     );
   },
 
-  getShopDetail(id: number | string, query: { locale?: "ja" | "en" | "ko" | "zh-CN" | "zh-TW" } = {}) {
+  getShopDetail(id: number | string, query: { locale?: "ja" | "en" | "ko" | "zh-CN" | "zh-TW"; sourcePostId?: number } = {}) {
     return httpClient.request<CoreShopDetail>(`/shops/${id}`, { query });
   },
 

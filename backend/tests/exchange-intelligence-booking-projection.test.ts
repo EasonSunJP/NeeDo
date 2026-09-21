@@ -24,7 +24,8 @@ const shop = () => ({
     ratingAverage: { toString: () => "4.80" },
     reviewCount: 32,
     deletedAt: null
-  }
+  },
+  _count: { bookingOrders: 73, entityFavorites: 8, entityShareEvents: 6 }
 });
 
 const shopService = () => ({
@@ -117,6 +118,24 @@ const find = async (row: ReturnType<typeof basePost>) => {
 };
 
 describe("Exchange Intelligence booking projection", () => {
+  it("does not expose a privateAll shop card to an unrelated intelligence reader", async () => {
+    const base = basePost();
+    const row = {
+      ...base,
+      intelligence: {
+        ...base.intelligence,
+        service: { ...base.intelligence.service, shop: { ...base.intelligence.service.shop, visibility: "privateAll" } }
+      }
+    };
+
+    const { result } = await find(row);
+
+    expect(result?.publisher).toBeNull();
+    expect(result?.intelligence?.publisherCard).toBeNull();
+    expect(result?.intelligence?.serviceCard).toBeNull();
+    expect(result?.intelligence?.booking.available).toBe(false);
+  });
+
   it("projects an authoritative shop target, public publisher card, and public service card", async () => {
     const { result, findFirst } = await find(basePost());
 
@@ -156,6 +175,9 @@ describe("Exchange Intelligence booking projection", () => {
           isBookable: true,
           ratingAverage: "4.80",
           reviewCount: 32,
+          completedOrderCount: 73,
+          favoriteCount: 8,
+          shareCount: 6,
           address: "港区青山1-1",
           serviceMode: "onsite",
           detailPath: "/profiles/shop/shop0000000011"

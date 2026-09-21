@@ -154,6 +154,9 @@ const intelligencePost = {
       isBookable: true,
       ratingAverage: "4.8",
       reviewCount: 126,
+      completedOrderCount: 73,
+      favoriteCount: 8,
+      shareCount: 6,
       address: "東京都中央区銀座3-4-12",
       serviceMode: "store",
       detailPath: "/profiles/shop/shop0000000061"
@@ -434,7 +437,7 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("￥9,800");
     expect(document.body.textContent).not.toContain("￥12,250");
     expect(document.body.textContent).toContain("90分钟");
-    expect(document.body.querySelector('a[href="/profiles/shop/shop0000000061"]')).not.toBeNull();
+    expect(document.body.querySelector('a[href="/profiles/shop/shop0000000061?sourcePostId=61"]')).not.toBeNull();
     expect(document.body.querySelector('a[href="/services/service0000000701"]')).not.toBeNull();
     expect(document.body.textContent).not.toContain("701");
 
@@ -445,7 +448,7 @@ describe("ExchangePostDetailPage", () => {
   });
 
   it.each(["user", "merchant", "technician"] as const)(
-    "keeps the merchant intelligence detail shop-owned and privacy-safe for %s viewers",
+    "reuses the full shop card without leaking the merchant administrator for %s viewers",
     async (context) => {
       vi.mocked(getExchangePost).mockResolvedValue({
         ...intelligencePost,
@@ -467,9 +470,9 @@ describe("ExchangePostDetailPage", () => {
       expect(shopCard?.textContent).not.toContain("shop0000000061");
       expect(document.body.textContent).not.toContain("LifeDance 管理员");
       expect(document.body.textContent).not.toContain("b0000000001");
-      expect(document.body.textContent).not.toContain("東京都中央区銀座3-4-12");
+      expect(shopCard?.textContent).toContain("東京都中央区銀座3-4-12");
       expect(document.body.innerHTML).not.toContain("/private/admin-avatar.png");
-      expect(document.body.querySelector(`a[href="${context === "user" ? "" : `/${context}`}/profiles/shop/shop0000000061"]`)).not.toBeNull();
+      expect(document.body.querySelector(`a[href="${context === "user" ? "" : `/${context}`}/profiles/shop/shop0000000061?sourcePostId=61"]`)).not.toBeNull();
     }
   );
 

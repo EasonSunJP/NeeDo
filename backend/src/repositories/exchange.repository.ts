@@ -191,6 +191,13 @@ const intelligenceCardMedia = {
 };
 
 const intelligenceShopInclude = {
+  _count: {
+    select: {
+      bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } },
+      entityFavorites: { where: { deletedAt: null } },
+      entityShareEvents: { where: { deletedAt: null } }
+    }
+  },
   publicIdentifier: {
     select: { publicId: true, kind: true, status: true, deletedAt: true }
   },
@@ -1317,7 +1324,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   private mapIntelligence(
     row: ExchangePostRecord,
     status: ExchangePostStatus,
-    now: Date
+    now: Date,
+    ownerView: boolean
   ): ExchangeIntelligencePayload | null {
     const record = row.intelligence;
     if (!record) return null;
@@ -1401,6 +1409,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         row.authorIdentity.isActive &&
         row.authorIdentity.deletedAt === null &&
         this.shopAvailable(service.shop) &&
+        (service.shop.visibility !== "privateAll" || ownerView) &&
         shopPublicId !== null;
       serviceAvailable =
         snapshotValid &&
@@ -1550,6 +1559,9 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       isBookable,
       ratingAverage: rating.ratingAverage,
       reviewCount: rating.reviewCount,
+      completedOrderCount: shop._count.bookingOrders,
+      favoriteCount: shop._count.entityFavorites,
+      shareCount: shop._count.entityShareEvents,
       address: shop.address,
       serviceMode,
       detailPath: `/profiles/shop/${publicId}`
@@ -1761,7 +1773,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       (row.demand?.matchMode === DatabaseExchangeMatchMode.QUICK &&
         Boolean(row.matching) &&
         activeClaimCount < row.matching!.effectiveTargetProviderCount);
-    const intelligence = this.mapIntelligence(row, status, now);
+    const intelligence = this.mapIntelligence(row, status, now, ownerView);
     const publisher =
       row.type === DatabaseExchangePostType.INTELLIGENCE &&
       SHOP_MERCHANT_IDENTITIES.has(row.authorIdentity.type)

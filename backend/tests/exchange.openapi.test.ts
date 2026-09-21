@@ -344,6 +344,9 @@ describe("formal Exchange OpenAPI contract", () => {
 
   it("documents the complete public Intelligence booking and card projection", () => {
     const schemas = document().components.schemas;
+    expect(schemas.ExchangeIntelligenceShopPublisherCard.required).toEqual(
+      expect.arrayContaining(["completedOrderCount", "favoriteCount", "shareCount"])
+    );
     expect(schemas.ExchangeIntelligence.required).toEqual(
       expect.arrayContaining(["booking", "publisherCard", "serviceCard"])
     );

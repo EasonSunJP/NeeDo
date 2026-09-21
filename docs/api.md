@@ -223,6 +223,8 @@ The response keeps the shared success envelope and returns exactly one typed pag
 
 Shop discovery uses the persisted `Shop.visibility` source of truth before pagination and totals. Anonymous reads receive only `public`; the owner can always read its shop; `limited` additionally permits reciprocal active friends; `network` additionally permits active formal customer, booking, technician-affiliation, merchant-membership, business-contact, or introducer relationships for the selected identity. `privateAll` is owner-only. A denied direct read returns the existing not-found envelope, and related service, favorite/share, booking-navigation, availability, and booking-create boundaries apply the same policy. Public customer and technician profile authorities remain independent, but hidden shop data and shop-owned services are omitted from technician projections.
 
+An authenticated reader following a live, published, shop-authored Intelligence card may pass its `sourcePostId` to `GET /api/v1/shops/{id}`. The server verifies that the post is still published, unexpired, and bound to this exact shop before allowing this one detail read for a `limited` shop. This does not change the shop's persisted visibility, discovery, standalone service reads, booking, or engagement permissions. Anonymous readers, another shop's post, withdrawn or expired posts, and `privateAll` shops retain the normal not-found behavior; source-scoped details are not persisted in a public client cache.
+
 The merchant visibility command is scoped to the signed active shop identity and writes the shop row plus its audit record in one database transaction:
 
 | Method | Path | Purpose | Permission |
