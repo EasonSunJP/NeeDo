@@ -1318,10 +1318,10 @@ function StoreTechnicianSelectableCard({
       rankIndex={rankIndex}
       selected={isMerchantEditable ? technicianVisible : availabilityLoading || unavailable ? false : active}
       selectionActiveIcon={isMerchantEditable ? "eye" : "check"}
-      selectionAriaLabel={visibilityPending ? "保存中" : availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}
-      selectionDisabled={availabilityLoading || unavailable || visibilityPending}
-      selectionInactiveIcon={availabilityLoading ? "clock" : unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}
-      selectionPending={availabilityLoading || visibilityPending}
+      selectionAriaLabel={isMerchantEditable ? (visibilityPending ? "保存中" : technicianVisible ? "隐藏技师" : "显示技师") : availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : active ? "已选技师" : "待选技师"}
+      selectionDisabled={isMerchantEditable ? visibilityPending : availabilityLoading || unavailable}
+      selectionInactiveIcon={isMerchantEditable ? "eyeOff" : availabilityLoading ? "clock" : unavailable ? "x" : "plus"}
+      selectionPending={isMerchantEditable ? visibilityPending : availabilityLoading}
       technician={technician}
     />
   );
