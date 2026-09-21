@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
@@ -13,6 +13,7 @@ import { roleBasedTabConfig, technicianNavItems } from "../../components/mobile/
 import { FormalTechnicianOrdersPanel } from "../../components/technician/FormalTechnicianOrdersPanel";
 import { TechnicianDataCenterPanel } from "../../components/technician/TechnicianDataCenterPanel";
 import { Badge } from "../../components/ui/Badge";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
@@ -40,6 +41,7 @@ import { TechnicianServiceCoverField } from "../../features/pricing-mode/Technic
 import { loadEveryTechnicianOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
 import { getTokyoDayWindow, getTokyoSlotParts } from "../user/formal-checkout/checkoutTimeSlots";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn, yen } from "../../lib/utils";
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -123,7 +125,8 @@ function profileDraft(profile: TechnicianSelfProfile) {
     heightCm: profile.heightCm,
     languagesText: profile.languages.join("、"),
     bio: profile.bio ?? "",
-    visibility: profile.visibility
+    visibility: profile.visibility,
+    avatarDataUrl: undefined as string | undefined
   };
 }
 
@@ -424,15 +427,19 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
   walletSummary: WalletSummary;
   onSaved: (profile: TechnicianSelfProfile) => void;
 }) {
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<TechnicianProfileDraft>(() => profileDraft(profile));
   const [privacyConfirmOpen, setPrivacyConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [readingAvatar, setReadingAvatar] = useState(false);
   const [error, setError] = useState("");
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setDraft(profileDraft(profile)), [profile]);
   const saveProfile = async () => {
-    if (saving) return;
+    if (saving || readingAvatar) return;
     setSaving(true);
     setError("");
     try {
@@ -442,7 +449,8 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
         heightCm: draft.heightCm,
         languages: splitList(draft.languagesText),
         bio: draft.bio || null,
-        visibility: draft.visibility
+        visibility: draft.visibility,
+        ...(draft.avatarDataUrl ? { avatarDataUrl: draft.avatarDataUrl } : {})
       };
       const saved = await technicianProfileApi.updateMine(input);
       onSaved(saved);
@@ -455,11 +463,26 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
     }
   };
   const cancelEditing = () => {
-    if (saving) return;
+    if (saving || readingAvatar) return;
     setEditing(false);
     setDraft(profileDraft(profile));
     setPrivacyConfirmOpen(false);
     setError("");
+  };
+  const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setReadingAvatar(true);
+    setError("");
+    try {
+      const avatarDataUrl = await readImageFileAsDataUrl(file);
+      setDraft((current) => ({ ...current, avatarDataUrl }));
+    } catch {
+      setError(t("头像读取失败，请重新选择图片"));
+    } finally {
+      setReadingAvatar(false);
+    }
   };
   const privacyEnabled = draft.visibility !== "public";
   const visibilityLabel = profile.visibility === "public"
@@ -481,11 +504,11 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
         className={cn(
           "absolute right-4 top-4 z-50 shadow-[0_14px_30px_rgba(0,0,0,0.22)]",
           editing ? "border-red-400 bg-red-500 text-white hover:bg-red-600" : surface.metric,
-          saving ? "cursor-not-allowed opacity-60" : undefined
+          saving || readingAvatar ? "cursor-not-allowed opacity-60" : undefined
         )}
         icon={editing ? "close" : "edit"}
         label={editing ? "取消编辑" : "编辑信息卡"}
-        onClick={saving ? undefined : editing ? cancelEditing : () => { setEditing(true); setDraft(profileDraft(profile)); setError(""); }}
+        onClick={saving || readingAvatar ? undefined : editing ? cancelEditing : () => { setEditing(true); setDraft(profileDraft(profile)); setError(""); }}
       />
       {editing ? (
         <section className={cn(surface.shell, "overflow-visible rounded-[28px] border p-4 shadow-[var(--client-shadow)]")}>
@@ -494,6 +517,11 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
             <p className={cn(surface.muted, "mt-1 text-xs font-bold")}>评价标签由正式订单评价生成，不可自行修改。</p>
           </div>
           <div className="mt-4 space-y-3">
+            <div className="flex items-center gap-4">
+              <AvatarImage alt={t("技师头像预览")} className="h-28 w-28 rounded-[24px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))]" src={draft.avatarDataUrl ?? profileAvatarSrc(profile)} />
+              <input accept="image/jpeg,image/png,image/webp" aria-label={t("技师头像")} className="hidden" disabled={saving || readingAvatar} onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
+              <button className={cn(surface.metric, "rounded-[16px] border px-4 py-3 text-sm font-black")} disabled={saving || readingAvatar} onClick={() => avatarInputRef.current?.click()} type="button">{readingAvatar ? t("正在读取头像") : t("更换头像")}</button>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>性别</span><select className="mt-1 w-full bg-transparent text-sm font-black outline-none" onChange={(event) => setDraft((current) => ({ ...current, gender: event.target.value as TechnicianSelfProfile["gender"] }))} value={draft.gender}><option value="female">女性</option><option value="male">男性</option><option value="private">不公开</option></select></label>
               <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>年龄</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, age: parseNullableNumber(event.target.value) }))} value={draft.age ?? ""} /></label>
@@ -530,7 +558,7 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
           panelClassName="pointer-events-auto !rounded-none !border-0 !bg-transparent !p-0 !shadow-none !backdrop-blur-none"
           style={profileSaveBarStyle}
         >
-          <button className="w-full rounded-full bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60" data-testid="technician-profile-save-action" disabled={saving} onClick={() => void saveProfile()} type="button">
+          <button className="w-full rounded-full bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60" data-testid="technician-profile-save-action" disabled={saving || readingAvatar} onClick={() => void saveProfile()} type="button">
             {saving ? "正在保存资料" : "保存并退出编辑模式"}
           </button>
         </StickyBottomBar>
