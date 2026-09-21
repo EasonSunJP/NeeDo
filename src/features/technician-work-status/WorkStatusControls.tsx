@@ -21,14 +21,12 @@ export function WorkStatusControls({
   disabled = false,
   disabledReason,
   serviceOrderId,
-  shopId,
   onChanged,
   onChooseService,
 }: {
   disabled?: boolean;
   disabledReason?: string;
   serviceOrderId?: number;
-  shopId?: number | null;
   onChanged?: () => void;
   onChooseService?: () => void;
 }) {
@@ -67,15 +65,13 @@ export function WorkStatusControls({
       pending.current?.status === status &&
       pending.current.expectedVersion === snapshot.version &&
       Boolean(pending.current.confirmEarlyLeave) === confirmed &&
-      pending.current.reason === (confirmed ? reason.trim() : undefined) &&
-      pending.current.shopId === (shopId || undefined);
+      pending.current.reason === (confirmed ? reason.trim() : undefined);
     const input: WorkStatusMutation = retry
       ? pending.current!
       : {
           status,
           expectedVersion: snapshot.version,
           idempotencyKey: crypto.randomUUID(),
-          ...(shopId ? { shopId } : {}),
           ...(confirmed
             ? { confirmEarlyLeave: true, reason: reason.trim() }
             : {}),
@@ -131,6 +127,11 @@ export function WorkStatusControls({
           {t("schedule")}
         </Link>
       </div>
+      <p className="mt-2 text-xs font-bold text-[color:var(--client-muted)]">
+        {snapshot?.currentShop
+          ? t("currentShop", { shop: snapshot.currentShop.name })
+          : t("noCurrentShop")}
+      </p>
       <div className="mt-3 grid grid-cols-5 gap-2">
         {buttons.map((item) => (
           <button

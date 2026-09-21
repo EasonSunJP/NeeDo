@@ -36,7 +36,7 @@ const event = {
     },
     id: { type: "string" },
     at: { type: "string", format: "date-time" },
-    kind: { type: "string", enum: ["status", "late", "early_leave", "comment", "service"] },
+    kind: { type: "string", enum: ["status", "late", "early_leave", "comment", "service", "shop_switch"] },
     basis: { type: "string", enum: ["shift", "booking"], nullable: true },
     actorName: { type: "string" },
     actorAvatarUrl: { type: "string", nullable: true },
@@ -60,13 +60,23 @@ const event = {
 };
 const snapshot = {
   type: "object",
-  required: ["technicianProfileId", "status", "version", "syncedAt", "month"],
+  required: ["technicianProfileId", "status", "version", "syncedAt", "currentShop", "month"],
   properties: {
     activeOrderId: { type: "integer", nullable: true },
     technicianProfileId: { type: "integer" },
     status,
     version: { type: "integer" },
     syncedAt: nullableDate,
+    currentShop: {
+      type: "object",
+      nullable: true,
+      required: ["id", "publicId", "name"],
+      properties: {
+        id: { type: "integer" },
+        publicId: { type: "string", nullable: true },
+        name: { type: "string" }
+      }
+    },
     month: {
       type: "object",
       properties: {
@@ -179,6 +189,25 @@ for (const base of [
       }
     )
   };
+  if (base.includes("/me")) {
+    workStatusOpenApiPaths[`${base}/current-shop`] = {
+      patch: operation(
+        "Switch the technician's current operating shop without changing any shop status",
+        snapshot,
+        {
+          requestBody: requestBody({
+            type: "object",
+            additionalProperties: false,
+            required: ["shopId", "idempotencyKey"],
+            properties: {
+              shopId: { type: "integer", minimum: 1 },
+              idempotencyKey: { type: "string", minLength: 1, maxLength: 100 }
+            }
+          })
+        }
+      )
+    };
+  }
   workStatusOpenApiPaths[`${base}/comments`] = {
     parameters,
     post: operation("Append audited scoped work record", event, {

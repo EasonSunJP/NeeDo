@@ -22,6 +22,11 @@ const eventInclude = {
   },
   incident: { include: { attendanceAffectedOrders: { where: { deletedAt: null } } } }
 } as const;
+const shopSelect = {
+  id: true,
+  name: true,
+  publicIdentifier: { select: { publicId: true, deletedAt: true } }
+} as const;
 type EventRow = Prisma.TechnicianWorkEventGetPayload<{ include: typeof eventInclude }>;
 export interface Obligation {
   id: number;
@@ -111,9 +116,10 @@ export class WorkStatusSession {
       where: { technicianProfileId: id, deletedAt: null }
     });
   }
-  state(id: number) {
+  state(id: number, shopId: number) {
     return this.db.technicianWorkState.findFirst({
-      where: { technicianProfileId: id, deletedAt: null }
+      where: { technicianProfileId: id, shopId, deletedAt: null },
+      include: { shop: { select: shopSelect } }
     });
   }
   actor(id: number) {
@@ -122,15 +128,56 @@ export class WorkStatusSession {
       select: { username: true, avatarUrl: true }
     });
   }
-  async lock(id: number) {
+  async resolveCurrentShop(id: number, now: Date) {
+    const profile = await this.db.technicianProfile.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        shopId: true,
+        currentOperatingShopId: true,
+        technicianShopAffiliations: {
+          where: {
+            activeKey: { not: null },
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            startsAt: { lte: now },
+            OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+            shop: { status: "published", deletedAt: null }
+          },
+          select: { shopId: true, shop: { select: shopSelect } },
+          orderBy: [{ startsAt: "asc" }, { id: "asc" }]
+        }
+      }
+    });
+    if (!profile) return null;
+    const affiliation =
+      profile.technicianShopAffiliations.find(
+        (item) => item.shopId === profile.currentOperatingShopId
+      ) ??
+      profile.technicianShopAffiliations.find((item) => item.shopId === profile.shopId) ??
+      profile.technicianShopAffiliations[0] ??
+      null;
+    const selectedShopId = affiliation?.shopId ?? null;
+    if (profile.currentOperatingShopId !== selectedShopId) {
+      await this.db.technicianProfile.update({
+        where: { id },
+        data: { currentOperatingShopId: selectedShopId }
+      });
+    }
+    return affiliation?.shop ?? null;
+  }
+  async lock(id: number, shopId?: number, now: Date = new Date()) {
+    const selectedShopId = shopId ?? (await this.resolveCurrentShop(id, now))?.id ?? null;
+    if (selectedShopId === null) return;
     await this.db.technicianWorkState.upsert({
-      where: { technicianProfileId: id },
-      create: { technicianProfileId: id },
+      where: {
+        technicianProfileId_shopId: { technicianProfileId: id, shopId: selectedShopId }
+      },
+      create: { technicianProfileId: id, shopId: selectedShopId },
       update: {}
     });
     // A no-op UPDATE obtains the same row lock used by every command and booking transition.
-    await this.db.technicianWorkState.update({
-      where: { technicianProfileId: id },
+    await this.db.technicianWorkState.updateMany({
+      where: { technicianProfileId: id, shopId: selectedShopId, deletedAt: null },
       data: { version: { increment: 0 } }
     });
   }
@@ -147,12 +194,18 @@ export class WorkStatusSession {
       include: eventInclude
     });
   }
-  async cas(id: number, version: number, status: WorkStatus, at: Date) {
+  async cas(id: number, shopId: number, version: number, status: WorkStatus, at: Date) {
     const result = await this.db.technicianWorkState.updateMany({
-      where: { technicianProfileId: id, version, deletedAt: null },
+      where: { technicianProfileId: id, shopId, version, deletedAt: null },
       data: { status, version: { increment: 1 }, syncedAt: at }
     });
     if (result.count !== 1) throw workError("version_conflict");
+  }
+  setCurrentOperatingShop(id: number, shopId: number) {
+    return this.db.technicianProfile.update({
+      where: { id },
+      data: { currentOperatingShopId: shopId }
+    });
   }
   append(data: Prisma.TechnicianWorkEventUncheckedCreateInput) {
     return this.db.technicianWorkEvent.create({ data, include: eventInclude });
@@ -234,9 +287,14 @@ export class WorkStatusSession {
       select: { at: true, toStatus: true, shopId: true }
     });
   }
-  activeService(id: number) {
+  activeService(id: number, shopId?: number) {
     return this.db.bookingOrder.findFirst({
-      where: { technicianProfileId: id, deletedAt: null, status: "IN_SERVICE" },
+      where: {
+        technicianProfileId: id,
+        ...(shopId === undefined ? {} : { shopId }),
+        deletedAt: null,
+        status: "IN_SERVICE"
+      },
       select: { id: true, shopId: true }
     });
   }
@@ -319,6 +377,14 @@ export class WorkStatusSession {
   }
   async snapshot(scope: WorkScope, now: Date): Promise<WorkStatusSnapshot> {
     const month = monthRangeJst(now);
+    const selectedShop =
+      scope.shopId === undefined
+        ? await this.resolveCurrentShop(scope.technicianProfileId, now)
+        : await this.db.shop.findFirst({
+            where: { id: scope.shopId, deletedAt: null },
+            select: shopSelect
+          });
+    const shopId = selectedShop?.id ?? null;
     const where = {
       technicianProfileId: scope.technicianProfileId,
       deletedAt: null,
@@ -326,18 +392,28 @@ export class WorkStatusSession {
       occurredAt: { gte: month.from, lt: month.to }
     };
     const [state, active, lateCount, earlyLeaveCount] = await Promise.all([
-      this.state(scope.technicianProfileId),
-      this.activeService(scope.technicianProfileId),
+      shopId === null ? null : this.state(scope.technicianProfileId, shopId),
+      shopId === null ? null : this.activeService(scope.technicianProfileId, shopId),
       this.db.technicianAttendanceIncident.count({ where: { ...where, kind: "late" } }),
       this.db.technicianAttendanceIncident.count({ where: { ...where, kind: "early_leave" } })
     ]);
     return {
-      activeOrderId:
-        active && (scope.shopId === undefined || scope.shopId === active.shopId) ? active.id : null,
+      activeOrderId: active?.id ?? null,
       technicianProfileId: scope.technicianProfileId,
       status: active ? "in_service" : ((state?.status ?? "unsynced") as WorkStatus),
       version: state?.version ?? 0,
       syncedAt: state?.syncedAt?.toISOString() ?? null,
+      currentShop:
+        selectedShop
+          ? {
+              id: selectedShop.id,
+              publicId:
+                selectedShop.publicIdentifier?.deletedAt === null
+                  ? selectedShop.publicIdentifier.publicId
+                  : null,
+              name: selectedShop.name
+            }
+          : null,
       month: {
         lateCount,
         earlyLeaveCount,
@@ -354,7 +430,7 @@ export class WorkStatusSession {
     const where: Prisma.TechnicianWorkEventWhereInput = {
       technicianProfileId: scope.technicianProfileId,
       deletedAt: null,
-      ...(scope.shopId ? { OR: [{ shopId: scope.shopId }, { shopId: null, kind: "status" }] } : {}),
+      ...(scope.shopId ? { shopId: scope.shopId } : {}),
       ...(q.kind
         ? { kind: q.kind }
         : q.incidentsOnly
@@ -407,17 +483,13 @@ export class WorkStatusRepository {
       timeout: 30000
     });
   }
-  async orderTechnicianId(orderId: number) {
-    return (
-      (
-        await this.client.bookingOrder.findFirst({
-          where: { id: orderId, deletedAt: null },
-          select: { technicianProfileId: true }
-        })
-      )?.technicianProfileId ?? null
-    );
+  orderTechnician(orderId: number) {
+    return this.client.bookingOrder.findFirst({
+      where: { id: orderId, deletedAt: null },
+      select: { technicianProfileId: true, shopId: true }
+    });
   }
-  async recipients(id: number) {
+  async recipients(id: number, shopId?: number, includeMerchants = true) {
     const now = new Date();
     const profile = await this.client.technicianProfile.findFirst({
       where: { id, deletedAt: null },
@@ -425,6 +497,7 @@ export class WorkStatusRepository {
         userId: true,
         technicianShopAffiliations: {
           where: {
+            ...(shopId === undefined ? {} : { shopId }),
             deletedAt: null,
             workStatus: { in: ["ACTIVE", "ON_LEAVE", "SUSPENDED"] },
             startsAt: { lte: now },
@@ -469,16 +542,24 @@ export class WorkStatusRepository {
             type: { in: ["platform", "platform_admin"] },
             scopeType: { in: ["global", "platform"] }
           },
-          {
-            type: { in: ["merchant", "merchant_owner", "merchant_staff", "business", "b"] },
-            scopeType: "shop",
-            scopeId: { in: shopIds }
-          },
-          {
-            type: { in: ["merchant_organization", "merchant_owner", "owner", "o"] },
-            scopeType: { in: ["merchant_account", "merchant"] },
-            scopeId: { in: accountIds }
-          }
+          ...(includeMerchants
+            ? [
+                {
+                  type: {
+                    in: ["merchant", "merchant_owner", "merchant_staff", "business", "b"]
+                  },
+                  scopeType: "shop" as const,
+                  scopeId: { in: shopIds }
+                },
+                {
+                  type: {
+                    in: ["merchant_organization", "merchant_owner", "owner", "o"]
+                  },
+                  scopeType: { in: ["merchant_account", "merchant"] },
+                  scopeId: { in: accountIds }
+                }
+              ]
+            : [])
         ]
       },
       select: { id: true, userId: true }
@@ -509,7 +590,19 @@ export async function projectWorkStatuses(
     })
   ]);
   const result = new Map<number, WorkStatus>(ids.map((id) => [id, "unsynced"]));
-  for (const state of states) result.set(state.technicianProfileId, state.status as WorkStatus);
+  const priority: Record<WorkStatus, number> = {
+    unsynced: 0,
+    off_duty: 1,
+    resting: 2,
+    traveling: 3,
+    on_duty: 4,
+    in_service: 5
+  };
+  for (const state of states) {
+    const status = state.status as WorkStatus;
+    const current = result.get(state.technicianProfileId) ?? "unsynced";
+    if (priority[status] > priority[current]) result.set(state.technicianProfileId, status);
+  }
   for (const order of active)
     if (order.technicianProfileId) result.set(order.technicianProfileId, "in_service");
   return result;

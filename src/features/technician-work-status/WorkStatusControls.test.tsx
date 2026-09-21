@@ -21,6 +21,7 @@ const snapshot = {
   status: "resting",
   version: 3,
   syncedAt: null,
+  currentShop: { id: 8, publicId: "shop0000000008", name: "Current shop" },
   month: { lateCount: 0, earlyLeaveCount: 0, from: "", to: "" },
 };
 let root: Root, container: HTMLDivElement;
@@ -199,7 +200,7 @@ describe("work status submission", () => {
     await act(async () =>
       root.render(
         <MemoryRouter>
-          <WorkStatusControls shopId={8} />
+          <WorkStatusControls />
         </MemoryRouter>,
       ),
     );
@@ -227,10 +228,37 @@ describe("work status submission", () => {
     expect(workStatusApi.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         reason: "Corrected reason",
-        shopId: 8,
         confirmEarlyLeave: true,
       }),
     );
+  });
+  it("always submits status buttons for the server-authoritative current shop", async () => {
+    vi.mocked(workStatusApi.update).mockResolvedValue({
+      ...snapshot,
+      status: "on_duty",
+      version: 4,
+    } as never);
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <WorkStatusControls />
+        </MemoryRouter>,
+      ),
+    );
+
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('[data-status="on_duty"]')!
+        .click(),
+    );
+
+    expect(workStatusApi.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "on_duty", expectedVersion: 3 }),
+    );
+    expect(workStatusApi.update).toHaveBeenCalledWith(
+      expect.not.objectContaining({ shopId: expect.anything() }),
+    );
+    expect(container.textContent).toContain("Current shop");
   });
   it("submits a real button with current version and only marks success after response", async () => {
     let resolve!: (value: never) => void;

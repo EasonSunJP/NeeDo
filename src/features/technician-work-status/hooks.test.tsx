@@ -16,6 +16,7 @@ it("preserves newer server versions across delayed PATCH and GET responses", asy
     status: "on_duty",
     version: 4,
     syncedAt: null,
+    currentShop: null,
     month: { lateCount: 1, earlyLeaveCount: 0, from: "", to: "" },
   };
   vi.mocked(workStatusApi.snapshot).mockResolvedValue(base);

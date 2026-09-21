@@ -107,11 +107,11 @@ const employeeAffiliationSelect = Prisma.validator<Prisma.TechnicianShopAffiliat
   technicianProfile: {
     select: {
       id: true,
-      workState: { select: { status: true, deletedAt: true } },
+      workStates: { select: { shopId: true, status: true, deletedAt: true } },
       bookingOrders: {
         where: { status: "IN_SERVICE", deletedAt: null },
         take: 1,
-        select: { id: true }
+        select: { id: true, shopId: true }
       },
       displayName: true,
       bio: true,
@@ -756,13 +756,16 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       throw new Error("Active employee affiliation is missing a canonical public identifier");
     }
 
+    const workState = record.technicianProfile.workStates.find(
+      (state) => state.shopId === record.shop.id && !state.deletedAt
+    );
     return {
       technicianProfileId: record.technicianProfile.id,
-      workStatus: record.technicianProfile.bookingOrders?.length
+      workStatus: record.technicianProfile.bookingOrders?.some(
+        (order) => order.shopId === record.shop.id
+      )
         ? "in_service"
-        : ((!record.technicianProfile.workState?.deletedAt
-            ? (record.technicianProfile.workState?.status ?? "unsynced")
-            : "unsynced") as WorkStatus),
+        : ((workState?.status ?? "unsynced") as WorkStatus),
       needoId: technicianIdentifier.publicId,
       displayName: record.technicianProfile.displayName,
       avatarUrl:

@@ -18,6 +18,20 @@ const copy = {
     "매장에 소속된 후 출근 및 기타 근무 상태를 시작할 수 있습니다.",
   ],
   title: ["状态同步", "狀態同步", "勤務状況の共有", "Work status", "근무 상태"],
+  currentShop: [
+    "当前操作店铺：{shop}",
+    "目前操作店鋪：{shop}",
+    "現在の操作店舗：{shop}",
+    "Current operating shop: {shop}",
+    "현재 작업 매장: {shop}",
+  ],
+  noCurrentShop: [
+    "尚未选择当前操作店铺",
+    "尚未選擇目前操作店鋪",
+    "現在の操作店舗が選択されていません",
+    "No current operating shop selected",
+    "현재 작업 매장이 선택되지 않았습니다",
+  ],
   timeline: [
     "工作时间线",
     "工作時間線",
@@ -153,6 +167,7 @@ const copy = {
     "서비스 기록",
   ],
   status: ["状态变更", "狀態變更", "状態変更", "Status changed", "상태 변경"],
+  shop_switch: ["切换操作店铺", "切換操作店鋪", "操作店舗の切替", "Operating shop switched", "작업 매장 전환"],
   changed: [
     "{from} → {to}",
     "{from} → {to}",

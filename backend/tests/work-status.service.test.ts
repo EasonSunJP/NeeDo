@@ -12,6 +12,7 @@ it("rejects early leave without writing any event and exposes confirmation reaso
   const unit = {
     assertScope: jest.fn(),
     lock: jest.fn(),
+    resolveCurrentShop: jest.fn().mockResolvedValue({ id: 4 }),
     receipt: jest.fn().mockResolvedValue(null),
     state: jest.fn().mockResolvedValue({ version: 0, status: "on_duty" }),
     activeService: jest.fn().mockResolvedValue(null),
@@ -63,6 +64,7 @@ it("blocks manual transitions during formal active service", async () => {
   const unit = {
     assertScope: jest.fn(),
     lock: jest.fn(),
+    resolveCurrentShop: jest.fn().mockResolvedValue({ id: 4 }),
     receipt: jest.fn().mockResolvedValue(null),
     state: jest.fn().mockResolvedValue({ version: 2, status: "on_duty" }),
     activeService: jest.fn().mockResolvedValue({ id: 9 }),
@@ -122,6 +124,7 @@ it("rejects starting a work status without an active shop affiliation", async ()
     state: jest.Mock;
   };
   Object.assign(unit, {
+    resolveCurrentShop: jest.fn().mockResolvedValue(null),
     receipt: jest.fn().mockResolvedValue(null),
     state: jest.fn().mockResolvedValue({ version: 0, status: "off_duty" }),
     activeService: jest.fn().mockResolvedValue(null),
@@ -312,6 +315,100 @@ it("publishes identity-scoped work-status invalidation for each authorized porta
       type: "technician.work_status.changed",
       payload: { technicianProfileId: 12 }
     });
+});
+
+describe("shop-scoped work status", () => {
+  it("records every status transition against the current operating shop only", async () => {
+    const unit = {
+      assertScope: jest.fn(),
+      lock: jest.fn(),
+      receipt: jest.fn().mockResolvedValue(null),
+      resolveCurrentShop: jest.fn().mockResolvedValue({ id: 21 }),
+      state: jest.fn().mockResolvedValue({
+        version: 4,
+        status: "resting",
+        shopId: 21
+      }),
+      activeService: jest.fn().mockResolvedValue(null),
+      obligations: jest.fn().mockResolvedValue([]),
+      affiliation: jest.fn().mockResolvedValue({ id: 91 }),
+      epoch: jest.fn().mockResolvedValue({ activatedAt: new Date("2026-09-01T00:00Z") }),
+      history: jest.fn().mockResolvedValue([]),
+      pendingIncidents: jest.fn().mockResolvedValue([]),
+      cas: jest.fn(),
+      snapshot: jest.fn().mockResolvedValue({
+        technicianProfileId: 12,
+        status: "on_duty",
+        version: 5,
+        currentShop: { id: 21, publicId: "shop21", name: "Current shop" }
+      }),
+      append: jest.fn(),
+      audit: jest.fn()
+    };
+    const repository = {
+      transaction: async (fn: (session: unknown) => unknown) => fn(unit)
+    } as unknown as WorkStatusRepository;
+
+    await new WorkStatusService(repository, () => new Date("2026-09-21T01:00Z")).change(
+      actor,
+      { status: "on_duty", expectedVersion: 4, idempotencyKey: "duty-current-shop" }
+    );
+
+    expect(unit.affiliation).toHaveBeenCalledWith(12, 21, new Date("2026-09-21T01:00Z"));
+    expect(unit.state).toHaveBeenCalledWith(12, 21);
+    expect(unit.cas).toHaveBeenCalledWith(12, 21, 4, "on_duty", expect.any(Date));
+    expect(unit.append).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "status", shopId: 21, toStatus: "on_duty" })
+    );
+    expect(unit.audit).toHaveBeenCalledWith(
+      7,
+      12,
+      "technician.work_status.changed",
+      expect.objectContaining({ shopId: 21 })
+    );
+  });
+
+  it("switches operating context without changing either shop's independent status", async () => {
+    const result = {
+      technicianProfileId: 12,
+      status: "off_duty",
+      version: 8,
+      currentShop: { id: 22, publicId: "shop22", name: "New shop" }
+    };
+    const unit = {
+      assertScope: jest.fn(),
+      lock: jest.fn(),
+      receipt: jest.fn().mockResolvedValue(null),
+      affiliation: jest.fn().mockResolvedValue({ id: 92 }),
+      resolveCurrentShop: jest.fn().mockResolvedValue({ id: 21, name: "Old shop" }),
+      setCurrentOperatingShop: jest.fn(),
+      snapshot: jest.fn().mockResolvedValue(result),
+      append: jest.fn(),
+      audit: jest.fn()
+    };
+    const repository = {
+      transaction: async (fn: (session: unknown) => unknown) => fn(unit)
+    } as unknown as WorkStatusRepository;
+
+    await expect(
+      new WorkStatusService(repository).switchCurrentShop(actor, {
+        shopId: 22,
+        idempotencyKey: "switch-while-old-shop-on-duty"
+      })
+    ).resolves.toEqual(result);
+
+    expect(unit.setCurrentOperatingShop).toHaveBeenCalledWith(12, 22);
+    expect(unit.lock).toHaveBeenCalledWith(12, 22, expect.any(Date));
+    expect(unit.append).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "shop_switch", shopId: null })
+    );
+    expect(unit.audit).toHaveBeenCalledWith(
+      7,
+      12,
+      "technician.work_status.shop_switched",
+      expect.objectContaining({ fromShopId: 21, toShopId: 22, targetShopStatus: "off_duty" })
+    );
+  });
 });
 it("resolves saved shift incident against its original boundary after a moved shift", async () => {
   const f = detectorFixture(

@@ -1837,6 +1837,8 @@ model Shop {
   attendanceAffectedOrders TechnicianAttendanceAffectedOrder[]
   workEvents TechnicianWorkEvent[]
   attendanceIncidents TechnicianAttendanceIncident[]
+  technicianWorkStates TechnicianWorkState[]
+  operatingTechnicianProfiles TechnicianProfile[] @relation("TechnicianCurrentOperatingShop")
 
   id                           Int             @id @default(autoincrement())
   shopNo                       String?         @unique @map("shop_no") @db.Char(10)
@@ -2281,12 +2283,13 @@ model TechnicianCompensationProfile {
 }
 
 model TechnicianProfile {
-  workState TechnicianWorkState?
+  workStates TechnicianWorkState[]
   workEvents TechnicianWorkEvent[]
   attendanceIncidents TechnicianAttendanceIncident[]
   id                  Int                      @id @default(autoincrement())
   userId              Int                      @unique @map("user_id")
   shopId              Int?                     @map("shop_id")
+  currentOperatingShopId Int?                  @map("current_operating_shop_id")
   displayName         String                   @map("display_name") @db.VarChar(120)
   bio                 String?                  @db.Text
   city                String                   @db.VarChar(100)
@@ -2316,6 +2319,7 @@ model TechnicianProfile {
 
   user                       User                                 @relation(fields: [userId], references: [id], onDelete: Restrict)
   shop                       Shop?                                @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  currentOperatingShop       Shop?                                @relation("TechnicianCurrentOperatingShop", fields: [currentOperatingShopId], references: [id], onDelete: SetNull)
   services                   Service[]
   technicianServices         TechnicianService[]
   mediaAssets                MediaAsset[]
@@ -2346,6 +2350,7 @@ model TechnicianProfile {
   bookingContactConversations Conversation[]                       @relation("ConversationBusinessContextTechnician")
 
   @@index([shopId])
+  @@index([currentOperatingShopId], map: "technician_profiles_current_operating_shop_id_idx")
   @@index([shopId, employmentType])
   @@index([city])
   @@index([visibility])
@@ -8686,7 +8691,8 @@ model SosCommand {
 
 model TechnicianWorkState {
   id Int @id @default(autoincrement())
-  technicianProfileId Int @unique @map("technician_profile_id")
+  technicianProfileId Int @map("technician_profile_id")
+  shopId Int? @map("shop_id")
   status String @default("unsynced") @db.VarChar(20)
   version Int @default(0)
   syncedAt DateTime? @map("synced_at")
@@ -8694,6 +8700,9 @@ model TechnicianWorkState {
   updatedAt DateTime @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
   technicianProfile TechnicianProfile @relation(fields:[technicianProfileId], references:[id], onDelete:Restrict)
+  shop Shop? @relation(fields:[shopId], references:[id], onDelete:Restrict)
+  @@unique([technicianProfileId, shopId], map: "technician_work_states_profile_shop_key")
+  @@index([shopId], map: "technician_work_states_shop_id_idx")
   @@index([deletedAt])
   @@map("technician_work_states")
 }

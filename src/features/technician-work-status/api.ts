@@ -14,6 +14,7 @@ export type WorkStatusSnapshot = {
   status: WorkStatus;
   version: number;
   syncedAt: string | null;
+  currentShop: { id: number; publicId: string | null; name: string } | null;
   activeOrderId?: number | null;
   month: {
     lateCount: number;
@@ -32,7 +33,7 @@ export type AffectedWorkOrder = {
 export type WorkStatusEvent = {
   id: string;
   at: string;
-  kind: "status" | "late" | "early_leave" | "comment" | "service";
+  kind: "status" | "late" | "early_leave" | "comment" | "service" | "shop_switch";
   basis: "shift" | "booking" | null;
   actorName: string;
   actorAvatarUrl: string | null;
@@ -73,6 +74,10 @@ export type WorkStatusMutation = {
   orderId?: number;
   shopId?: number;
 };
+export type WorkStatusShopSwitch = {
+  shopId: number;
+  idempotencyKey: string;
+};
 export function workStatusBase(target: WorkStatusTarget) {
   return target.scope === "technician"
     ? "/technician-work-status/me"
@@ -85,6 +90,12 @@ export const workStatusApi = {
   update(body: WorkStatusMutation) {
     return httpClient.request<WorkStatusSnapshot>(
       "/technician-work-status/me",
+      { method: "PATCH", body },
+    );
+  },
+  switchCurrentShop(body: WorkStatusShopSwitch) {
+    return httpClient.request<WorkStatusSnapshot>(
+      "/technician-work-status/me/current-shop",
       { method: "PATCH", body },
     );
   },

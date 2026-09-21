@@ -6,12 +6,13 @@ const asClient = (value: unknown): PrismaClient => value as PrismaClient;
 
 describe("technician automation shop-affiliation gates", () => {
   it.each([
-    ["on_duty", true],
-    ["in_service", true],
-    ["off_duty", false]
+    ["on_duty", 77, true],
+    ["in_service", 77, false],
+    ["on_duty", 78, null],
+    ["off_duty", 77, false]
   ] as const)(
-    "projects the formal %s work state to Booking automation online=%s",
-    async (status, expectedOnline) => {
+    "projects the formal %s work state for shop %s to Booking automation online=%s",
+    async (status, stateShopId, expectedOnline) => {
       const startsAt = new Date("2026-09-10T03:00:00.000Z");
       const endsAt = new Date("2026-09-10T04:00:00.000Z");
       const client = {
@@ -43,7 +44,7 @@ describe("technician automation shop-affiliation gates", () => {
               status: "published",
               verifiedAt: new Date("2026-01-01T00:00:00.000Z"),
               deletedAt: null,
-              workState: { status, deletedAt: null },
+              workStates: [{ status, shopId: stateShopId, deletedAt: null }],
               user: { isActive: true, deletedAt: null },
               automationSettings: [
                 {
@@ -162,7 +163,7 @@ describe("technician automation shop-affiliation gates", () => {
         }
       })
     }));
-    expect(query.where.technicianProfile.is).not.toHaveProperty("workState");
+    expect(query.where.technicianProfile.is).not.toHaveProperty("workStates");
   });
 
   it("returns an idempotent replay without issuing a duplicate decision insert", async () => {

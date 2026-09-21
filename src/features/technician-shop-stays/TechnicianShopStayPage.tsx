@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
@@ -6,6 +7,12 @@ import { technicianProfileApi } from "../core-read/technicianProfileApi";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import {
+  workStatusApi,
+  type WorkStatusShopSwitch,
+  type WorkStatusSnapshot,
+} from "../technician-work-status/api";
+import { ApiClientError } from "../../api/httpClient";
 
 const workStatusLabel = {
   active: "合作中",
@@ -26,6 +33,21 @@ export function TechnicianShopStayPage() {
       scope: getAuthenticatedPersistentCacheScope()
     }
   );
+  const workStatus = useCoreReadQuery(
+    () => workStatusApi.snapshot({ scope: "technician" }),
+    [],
+    {
+      key: "technician:work-status:current-shop",
+      scope: getAuthenticatedPersistentCacheScope(),
+    },
+  );
+  const [snapshot, setSnapshot] = useState<WorkStatusSnapshot | null>(null);
+  const [switchingShopId, setSwitchingShopId] = useState<number | null>(null);
+  const [switchError, setSwitchError] = useState("");
+  const pendingSwitch = useRef<WorkStatusShopSwitch | null>(null);
+  useEffect(() => {
+    if (workStatus.data) setSnapshot(workStatus.data);
+  }, [workStatus.data]);
   const returnTo = (
     location.state as { technicianShopStayReturnTo?: unknown } | null
   )?.technicianShopStayReturnTo;
@@ -35,6 +57,36 @@ export function TechnicianShopStayPage() {
       return;
     }
     navigate("/technician/me");
+  };
+  const switchCurrentShop = async (shopId: number) => {
+    if (!snapshot || switchingShopId !== null) return;
+    const input =
+      pendingSwitch.current?.shopId === shopId
+        ? pendingSwitch.current
+        : {
+            shopId,
+            idempotencyKey: crypto.randomUUID(),
+          };
+    pendingSwitch.current = input;
+    setSwitchingShopId(shopId);
+    setSwitchError("");
+    try {
+      const next = await workStatusApi.switchCurrentShop(input);
+      pendingSwitch.current = null;
+      setSnapshot(next);
+    } catch (error) {
+      setSwitchError(t("店铺切换失败，请重试。"));
+      if (error instanceof ApiClientError && error.status === 409) {
+        pendingSwitch.current = null;
+        try {
+          setSnapshot(await workStatusApi.snapshot({ scope: "technician" }));
+        } catch {
+          // Keep the last server-confirmed snapshot while the refresh is unavailable.
+        }
+      }
+    } finally {
+      setSwitchingShopId(null);
+    }
   };
 
   return (
@@ -48,6 +100,11 @@ export function TechnicianShopStayPage() {
         {profile.error ? (
           <section className="rounded-[22px] border border-rose-500/30 bg-rose-500/10 p-4 text-sm font-bold text-rose-600">
             {t("店铺信息暂时无法获取，请稍后重试。")}
+          </section>
+        ) : null}
+        {workStatus.error || switchError ? (
+          <section className="rounded-[22px] border border-rose-500/30 bg-rose-500/10 p-4 text-sm font-bold text-rose-600" role="alert">
+            {switchError || t("操作店铺状态暂时无法获取，请稍后重试。")}
           </section>
         ) : null}
         {!profile.data && !profile.error ? (
@@ -93,7 +150,13 @@ export function TechnicianShopStayPage() {
                 {t("追加")}
               </Link>
             </div>
-            {profile.data.shopAffiliations.map((affiliation, index) => (
+            <p className="rounded-[18px] border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm font-bold text-sky-700">
+              {t("切换只会改变当前操作店铺，不会改变其他店铺的出勤状态。每家店铺都需要单独出勤后才能接单。")}
+            </p>
+            {profile.data.shopAffiliations.map((affiliation) => {
+              const isPrimary = affiliation.shopId === profile.data?.shopId;
+              const isCurrent = affiliation.shopId === snapshot?.currentShop?.id;
+              return (
               <article
                 className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-[var(--client-shadow)]"
                 key={affiliation.id}
@@ -104,9 +167,14 @@ export function TechnicianShopStayPage() {
                       <h3 className="truncate text-base font-black text-[color:var(--client-text)]">
                         {affiliation.name}
                       </h3>
-                      {index === 0 ? (
+                      {isPrimary ? (
                         <span className="rounded-full bg-[color:var(--client-primary-soft)] px-2 py-1 text-[10px] font-black text-[color:var(--client-primary-strong)]">
-                          {t("首家店铺")}
+                          {t("主要展示店铺")}
+                        </span>
+                      ) : null}
+                      {isCurrent ? (
+                        <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[10px] font-black text-emerald-700">
+                          {t("当前操作店铺")}
                         </span>
                       ) : null}
                     </div>
@@ -121,8 +189,26 @@ export function TechnicianShopStayPage() {
                     {t(workStatusLabel[affiliation.workStatus])}
                   </span>
                 </div>
+                {!isCurrent ? (
+                  <button
+                    className="mt-4 min-h-11 w-full rounded-full border border-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-primary-strong)] disabled:cursor-not-allowed disabled:opacity-45"
+                    data-switch-current-shop={affiliation.shopId}
+                    disabled={
+                      !snapshot ||
+                      switchingShopId !== null ||
+                      affiliation.workStatus !== "active"
+                    }
+                    onClick={() => void switchCurrentShop(affiliation.shopId)}
+                    type="button"
+                  >
+                    {switchingShopId === affiliation.shopId
+                      ? t("正在切换…")
+                      : t("切换为当前操作店铺")}
+                  </button>
+                ) : null}
               </article>
-            ))}
+              );
+            })}
             {profile.data.shopAffiliations.length === 0 ? (
               <div className="rounded-[24px] border border-dashed border-[color:var(--client-line)] p-8 text-center text-sm font-bold text-[color:var(--client-muted)]">
                 {t("暂无有效入住店铺")}

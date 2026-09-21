@@ -11,7 +11,8 @@ import {
   workStatusChangeSchema,
   workStatusCommentSchema,
   workStatusIdSchema,
-  workStatusQuerySchema
+  workStatusQuerySchema,
+  workStatusShopSwitchSchema
 } from "../validators/work-status.validator";
 export const WORK_STATUS_ROUTE_PERMISSIONS = {
   technician: { read: "technician-profile:read", write: "technician-profile:write" },
@@ -62,6 +63,14 @@ export function createWorkStatusRoutes(config: AppConfig, dependencies: AppDepen
         createAuthorizeMiddleware(permissions.write),
         validateRequest({ body: workStatusChangeSchema }),
         controller.change
+      );
+    if (portal === "technician")
+      router.patch(
+        `${base}/current-shop`,
+        authenticate(),
+        createAuthorizeMiddleware(permissions.write),
+        validateRequest({ body: workStatusShopSwitchSchema }),
+        controller.switchCurrentShop
       );
   }
   return router;

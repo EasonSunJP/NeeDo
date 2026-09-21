@@ -22,6 +22,17 @@ describe("formal work status API", () => {
       { method: "PATCH", body: input },
     );
   });
+  it("switches the server-authoritative operating shop with idempotency", async () => {
+    const input = {
+      shopId: 72,
+      idempotencyKey: "switch-shop-72",
+    };
+    await workStatusApi.switchCurrentShop(input);
+    expect(httpClient.request).toHaveBeenCalledWith(
+      "/technician-work-status/me/current-shop",
+      { method: "PATCH", body: input },
+    );
+  });
   it("passes date/type/pagination to server and uses merchant scope", async () => {
     const query = {
       page: 2,

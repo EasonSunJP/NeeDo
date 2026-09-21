@@ -7,7 +7,8 @@ import {
   workStatusChangeSchema,
   workStatusCommentSchema,
   workStatusIdSchema,
-  workStatusQuerySchema
+  workStatusQuerySchema,
+  workStatusShopSwitchSchema
 } from "../validators/work-status.validator";
 export class WorkStatusController {
   constructor(
@@ -51,6 +52,20 @@ export class WorkStatusController {
           await this.service.change(
             getAuthenticatedAccess(res),
             workStatusChangeSchema.parse(req.body)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+  switchCurrentShop = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(
+        successResponse(
+          await this.service.switchCurrentShop(
+            getAuthenticatedAccess(res),
+            workStatusShopSwitchSchema.parse(req.body)
           )
         )
       );

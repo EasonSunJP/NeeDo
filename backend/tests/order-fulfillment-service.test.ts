@@ -775,7 +775,7 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
     ...dbOrder,
     serviceSession: session ? { ...session, addOns: [...addOns] } : null
   });
-  const workState={technicianProfileId:702,status:'on_duty',version:0,syncedAt:null as Date|null};
+  const workState={technicianProfileId:702,shopId:dbOrder.shopId,status:'on_duty',version:0,syncedAt:null as Date|null};
   const workEvents:Record<string,unknown>[]=[];
   let rawQueryCount = 0;
   const tx = {
@@ -789,7 +789,7 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
             }
       )
     },
-    technicianWorkState:{upsert:jest.fn(async()=>workState),update:jest.fn(async()=>workState),findFirst:jest.fn(async()=>({...workState})),updateMany:jest.fn(async({where,data}:{where:{version:number};data:{status:string;version:{increment:number};syncedAt:Date}})=>{if(where.version!==workState.version)return {count:0};workState.status=data.status;workState.version+=data.version.increment;workState.syncedAt=data.syncedAt;return {count:1}})},
+    technicianWorkState:{upsert:jest.fn(async()=>workState),update:jest.fn(async()=>workState),findFirst:jest.fn(async()=>({...workState})),updateMany:jest.fn(async({where,data}:{where:{version?:number};data:{status?:string;version:{increment:number};syncedAt?:Date}})=>{if(where.version!==undefined&&where.version!==workState.version)return {count:0};if(data.status)workState.status=data.status;workState.version+=data.version.increment;if(data.syncedAt)workState.syncedAt=data.syncedAt;return {count:1}})},
     technicianWorkEvent:{create:jest.fn(async({data}:{data:Record<string,unknown>})=>{workEvents.push(data);return data})},
     auditLog:{create:jest.fn(async()=>({}))},
     orderFinancial: {

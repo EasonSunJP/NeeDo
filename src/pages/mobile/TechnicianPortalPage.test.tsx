@@ -89,6 +89,9 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(controlsSource).toContain("aria-pressed");
     expect(controlsSource).toContain("expectedVersion");
     expect(controlsSource).toContain("workStatusApi.update");
+    expect(controlsSource).toContain("snapshot.currentShop");
+    expect(controlsSource).not.toContain("shopId,");
+    expect(source).not.toContain("shopId={profile.shopId}");
   });
 
   it("uses persisted work events and comments in the shared timeline", () => {

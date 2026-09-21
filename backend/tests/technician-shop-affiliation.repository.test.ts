@@ -10,6 +10,9 @@ const employeeRecord = (overrides: Record<string, unknown> = {}) => ({
   startsAt,
   endsAt: null,
   technicianProfile: {
+    id: 47,
+    workStates: [{ status: "on_duty", shopId: 16, deletedAt: null }],
+    bookingOrders: [],
     displayName: "斋藤 健太",
     bio: "整体与放松护理",
     city: "东京都涩谷区",
@@ -133,6 +136,30 @@ describe("TechnicianShopAffiliationRepository", () => {
     ).resolves.toMatchObject({
       list: [{ affiliation: { relationshipType: "partner" } }]
     });
+  });
+
+  it("shows only this shop's independent technician state", async () => {
+    const repository = new TechnicianShopAffiliationRepository({
+      technicianShopAffiliation: {
+        findMany: jest.fn().mockResolvedValue([
+          employeeRecord({
+            technicianProfile: {
+              ...employeeRecord().technicianProfile,
+              workStates: [
+                { status: "on_duty", shopId: 17, deletedAt: null },
+                { status: "resting", shopId: 16, deletedAt: null }
+              ],
+              bookingOrders: []
+            }
+          })
+        ]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as unknown as PrismaClient);
+
+    await expect(
+      repository.listCurrentShopEmployees({ shopId: 16, page: 1, pageSize: 20 })
+    ).resolves.toMatchObject({ list: [{ workStatus: "resting" }] });
   });
 
   it("finds details only through the technician identity inside the current shop", async () => {

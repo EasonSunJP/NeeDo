@@ -289,7 +289,20 @@ const createFixture = async () => {
       userId === 9 && profileId === 31 ? dataCenterSource : null
     )
   };
-  const workUnit={assertScope:jest.fn(async()=>undefined),snapshot:jest.fn(async()=>({technicianProfileId:31,status:'unsynced',version:0,syncedAt:null,month:{lateCount:0,earlyLeaveCount:0,from:now.toISOString(),to:new Date(now.getTime()+86400000).toISOString()}}))};
+  const workStates=new Map([[3,{technicianProfileId:31,shopId:3,status:'unsynced',version:0,syncedAt:null as Date|null}]]);
+  let currentOperatingShopId=3;
+  const workUnit={
+    assertScope:jest.fn(async()=>undefined),
+    lock:jest.fn(async()=>undefined),
+    receipt:jest.fn(async()=>null),
+    resolveCurrentShop:jest.fn(async()=>({id:currentOperatingShopId,name:`Shop ${currentOperatingShopId}`,publicIdentifier:{publicId:`shop${currentOperatingShopId}`,deletedAt:null}})),
+    state:jest.fn(async(_id:number,shopId:number)=>workStates.get(shopId)??null),
+    affiliation:jest.fn(async()=>({id:41})),
+    setCurrentOperatingShop:jest.fn(async(_id:number,shopId:number)=>{currentOperatingShopId=shopId;if(!workStates.has(shopId))workStates.set(shopId,{technicianProfileId:31,shopId,status:'unsynced',version:0,syncedAt:null});}),
+    append:jest.fn(async()=>undefined),
+    audit:jest.fn(async()=>undefined),
+    snapshot:jest.fn(async()=>{const state=workStates.get(currentOperatingShopId)!;return {technicianProfileId:31,status:state.status,version:state.version,syncedAt:state.syncedAt?.toISOString()??null,currentShop:{id:currentOperatingShopId,publicId:`shop${currentOperatingShopId}`,name:`Shop ${currentOperatingShopId}`},month:{lateCount:0,earlyLeaveCount:0,from:now.toISOString(),to:new Date(now.getTime()+86400000).toISOString()}};})
+  };
   const workRepository={transaction:async(fn:(unit:unknown)=>unknown)=>fn(workUnit)} as unknown as WorkStatusRepository;
   const profileUpdatedNotificationPort = { notifyProfileUpdated: jest.fn(async () => undefined) };
   const app = createApp(env, {
@@ -508,5 +521,14 @@ describe('work status authenticated API contract',()=>{
   const f=await createFixture(),token=await f.login('technician@example.com');
   for(const body of [{status:'in_service',expectedVersion:0,idempotencyKey:'x'},{status:'on_duty',expectedVersion:0,idempotencyKey:'x',actorId:999}])await request(f.app).patch('/api/v1/technician-work-status/me').set('Authorization',`Bearer ${token}`).send(body).expect(400);
   for(const query of ['from=2026-09-07T00:00:00Z&to=2026-09-06T00:00:00Z','page_size=101','incidentsOnly=nonsense'])await request(f.app).get(`/api/v1/technician-work-status/me/events?${query}`).set('Authorization',`Bearer ${token}`).expect(400);
+ });
+ it('switches operating shop without changing another shop status',async()=>{
+  const f=await createFixture(),token=await f.login('technician@example.com');
+  await request(f.app)
+    .patch('/api/v1/technician-work-status/me/current-shop')
+    .set('Authorization',`Bearer ${token}`)
+    .send({shopId:4,idempotencyKey:'switch-shop-4'})
+    .expect(200)
+    .expect(({body})=>expect(body.data).toMatchObject({status:'unsynced',version:0,currentShop:{id:4}}));
  });
 });

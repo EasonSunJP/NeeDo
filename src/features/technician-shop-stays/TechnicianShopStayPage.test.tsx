@@ -8,6 +8,7 @@ import {
   type TechnicianSelfProfile,
 } from "../core-read/technicianProfileApi";
 import { TechnicianShopStayPage } from "./TechnicianShopStayPage";
+import { workStatusApi } from "../technician-work-status/api";
 
 vi.mock("../../theme/ClientThemeProvider", () => ({
   getClientThemeClassName: () => "",
@@ -16,8 +17,13 @@ vi.mock("../../theme/ClientThemeProvider", () => ({
 vi.mock("../../i18n/I18nProvider", () => ({
   useI18n: () => ({ language: "zh" }),
 }));
+vi.mock("../technician-work-status/api", async (original) => ({
+  ...(await original<typeof import("../technician-work-status/api")>()),
+  workStatusApi: { snapshot: vi.fn(), switchCurrentShop: vi.fn() },
+}));
 
 const profile = {
+  shopId: 71,
   shopAccessStatus: "active",
   shopAffiliations: [
     {
@@ -56,6 +62,101 @@ describe("TechnicianShopStayPage", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    vi.mocked(workStatusApi.snapshot).mockResolvedValue({
+      technicianProfileId: 31,
+      status: "off_duty",
+      version: 4,
+      syncedAt: null,
+      currentShop: {
+        id: 71,
+        publicId: "shop0000000071",
+        name: "第一店铺",
+      },
+      month: { lateCount: 0, earlyLeaveCount: 0, from: "", to: "" },
+    });
+    vi.mocked(workStatusApi.switchCurrentShop).mockReset();
+  });
+
+  it("distinguishes primary and operating shops and switches independently", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
+    vi.mocked(workStatusApi.switchCurrentShop).mockResolvedValue({
+      technicianProfileId: 31,
+      status: "off_duty",
+      version: 5,
+      syncedAt: "2026-09-21T01:00:00.000Z",
+      currentShop: {
+        id: 72,
+        publicId: "shop0000000072",
+        name: "第二店铺",
+      },
+      month: { lateCount: 0, earlyLeaveCount: 0, from: "", to: "" },
+    });
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <TechnicianShopStayPage />
+        </MemoryRouter>,
+      ),
+    );
+    for (
+      let attempt = 0;
+      attempt < 20 && !container.textContent?.includes("当前操作店铺");
+      attempt += 1
+    ) {
+      await act(async () => new Promise((resolve) => window.setTimeout(resolve, 0)));
+    }
+
+    expect(container.textContent).toContain("主要展示店铺");
+    expect(container.textContent).toContain("当前操作店铺");
+    const switchButton = container.querySelector<HTMLButtonElement>(
+      '[data-switch-current-shop="72"]',
+    );
+    expect(switchButton?.disabled).toBe(false);
+    await act(async () => switchButton?.click());
+    expect(workStatusApi.switchCurrentShop).toHaveBeenCalledWith({
+      shopId: 72,
+      idempotencyKey: expect.any(String),
+    });
+    expect(container.textContent).toContain("第二店铺");
+  });
+
+  it("allows switching while another shop remains on duty", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
+    vi.mocked(workStatusApi.snapshot).mockResolvedValue({
+      technicianProfileId: 31,
+      status: "on_duty",
+      version: 7,
+      syncedAt: null,
+      currentShop: {
+        id: 71,
+        publicId: "shop0000000071",
+        name: "第一店铺",
+      },
+      month: { lateCount: 0, earlyLeaveCount: 0, from: "", to: "" },
+    });
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <TechnicianShopStayPage />
+        </MemoryRouter>,
+      ),
+    );
+    for (
+      let attempt = 0;
+      attempt < 20 && !container.textContent?.includes("每家店铺都需要单独出勤");
+      attempt += 1
+    ) {
+      await act(async () => new Promise((resolve) => window.setTimeout(resolve, 0)));
+    }
+    const switchButton = container.querySelector<HTMLButtonElement>(
+      '[data-switch-current-shop="72"]',
+    );
+    expect(switchButton?.disabled).toBe(false);
+    await act(async () => switchButton?.click());
+    expect(workStatusApi.switchCurrentShop).toHaveBeenCalledWith({
+      shopId: 72,
+      idempotencyKey: expect.any(String),
+    });
   });
 
   afterEach(async () => {

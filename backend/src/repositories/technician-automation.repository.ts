@@ -204,7 +204,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
             status: true,
             verifiedAt: true,
             deletedAt: true,
-            workState: true,
+            workStates: { where: { deletedAt: null } },
             user: { select: { isActive: true, deletedAt: true } },
             automationSettings: {
               where: { kind: DatabaseTechnicianAutomationKind.BOOKING, enabled: true, deletedAt: null },
@@ -289,7 +289,9 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           ...(profile.user.isActive && !profile.user.deletedAt ? [] : ["account_disabled"]),
           ...(profile.status === "published" && !profile.deletedAt ? [] : ["technician_unavailable"]),
           ...(profile.verifiedAt ? [] : ["technician_qualification_required"]),
-          ...(this.isOnline(profile.workState?.status ?? null) ? [] : ["technician_not_on_duty"])
+          ...(this.isOnlineAtShop(profile.workStates, order.shopId)
+            ? []
+            : ["technician_not_on_duty"])
         ],
         areaCode: order.serviceLocation
           ? `${order.serviceLocation.admin1RegionCode ?? ""}/${order.serviceLocation.admin2RegionCode ?? ""}`
@@ -320,7 +322,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         serviceMode: order.fulfillmentMode === "home" ? "home" : "store",
         paymentMethod: this.mapPaymentMethod(order.paymentMethod),
         serviceId: order.technicianServiceId ?? order.serviceId ?? 0,
-        technicianOnline: this.isOnline(profile.workState?.status ?? null),
+        technicianOnline: this.isOnlineAtShop(profile.workStates, order.shopId),
         tagsMatch: true
       }
     };
@@ -380,7 +382,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         technicianProfile: {
           include: {
             user: { select: { id: true } },
-            workState: true,
+            workStates: { where: { deletedAt: null } },
             technicianShopAffiliations: {
               where: {
                 workStatus: "ACTIVE",
@@ -506,7 +508,12 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           endsAt: slot.endsAt,
           actualScheduleAvailable: true,
           hasBufferedConflict,
-          hardBlockReasons: [],
+          hardBlockReasons: this.isOnlineAtShop(
+            slot.technicianProfile.workStates,
+            slot.shopId
+          )
+            ? []
+            : ["technician_not_on_duty"],
           areaCode: post.areaLabel,
           distanceKm: null,
           grossAmountJpy: post.demand.budgetMaxJpy,
@@ -526,7 +533,10 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           serviceMode: post.demand.serviceMode === "HOME" ? "home" : "store",
           paymentMethod: "other",
           serviceId,
-          technicianOnline: this.isOnline(slot.technicianProfile.workState?.status ?? null),
+          technicianOnline: this.isOnlineAtShop(
+            slot.technicianProfile.workStates,
+            slot.shopId
+          ),
           tagsMatch: null
         }
       };
@@ -657,8 +667,12 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     return "other";
   }
 
-  private isOnline(status: string | null): boolean | null {
+  private isOnlineAtShop(
+    states: Array<{ shopId: number | null; status: string }>,
+    shopId: number
+  ): boolean | null {
+    const status = states.find((state) => state.shopId === shopId)?.status;
     if (!status || status === "unsynced") return null;
-    return ["on_duty", "in_service", "available", "idle", "working", "online"].includes(status);
+    return status === "on_duty";
   }
 }

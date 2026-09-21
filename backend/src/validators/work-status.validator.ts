@@ -18,6 +18,12 @@ export const workStatusChangeSchema = z
 export const workStatusCommentSchema = z
   .object({ message: z.string().trim().min(1).max(1000), idempotencyKey: key })
   .strict();
+export const workStatusShopSwitchSchema = z
+  .object({
+    shopId: z.number().int().positive().max(PRISMA_INT_MAX),
+    idempotencyKey: key
+  })
+  .strict();
 export const workStatusQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(100000).default(1),
@@ -34,4 +40,5 @@ export const workStatusQuerySchema = z
     message: "Invalid time interval"
   });
 export type WorkStatusChange = z.infer<typeof workStatusChangeSchema>;
+export type WorkStatusShopSwitch = z.infer<typeof workStatusShopSwitchSchema>;
 export type WorkStatusQuery = z.infer<typeof workStatusQuerySchema>;

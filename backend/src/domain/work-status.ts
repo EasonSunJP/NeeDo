@@ -74,6 +74,7 @@ export interface WorkStatusSnapshot {
   status: WorkStatus;
   version: number;
   syncedAt: string | null;
+  currentShop: { id: number; publicId: string | null; name: string } | null;
   month: { lateCount: number; earlyLeaveCount: number; from: string; to: string };
 }
 export interface WorkStatusAffectedOrder {
@@ -87,7 +88,7 @@ export interface WorkStatusEvent {
   affectedOrders: WorkStatusAffectedOrder[];
   id: string;
   at: string;
-  kind: "status" | "late" | "early_leave" | "comment" | "service";
+  kind: "status" | "late" | "early_leave" | "comment" | "service" | "shop_switch";
   basis: "shift" | "booking" | null;
   actorName: string;
   actorAvatarUrl: string | null;

@@ -1,4 +1,4 @@
-import type { WorkStatus } from "./work-status";
+import { workError, type WorkStatus } from "./work-status";
 import type { WorkStatusSession } from "../repositories/work-status.repository";
 // Invoked inside the existing booking transaction; the stored manual state is retained.
 export async function recordBookingWorkTransition(
@@ -14,11 +14,13 @@ export async function recordBookingWorkTransition(
 ) {
   if (!input.technicianProfileId) return;
   const id = input.technicianProfileId;
-  await unit.lock(id);
-  const state = await unit.state(id);
+  await unit.lock(id, input.shopId, input.at);
+  const state = await unit.state(id, input.shopId);
   if (!state) return;
-  const active = await unit.activeService(id);
-  await unit.cas(id, state.version, state.status as WorkStatus, input.at);
+  if (input.started && (state.status === "off_duty" || state.status === "unsynced"))
+    throw workError("off_duty_required");
+  const active = await unit.activeService(id, input.shopId);
+  await unit.cas(id, input.shopId, state.version, state.status as WorkStatus, input.at);
   await unit.append({
     technicianProfileId: id,
     shopId: input.shopId,

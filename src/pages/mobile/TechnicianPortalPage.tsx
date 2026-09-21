@@ -329,7 +329,6 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
           disabled={profile.shopAccessStatus === "requires_shop"}
           serviceOrderId={(todayOrders.find(order => order.status === "inService") ?? todayOrders.find(order => order.status === "confirmed"))?.id}
           onChooseService={() => setTasksPanelTab("orders")}
-          shopId={profile.shopId}
           onChanged={() => setStatusRevision(value => value + 1)}
         />
 

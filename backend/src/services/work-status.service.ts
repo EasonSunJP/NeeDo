@@ -14,7 +14,11 @@ import {
   type Obligation
 } from "../repositories/work-status.repository";
 import type { AuthenticatedAccessContext } from "./auth.service";
-import type { WorkStatusChange, WorkStatusQuery } from "../validators/work-status.validator";
+import type {
+  WorkStatusChange,
+  WorkStatusQuery,
+  WorkStatusShopSwitch
+} from "../validators/work-status.validator";
 
 const digest = (input: unknown) => createHash("sha256").update(JSON.stringify(input)).digest("hex");
 const present = (status: string | null) =>
@@ -30,6 +34,10 @@ export class WorkStatusService {
       now = this.clock();
     return this.repository.transaction(async (unit) => {
       await unit.assertScope(scope, now);
+      if (portal === "technician") {
+        const shopId = (await unit.resolveCurrentShop(scope.technicianProfileId, now))?.id;
+        if (shopId) await unit.lock(scope.technicianProfileId, shopId, now);
+      }
       return unit.snapshot(scope, now);
     });
   }
@@ -56,21 +64,29 @@ export class WorkStatusService {
     const result = await this.repository.transaction(async (unit) => {
       const now = this.clock();
       await unit.assertScope(scope, now);
-      await unit.lock(scope.technicianProfileId);
+      const shop = await unit.resolveCurrentShop(scope.technicianProfileId, now);
+      if (!shop) throw workError("shop_required", 403);
+      const shopId = shop.id;
+      if (input.shopId !== undefined && input.shopId !== shopId) throw workError("shop_conflict");
+      await unit.lock(scope.technicianProfileId, shopId, now);
       const replay = await unit.receipt(commandKey);
       if (replay) {
         if (replay.commandHash !== hash) throw workError("idempotency_conflict");
         return replay.result as unknown as WorkStatusSnapshot;
       }
-      const state = await unit.state(scope.technicianProfileId);
+      const state = await unit.state(scope.technicianProfileId, shopId);
       if ((state?.version ?? 0) !== input.expectedVersion) throw workError("version_conflict");
-      if (await unit.activeService(scope.technicianProfileId))
+      if (await unit.activeService(scope.technicianProfileId, shopId))
         throw workError("active_service_conflict");
-      const obligations = await unit.obligations(
+      const allObligations = await unit.obligations(
         scope.technicianProfileId,
         now,
         new Date(now.getTime() + 1)
       );
+      const obligations =
+        shopId === null
+          ? allObligations
+          : allObligations.filter((obligation) => obligation.shopId === shopId);
       const affected =
         input.status === "off_duty"
           ? obligations.filter(
@@ -86,6 +102,7 @@ export class WorkStatusService {
       if (shiftEnd > now) {
         for (const o of await unit.obligations(scope.technicianProfileId, now, shiftEnd))
           if (
+            (shopId === null || o.shopId === shopId) &&
             o.basis === "booking" &&
             o.status === "CONFIRMED" &&
             !affected.some((a) => a.basis === o.basis && a.id === o.id)
@@ -104,26 +121,16 @@ export class WorkStatusService {
               endsAt: o.endsAt.toISOString()
             }))
         });
-      let shopId = input.shopId ?? null;
       if (input.orderId) {
         const order = await unit.order(input.orderId, scope.technicianProfileId);
         if (!order) throw workError("order_forbidden", 403);
-        if (shopId !== null && shopId !== order.shopId) throw workError("shop_conflict");
-        shopId = order.shopId;
-      }
-      if (shopId !== null && !(await unit.affiliation(scope.technicianProfileId, shopId, now)))
-        throw workError("shop_forbidden", 403);
-      if (shopId === null) {
-        const shops = [...new Set(obligations.map((o) => o.shopId))];
-        if (shops.length === 1) shopId = shops[0]!;
+        if (shopId !== order.shopId) throw workError("shop_conflict");
       }
       if (
-        shopId === null &&
         present(input.status) &&
-        !(await unit.hasActiveAffiliation(scope.technicianProfileId, now))
-      ) {
-        throw workError("shop_required", 403);
-      }
+        !(await unit.affiliation(scope.technicianProfileId, shopId, now))
+      )
+        throw workError("shop_forbidden", 403);
       const epoch = await unit.epoch(now);
       for (const obligation of affected.filter(
         (o) =>
@@ -158,7 +165,7 @@ export class WorkStatusService {
         toStatus: input.status,
         shopId
       });
-      await unit.cas(scope.technicianProfileId, input.expectedVersion, input.status, now);
+      await unit.cas(scope.technicianProfileId, shopId, input.expectedVersion, input.status, now);
       const result = await unit.snapshot(scope, now);
       await unit.append({
         technicianProfileId: scope.technicianProfileId,
@@ -183,7 +190,57 @@ export class WorkStatusService {
       });
       return result;
     });
-    await this.notifyTechnician(scope.technicianProfileId);
+    await this.notifyTechnician(scope.technicianProfileId, result.currentShop?.id);
+    return result;
+  }
+  async switchCurrentShop(
+    actor: AuthenticatedAccessContext,
+    input: WorkStatusShopSwitch
+  ): Promise<WorkStatusSnapshot> {
+    const scope = workStatusScope(actor, "technician"),
+      commandKey = `shop:${actor.currentIdentityId}:${input.idempotencyKey}`,
+      hash = digest(input);
+    const result = await this.repository.transaction(async (unit) => {
+      const now = this.clock();
+      await unit.assertScope(scope, now);
+      const replay = await unit.receipt(commandKey);
+      if (replay) {
+        if (replay.commandHash !== hash) throw workError("idempotency_conflict");
+        return replay.result as unknown as WorkStatusSnapshot;
+      }
+      if (!(await unit.affiliation(scope.technicianProfileId, input.shopId, now)))
+        throw workError("shop_forbidden", 403);
+      const previousShop = await unit.resolveCurrentShop(scope.technicianProfileId, now);
+      await unit.setCurrentOperatingShop(scope.technicianProfileId, input.shopId);
+      await unit.lock(scope.technicianProfileId, input.shopId, now);
+      const snapshot = await unit.snapshot(scope, now);
+      await unit.append({
+        technicianProfileId: scope.technicianProfileId,
+        shopId: null,
+        actorId: actor.userId,
+        kind: "shop_switch",
+        fromStatus: null,
+        toStatus: null,
+        at: now,
+        actualAt: now,
+        reason: snapshot.currentShop?.name ?? null,
+        commandKey,
+        commandHash: hash,
+        result: snapshot as unknown as Prisma.InputJsonValue
+      });
+      await unit.audit(
+        actor.userId,
+        scope.technicianProfileId,
+        "technician.work_status.shop_switched",
+        {
+          fromShopId: previousShop?.id ?? null,
+          toShopId: input.shopId,
+          targetShopStatus: snapshot.status
+        }
+      );
+      return snapshot;
+    });
+    await this.notifyTechnician(scope.technicianProfileId, undefined, false);
     return result;
   }
   async comment(
@@ -199,15 +256,17 @@ export class WorkStatusService {
     const result = await this.repository.transaction(async (unit) => {
       const now = this.clock();
       await unit.assertScope(scope, now);
-      await unit.lock(scope.technicianProfileId);
+      const shopId =
+        scope.shopId ?? (await unit.resolveCurrentShop(scope.technicianProfileId, now))?.id ?? null;
+      if (shopId) await unit.lock(scope.technicianProfileId, shopId, now);
       const replay = await unit.receipt(key);
       if (replay) {
         if (replay.commandHash !== hash) throw workError("idempotency_conflict");
-        return mapWorkEvent(replay, scope);
+        return { event: mapWorkEvent(replay, scope), shopId: replay.shopId };
       }
       const row = await unit.append({
         technicianProfileId: scope.technicianProfileId,
-        shopId: scope.shopId ?? null,
+        shopId,
         kind: "comment",
         actorId: actor.userId,
         at: now,
@@ -217,12 +276,12 @@ export class WorkStatusService {
       });
       await unit.audit(actor.userId, scope.technicianProfileId, "technician.work_status.comment", {
         eventId: row.id,
-        shopId: scope.shopId ?? null
+        shopId
       });
-      return mapWorkEvent(row, scope);
+      return { event: mapWorkEvent(row, scope), shopId };
     });
-    await this.notifyTechnician(scope.technicianProfileId);
-    return result;
+    await this.notifyTechnician(scope.technicianProfileId, result.shopId ?? undefined);
+    return result.event;
   }
   async inspectTechnician(id: number) {
     const changed = await this.repository.transaction(async (unit) => {
@@ -243,17 +302,18 @@ export class WorkStatusService {
   }
   async notifyOrder(orderId: number) {
     try {
-      const id = await this.repository.orderTechnicianId(orderId);
-      if (id) await this.notifyTechnician(id);
+      const order = await this.repository.orderTechnician(orderId);
+      if (order?.technicianProfileId)
+        await this.notifyTechnician(order.technicianProfileId, order.shopId);
     } catch {
       return;
     }
   }
-  async notifyTechnician(id: number) {
+  async notifyTechnician(id: number, shopId?: number, includeMerchants = true) {
     if (!this.gateway) return;
     // SSE is an invalidation hint; committed facts are recovered on reconnect and re-entry.
     try {
-      for (const recipient of await this.repository.recipients(id))
+      for (const recipient of await this.repository.recipients(id, shopId, includeMerchants))
         this.gateway.publish({
           id: randomUUID(),
           type: "technician.work_status.changed",

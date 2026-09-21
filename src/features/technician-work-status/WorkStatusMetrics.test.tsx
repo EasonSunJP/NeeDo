@@ -20,6 +20,7 @@ beforeEach(() => {
     status: "on_duty",
     version: 2,
     syncedAt: null,
+    currentShop: null,
     month: { lateCount: 12, earlyLeaveCount: 3, from: "", to: "" },
   });
   vi.mocked(workStatusApi.events)
