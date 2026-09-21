@@ -485,7 +485,8 @@ describe("ExchangePostRepository", () => {
     const shopFindFirst = jest.fn(async () => ({ id: 81, status: "published" }));
     const repository = new ExchangePostRepository({
       userIdentity: { findFirst: identityFindFirst },
-      shop: { findFirst: shopFindFirst }
+      shop: { findFirst: shopFindFirst },
+      merchantIdentityProfile: { findFirst: jest.fn(async () => null) }
     } as never);
 
     await expect(
@@ -514,6 +515,48 @@ describe("ExchangePostRepository", () => {
       where: { id: 81, status: "published", deletedAt: null },
       select: { id: true, status: true }
     });
+  });
+
+  it("resolves a technician comment author avatar from that technician profile, not the account", async () => {
+    const repository = new ExchangePostRepository({
+      userIdentity: { findFirst: jest.fn(async () => ({
+        id: 19, userId: 7, type: "technician", scopeType: "technician_profile", scopeId: 81,
+        displayName: "Eason", publicIdentifier: { publicId: "s0000000001", status: "ACTIVE", deletedAt: null },
+        user: { username: "customer", avatarUrl: "https://example.test/customer.jpg", needoId: "u0000000001", isTestAccount: false, customerProfile: null }
+      })) },
+      technicianProfile: { findFirst: jest.fn(async () => ({ id: 81 })) },
+      mediaAsset: { findFirst: jest.fn(async () => ({ url: "https://example.test/technician.jpg" })) }
+    } as never);
+
+    const actor = await repository.resolveActor({ userId: 7, identityId: 19, identityType: "technician", scopeType: "technician_profile", scopeId: 81, publicId: "s0000000001" });
+    expect(actor).toMatchObject({ publicId: "s0000000001", displayName: "Eason", avatarUrl: "https://example.test/technician.jpg" });
+  });
+
+  it("resolves the merchant identity avatar without borrowing the account avatar", async () => {
+    const repository = new ExchangePostRepository({
+      userIdentity: { findFirst: jest.fn(async () => ({
+        id: 71, userId: 7, type: "merchant_owner", scopeType: "shop", scopeId: 81,
+        displayName: "Merchant Eason", publicIdentifier: { publicId: "m0000000001", status: "ACTIVE", deletedAt: null },
+        user: { username: "customer", avatarUrl: "https://example.test/customer.jpg", needoId: "u0000000001", isTestAccount: false, customerProfile: null }
+      })) },
+      shop: { findFirst: jest.fn(async () => ({ id: 81, status: "published" })) },
+      merchantIdentityProfile: { findFirst: jest.fn(async () => ({ id: 91 })) },
+      mediaAsset: { findFirst: jest.fn(async () => ({ url: "https://example.test/merchant.jpg" })) }
+    } as never);
+
+    const actor = await repository.resolveActor({ userId: 7, identityId: 71, identityType: "merchant_owner", scopeType: "shop", scopeId: 81, publicId: "m0000000001" });
+    expect(actor).toMatchObject({ publicId: "m0000000001", displayName: "Merchant Eason", avatarUrl: "https://example.test/merchant.jpg" });
+  });
+
+  it("does not fall back to the account avatar for a non-personal identity without a role avatar", async () => {
+    const repository = new ExchangePostRepository({
+      userIdentity: { findFirst: jest.fn(async () => ({
+        id: 25, userId: 7, type: "merchant_organization", scopeType: "shop", scopeId: 81,
+        displayName: "Shop", publicIdentifier: { publicId: "b0000000001", status: "ACTIVE", deletedAt: null },
+        user: { username: "customer", avatarUrl: "https://example.test/customer.jpg", needoId: "u0000000001", isTestAccount: false, customerProfile: null }
+      })) }
+    } as never);
+    await expect(repository.resolveActor({ userId: 7, identityId: 25, identityType: "merchant_organization", scopeType: "shop", scopeId: 81, publicId: "b0000000001" })).resolves.toMatchObject({ avatarUrl: null });
   });
 
   it("rejects deleted customer profiles and inactive shop scopes", async () => {
@@ -1150,13 +1193,16 @@ describe("ExchangePostRepository", () => {
       authorIdentityType: "technician",
       authorDisplayName: "田中 彩",
       authorAvatarUrl: null,
+      authorIdentity: { id: 19, userId: 9, type: "technician", scopeType: "technician_profile", scopeId: 81, isActive: true, deletedAt: null, merchantIdentityProfile: null, user: { technicianProfile: { id: 81, deletedAt: null } } },
       content: "時間の調整は可能ですか？",
       createdAt: new Date("2026-08-30T02:30:00.000Z")
     };
     const findMany = jest.fn(async () => [commentRow]);
     const count = jest.fn(async () => 4);
+    const avatarFindMany = jest.fn(async () => [{ technicianProfileId: 81, entityType: "technician_profile", entityId: 81, url: "https://example.test/technician.jpg" }]);
     const repository = new ExchangePostRepository({
-      exchangeComment: { findMany, count }
+      exchangeComment: { findMany, count },
+      mediaAsset: { findMany: avatarFindMany }
     } as never);
 
     const result = await repository.listComments(41, { page: 1, pageSize: 10 });
@@ -1170,8 +1216,9 @@ describe("ExchangePostRepository", () => {
             publicId: "NT87654321",
             identityType: "technician",
             displayName: "田中 彩",
-            avatarUrl: null
+            avatarUrl: "https://example.test/technician.jpg"
           },
+          authorProfilePath: "/moments/users/9?identityId=19",
           content: "時間の調整は可能ですか？",
           createdAt: "2026-08-30T02:30:00.000Z"
         }
@@ -1184,11 +1231,52 @@ describe("ExchangePostRepository", () => {
       where: { postId: 41, deletedAt: null },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       skip: 0,
-      take: 10
+      take: 10,
+      include: expect.any(Object)
     });
     expect(count).toHaveBeenCalledWith({ where: { postId: 41, deletedAt: null } });
     expect(JSON.stringify(result)).not.toContain("authorUserId");
     expect(JSON.stringify(result)).not.toContain("authorIdentityId");
+  });
+
+  it("does not show another role's persisted avatar for an archived technician comment", async () => {
+    const repository = new ExchangePostRepository({
+      exchangeComment: {
+        findMany: jest.fn(async () => [{ id: 302, postId: 41, authorUserId: 9, authorIdentityId: 19, authorPublicId: "s0000000001", authorIdentityType: "technician", authorDisplayName: "Eason", authorAvatarUrl: "https://example.test/customer.jpg", content: "旧评论", createdAt: now, authorIdentity: { id: 19, userId: 9, type: "technician", scopeType: "technician_profile", scopeId: 81, isActive: false, deletedAt: now, merchantIdentityProfile: null, user: { technicianProfile: null } } }]),
+        count: jest.fn(async () => 1)
+      }
+    } as never);
+    const result = await repository.listComments(41, { page: 1, pageSize: 20 });
+    expect(result.list[0]).toMatchObject({ author: { avatarUrl: null }, authorProfilePath: null });
+  });
+
+  it("projects a historical merchant comment from its exact merchant identity", async () => {
+    const repository = new ExchangePostRepository({
+      exchangeComment: {
+        findMany: jest.fn(async () => [{ id: 303, postId: 41, authorUserId: 9, authorIdentityId: 71, authorPublicId: "m0000000001", authorIdentityType: "merchant_owner", authorDisplayName: "Merchant Eason", authorAvatarUrl: "https://example.test/customer.jpg", content: "商户评论", createdAt: now, authorIdentity: { id: 71, userId: 9, type: "merchant_owner", scopeType: "shop", scopeId: 81, isActive: true, deletedAt: null, merchantIdentityProfile: { id: 91, deletedAt: null }, user: { technicianProfile: null } } }]),
+        count: jest.fn(async () => 1)
+      },
+      mediaAsset: { findMany: jest.fn(async () => [{ entityType: "merchant_identity_profile", entityId: 91, ownerIdentityId: 71, ownerUserId: 9, url: "https://example.test/merchant.jpg" }]) }
+    } as never);
+    const result = await repository.listComments(41, { page: 1, pageSize: 20 });
+    expect(result.list[0]).toMatchObject({ author: { publicId: "m0000000001", avatarUrl: "https://example.test/merchant.jpg" }, authorProfilePath: "/moments/users/9?identityId=71" });
+  });
+
+  it("persists and returns the resolved technician identity snapshot on comment creation", async () => {
+    const create = jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 304, ...data }));
+    const transaction = {
+      exchangeComment: { findUnique: jest.fn(async () => null), create },
+      exchangePost: { findFirst: jest.fn(async () => ({ id: 41 })) },
+      auditLog: { create: jest.fn(async () => ({})) }
+    };
+    const repository = new ExchangePostRepository({ $transaction: (run: (client: typeof transaction) => Promise<unknown>) => run(transaction) } as never);
+    const result = await repository.createComment({
+      actor: { userId: 9, identityId: 19, identityType: "technician", scopeType: "technician_profile", scopeId: 81, publicId: "s0000000001", displayName: "Eason", avatarUrl: "https://example.test/technician.jpg", isTestAccount: false, customerMembership: null, shopScope: null },
+      postId: 41, input: { content: "可调整时间" }, idempotencyKey: "comment-identity-304", now,
+      audit: { actorUserId: 9, actorIdentityId: 19, action: "exchange.post.comment", targetType: "exchange_post", targetId: 41 } as never
+    });
+    expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ authorUserId: 9, authorIdentityId: 19, authorPublicId: "s0000000001", authorDisplayName: "Eason", authorAvatarUrl: "https://example.test/technician.jpg" }) });
+    expect(result).toMatchObject({ kind: "success", value: { author: { publicId: "s0000000001", avatarUrl: "https://example.test/technician.jpg" }, authorProfilePath: "/moments/users/9?identityId=19" } });
   });
 
   it("exposes transaction-bound publication primitives with persisted fingerprint and audit", async () => {

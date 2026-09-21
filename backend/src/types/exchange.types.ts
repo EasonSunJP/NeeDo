@@ -200,6 +200,7 @@ export interface ExchangeCommentPayload {
   id: number;
   postId: number;
   author: ExchangeActorPayload;
+  authorProfilePath?: string | null;
   content: string;
   createdAt: string;
 }

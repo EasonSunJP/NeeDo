@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { useI18n } from "../../i18n/I18nProvider";
+import type { MessageCenterContext } from "../../lib/messageCenter";
 import { shareContent } from "../../lib/share";
 import {
   createExchangeComment,
@@ -15,11 +17,13 @@ import type { ExchangeComment, ExchangeInteractionCounts, ExchangePost, Exchange
 export function ExchangeInteractions({
   post,
   onCountsChange,
+  context = "user",
   showActionBar = true,
   variant = "default"
 }: {
   post: ExchangePost;
   onCountsChange: (counts: ExchangeInteractionCounts, viewer: Pick<ExchangeViewerState, "liked">) => void;
+  context?: MessageCenterContext;
   showActionBar?: boolean;
   variant?: "default" | "detail";
 }) {
@@ -205,27 +209,30 @@ export function ExchangeInteractions({
           {loadingComments && comments.length === 0 ? <p className="text-sm font-bold text-[color:var(--client-muted)]">{t("loadingComments")}</p> : null}
           {commentLoadError && comments.length === 0 ? <p className="text-sm font-bold text-[color:var(--client-accent)]">{t("commentsFailed")}</p> : null}
           {!loadingComments && !commentLoadError && comments.length === 0 ? <p className="text-sm font-bold text-[color:var(--client-muted)]">{t("emptyComments")}</p> : null}
-          {comments.map((comment) => (
-            <article className="rounded-2xl bg-[color:var(--client-bg-soft)] p-4" data-no-i18n="true" key={comment.id}>
-              <div className="flex items-start gap-3">
-                {comment.author.avatarUrl ? (
-                  <AvatarImage alt={comment.author.displayName} className="h-9 w-9 shrink-0 rounded-xl object-cover" src={comment.author.avatarUrl} />
-                ) : (
-                  <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[color:var(--client-primary-soft)] text-xs font-black text-[color:var(--client-primary)]">{comment.author.displayName.slice(0, 1)}</span>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-[color:var(--client-text)]">{comment.author.displayName}</p>
-                      <p className="truncate font-mono text-[10px] font-bold text-[color:var(--client-muted)]">{comment.author.publicId}</p>
-                    </div>
-                    <time className="shrink-0 text-[10px] font-bold text-[color:var(--client-muted)]">{new Date(comment.createdAt).toLocaleString()}</time>
-                  </div>
-                  <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-6 text-[color:var(--client-text)]">{comment.content}</p>
+          {comments.map((comment) => {
+            const author = <>
+              {comment.author.avatarUrl ? (
+                <AvatarImage alt={comment.author.displayName} className="h-9 w-9 shrink-0 rounded-xl object-cover" src={comment.author.avatarUrl} />
+              ) : (
+                <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[color:var(--client-primary-soft)] text-xs font-black text-[color:var(--client-primary)]">{comment.author.displayName.slice(0, 1)}</span>
+              )}
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-black text-[color:var(--client-text)]">{comment.author.displayName}</span>
+                <span className="block truncate font-mono text-[10px] font-bold text-[color:var(--client-muted)]">{comment.author.publicId}</span>
+              </span>
+            </>;
+            return (
+              <article className="rounded-2xl bg-[color:var(--client-bg-soft)] p-4" data-no-i18n="true" key={comment.id}>
+                <div className="flex items-start justify-between gap-3">
+                  {comment.authorProfilePath ? (
+                    <Link className="flex min-w-0 flex-1 items-center gap-3" to={`${context === "user" ? "" : `/${context}`}${comment.authorProfilePath}`}>{author}</Link>
+                  ) : <div className="flex min-w-0 flex-1 items-center gap-3">{author}</div>}
+                  <time className="shrink-0 text-[10px] font-bold text-[color:var(--client-muted)]">{new Date(comment.createdAt).toLocaleString()}</time>
                 </div>
-              </div>
-            </article>
-          ))}
+                <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-6 text-[color:var(--client-text)]">{comment.content}</p>
+              </article>
+            );
+          })}
         </div>
 
         {comments.length < commentTotal ? (

@@ -639,7 +639,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
           </div>
         </section>
 
-        <ExchangeInteractions onCountsChange={updateCounts} post={post} showActionBar={false} variant="detail" />
+        <ExchangeInteractions context={context} onCountsChange={updateCounts} post={post} showActionBar={false} variant="detail" />
       </main>
 
       <ClientEdgeMask className="z-10" edge="bottom" mode="absolute" />
