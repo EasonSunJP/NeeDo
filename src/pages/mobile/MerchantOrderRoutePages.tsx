@@ -1,4 +1,7 @@
-import { buildFormalOrderPersonCard } from "../../features/booking/formalOrderPersonCard";
+import {
+  buildFormalOrderPersonCard,
+  translateAssignedTechnicianUnavailable
+} from "../../features/booking/formalOrderPersonCard";
 export { buildFormalOrderPersonCard } from "../../features/booking/formalOrderPersonCard";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
@@ -1282,7 +1285,7 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
                 <p className="text-sm font-black">{order.technicianName ?? "尚未指定担当技师"}</p>
                 <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">
                   {order.technicianProfileId
-                    ? "担当技师已确认，公开资料暂不可用。"
+                    ? translateAssignedTechnicianUnavailable(language)
                     : "店铺确认担当后将在此显示正式技师资料。"}
                 </p>
               </section>

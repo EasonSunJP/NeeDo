@@ -115,7 +115,12 @@ vi.mock("../../shared/profile-card", () => ({
   getScopedTechnicianDynamicPath: (scope: string, technician: { id: string; systemId?: string }) => `/${scope}/profiles/technician/${technician.systemId ?? technician.id}`
 }));
 
-import { buildFormalOrderPersonCard, MerchantOrderChangeRoutePage, MerchantOrderDetailRoutePage } from "./MerchantOrderRoutePages";
+import {
+  buildFormalOrderPersonCard,
+  MerchantOrderChangeRoutePage,
+  MerchantOrderDetailRoutePage
+} from "./MerchantOrderRoutePages";
+import { translateAssignedTechnicianUnavailable } from "../../features/booking/formalOrderPersonCard";
 
 const formalOrderDetailSource = merchantOrderRouteSource.slice(
   merchantOrderRouteSource.indexOf("function FormalMerchantOrderDetailContent"),
@@ -189,6 +194,13 @@ describe("formal merchant order detail layout", () => {
     expect(formalOrderDetailSource).toContain("pb-[calc(env(safe-area-inset-bottom,0px)+10rem)]");
     expect(formalOrderDetailSource).toContain("<MobileBottomActionBar");
     expect(formalOrderDetailSource).not.toContain("<PageScaffold");
+  });
+
+  it("localizes the assigned-but-private technician state for every supported non-source locale", () => {
+    expect(translateAssignedTechnicianUnavailable("zh-Hant")).toBe("已確認擔當技師，公開資料暫時無法使用。");
+    expect(translateAssignedTechnicianUnavailable("ja")).toBe("担当者は確定していますが、公開プロフィールは現在利用できません。");
+    expect(translateAssignedTechnicianUnavailable("en")).toBe("The assigned technician is confirmed, but their public profile is currently unavailable.");
+    expect(translateAssignedTechnicianUnavailable("ko")).toBe("담당 기사는 확정되었지만 공개 프로필을 현재 이용할 수 없습니다.");
   });
 });
 
