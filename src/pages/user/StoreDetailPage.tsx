@@ -3244,7 +3244,6 @@ export function StoreDetailExperience({
       includeUnavailable: false,
       serviceId: isTechnicianPricingActive ? undefined : formalServiceId ?? undefined,
       shopId: storeApiId,
-      technicianId: /^[1-9]\d*$/u.test(selectedTechnicianId) ? Number(selectedTechnicianId) : undefined,
       to: new Date(new Date(startWindow.from).getTime() + 93 * 24 * 60 * 60 * 1000).toISOString()
     })
       .then((dateKeys) => {
@@ -3260,7 +3259,7 @@ export function StoreDetailExperience({
     return () => {
       active = false;
     };
-  }, [formalApiOnly, formalServiceId, isMerchantEditable, isTechnicianPricingActive, selectedTechnicianId, storeApiId]);
+  }, [formalApiOnly, formalServiceId, isMerchantEditable, isTechnicianPricingActive, storeApiId]);
 
   useEffect(() => {
     if (!formalApiOnly || isMerchantEditable || !storeApiId || (!isTechnicianPricingActive && !formalServiceId)) {

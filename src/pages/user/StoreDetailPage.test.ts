@@ -224,10 +224,17 @@ describe("StoreDetailPage routed booking defaults", () => {
   });
 
   it("loads a separate authoritative availability-date index instead of treating one selected day as the whole calendar", () => {
+    const dateIndexEffectSource = pageSource.slice(
+      pageSource.indexOf("void loadAvailabilityDateKeys"),
+      pageSource.indexOf("void loadAvailabilityStartSummaries")
+    );
+
     expect(pageSource).toContain("loadAvailabilityDateKeys");
     expect(pageSource).toContain("formalAvailableDateKeysStatus");
     expect(pageSource).toContain("availabilityLoading={formalAvailabilityLoading}");
     expect(pageSource).not.toContain("formalBookableSlots.map((slot) => getTokyoSlotParts(slot.startsAt)?.date)");
+    expect(dateIndexEffectSource).not.toContain("technicianId");
+    expect(dateIndexEffectSource).not.toContain("selectedTechnicianId");
   });
 
   it("keeps pending formal availability distinct from a confirmed empty result", () => {
