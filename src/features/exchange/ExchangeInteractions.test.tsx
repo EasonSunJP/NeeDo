@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shareContent } from "../../lib/share";
 import {
@@ -90,7 +91,7 @@ let root: Root;
 let onCountsChange = vi.fn((_counts: ExchangeInteractionCounts, _viewer: Pick<ExchangeViewerState, "liked">) => undefined);
 
 async function renderInteractions(currentPost = post) {
-  await act(async () => root.render(<ExchangeInteractions onCountsChange={onCountsChange} post={currentPost} />));
+  await act(async () => root.render(<MemoryRouter><ExchangeInteractions onCountsChange={onCountsChange} post={currentPost} /></MemoryRouter>));
   await waitFor(() => expect(container.textContent).toContain("正式评论 1"));
 }
 
@@ -117,6 +118,19 @@ describe("ExchangeInteractions", () => {
     expect(container.textContent).toContain("评论者 1");
     expect(container.textContent).toContain("u0000000001");
     expect(container.textContent).toContain("正式评论 3");
+  });
+
+  it("opens the exact technician author's activity identity without linking archived authors", async () => {
+    vi.mocked(listExchangeComments).mockResolvedValue({
+      list: [
+        { ...comments[0], author: { publicId: "s0000000001", identityType: "technician", displayName: "Eason", avatarUrl: "https://example.test/technician.jpg" }, authorProfilePath: "/moments/users/9?identityId=19" },
+        { ...comments[1], authorProfilePath: null }
+      ], total: 2, page: 1, page_size: 20
+    });
+    await act(async () => root.render(<MemoryRouter><ExchangeInteractions context="technician" onCountsChange={onCountsChange} post={post} /></MemoryRouter>));
+    await waitFor(() => expect(container.textContent).toContain("Eason"));
+    expect(container.querySelector('a[href="/technician/moments/users/9?identityId=19"] img')?.getAttribute("src")).toBe("https://example.test/technician.jpg");
+    expect(container.querySelectorAll("article a")).toHaveLength(1);
   });
 
   it("reuses the same idempotency key when a failed comment is retried", async () => {
@@ -176,7 +190,7 @@ describe("ExchangeInteractions", () => {
 
   it("supports the approved detail-card layout without duplicating header actions", async () => {
     await act(async () => root.render(
-      <ExchangeInteractions onCountsChange={onCountsChange} post={post} showActionBar={false} variant="detail" />
+      <MemoryRouter><ExchangeInteractions onCountsChange={onCountsChange} post={post} showActionBar={false} variant="detail" /></MemoryRouter>
     ));
     await waitFor(() => expect(container.textContent).toContain("正式评论 1"));
 

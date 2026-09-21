@@ -5676,6 +5676,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           id: { type: "integer", minimum: 1 },
           postId: { type: "integer", minimum: 1 },
           author: { $ref: "#/components/schemas/ExchangeActor" },
+          authorProfilePath: { type: ["string", "null"], description: "Identity-scoped author activity route, relative to the current portal." },
           content: { type: "string", minLength: 1, maxLength: 1000 },
           createdAt: { type: "string", format: "date-time" }
         }

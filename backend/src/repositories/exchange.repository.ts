@@ -190,6 +190,19 @@ const intelligenceCardMedia = {
   select: { url: true, usageType: true, sortOrder: true }
 };
 
+const commentAuthorInclude = {
+  authorIdentity: {
+    select: {
+      id: true, userId: true, type: true, scopeType: true, scopeId: true,
+      isActive: true, deletedAt: true,
+      merchantIdentityProfile: { select: { id: true, deletedAt: true } },
+      user: { select: { technicianProfile: { select: { id: true, deletedAt: true } } } }
+    }
+  }
+} satisfies Prisma.ExchangeCommentInclude;
+
+type CommentWithAuthor = Prisma.ExchangeCommentGetPayload<{ include: typeof commentAuthorInclude }>;
+
 const intelligenceShopInclude = {
   _count: {
     select: {
@@ -453,6 +466,38 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       directPublicId ??
       (["customer", "user", "u"].includes(identity.type) ? identity.user.needoId : null);
     if (effectivePublicId !== input.publicId) return null;
+    let avatarUrl: string | null = PERSONAL_DEMAND_IDENTITIES.has(identity.type) ? identity.user.avatarUrl : null;
+    if (identity.type === "technician") {
+      avatarUrl = null;
+      if (identity.scopeType === "technician_profile" && identity.scopeId) {
+        const profile = await this.client.technicianProfile.findFirst({
+          where: { id: identity.scopeId, userId: identity.userId, deletedAt: null },
+          select: { id: true }
+        });
+        if (profile) {
+          const avatar = await this.client.mediaAsset.findFirst({
+            where: { technicianProfileId: profile.id, usageType: "avatar", isActive: true, deletedAt: null },
+            orderBy: { id: "desc" },
+            select: { url: true }
+          });
+          avatarUrl = avatar?.url ?? null;
+        }
+      }
+    } else if (SHOP_MERCHANT_IDENTITIES.has(identity.type)) {
+      avatarUrl = null;
+      const profile = await this.client.merchantIdentityProfile.findFirst({
+        where: { identityId: identity.id, userId: identity.userId, deletedAt: null },
+        select: { id: true }
+      });
+      if (profile) {
+        const avatar = await this.client.mediaAsset.findFirst({
+          where: { entityType: "merchant_identity_profile", entityId: profile.id, ownerIdentityId: identity.id, ownerUserId: identity.userId, usageType: "avatar", isActive: true, deletedAt: null },
+          orderBy: { id: "desc" },
+          select: { url: true }
+        });
+        avatarUrl = avatar?.url ?? null;
+      }
+    }
     return {
       userId: identity.userId,
       identityId: identity.id,
@@ -461,7 +506,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       scopeId: identity.scopeId,
       publicId: effectivePublicId,
       displayName: identity.displayName ?? identity.user.username,
-      avatarUrl: identity.user.avatarUrl,
+      avatarUrl,
       isTestAccount: identity.user.isTestAccount,
       customerMembership:
         customerProfile && customerProfile.deletedAt === null
@@ -643,16 +688,13 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         where,
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         skip: pagination.skip,
-        take: pagination.take
+        take: pagination.take,
+        include: commentAuthorInclude
       }),
       this.client.exchangeComment.count({ where })
     ]);
 
-    return buildPaginatedResponse(
-      rows.map((row) => this.mapComment(row)),
-      total,
-      pagination
-    );
+    return buildPaginatedResponse(await this.mapComments(rows, this.client), total, pagination);
   }
 
   public async findPostByIdempotencyKey(
@@ -1168,9 +1210,9 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     try {
       return await this.withClientTransaction(async (transaction) => {
         const existing = await transaction.exchangeComment.findUnique({
-          where: { idempotencyKey: input.idempotencyKey }
+          where: { idempotencyKey: input.idempotencyKey }, include: commentAuthorInclude
         });
-        if (existing) return { kind: "replayed", value: this.mapComment(existing) };
+        if (existing) return { kind: "replayed", value: (await this.mapComments([existing], transaction))[0] };
         const availability = await this.postAvailability(transaction, input.postId, input.now);
         if (availability !== "available") return { kind: availability };
         const created = await transaction.exchangeComment.create({
@@ -1191,15 +1233,15 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         await transaction.auditLog.create({
           data: toAuditLogCreateData({ ...input.audit, targetId: input.postId })
         });
-        return { kind: "success", value: this.mapComment(created) };
+        return { kind: "success", value: this.mapComment(created, input.actor.avatarUrl, this.commentProfilePath(input.actor.userId, input.actor.identityId)) };
       });
     } catch (error) {
       if (!this.isUniqueConflict(error)) throw error;
       const existing = await this.client.exchangeComment.findUnique({
-        where: { idempotencyKey: input.idempotencyKey }
+        where: { idempotencyKey: input.idempotencyKey }, include: commentAuthorInclude
       });
       if (!existing) throw error;
-      return { kind: "replayed", value: this.mapComment(existing) };
+      return { kind: "replayed", value: (await this.mapComments([existing], this.client))[0] };
     }
   }
 
@@ -1877,6 +1919,43 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     };
   }
 
+  private commentProfilePath(userId: number, identityId: number): string {
+    return `/moments/users/${userId}?identityId=${identityId}`;
+  }
+
+  private async mapComments(rows: CommentWithAuthor[], client: ExchangePrismaClient): Promise<ExchangeCommentPayload[]> {
+    const scopes = rows.flatMap<Prisma.MediaAssetWhereInput>((row) => {
+      const identity = row.authorIdentity;
+      if (!identity || !identity.isActive || identity.deletedAt || identity.userId !== row.authorUserId || identity.type !== row.authorIdentityType) return [];
+      if (identity.type === "technician" && identity.scopeType === "technician_profile" && identity.scopeId === identity.user.technicianProfile?.id && identity.user.technicianProfile.deletedAt === null) {
+        return [{ technicianProfileId: identity.scopeId }];
+      }
+      const merchantProfile = identity.merchantIdentityProfile;
+      if (SHOP_MERCHANT_IDENTITIES.has(identity.type) && merchantProfile?.deletedAt === null) {
+        return [{ entityType: "merchant_identity_profile", entityId: merchantProfile.id, ownerIdentityId: identity.id, ownerUserId: identity.userId }];
+      }
+      return [];
+    });
+    const assets = scopes.length ? await client.mediaAsset.findMany({
+      where: { OR: scopes, usageType: "avatar", isActive: true, deletedAt: null },
+      orderBy: { id: "desc" },
+      select: { url: true, technicianProfileId: true, entityType: true, entityId: true, ownerIdentityId: true, ownerUserId: true }
+    }) : [];
+    return rows.map((row) => {
+      const identity = row.authorIdentity;
+      const active = identity?.isActive && identity.deletedAt === null && identity.userId === row.authorUserId && identity.type === row.authorIdentityType;
+      let avatarUrl: string | null = PERSONAL_DEMAND_IDENTITIES.has(row.authorIdentityType) ? row.authorAvatarUrl : null;
+      if (row.authorIdentityType === "technician") {
+        avatarUrl = active && identity.scopeType === "technician_profile" && identity.scopeId === identity.user.technicianProfile?.id && identity.user.technicianProfile.deletedAt === null
+          ? assets.find((asset) => asset.technicianProfileId === identity.scopeId)?.url ?? null : null;
+      } else if (SHOP_MERCHANT_IDENTITIES.has(row.authorIdentityType)) {
+        const profileId = active && identity.merchantIdentityProfile?.deletedAt === null ? identity.merchantIdentityProfile.id : null;
+        avatarUrl = profileId ? assets.find((asset) => asset.entityType === "merchant_identity_profile" && asset.entityId === profileId && asset.ownerIdentityId === identity.id && asset.ownerUserId === identity.userId)?.url ?? null : null;
+      }
+      return this.mapComment(row, avatarUrl, active ? this.commentProfilePath(row.authorUserId, row.authorIdentityId) : null);
+    });
+  }
+
   private mapComment(row: {
     id: number;
     postId: number;
@@ -1886,7 +1965,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     authorAvatarUrl: string | null;
     content: string;
     createdAt: Date;
-  }): ExchangeCommentPayload {
+  }, avatarUrl: string | null, authorProfilePath: string | null): ExchangeCommentPayload {
     return {
       id: row.id,
       postId: row.postId,
@@ -1894,8 +1973,9 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         publicId: row.authorPublicId,
         identityType: row.authorIdentityType,
         displayName: row.authorDisplayName,
-        avatarUrl: row.authorAvatarUrl
+        avatarUrl
       },
+      authorProfilePath,
       content: row.content,
       createdAt: row.createdAt.toISOString()
     };

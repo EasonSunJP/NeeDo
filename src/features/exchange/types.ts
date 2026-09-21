@@ -326,6 +326,7 @@ export type ExchangeComment = {
   id: number;
   postId: number;
   author: ExchangeActor;
+  authorProfilePath?: string | null;
   content: string;
   createdAt: string;
 };
