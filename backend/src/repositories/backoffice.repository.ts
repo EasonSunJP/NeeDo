@@ -1841,6 +1841,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           }
         : {}),
       ...(input.isRecommended !== undefined ? { isRecommended: input.isRecommended } : {}),
+      ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
       ...(input.scope === "platform" && input.shopId !== undefined ? { shopId: input.shopId } : {})
     };
     return this.mapTechnician(
@@ -3688,6 +3689,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       employmentStartedAt: technician.employmentStartedAt?.toISOString() ?? null,
       rating: reviewSummary.ratingAverage,
       reviewCount: reviewSummary.reviewCount,
+      visibility: technician.visibility as BackofficeTechnicianPayload["visibility"],
       status: technician.status,
       verifiedAt: technician.verifiedAt?.toISOString() ?? null,
       createdAt: technician.createdAt.toISOString()

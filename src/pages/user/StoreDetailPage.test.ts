@@ -195,9 +195,9 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("unavailableTechnicianIds.has(technician.id)");
     expect(pageSource).toContain("setSelectedTechnicianId(\"\");");
     expect(selectableCardSource).toContain("unavailable = false");
-    expect(selectableCardSource).toContain("selectionDisabled={availabilityLoading || unavailable}");
+    expect(selectableCardSource).toContain("selectionDisabled={availabilityLoading || unavailable || visibilityPending}");
     expect(selectableCardSource).toContain('selectionInactiveIcon={availabilityLoading ? "clock" : unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}');
-    expect(selectableCardSource).toContain('selectionAriaLabel={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约"');
+    expect(selectableCardSource).toContain('selectionAriaLabel={visibilityPending ? "保存中" : availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约"');
     expect(selectableCardSource).toContain('!isMerchantEditable && unavailable && "opacity-70 saturate-[0.72]"');
     expect(homeTechnicianSource).toContain("const unavailable = !isMerchantEditable && unavailableTechnicianIds.has(technician.id);");
     expect(homeTechnicianSource).toContain("if (unavailable) {");
@@ -299,7 +299,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).toContain('className="absolute right-2 top-2 z-30 h-11 w-11"');
     expect(technicianRowSource).toContain('activeIcon="eye"');
     expect(technicianRowSource).toContain('inactiveIcon="eyeOff"');
-    expect(technicianRowSource).toContain('label={technicianVisible ? "隐藏技师" : "显示技师"}');
+    expect(technicianRowSource).toContain('label={visibilityPending ? "保存中" : technicianVisible ? "隐藏技师" : "显示技师"}');
     expect(pageSource).toContain("onToggleVisibility={() => toggleTechnicianDisplayVisibility(technician)}");
   });
 
@@ -394,13 +394,16 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("showSelectAction={!isMerchantEditable}");
     expect(pageSource).toContain('selectionActiveIcon={isMerchantEditable ? "eye" : "check"}');
     expect(pageSource).toContain('selectionInactiveIcon={availabilityLoading ? "clock" : unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}');
-    expect(pageSource).toContain('selectionAriaLabel={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}');
+    expect(pageSource).toContain('selectionAriaLabel={visibilityPending ? "保存中" : availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}');
   });
 
   it("uses the technician eye action as a merchant display visibility switch", () => {
     expect(pageSource).toContain("isTechnicianDisplayVisible");
     expect(pageSource).toContain("toggleTechnicianDisplayVisibility");
-    expect(pageSource).toContain("visible: !isTechnicianDisplayVisible(technician)");
+    expect(pageSource).toContain('backofficeRealDataApi.updateTechnician(\n        "merchant-admin"');
+    expect(pageSource).toContain('const visibility = currentVisible ? "privateAll" as const : "public" as const;');
+    expect(pageSource).toContain('updated.visibility === "public"');
+    expect(pageSource).not.toContain("updateTechnicianEntity(technician.id, { visible:");
     expect(pageSource).toContain("isMerchantEditable || isTechnicianDisplayVisible(item)");
     expect(pageSource).not.toContain('handleMerchantEditFocus("technician", technicianEditorTarget);');
   });

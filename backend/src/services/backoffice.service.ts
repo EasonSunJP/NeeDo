@@ -594,6 +594,7 @@ export interface BackofficeTechnicianPayload {
   employmentStartedAt: string | null;
   rating: number;
   reviewCount: number;
+  visibility: "public" | "privateAll" | "limited" | "network";
   status: string;
   verifiedAt: string | null;
   createdAt: string;
@@ -2145,7 +2146,8 @@ export class BackofficeService {
       ...(input.employmentStartedAt !== undefined
         ? { employmentStartedAt: input.employmentStartedAt }
         : {}),
-      ...(input.isRecommended !== undefined ? { isRecommended: input.isRecommended } : {})
+      ...(input.isRecommended !== undefined ? { isRecommended: input.isRecommended } : {}),
+      ...(input.visibility !== undefined ? { visibility: input.visibility } : {})
     };
     const technician = this.requireResult(
       await this.repository.updateTechnician({ ...scope, technicianId, ...safeInput }),

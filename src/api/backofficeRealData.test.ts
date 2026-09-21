@@ -17,7 +17,7 @@ vi.mock("../lib/image-upload", () => ({ optimizeImageUpload: vi.fn() }));
 
 describe("backoffice technician mapping", () => {
   it("preserves the effective rating and actual review count returned by the API", () => {
-    const technician = mapBackofficeTechnician({
+    const payload = {
       workStatus: "on_duty",
       id: 31,
       userId: 41,
@@ -36,9 +36,12 @@ describe("backoffice technician mapping", () => {
       createdAt: "2026-08-25T00:00:00.000Z",
       rating: 4.5,
       reviewCount: 1
-    });
+    } as const;
+    const technician = mapBackofficeTechnician({ ...payload, visibility: "public" });
+    const hiddenTechnician = mapBackofficeTechnician({ ...payload, visibility: "privateAll" });
 
-    expect(technician).toMatchObject({ rating: 4.5, reviewCount: 1 });
+    expect(technician).toMatchObject({ rating: 4.5, reviewCount: 1, visible: true });
+    expect(hiddenTechnician).toMatchObject({ visible: false });
   });
 });
 

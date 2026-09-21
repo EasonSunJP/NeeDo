@@ -8016,6 +8016,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "employmentStartedAt",
           "rating",
           "reviewCount",
+          "visibility",
           "status",
           "verifiedAt",
           "createdAt",
@@ -8051,6 +8052,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           employmentStartedAt: { type: ["string", "null"], format: "date-time" },
           rating: { type: "number", minimum: 0, maximum: 5 },
           reviewCount: { type: "integer", minimum: 0 },
+          visibility: {
+            type: "string",
+            enum: ["public", "privateAll", "limited", "network"]
+          },
           status: { type: "string" },
           verifiedAt: { type: ["string", "null"], format: "date-time" },
           createdAt: { type: "string", format: "date-time" },
@@ -9437,7 +9442,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             enum: ["full_time", "temporary"]
           },
           employmentStartedAt: { type: ["string", "null"], format: "date-time" },
-          isRecommended: { type: "boolean" }
+          isRecommended: { type: "boolean" },
+          visibility: { type: "string", enum: ["public", "privateAll"] }
         }
       },
       BackofficeCustomerUpdateInput: {
