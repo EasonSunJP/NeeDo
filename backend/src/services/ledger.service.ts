@@ -4348,6 +4348,13 @@ export class LedgerService
     const balances = new Map(wallets.map((wallet) => [wallet.currency, wallet]));
     const ndp = balances.get("NDP");
     const testNdp = balances.get("TEST_NDP");
+    if (activeCurrency === "TEST_NDP" && !testNdp) {
+      throw new AppError({
+        code: ERROR_CODES.WALLET_NOT_FOUND,
+        message: "error.wallet.not_found",
+        statusCode: 404
+      });
+    }
 
     return {
       activeCurrency,

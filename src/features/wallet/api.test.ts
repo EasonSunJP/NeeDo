@@ -1,11 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { httpClient } from "../../api/httpClient";
+import { setCoordinatorExpectedUserId } from "../../auth/authCredentialCoordinator";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { walletApi } from "./api";
 
 vi.mock("../../api/httpClient", () => ({ httpClient: { request: vi.fn() } }));
 
 describe("walletApi", () => {
   beforeEach(() => vi.clearAllMocks());
+  afterEach(() => {
+    setCoordinatorExpectedUserId(null);
+    vi.restoreAllMocks();
+  });
 
   it("submits and lists identity-scoped wallet requests", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
@@ -46,6 +52,20 @@ describe("walletApi", () => {
     await walletApi.getMyWalletSummary();
 
     expect(httpClient.request).toHaveBeenCalledWith("/wallets/me/summary");
+  });
+
+  it("invalidates wallet-bearing caches only within the current account scope", async () => {
+    setCoordinatorExpectedUserId(12);
+    const invalidate = vi.spyOn(persistentResourceCache, "invalidate").mockResolvedValue();
+
+    await walletApi.invalidateCurrentWalletCaches();
+
+    expect(invalidate).toHaveBeenNthCalledWith(1, "account:12", "user-center:self:");
+    expect(invalidate).toHaveBeenNthCalledWith(
+      2,
+      "account:12",
+      "technician:wallet-summary:"
+    );
   });
 
   it("lists and reviews requests through the backoffice API", async () => {

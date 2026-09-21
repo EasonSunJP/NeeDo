@@ -40,6 +40,7 @@ import { ExchangeOrderCancellationPanel } from "../../features/exchange/Exchange
 import type { ExchangeCancellation } from "../../features/exchange/types";
 import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
 import { describeBookingOrderMutationError } from "../../features/booking/orderMutationError";
+import { walletApi } from "../../features/wallet/api";
 import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { OrderDetailFactGrid, OrderDetailSection } from "../../shared/order-detail/OrderDetailSections";
@@ -516,6 +517,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
         setActionError(describeBookingOrderMutationError(reconciliationError, language));
       }
     } finally {
+      await walletApi.invalidateCurrentWalletCaches();
       setPendingAction(null);
     }
   };

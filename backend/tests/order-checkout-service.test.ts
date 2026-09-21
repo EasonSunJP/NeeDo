@@ -1536,6 +1536,30 @@ describe("formal checkout repository state", () => {
     ).resolves.toEqual({ outcome: "conflict" });
   });
 
+  it("rolls back every NDP completion write when affiliate settlement fails", async () => {
+    const h = createRepositoryHarness();
+    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    const debit = jest.fn(async () => ({ transactionId: 91 }));
+
+    await expect(
+      h.repository.payCheckoutWithNdp(
+        { ...customerInput, idempotencyKey: "checkout-affiliate-rollback-1" },
+        {
+          debit,
+          settle: async () => undefined,
+          settleAffiliate: async () => {
+            throw new Error("affiliate settlement failed");
+          }
+        }
+      )
+    ).rejects.toThrow("affiliate settlement failed");
+
+    expect(h.order.status).toBe("AWAITING_CHECKOUT");
+    expect(h.checkout.ledgerTransactionId).toBeNull();
+    expect(h.events.some((event) => event.eventType === "NDP_PAYMENT_APPLIED")).toBe(false);
+    expect(h.histories.some((history) => history.toStatus === "COMPLETED")).toBe(false);
+  });
+
   it("writes operations receipt audit in the same transaction and distinguishes its evidence", async () => {
     const h = createRepositoryHarness();
     await h.repository.getOrCreateCheckout({ ...customerInput, rate });

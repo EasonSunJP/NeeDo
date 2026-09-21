@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   getTechnicianDetail: vi.fn(),
   listAddOnServices: vi.fn(),
   listServices: vi.fn(),
+  invalidateCurrentWalletCaches: vi.fn(),
   payWithNdp: vi.fn(),
   rejectAddOn: vi.fn(),
   selectPaymentMethod: vi.fn(),
@@ -48,6 +49,9 @@ vi.mock("../../features/booking/api", async () => {
     }
   };
 });
+vi.mock("../../features/wallet/api", () => ({
+  walletApi: { invalidateCurrentWalletCaches: mocks.invalidateCurrentWalletCaches }
+}));
 vi.mock("../../features/core-read/api", async () => {
   const actual = await vi.importActual<typeof import("../../features/core-read/api")>("../../features/core-read/api");
   return {
@@ -649,6 +653,7 @@ describe("formal user order detail", () => {
     await waitFor(() => expect(container.textContent).toContain("NDP 支付"));
     await click("NDP 支付");
     await waitFor(() => expect(mocks.payWithNdp).toHaveBeenCalledWith(88, { idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/) }));
+    expect(mocks.invalidateCurrentWalletCaches).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(container.textContent).toContain("NDP 账本已结算"));
     await waitFor(() => expect(container.textContent).toContain("提交评价"));
   });
@@ -704,6 +709,7 @@ describe("formal user order detail", () => {
     await waitFor(() => expect(container.textContent).toContain("NDP 支付"));
     await click("NDP 支付");
     await waitFor(() => expect(container.textContent).toContain("身份服务暂时不可用"));
+    expect(mocks.invalidateCurrentWalletCaches).toHaveBeenCalledTimes(1);
     const firstKey = mocks.payWithNdp.mock.calls[0]?.[1]?.idempotencyKey;
 
     await click("NDP 支付");

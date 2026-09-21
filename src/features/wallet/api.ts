@@ -1,4 +1,6 @@
 import { httpClient } from "../../api/httpClient";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 
 export type WalletOwnerType = "user" | "shop" | "platform";
 export type WalletAdjustmentType = "topup" | "withdrawal";
@@ -72,6 +74,14 @@ export const walletApi = {
   },
   getMyWalletSummary() {
     return httpClient.request<WalletSummary>("/wallets/me/summary");
+  },
+  async invalidateCurrentWalletCaches() {
+    const scope = getAuthenticatedPersistentCacheScope();
+    if (!scope) return;
+    await Promise.allSettled([
+      persistentResourceCache.invalidate(scope, "user-center:self:"),
+      persistentResourceCache.invalidate(scope, "technician:wallet-summary:")
+    ]);
   },
   createAdjustment(input: CreateWalletAdjustmentInput) {
     return httpClient.request<WalletAdjustmentRequest>("/wallet-adjustments", {

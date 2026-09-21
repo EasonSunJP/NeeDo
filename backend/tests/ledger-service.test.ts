@@ -528,6 +528,31 @@ describe("LedgerService wallet mutations", () => {
     });
   });
 
+  it("does not turn a missing active Test NDP wallet into a zero balance", async () => {
+    const service = new LedgerService({
+      findUserAccountClassification: jest.fn(async () => ({ isTestAccount: true })),
+      findWallets: jest.fn(async () => [])
+    } as never);
+
+    await expect(
+      service.getMyWalletSummary({
+        userId: 7,
+        email: "test@example.com",
+        accessTokenJti: "wallet-summary-missing-test-wallet",
+        accessTokenExpiresAt: 1_800_000_000,
+        currentIdentityType: "customer",
+        currentIdentityScopeType: "global",
+        currentIdentityScopeId: null,
+        roles: ["customer"],
+        permissions: ["wallet:read"]
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.WALLET_NOT_FOUND,
+      message: "error.wallet.not_found",
+      statusCode: 404
+    });
+  });
+
   it.each([
     [false, "NDP"],
     [true, "TEST_NDP"]

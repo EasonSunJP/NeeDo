@@ -89,4 +89,13 @@ describe("describeBookingOrderMutationError", () => {
       )
     ).toBe("身份服务暂时不可用，请稍后重试");
   });
+
+  it.each([
+    ["error.user.not_found", 40401],
+    ["error.wallet.not_found", 40405]
+  ])("does not misreport account or wallet lookup failure %s as a missing order", (message, code) => {
+    expect(
+      describeBookingOrderMutationError(new ApiClientError(message, code, 404), "zh")
+    ).toBe("账户与 NDP 钱包状态无法确认，请重新登录后重试");
+  });
 });
