@@ -503,7 +503,26 @@ describe("ExchangePostDetailPage", () => {
 
   it("localizes the detail type and publisher identity instead of exposing raw identity codes", async () => {
     mockI18n.language = "en";
-    vi.mocked(getExchangePost).mockResolvedValue(intelligencePost);
+    const publisherCard = intelligencePost.intelligence!.publisherCard;
+    if (!publisherCard || publisherCard.type !== "shop") throw new Error("expected shop fixture");
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...intelligencePost,
+      publisher: {
+        publicId: "shop00000011",
+        identityType: "shop",
+        displayName: "StagingTest",
+        avatarUrl: null
+      },
+      intelligence: {
+        ...intelligencePost.intelligence!,
+        publisherCard: {
+          ...publisherCard,
+          publicId: "shop00000011",
+          name: "StagingTest",
+          detailPath: "/profiles/shop/shop00000011"
+        }
+      }
+    });
     await renderDetail("/needo/posts/61");
     await waitFor(() => expect(document.body.textContent).toContain(intelligencePost.title));
 
@@ -511,6 +530,9 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("Service posts");
     expect(document.body.textContent).not.toContain("Rating");
     expect(document.body.textContent).not.toContain("merchant_owner");
+    expect(document.body.textContent).toContain("StagingTest");
+    expect(document.body.textContent).toContain("shop00000011");
+    expect(Array.from(document.body.querySelectorAll("span")).some((node) => node.textContent === "shop")).toBe(false);
     expect(document.body.textContent).not.toContain("情报");
   });
 

@@ -692,6 +692,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           shop: {
             include: {
               publicIdentifier: true,
+              mediaAssets: intelligenceCardMedia,
               entitySuspensions: {
                 where: { activeKey: { not: null }, status: "active", deletedAt: null },
                 select: { id: true }
@@ -729,7 +730,13 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           serviceMode,
           areaLabel: service.shop.city,
           addressLabel: service.shop.address,
-          serviceAreas: [service.shop.city]
+          serviceAreas: [service.shop.city],
+          publisher: {
+            publicId: service.shop.publicIdentifier!.publicId,
+            identityType: "shop",
+            displayName: service.shop.name,
+            avatarUrl: this.mediaUrlByUsage(service.shop.mediaAssets, "avatar")
+          }
         }
       };
     }
@@ -825,7 +832,13 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         serviceMode,
         areaLabel: serviceAreas[0] ?? service.shop.city,
         addressLabel: service.shop.address,
-        serviceAreas
+        serviceAreas,
+        publisher: {
+          publicId: input.actor.publicId,
+          identityType: input.actor.identityType,
+          displayName: input.actor.displayName,
+          avatarUrl: input.actor.avatarUrl
+        }
       }
     };
   }
@@ -840,15 +853,17 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     if (input.input.type === "intelligence" && !intelligenceService) {
       throw new Error("error.exchange.intelligence_service_required");
     }
+    const publisher =
+      input.input.type === "intelligence" ? intelligenceService!.publisher : input.actor;
     const created = await this.client.exchangePost.create({
       data: {
         authorUserId: input.actor.userId,
         authorIdentityId: input.actor.identityId,
         ownerIdentityId,
-        publisherPublicId: input.actor.publicId,
-        publisherIdentityType: input.actor.identityType,
-        publisherDisplayName: input.actor.displayName,
-        publisherAvatarUrl: input.actor.avatarUrl,
+        publisherPublicId: publisher.publicId,
+        publisherIdentityType: publisher.identityType,
+        publisherDisplayName: publisher.displayName,
+        publisherAvatarUrl: publisher.avatarUrl,
         type: typeToDatabase[input.input.type],
         status: DatabaseExchangePostStatus.PUBLISHED,
         title: input.input.title,
@@ -1747,6 +1762,23 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         Boolean(row.matching) &&
         activeClaimCount < row.matching!.effectiveTargetProviderCount);
     const intelligence = this.mapIntelligence(row, status, now);
+    const publisher =
+      row.type === DatabaseExchangePostType.INTELLIGENCE &&
+      SHOP_MERCHANT_IDENTITIES.has(row.authorIdentity.type)
+        ? intelligence?.publisherCard?.type === "shop"
+          ? {
+              publicId: intelligence.publisherCard.publicId,
+              identityType: "shop",
+              displayName: intelligence.publisherCard.name,
+              avatarUrl: intelligence.publisherCard.avatarUrl
+            }
+          : null
+        : {
+            publicId: row.publisherPublicId,
+            identityType: row.publisherIdentityType,
+            displayName: row.publisherDisplayName,
+            avatarUrl: row.publisherAvatarUrl
+          };
 
     const requestAddressDisclosure = ownerView
       ? ("owner" as const)
@@ -1797,14 +1829,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       serviceEndAt: row.serviceEndAt.toISOString(),
       expiresAt: row.expiresAt.toISOString(),
       publishedAt: row.createdAt.toISOString(),
-      publisher: showPublisher
-        ? {
-            publicId: row.publisherPublicId,
-            identityType: row.publisherIdentityType,
-            displayName: row.publisherDisplayName,
-            avatarUrl: row.publisherAvatarUrl
-          }
-        : null,
+      publisher: showPublisher ? publisher : null,
       counts: {
         comments: row._count.comments,
         likes: row._count.likes,
