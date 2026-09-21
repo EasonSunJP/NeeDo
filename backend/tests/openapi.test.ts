@@ -2100,6 +2100,15 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("BackofficeServiceUpdateInput");
     expect(response.body.components.schemas).toHaveProperty("ScheduleSlotCreateInput");
     expect(response.body.components.schemas).toHaveProperty("ScheduleSlotUpdateInput");
+    expect(response.body.components.schemas.BackofficeTechnicianUpdateInput.properties.visibility).toEqual({
+      type: "string",
+      enum: ["public", "privateAll"]
+    });
+    expect(response.body.components.schemas.BackofficeTechnicianDetail.required).toContain("visibility");
+    expect(response.body.components.schemas.BackofficeTechnicianDetail.properties.visibility).toEqual({
+      type: "string",
+      enum: ["public", "privateAll", "limited", "network"]
+    });
     [
       ["/api/v1/backoffice/shops/{id}", "patch"],
       ["/api/v1/backoffice/technicians/{id}", "patch"],

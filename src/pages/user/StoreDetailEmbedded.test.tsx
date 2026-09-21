@@ -22,10 +22,14 @@ const pricingModeMock = vi.hoisted(() => ({ getBookingNavigation: vi.fn() }));
 const backofficeMock = vi.hoisted(() => ({
   createService: vi.fn(),
   merchantShopPresentation: vi.fn(),
-  services: vi.fn()
+  services: vi.fn(),
+  updateTechnician: vi.fn()
 }));
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => locale, useOptionalI18n: () => locale }));
-vi.mock("../../state/entityStore", () => ({ useEntityStore: () => ({ customers: [], technicians: [] }) }));
+vi.mock("../../state/entityStore", () => ({
+  updateTechnicianEntity: vi.fn(),
+  useEntityStore: () => ({ customers: [], technicians: [] })
+}));
 vi.mock("../../features/social/context", () => ({ useSocial: () => ({ getActorForScope: () => null, getProfilePosts: () => [] }) }));
 vi.mock("../../features/pricing-mode/api", () => ({ pricingModeApi: pricingModeMock }));
 vi.mock("../../api/backofficeRealData", () => ({
@@ -41,6 +45,7 @@ beforeEach(async () => {
   backofficeMock.createService.mockReset();
   backofficeMock.merchantShopPresentation.mockReset().mockReturnValue(new Promise(() => {}));
   backofficeMock.services.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
+  backofficeMock.updateTechnician.mockReset();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -211,6 +216,53 @@ it("rejects legacy service cards while keeping the formal technician projection 
   expect(container.textContent).not.toContain("标准到店服务");
   expect(container.textContent).not.toContain("￥0");
   expect(container.querySelector('a[href*="svc-fallback"]')).toBeNull();
+});
+
+it("persists merchant technician visibility and reflects both hidden and visible server states", async () => {
+  backofficeMock.updateTechnician
+    .mockResolvedValueOnce({ id: 501, visibility: "privateAll" })
+    .mockResolvedValueOnce({ id: 501, visibility: "public" });
+
+  await renderFormalMerchantPreview();
+
+  const hideButton = container.querySelector<HTMLButtonElement>('button[aria-label="隐藏技师"]');
+  expect(hideButton?.getAttribute("aria-pressed")).toBe("true");
+
+  await act(async () => hideButton!.click());
+  expect(backofficeMock.updateTechnician).toHaveBeenNthCalledWith(
+    1,
+    "merchant-admin",
+    501,
+    { visibility: "privateAll" }
+  );
+  await vi.waitFor(() => {
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="显示技师"]')?.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  const showButton = container.querySelector<HTMLButtonElement>('button[aria-label="显示技师"]');
+  await act(async () => showButton!.click());
+  expect(backofficeMock.updateTechnician).toHaveBeenNthCalledWith(
+    2,
+    "merchant-admin",
+    501,
+    { visibility: "public" }
+  );
+  await vi.waitFor(() => {
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="隐藏技师"]')?.getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+it("keeps the server-confirmed technician visibility when the merchant update fails", async () => {
+  backofficeMock.updateTechnician.mockRejectedValueOnce(new Error("visibility update failed"));
+
+  await renderFormalMerchantPreview();
+  const hideButton = container.querySelector<HTMLButtonElement>('button[aria-label="隐藏技师"]');
+  await act(async () => hideButton!.click());
+
+  await vi.waitFor(() => {
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="隐藏技师"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("visibility update failed");
+  });
 });
 
 it("renders the complete merchant technician roster when more than eight employees are returned", async () => {

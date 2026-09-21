@@ -307,6 +307,11 @@ function isTechnicianDisplayVisible(technician: Technician) {
   return technician.visible !== false;
 }
 
+function getTechnicianVisibilityApiId(technician: Technician) {
+  const id = Number(technician.id);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 const storeIndustryServiceCategoryMap: Record<StoreIndustry, string[]> = {
   massage: ["massage"],
   beauty: ["beauty"],
@@ -1281,6 +1286,7 @@ function StoreTechnicianSelectableCard({
   rankIndex,
   technician,
   technicianVisible = true,
+  visibilityPending = false,
   unavailable = false
 }: {
   active: boolean;
@@ -1293,6 +1299,7 @@ function StoreTechnicianSelectableCard({
   rankIndex: number;
   technician: Technician;
   technicianVisible?: boolean;
+  visibilityPending?: boolean;
   unavailable?: boolean;
 }) {
   return (
@@ -1311,10 +1318,10 @@ function StoreTechnicianSelectableCard({
       rankIndex={rankIndex}
       selected={isMerchantEditable ? technicianVisible : availabilityLoading || unavailable ? false : active}
       selectionActiveIcon={isMerchantEditable ? "eye" : "check"}
-      selectionAriaLabel={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}
-      selectionDisabled={availabilityLoading || unavailable}
+      selectionAriaLabel={visibilityPending ? "保存中" : availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}
+      selectionDisabled={availabilityLoading || unavailable || visibilityPending}
       selectionInactiveIcon={availabilityLoading ? "clock" : unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}
-      selectionPending={availabilityLoading}
+      selectionPending={availabilityLoading || visibilityPending}
       technician={technician}
     />
   );
@@ -1367,6 +1374,7 @@ function StoreTechnicianServiceListRow({
   serviceListTo,
   technician,
   technicianVisible = true,
+  visibilityPending = false,
   unavailable = false
 }: {
   availabilityLoading?: boolean;
@@ -1381,6 +1389,7 @@ function StoreTechnicianServiceListRow({
   serviceListTo: string;
   technician: Technician;
   technicianVisible?: boolean;
+  visibilityPending?: boolean;
   unavailable?: boolean;
 }) {
   const displayName = getStoreTechnicianDisplayName(technician);
@@ -1412,8 +1421,9 @@ function StoreTechnicianServiceListRow({
           activeIcon="eye"
           className="absolute right-2 top-2 z-30 h-11 w-11"
           inactiveIcon="eyeOff"
-          label={technicianVisible ? "隐藏技师" : "显示技师"}
+          label={visibilityPending ? "保存中" : technicianVisible ? "隐藏技师" : "显示技师"}
           onSelect={onToggleVisibility}
+          pending={visibilityPending}
         />
       ) : null}
       <div className="relative min-h-[158px]">
@@ -2878,7 +2888,16 @@ export function StoreDetailExperience({
   const { session } = useAuth();
   const { language } = useI18n();
   const { customers, technicians } = useEntityStore();
-  const displayedTechnicians = techniciansOverride ?? technicians;
+  const sourceTechnicians = techniciansOverride ?? technicians;
+  const [technicianVisibilityOverrides, setTechnicianVisibilityOverrides] = useState<Record<string, boolean>>({});
+  const [pendingTechnicianVisibilityIds, setPendingTechnicianVisibilityIds] = useState<Set<string>>(() => new Set());
+  const [technicianVisibilityError, setTechnicianVisibilityError] = useState("");
+  const displayedTechnicians = useMemo(
+    () => sourceTechnicians.map((technician) => technicianVisibilityOverrides[technician.id] === undefined
+      ? technician
+      : { ...technician, visible: technicianVisibilityOverrides[technician.id] }),
+    [sourceTechnicians, technicianVisibilityOverrides]
+  );
   const storeApiId = useMemo(() => storeDetailRouteEntityIdToApiId(sourceStore.id), [sourceStore.id]);
   const [bookingNavigation, setBookingNavigation] = useState<BookingNavigationResponse | null>(null);
   const [bookingNavigationStatus, setBookingNavigationStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -2924,6 +2943,9 @@ export function StoreDetailExperience({
     setMerchantServiceEditorOpen(false);
     setMerchantServiceError("");
     setMerchantServiceDraft(emptyMerchantShopServiceDraft);
+    setTechnicianVisibilityOverrides({});
+    setPendingTechnicianVisibilityIds(new Set());
+    setTechnicianVisibilityError("");
   }, [sourceStore.id]);
 
   useEffect(() => {
@@ -3609,10 +3631,42 @@ export function StoreDetailExperience({
     pendingStoreImageEdit?.apply(editedImage);
     setPendingStoreImageEdit(null);
   };
-  const toggleTechnicianDisplayVisibility = (technician: Technician) => {
+  const toggleTechnicianDisplayVisibility = async (technician: Technician) => {
     const currentVisible = isTechnicianDisplayVisible(technician);
+    const technicianApiId = getTechnicianVisibilityApiId(technician);
 
-    updateTechnicianEntity(technician.id, { visible: !isTechnicianDisplayVisible(technician) });
+    if (!isMerchantEditable || technicianApiId === null || pendingTechnicianVisibilityIds.has(technician.id)) {
+      return;
+    }
+
+    const visibility = currentVisible ? "privateAll" as const : "public" as const;
+    setTechnicianVisibilityError("");
+    setPendingTechnicianVisibilityIds((current) => new Set(current).add(technician.id));
+
+    try {
+      const updated = await backofficeRealDataApi.updateTechnician(
+        "merchant-admin",
+        technicianApiId,
+        { visibility }
+      );
+      if (updated.id !== technicianApiId || updated.visibility !== visibility) {
+        throw new Error("error.technician.visibility_mismatch");
+      }
+      setTechnicianVisibilityOverrides((current) => ({
+        ...current,
+        [technician.id]: updated.visibility === "public"
+      }));
+    } catch (error) {
+      setTechnicianVisibilityError(error instanceof Error ? error.message : "error.technician.visibility_update_failed");
+      return;
+    } finally {
+      setPendingTechnicianVisibilityIds((current) => {
+        const next = new Set(current);
+        next.delete(technician.id);
+        return next;
+      });
+    }
+
     if (currentVisible && selectedTechnicianId === technician.id) {
       setSelectedTechnicianId("");
     }
@@ -3992,6 +4046,7 @@ export function StoreDetailExperience({
               serviceListTo={getTechnicianServiceListTo(technician.id)}
               technician={technician}
               technicianVisible={technicianVisible}
+              visibilityPending={pendingTechnicianVisibilityIds.has(technician.id)}
               unavailable={selectable ? unavailable : false}
             />
           );
@@ -4427,6 +4482,7 @@ export function StoreDetailExperience({
                   onToggle={() => setTechnicianListCollapsed((current) => !current)}
                 />
               </SectionTitle>
+              {technicianVisibilityError ? <p className="mt-3 text-sm font-black text-[color:var(--client-danger)]" role="alert">{technicianVisibilityError}</p> : null}
               {!technicianListCollapsed ? (
                 isTechnicianPricingActive ? (
                   storeHomeTechnicianServiceListRows
@@ -4461,6 +4517,7 @@ export function StoreDetailExperience({
                           rankIndex={index}
                           technician={technician}
                           technicianVisible={technicianVisible}
+                          visibilityPending={pendingTechnicianVisibilityIds.has(technician.id)}
                           unavailable={unavailable}
                         />
                       );

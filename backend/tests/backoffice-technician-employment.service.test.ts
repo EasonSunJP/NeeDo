@@ -49,4 +49,51 @@ describe("BackofficeService merchant technician employment", () => {
       })
     );
   });
+
+  it.each(["public", "privateAll"] as const)(
+    "forwards %s technician display visibility inside the authenticated shop scope",
+    async (visibility) => {
+      const updateTechnician = jest.fn(async () => ({ id: 7, visibility }));
+      const record = jest.fn(async () => undefined);
+      const service = new BackofficeService(
+        { updateTechnician } as never,
+        { record } as never,
+        createDirectShopContextRepository()
+      );
+
+      await service.updateMerchantTechnician(
+        7,
+        { visibility } as never,
+        {
+          userId: 2,
+          email: "merchant@example.com",
+          accessTokenJti: "merchant-access",
+          accessTokenExpiresAt: 1_800_000_000,
+          currentIdentityType: "merchant_owner",
+          currentIdentityScopeType: "shop",
+          currentIdentityScopeId: 11,
+          roles: ["merchant_owner"],
+          permissions: ["merchant-admin:technicians:write"]
+        },
+        { ip: "127.0.0.1", userAgent: "jest" }
+      );
+
+      expect(updateTechnician).toHaveBeenCalledWith({
+        scope: "merchant",
+        shopId: 11,
+        technicianId: 7,
+        visibility
+      });
+      expect(record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "merchant_admin.technician.update",
+          metadata: {
+            technicianId: 7,
+            shopId: 11,
+            changedFields: ["visibility"]
+          }
+        })
+      );
+    }
+  );
 });

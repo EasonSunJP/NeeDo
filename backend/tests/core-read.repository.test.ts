@@ -195,7 +195,18 @@ describe("shop detail affiliated technician roster", () => {
     expect(result?.technicians.map(t => t.id)).toEqual([41, 42]);
     expect(result?.technicians[1]?.avatarUrl).toBe("/media/partner.jpg");
     expect(findFirst.mock.calls[0]).toEqual([expect.objectContaining({ include: expect.objectContaining({
-      technicianShopAffiliations: expect.objectContaining({ where: expect.objectContaining({ deletedAt: null, workStatus: "ACTIVE", startsAt: { lte: expect.any(Date) }, OR: [{ endsAt: null }, { endsAt: { gt: expect.any(Date) } }] }) })
+      technicians: expect.objectContaining({
+        where: expect.objectContaining({ visibility: "public" })
+      }),
+      technicianShopAffiliations: expect.objectContaining({
+        where: expect.objectContaining({
+          deletedAt: null,
+          workStatus: "ACTIVE",
+          startsAt: { lte: expect.any(Date) },
+          OR: [{ endsAt: null }, { endsAt: { gt: expect.any(Date) } }],
+          technicianProfile: { is: expect.objectContaining({ visibility: "public" }) }
+        })
+      })
     }) })]);
   });
 });
