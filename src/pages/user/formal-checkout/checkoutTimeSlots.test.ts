@@ -3,6 +3,7 @@ import type { BookingScheduleSlot } from "../../../features/booking/api";
 import {
   getTokyoDayWindow,
   isCheckoutSlotBookable,
+  listAlignedCheckoutStartTimes,
   resolveInitialCheckoutSlotId,
   slotsForCheckoutDate
 } from "./checkoutTimeSlots";
@@ -75,6 +76,18 @@ describe("checkout time slots", () => {
     expect(isCheckoutSlotBookable(slot(6, "2026-09-02T21:59:59.999Z", "available"))).toBe(false);
     expect(isCheckoutSlotBookable(slot(7, "2026-09-02T22:00:00.000Z", "available"))).toBe(false);
     expect(isCheckoutSlotBookable(slot(8, "2026-09-02T22:00:00.001Z", "available"))).toBe(true);
+  });
+
+  it("exposes only actual bookable starts aligned to the customer 30-minute interval", () => {
+    const generatedFiveMinuteStarts = [
+      slot(30, "2026-09-02T23:45:00.000Z", "available"), // JST 08:45
+      slot(31, "2026-09-03T00:00:00.000Z", "available"), // JST 09:00
+      slot(32, "2026-09-03T00:30:00.000Z", "available"), // JST 09:30
+      slot(33, "2026-09-03T00:30:00.000Z", "available"),
+      slot(34, "2026-09-03T01:00:00.000Z", "booked", 1) // JST 10:00
+    ];
+
+    expect(listAlignedCheckoutStartTimes(generatedFiveMinuteStarts, 30)).toEqual(["09:00", "09:30"]);
   });
 
   it("returns null for a selected day with no bookable rows even when a later day is bookable", () => {

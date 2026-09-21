@@ -156,9 +156,13 @@ describe("formal customer checkout", () => {
   });
 
   it("requires a structured Japanese address and valid server estimate for home checkout", () => {
-    for (const field of ["postalCode", "prefecture", "city", "addressLine1", "addressLine2", "building"]) {
+    for (const field of ["postalCode", "prefecture", "city", "addressLine1", "building"]) {
       expect(formalSource).toContain(`updateHomeAddress("${field}"`);
     }
+    expect(formalSource).not.toContain('aria-label={t("addressExtra")}');
+    expect(formalSource).toContain('aria-label={t("buildingRoom")} className="focus-ring col-span-2');
+    expect(formalSource).toContain("isTravelEstimateAddressComplete(");
+    expect(formalSource).toContain('disabled={estimateStatus === "loading" || !selectedSlotId || !travelEstimateAddressComplete}');
     expect(formalSource).toContain("travelFareApi.createEstimate");
     expect(formalSource).toContain("servicePublicId: service.publicId");
     expect(formalSource).toContain("scheduleSlotId: selectedSlotId");
@@ -172,6 +176,11 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain('return "travelOutsideArea"');
     expect(formalSource).toContain('return "travelProviderUnconfigured"');
     expect(formalSource).toContain('t("recalculateTravelFee")');
+    for (const key of ["streetAddressPlaceholder", "buildingRoom", "buildingRoomPlaceholder"] as const) {
+      for (const locale of ["zh", "zh-Hant", "ja", "en", "ko"] satisfies readonly Language[]) {
+        expect(checkoutText(key, locale).trim()).toBeTruthy();
+      }
+    }
   });
 
   it("requires all checkout submission gates", () => {

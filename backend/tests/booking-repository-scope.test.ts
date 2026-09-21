@@ -158,6 +158,66 @@ describe("schedule list projection", () => {
     );
   });
 
+  it("resolves the dynamic shop from a selected technician service", async () => {
+    const findTechnicianService = jest.fn(async () => ({ shopId: 11 }));
+    const repository = new BookingRepository({} as never) as unknown as {
+      findDynamicAvailabilityCycle: jest.Mock;
+      readDynamicAvailableSlots: jest.Mock;
+      readAvailableSlots: (
+        transaction: unknown,
+        input: {
+          technicianServiceId: number;
+          from: Date;
+          to: Date;
+          page: number;
+          pageSize: number;
+          includeUnavailable: boolean;
+        },
+        visibility: Record<string, unknown>
+      ) => Promise<unknown>;
+    };
+    repository.findDynamicAvailabilityCycle = jest.fn(async () => ({
+      id: 2,
+      ruleSet: { dynamicAvailability: true }
+    }));
+    repository.readDynamicAvailableSlots = jest.fn(async () => ({
+      list: [],
+      pagination: { page: 1, pageSize: 100, total: 0, totalPages: 0 }
+    }));
+    const input = {
+      technicianServiceId: 202,
+      from: new Date("2026-09-20T15:00:00.000Z"),
+      to: new Date("2026-09-21T15:00:00.000Z"),
+      page: 1,
+      pageSize: 100,
+      includeUnavailable: true
+    };
+
+    await repository.readAvailableSlots(
+      { technicianService: { findFirst: findTechnicianService } },
+      input,
+      { visibility: "public" }
+    );
+
+    expect(findTechnicianService).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 202 }),
+      select: { shopId: true }
+    }));
+    expect(repository.findDynamicAvailabilityCycle).toHaveBeenCalledWith(
+      expect.anything(),
+      11,
+      input.from,
+      input.to
+    );
+    expect(repository.readDynamicAvailableSlots).toHaveBeenCalledWith(
+      expect.anything(),
+      { ...input, shopId: 11 },
+      { visibility: "public" },
+      { id: 2, ruleSet: { dynamicAvailability: true } },
+      undefined
+    );
+  });
+
   it("does not require persisted schedule slots when validating a dynamic shop location", async () => {
     const findMany = jest.fn(async () => [currentShopServiceLocation(11)]);
     const repository = new BookingRepository(

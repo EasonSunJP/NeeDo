@@ -35,6 +35,14 @@ const availabilityLoadingLabelByLanguage = {
   ko: "예약 가능 날짜를 불러오는 중…"
 } as const;
 
+const timeLoadingLabelByLanguage = {
+  zh: "正在读取可预约时间…",
+  "zh-Hant": "正在讀取可預約時間…",
+  ja: "予約可能な時間を読み込み中…",
+  en: "Loading available times…",
+  ko: "예약 가능 시간을 불러오는 중…"
+} as const;
+
 function formatDateLabel(year: number, month: number, selectedDay: number, language: Language) {
   const date = new Date(year, month, selectedDay);
 
@@ -203,7 +211,7 @@ export function AvailabilityCalendar({
               ? availableDates.has(formatDateKey(date))
               : alwaysAvailable || isAvailableDay(year, month, cell.day));
           const selected = selectable && cell.day === currentSelectedDay && year === selectedYear && month === selectedMonth;
-          const mutedDay = !selectable && !cell.ghost;
+          const mutedDay = !selectable && !cell.ghost && !availabilityLoading;
 
           return (
             <button
@@ -227,9 +235,16 @@ export function AvailabilityCalendar({
                 {cell.ghost ? "" : cell.day}
               </span>
               {!authoritativeAvailability && !availableDates && cell.day === 13 && !cell.ghost ? <span className="availability-calendar-tel mt-1.5 text-xs text-ink/35">TEL</span> : null}
-              {selectable
-                ? <span className="mt-1.5 h-5 w-5 rounded-full border-[4px] border-[#f08a00]" />
-                : <span className="availability-calendar-dash mt-1.5 text-lg text-ink/20">－</span>}
+              {cell.ghost ? null : availabilityLoading ? (
+                <span
+                  aria-hidden="true"
+                  className="availability-calendar-loading-marker mt-2 h-3.5 w-7 animate-pulse rounded-full bg-ink/12"
+                />
+              ) : selectable ? (
+                <span className="mt-1.5 h-5 w-5 rounded-full border-[4px] border-[#f08a00]" />
+              ) : (
+                <span className="availability-calendar-dash mt-1.5 text-lg text-ink/20">－</span>
+              )}
             </button>
           );
         })}
@@ -256,8 +271,12 @@ export function AvailabilityCalendar({
         <label className="grid grid-cols-[82px,1fr] items-center gap-2.5">
           <span className="text-[15px] font-black text-ink/72">时间</span>
           <span className="flex h-11 items-center justify-between border border-line bg-white px-4 text-[18px] font-black">
-            <select className="min-w-0 flex-1 appearance-none bg-transparent outline-none" onChange={(event) => onTimeChange(event.target.value)} value={time}>
-              {timeOptions.length === 0 ? <option value="">{emptyTimeLabelByLanguage[language]}</option> : null}
+            <select className="min-w-0 flex-1 appearance-none bg-transparent outline-none" disabled={availabilityLoading} onChange={(event) => onTimeChange(event.target.value)} value={time}>
+              {timeOptions.length === 0 ? (
+                <option value="">
+                  {availabilityLoading ? timeLoadingLabelByLanguage[language] : emptyTimeLabelByLanguage[language]}
+                </option>
+              ) : null}
               {timeOptions.map((option) => (
                 <option key={option}>{option}</option>
               ))}

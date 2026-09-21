@@ -59,6 +59,20 @@ export function slotsForCheckoutDate(slots: BookingScheduleSlot[], date: string)
     .sort((left, right) => left.startsAt.localeCompare(right.startsAt) || left.id - right.id);
 }
 
+export function listAlignedCheckoutStartTimes(
+  slots: BookingScheduleSlot[],
+  intervalMinutes = 30,
+  nowMs: number = Date.now()
+) {
+  return Array.from(new Set(slots.flatMap((slot) => {
+    const parts = getTokyoSlotParts(slot.startsAt);
+    const minute = parts ? Number(parts.time.slice(3)) : Number.NaN;
+    return parts && isCheckoutSlotBookable(slot, nowMs) && minute % intervalMinutes === 0
+      ? [parts.time]
+      : [];
+  }))).sort();
+}
+
 export function resolveInitialCheckoutSlotId(
   slots: BookingScheduleSlot[],
   date: string,

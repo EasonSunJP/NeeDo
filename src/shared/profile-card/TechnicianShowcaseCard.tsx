@@ -25,6 +25,7 @@ type TechnicianShowcaseCardProps = {
   selectionAriaLabel?: string;
   selectionDisabled?: boolean;
   selectionInactiveIcon?: IconName;
+  selectionPending?: boolean;
   technician: Technician;
 };
 
@@ -393,6 +394,7 @@ export function TechnicianShowcaseCard({
   selectionAriaLabel,
   selectionDisabled = false,
   selectionInactiveIcon = "plus",
+  selectionPending = false,
   technician
 }: TechnicianShowcaseCardProps) {
   const location = useLocation();
@@ -575,22 +577,24 @@ export function TechnicianShowcaseCard({
         {photoSection}
         {typeof selected === "boolean" ? (
           <button
-            aria-disabled={selectionDisabled}
+            aria-disabled={selectionDisabled || selectionPending}
             aria-label={selectionLabel}
             aria-pressed={selected}
             className={cn(
               "absolute bottom-2 right-2 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-md transition active:scale-95 disabled:cursor-not-allowed",
-              selectionDisabled
+              selectionPending
+                ? "border-white/46 bg-black/42 text-white/62 shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
+                : selectionDisabled
                 ? "border-white/46 bg-black/42 text-[#ff5f6e] shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
                 : selected
                 ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#06100b] shadow-[0_8px_20px_color-mix(in_srgb,var(--client-primary)_40%,transparent)]"
                 : "border-white/58 bg-black/38 text-white/78 shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
             )}
-            disabled={selectionDisabled}
+            disabled={selectionDisabled || selectionPending}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              if (selectionDisabled) {
+              if (selectionDisabled || selectionPending) {
                 return;
               }
               onSelect();

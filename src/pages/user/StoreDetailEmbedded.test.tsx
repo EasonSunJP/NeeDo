@@ -174,6 +174,22 @@ it("renders and switches all six public presentation tabs without a page shell",
   expect(container.querySelector("nav")).toBeNull();
 });
 
+it("shows pending availability without authoritative unavailable markers", async () => {
+  pricingModeMock.getBookingNavigation.mockReturnValue(new Promise(() => {}));
+
+  await renderFormalMerchantPreview(1, "user");
+
+  expect(container.textContent).toContain("正在读取可约日期");
+  expect(container.textContent).toContain("正在读取可预约时间");
+  expect(container.textContent).toContain("正在读取可预约服务");
+  expect(container.querySelector(".availability-calendar-dash")).toBeNull();
+  expect(container.textContent).not.toContain("暂无可预约时间");
+  expect(container.textContent).not.toContain("暂无可预约服务");
+  const pendingTechnicianButton = container.querySelector<HTMLButtonElement>('button[aria-label="正在读取可预约状态…"]');
+  expect(pendingTechnicianButton?.disabled).toBe(true);
+  expect(container.querySelector('button[aria-label="当前时间不可约"]')).toBeNull();
+});
+
 it("localizes the embedded loading state", async () => {
   locale.language = "ja";
   vi.spyOn(coreReadApi, "getShopDetail").mockReturnValue(new Promise(() => {}));
@@ -464,4 +480,68 @@ it("builds checkout actions only from an exact future formal slot", async () => 
   expect(checkoutHref).toContain("date=2026-09-13");
   expect(checkoutHref).toContain("time=21%3A00");
   expect(checkoutHref).not.toContain("time=00%3A00");
+});
+
+it("routes an available technician selection to services using only 30-minute customer starts", async () => {
+  const visitDate = new Date();
+  visitDate.setDate(visitDate.getDate() + 1);
+  const dateKey = [
+    visitDate.getFullYear(),
+    String(visitDate.getMonth() + 1).padStart(2, "0"),
+    String(visitDate.getDate()).padStart(2, "0")
+  ].join("-");
+  const makeTechnicianSlot = (id: number, technicianProfileId: number, time: string): BookingScheduleSlot => ({
+    id,
+    serviceId: null,
+    technicianServiceId: 200 + technicianProfileId,
+    shopId: 21,
+    technicianProfileId,
+    startsAt: new Date(`${dateKey}T${time}:00+09:00`).toISOString(),
+    endsAt: new Date(new Date(`${dateKey}T${time}:00+09:00`).getTime() + 3_600_000).toISOString(),
+    capacity: 1,
+    bookedCount: 0,
+    status: "available",
+    serviceName: "技师主服务",
+    shopName: "麻布十番超级按摩",
+    technicianName: `技师 ${technicianProfileId}`,
+    priceAmount: "8800",
+    currency: "JPY",
+    durationMinutes: 60
+  });
+  pricingModeMock.getBookingNavigation.mockResolvedValue({
+    shopId: 21,
+    pricingMode: "technician",
+    technicianPricingRatePercent: 0,
+    entry: "technician_list",
+    technicians: { list: [], total: 2, page: 1, page_size: 20 }
+  });
+  vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
+    list: [
+      makeTechnicianSlot(951, 501, "09:45"),
+      makeTechnicianSlot(952, 501, "10:00"),
+      makeTechnicianSlot(953, 502, "10:30")
+    ],
+    total: 3,
+    page: 1,
+    page_size: 100
+  });
+
+  await renderFormalMerchantPreview(2, "user");
+  await vi.waitFor(() => {
+    const timeSelect = container.querySelectorAll("select")[1];
+    expect(Array.from(timeSelect?.options ?? []).map((option) => option.value)).toEqual(["10:00", "10:30"]);
+  });
+  const unavailableTechnician = container.querySelector<HTMLButtonElement>('button[aria-label="当前时间不可约"]');
+  expect(unavailableTechnician?.disabled).toBe(true);
+  const selectTechnician = container.querySelector<HTMLButtonElement>('button[aria-label="待选技师"]');
+  expect(selectTechnician).not.toBeNull();
+  await act(async () => selectTechnician!.click());
+
+  await vi.waitFor(() => {
+    const bookingLink = Array.from(container.querySelectorAll<HTMLAnchorElement>("a"))
+      .find((link) => link.textContent?.includes("立即预约"));
+    expect(bookingLink?.getAttribute("href")).toContain(`/stores/21/technicians/501/services?date=${dateKey}`);
+    expect(bookingLink?.getAttribute("href")).toContain("time=10%3A00");
+  });
+  expect(container.textContent).not.toContain("暂无可预约服务");
 });

@@ -461,7 +461,12 @@ describe("CoreReadRepository multi-entity search", () => {
                 visibility: "public"
               }
             },
-            orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+            orderBy: [
+              { isRecommended: "desc" },
+              { sourceShopServiceId: "desc" },
+              { sortOrder: "asc" },
+              { id: "asc" }
+            ],
             take: 1
           }),
           user: {

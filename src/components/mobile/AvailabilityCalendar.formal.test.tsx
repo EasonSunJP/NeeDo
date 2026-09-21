@@ -78,6 +78,10 @@ it("shows an explicit loading state while the authoritative date index is loadin
   });
 
   expect(container.textContent).toContain("予約可能日を読み込み中");
+  expect(container.querySelectorAll(".availability-calendar-loading-marker").length).toBeGreaterThan(0);
+  expect(container.querySelector(".availability-calendar-dash")).toBeNull();
+  expect(container.textContent).not.toContain("予約可能な時間はありません");
+  expect(container.querySelectorAll("select")[1]?.querySelector("option")?.textContent).toBe("予約可能な時間を読み込み中…");
   const day14 = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
     .find((button) => button.querySelector(".availability-calendar-day")?.textContent === "14")!;
   expect(day14.disabled).toBe(true);

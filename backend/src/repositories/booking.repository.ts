@@ -1562,6 +1562,31 @@ export class BookingRepository implements BookingRepositoryPort {
       if (!service) return buildPaginatedResponse([], 0, pagination);
       resolvedShopId = service.shopId;
     }
+    if (input.technicianServiceId) {
+      const technicianService = await transaction.technicianService.findFirst({
+        where: {
+          id: input.technicianServiceId,
+          deletedAt: null,
+          isActive: true,
+          isBookable: true,
+          reviewStatus: "APPROVED",
+          category: { is: { deletedAt: null, isActive: true } },
+          shop: {
+            is: {
+              deletedAt: null,
+              status: "published",
+              publicIdentifier: {
+                is: { kind: "SHOP", status: "ACTIVE", deletedAt: null }
+              }
+            }
+          },
+          ...(input.shopId ? { shopId: input.shopId } : {})
+        },
+        select: { shopId: true }
+      });
+      if (!technicianService?.shopId) return buildPaginatedResponse([], 0, pagination);
+      resolvedShopId = technicianService.shopId;
+    }
 
     const scopedInput = { ...input, shopId: resolvedShopId };
     const dynamicCycle = resolvedShopId

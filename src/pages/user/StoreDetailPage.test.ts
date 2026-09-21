@@ -25,7 +25,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("technicianListCollapsed");
     expect(pageSource).toContain("StoreTechnicianSelectableCard");
     expect(pageSource).toContain("grid-cols-2");
-    expect(pageSource).toContain('aria-label={unavailable ? "当前时间不可约" : active ? "已选技师" : "待选技师"}');
+    expect(pageSource).toContain('aria-label={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : active ? "已选技师" : "待选技师"}');
   });
 
   it("keeps the complete public shop technician roster instead of truncating it to eight entries", () => {
@@ -146,7 +146,7 @@ describe("StoreDetailPage routed booking defaults", () => {
 
     expect(selectableCardSource).toContain("onSelect={onSelect}");
     expect(selectableCardSource).toContain("detailTo={profileTo}");
-    expect(selectableCardSource).toContain('selectionInactiveIcon={unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}');
+    expect(selectableCardSource).toContain('selectionInactiveIcon={availabilityLoading ? "clock" : unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}');
     expect(selectableCardSource).not.toContain("onServiceSelect");
     expect(homeTechnicianSource).toContain("isTechnicianPricingActive ? (");
     expect(homeTechnicianSource).toContain("storeHomeTechnicianServiceListRows");
@@ -175,8 +175,8 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).toContain("selected?: boolean;");
     expect(technicianRowSource).toContain("onSelect?: () => void;");
     expect(technicianRowSource).toContain("unavailable?: boolean;");
-    expect(technicianRowSource).toContain('inactiveIcon={unavailable ? "x" : "plus"}');
-    expect(technicianRowSource).toContain('label={unavailable ? "当前时间不可约" : selected ? "已选技师" : "待选技师"}');
+    expect(technicianRowSource).toContain('inactiveIcon={availabilityLoading ? "clock" : unavailable ? "x" : "plus"}');
+    expect(technicianRowSource).toContain('label={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : selected ? "已选技师" : "待选技师"}');
   });
 
   it("disables technicians whose confirmed appointment overlaps the selected store booking time", () => {
@@ -194,9 +194,9 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("unavailableTechnicianIds.has(technician.id)");
     expect(pageSource).toContain("setSelectedTechnicianId(\"\");");
     expect(selectableCardSource).toContain("unavailable = false");
-    expect(selectableCardSource).toContain("selectionDisabled={unavailable}");
-    expect(selectableCardSource).toContain('selectionInactiveIcon={unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}');
-    expect(selectableCardSource).toContain('selectionAriaLabel={unavailable ? "当前时间不可约"');
+    expect(selectableCardSource).toContain("selectionDisabled={availabilityLoading || unavailable}");
+    expect(selectableCardSource).toContain('selectionInactiveIcon={availabilityLoading ? "clock" : unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}');
+    expect(selectableCardSource).toContain('selectionAriaLabel={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约"');
     expect(selectableCardSource).toContain('!isMerchantEditable && unavailable && "opacity-70 saturate-[0.72]"');
     expect(homeTechnicianSource).toContain("const unavailable = !isMerchantEditable && unavailableTechnicianIds.has(technician.id);");
     expect(homeTechnicianSource).toContain("if (unavailable) {");
@@ -204,8 +204,8 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowsSource).toContain("const unavailable = !isMerchantEditable && unavailableTechnicianIds.has(technician.id);");
     expect(technicianRowsSource).toContain("if (unavailable) {");
     expect(technicianRowSource).toContain('!isMerchantEditable && unavailable && "opacity-70 saturate-[0.72]"');
-    expect(technicianRowSource).toContain("disabled={unavailable}");
-    expect(technicianRowSource).toContain('inactiveIcon={unavailable ? "x" : "plus"}');
+    expect(technicianRowSource).toContain("disabled={availabilityLoading || unavailable}");
+    expect(technicianRowSource).toContain('inactiveIcon={availabilityLoading ? "clock" : unavailable ? "x" : "plus"}');
   });
 
   it("derives technician-pricing availability from any bookable technician slot on the selected day", () => {
@@ -216,11 +216,24 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).not.toContain("if (isMerchantEditable || isTechnicianPricingActive)");
   });
 
+  it("shows customers only 30-minute starts that exist in formal availability", () => {
+    expect(pageSource).toContain("listAlignedCheckoutStartTimes(formalSelectedDateSlots, 30");
+    expect(pageSource).not.toContain("formalSelectedDateSlots.map((slot) => getTokyoSlotParts(slot.startsAt)?.time)");
+  });
+
   it("loads a separate authoritative availability-date index instead of treating one selected day as the whole calendar", () => {
     expect(pageSource).toContain("loadAvailabilityDateKeys");
     expect(pageSource).toContain("formalAvailableDateKeysStatus");
-    expect(pageSource).toContain("availabilityLoading={formalAvailableDateKeysStatus === \"loading\"}");
+    expect(pageSource).toContain("availabilityLoading={formalAvailabilityLoading}");
     expect(pageSource).not.toContain("formalBookableSlots.map((slot) => getTokyoSlotParts(slot.startsAt)?.date)");
+  });
+
+  it("keeps pending formal availability distinct from a confirmed empty result", () => {
+    expect(pageSource).toContain("bookingNavigationStatus");
+    expect(pageSource).toContain("const formalAvailabilityLoading = Boolean(formalApiOnly)");
+    expect(pageSource).toContain('availabilityLoading={formalAvailabilityLoading}');
+    expect(pageSource).toContain('formalAvailabilityLoading ? "正在读取可预约服务…" : "暂无可预约服务"');
+    expect(pageSource).toContain('ja: "予約可能なサービスを読み込み中…"');
   });
 
   it("keeps technician-tab row right content linked to technician service lists with a service info affordance", () => {
@@ -360,8 +373,8 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain('scope === "merchant"');
     expect(pageSource).toContain("showSelectAction={!isMerchantEditable}");
     expect(pageSource).toContain('selectionActiveIcon={isMerchantEditable ? "eye" : "check"}');
-    expect(pageSource).toContain('selectionInactiveIcon={unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}');
-    expect(pageSource).toContain('selectionAriaLabel={unavailable ? "当前时间不可约" : isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}');
+    expect(pageSource).toContain('selectionInactiveIcon={availabilityLoading ? "clock" : unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}');
+    expect(pageSource).toContain('selectionAriaLabel={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}');
   });
 
   it("uses the technician eye action as a merchant display visibility switch", () => {

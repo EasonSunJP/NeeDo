@@ -67,6 +67,10 @@ import {
   resolveInitialCheckoutSlotId
 } from "./formal-checkout/checkoutTimeSlots";
 import { parseTechnicianServiceBundleIds } from "./formal-checkout/checkoutServiceRoute";
+import {
+  isTravelEstimateAddressComplete,
+  normalizeCheckoutHomeAddress
+} from "./formal-checkout/checkoutHomeAddress";
 
 type LoadStatus = "loading" | "success" | "error";
 type TechnicianLoadStatus = "idle" | "loading" | "error";
@@ -805,6 +809,11 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const supportsBothModes = checkoutServiceMode
     ? serviceFulfillmentModes(checkoutServiceMode).length === 2
     : false;
+  const travelEstimateAddressComplete = isTravelEstimateAddressComplete(
+    homeAddress,
+    selectedAdmin1Code,
+    selectedAdmin2Code
+  );
   const canSubmitBooking = Boolean(selectedSlot) && (
     technicianServiceIds.length <= 1 || Boolean(selectedSlot && bundleSlotIds[selectedSlot.id])
   ) && (
@@ -890,8 +899,8 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       setEstimateStatus("error");
       return;
     }
-    const normalizedAddress = Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress;
-    if (!/^\d{3}-?\d{4}$/.test(normalizedAddress.postalCode) || !normalizedAddress.prefecture || !normalizedAddress.city || !normalizedAddress.addressLine1) {
+    const normalizedAddress = normalizeCheckoutHomeAddress(homeAddress);
+    if (!isTravelEstimateAddressComplete(normalizedAddress, selectedAdmin1Code, selectedAdmin2Code)) {
       setEstimateError("completeAddressForEstimate");
       setEstimateStatus("error");
       return;
@@ -1008,7 +1017,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     setSubmitError(null);
     try {
       const fulfillment = fulfillmentMode === "home"
-        ? { fulfillmentMode: "home" as const, serviceLocation: { countryCode: "JP" as const, admin1Code: selectedAdmin1Code, admin2Code: selectedAdmin2Code }, fulfillmentAddress: Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress, travelEstimatePublicId: estimate!.publicId }
+        ? { fulfillmentMode: "home" as const, serviceLocation: { countryCode: "JP" as const, admin1Code: selectedAdmin1Code, admin2Code: selectedAdmin2Code }, fulfillmentAddress: normalizeCheckoutHomeAddress(homeAddress), travelEstimatePublicId: estimate!.publicId }
         : { fulfillmentMode: "store" as const };
       const bookingCommon = {
         ...(exchangePostId ? { exchangeIntelligencePostId: exchangePostId } : {}),
@@ -1241,11 +1250,10 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                   {regionLoadError ? <p className="text-xs font-bold text-red-500" data-no-i18n>{t(regionLoadError)}</p> : null}
                   <div className="grid grid-cols-2 gap-2">
                     <input aria-label={t("postalCode")} className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" data-no-i18n onChange={(event) => updateHomeAddress("postalCode", event.target.value)} placeholder={t("postalCodePlaceholder")} value={homeAddress.postalCode} />
-                    <input aria-label={t("streetAddress")} className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" data-no-i18n onChange={(event) => updateHomeAddress("addressLine1", event.target.value)} placeholder="銀座1-2-3" value={homeAddress.addressLine1} />
-                    <input aria-label={t("addressExtra")} className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" data-no-i18n onChange={(event) => updateHomeAddress("addressLine2", event.target.value)} placeholder={t("addressExtraPlaceholder")} value={homeAddress.addressLine2} />
-                    <input aria-label={t("buildingRoom")} className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" data-no-i18n onChange={(event) => updateHomeAddress("building", event.target.value)} placeholder={t("buildingRoomPlaceholder")} value={homeAddress.building} />
+                    <input aria-label={t("streetAddress")} className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" data-no-i18n onChange={(event) => updateHomeAddress("addressLine1", event.target.value)} placeholder={t("streetAddressPlaceholder")} value={homeAddress.addressLine1} />
+                    <input aria-label={t("buildingRoom")} className="focus-ring col-span-2 rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" data-no-i18n onChange={(event) => updateHomeAddress("building", event.target.value)} placeholder={t("buildingRoomPlaceholder")} value={homeAddress.building} />
                   </div>
-                  <button className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-50" data-no-i18n disabled={estimateStatus === "loading" || !selectedSlotId} onClick={() => void requestTravelEstimate()} type="button">{estimateStatus === "loading" ? t("calculatingRoute") : estimateStatus === "error" || estimateStatus === "expired" ? t("recalculateTravelFee") : t("estimateTravelFee")}</button>
+                  <button className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-50" data-no-i18n disabled={estimateStatus === "loading" || !selectedSlotId || !travelEstimateAddressComplete} onClick={() => void requestTravelEstimate()} type="button">{estimateStatus === "loading" ? t("calculatingRoute") : estimateStatus === "error" || estimateStatus === "expired" ? t("recalculateTravelFee") : t("estimateTravelFee")}</button>
                   {estimateStatus === "success" && estimate ? <div className="rounded-[20px] bg-[color:var(--client-primary-soft)] p-3" data-no-i18n><p className="text-sm font-black text-[color:var(--client-primary)]">{t("formalTravelFee", { amount: estimate.fareAmountJpy.toLocaleString(valueLocale) })}</p><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{t("routeDetails", { distance: (estimate.distanceMeters / 1000).toFixed(1), maximum: (estimate.bandMaximumDistanceMeters / 1000).toFixed(1), version: estimate.policyVersion })}</p><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{t("estimateValidUntil", { expiresAt: new Date(estimate.expiresAt).toLocaleString(valueLocale) })}</p></div> : null}
                   {estimateStatus === "expired" ? <p className="text-sm font-black text-amber-700" data-no-i18n role="alert">{t("estimateExpired")}</p> : null}
                   {estimateStatus === "error" && estimateError ? <p className="text-sm font-black text-red-600" data-no-i18n role="alert">{t(estimateError)}</p> : null}

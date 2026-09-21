@@ -71,6 +71,7 @@ import {
   getTokyoDayWindow,
   getTokyoSlotParts,
   isCheckoutSlotBookable,
+  listAlignedCheckoutStartTimes,
   slotsForCheckoutDate
 } from "./formal-checkout/checkoutTimeSlots";
 import {
@@ -106,6 +107,8 @@ registerTranslationEntries({
   },
   "确认同步": { "zh-Hant": "確認同步", ja: "同期する", en: "Confirm sync", ko: "동기화 확인" },
   "正在同步": { "zh-Hant": "正在同步", ja: "同期中", en: "Syncing", ko: "동기화 중" },
+  "正在读取可预约状态…": { "zh-Hant": "正在讀取可預約狀態…", ja: "予約可能状況を読み込み中…", en: "Loading availability…", ko: "예약 가능 상태를 불러오는 중…" },
+  "正在读取可预约服务…": { "zh-Hant": "正在讀取可預約服務…", ja: "予約可能なサービスを読み込み中…", en: "Loading available services…", ko: "예약 가능한 서비스를 불러오는 중…" },
   "同步失败，请重新读取后再试": { "zh-Hant": "同步失敗，請重新讀取後再試", ja: "同期できませんでした。再読み込みしてからもう一度お試しください", en: "Sync failed. Reload the drafts and try again.", ko: "동기화하지 못했습니다. 초안을 다시 불러온 후 재시도하세요." }
 });
 
@@ -1253,6 +1256,7 @@ function CollapsibleSectionButton({
 
 function StoreTechnicianSelectableCard({
   active,
+  availabilityLoading = false,
   fallbackServices,
   isMerchantEditable = false,
   language,
@@ -1264,6 +1268,7 @@ function StoreTechnicianSelectableCard({
   unavailable = false
 }: {
   active: boolean;
+  availabilityLoading?: boolean;
   fallbackServices: ServiceItem[];
   isMerchantEditable?: boolean;
   language: Language;
@@ -1276,7 +1281,7 @@ function StoreTechnicianSelectableCard({
 }) {
   return (
     <TechnicianShowcaseCard
-      aria-label={unavailable ? "当前时间不可约" : active ? "已选技师" : "待选技师"}
+      aria-label={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : active ? "已选技师" : "待选技师"}
       className={cn(
         "h-full w-full",
         isMerchantEditable && !technicianVisible && "opacity-70 saturate-[0.72]",
@@ -1288,11 +1293,12 @@ function StoreTechnicianSelectableCard({
       metricLayout="split"
       onSelect={onSelect}
       rankIndex={rankIndex}
-      selected={isMerchantEditable ? technicianVisible : unavailable ? false : active}
+      selected={isMerchantEditable ? technicianVisible : availabilityLoading || unavailable ? false : active}
       selectionActiveIcon={isMerchantEditable ? "eye" : "check"}
-      selectionAriaLabel={unavailable ? "当前时间不可约" : isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}
-      selectionDisabled={unavailable}
-      selectionInactiveIcon={unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}
+      selectionAriaLabel={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}
+      selectionDisabled={availabilityLoading || unavailable}
+      selectionInactiveIcon={availabilityLoading ? "clock" : unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}
+      selectionPending={availabilityLoading}
       technician={technician}
     />
   );
@@ -1333,8 +1339,10 @@ function getStoreRecommendedServiceForTechnician(technician: Technician, fallbac
 }
 
 function StoreTechnicianServiceListRow({
+  availabilityLoading = false,
   fallbackServices,
   isMerchantEditable = false,
+  language,
   onSelect,
   onToggleVisibility,
   profileTo,
@@ -1345,8 +1353,10 @@ function StoreTechnicianServiceListRow({
   technicianVisible = true,
   unavailable = false
 }: {
+  availabilityLoading?: boolean;
   fallbackServices: ServiceItem[];
   isMerchantEditable?: boolean;
+  language: Language;
   onSelect?: () => void;
   onToggleVisibility?: () => void;
   profileTo: string;
@@ -1409,13 +1419,14 @@ function StoreTechnicianServiceListRow({
         </Link>
         {showSelectionAction && onSelect ? (
           <StoreSelectionIconButton
-            active={Boolean(selected) && !unavailable}
+            active={Boolean(selected) && !availabilityLoading && !unavailable}
             activeIcon="check"
             className="absolute bottom-2 right-2 z-30 h-11 w-11"
-            disabled={unavailable}
-            inactiveIcon={unavailable ? "x" : "plus"}
-            label={unavailable ? "当前时间不可约" : selected ? "已选技师" : "待选技师"}
+            disabled={availabilityLoading || unavailable}
+            inactiveIcon={availabilityLoading ? "clock" : unavailable ? "x" : "plus"}
+            label={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : selected ? "已选技师" : "待选技师"}
             onSelect={onSelect}
+            pending={availabilityLoading}
           />
         ) : null}
       </div>
@@ -1472,7 +1483,8 @@ function StoreSelectionIconButton({
   disabled = false,
   inactiveIcon = "plus",
   label,
-  onSelect
+  onSelect,
+  pending = false
 }: {
   active: boolean;
   activeIcon?: IconName;
@@ -1481,22 +1493,25 @@ function StoreSelectionIconButton({
   inactiveIcon?: IconName;
   label: string;
   onSelect: () => void;
+  pending?: boolean;
 }) {
   return (
     <button
-      aria-disabled={disabled}
+      aria-disabled={disabled || pending}
       aria-label={label}
       aria-pressed={active}
       className={cn(
         "focus-ring inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border backdrop-blur-md transition active:scale-95",
-        disabled
+        pending
+          ? "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_42%,transparent)] text-[color:var(--client-muted)] shadow-[0_10px_24px_rgba(0,0,0,0.18)]"
+          : disabled
           ? "border-[#ff5f6e]/80 bg-black/44 text-[#ff5f6e] shadow-[0_10px_24px_rgba(0,0,0,0.22)]"
           : active
             ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#06100b] shadow-[0_14px_30px_color-mix(in_srgb,var(--client-primary)_36%,transparent)]"
             : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_42%,transparent)] text-[color:var(--client-text)] shadow-[0_10px_24px_rgba(0,0,0,0.18)]",
         className
       )}
-      disabled={disabled}
+      disabled={disabled || pending}
       onClick={onSelect}
       type="button"
     >
@@ -2850,6 +2865,7 @@ export function StoreDetailExperience({
   const displayedTechnicians = techniciansOverride ?? technicians;
   const storeApiId = useMemo(() => storeDetailRouteEntityIdToApiId(sourceStore.id), [sourceStore.id]);
   const [bookingNavigation, setBookingNavigation] = useState<BookingNavigationResponse | null>(null);
+  const [bookingNavigationStatus, setBookingNavigationStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [formalSlots, setFormalSlots] = useState<BookingScheduleSlot[]>([]);
   const [formalSlotsStatus, setFormalSlotsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [formalAvailableDateKeys, setFormalAvailableDateKeys] = useState<string[]>([]);
@@ -2957,20 +2973,24 @@ export function StoreDetailExperience({
   useEffect(() => {
     if (!storeApiId || isMerchantEditable) {
       setBookingNavigation(null);
+      setBookingNavigationStatus("idle");
       return;
     }
 
     let mounted = true;
+    setBookingNavigationStatus("loading");
     pricingModeApi
       .getBookingNavigation(storeApiId, { page: 1, pageSize: 20 })
       .then((result) => {
         if (mounted) {
           setBookingNavigation(result);
+          setBookingNavigationStatus("success");
         }
       })
       .catch(() => {
         if (mounted) {
           setBookingNavigation(null);
+          setBookingNavigationStatus("error");
         }
       });
 
@@ -3289,12 +3309,29 @@ export function StoreDetailExperience({
       : sameDay;
   }, [formalBookableSlots, selectedTechnicianId, selectedVisitDate]);
   const formalTimeOptions = useMemo(
-    () => Array.from(new Set(formalSelectedDateSlots.map((slot) => getTokyoSlotParts(slot.startsAt)?.time).filter((time): time is string => Boolean(time)))),
-    [formalSelectedDateSlots]
+    () => listAlignedCheckoutStartTimes(formalSelectedDateSlots, 30, formalAvailabilityNowMs),
+    [formalAvailabilityNowMs, formalSelectedDateSlots]
   );
   const selectedFormalSlot = useMemo(
     () => formalSelectedDateSlots.find((slot) => getTokyoSlotParts(slot.startsAt)?.time === selectedTime) ?? null,
     [formalSelectedDateSlots, selectedTime]
+  );
+  const canLoadFormalAvailability = Boolean(
+    storeApiId && (isTechnicianPricingActive || formalServiceId)
+  );
+  const formalAvailabilityLoading = Boolean(formalApiOnly) && !isMerchantEditable && (
+    bookingNavigationStatus === "idle"
+    || bookingNavigationStatus === "loading"
+    || (
+      bookingNavigationStatus === "success"
+      && canLoadFormalAvailability
+      && (
+        formalAvailableDateKeysStatus === "idle"
+        || formalAvailableDateKeysStatus === "loading"
+        || formalSlotsStatus === "idle"
+        || formalSlotsStatus === "loading"
+      )
+    )
   );
   useEffect(() => {
     if (!formalApiOnly || formalAvailableDateKeysStatus !== "success" || formalAvailableDateKeys.length === 0) return;
@@ -3328,7 +3365,6 @@ export function StoreDetailExperience({
     return () => window.clearTimeout(timeoutId);
   }, [formalApiOnly, formalAvailabilityNowMs, formalBookableSlots]);
 
-  const hasBookableCheckoutTarget = selectedCheckoutTarget.length > 0 && (!formalApiOnly || Boolean(selectedFormalSlot));
   const selectedBookingDurationMinutes = useMemo(
     () => parseBookingDurationMinutes(menuCards.find((item) => item.sourceServiceId === selectedCheckoutTarget)?.duration),
     [menuCards, selectedCheckoutTarget]
@@ -3339,6 +3375,9 @@ export function StoreDetailExperience({
     }
 
     if (formalApiOnly) {
+      if (formalAvailabilityLoading) {
+        return new Set<string>();
+      }
       const availableTechnicianIds = new Set(
         formalBookableSlots
           .filter((slot) => (
@@ -3363,7 +3402,7 @@ export function StoreDetailExperience({
         )
         .map((technician) => technician.id)
     );
-  }, [formalApiOnly, formalBookableSlots, isMerchantEditable, isTechnicianPricingActive, selectedBookingDurationMinutes, selectedTime, selectedVisitDate, store, storeTechnicians]);
+  }, [formalApiOnly, formalAvailabilityLoading, formalBookableSlots, isMerchantEditable, isTechnicianPricingActive, selectedBookingDurationMinutes, selectedTime, selectedVisitDate, store, storeTechnicians]);
   const selectedBookingTechnician = useMemo(
     () => {
       const selected = displayedTechnicians.find(
@@ -3395,6 +3434,16 @@ export function StoreDetailExperience({
       : (timeOptions.includes(selectedTime) ? timeOptions : [selectedTime, ...timeOptions]),
     [formalApiOnly, formalTimeOptions, selectedTime, timeOptions]
   );
+  const technicianServiceListBookingHref = isTechnicianPricingActive && selectedFormalSlot && selectedBookingTechnician
+    ? getScopedTechnicianServiceListPath(scope, store.id, selectedBookingTechnician.id, {
+        date: formatDateParam(selectedVisitDate),
+        people: selectedPeople,
+        time: selectedTime
+      })
+    : null;
+  const hasBookableCheckoutTarget = isTechnicianPricingActive
+    ? Boolean(technicianServiceListBookingHref)
+    : selectedCheckoutTarget.length > 0 && (!formalApiOnly || Boolean(selectedFormalSlot));
   const buildBookingHref = (checkoutTarget: string) =>
     buildStoreCheckoutRoute(checkoutTarget, {
       date: formatDateParam(selectedVisitDate),
@@ -3404,7 +3453,12 @@ export function StoreDetailExperience({
       technicianId: selectedBookingTechnician?.id ?? (selectedFormalSlot?.technicianProfileId ? String(selectedFormalSlot.technicianProfileId) : undefined),
       time: selectedTime
     });
-  const bookingHref = hasBookableCheckoutTarget ? buildBookingHref(selectedCheckoutTarget) : undefined;
+  const bookingHref = technicianServiceListBookingHref
+    ?? (hasBookableCheckoutTarget ? buildBookingHref(selectedCheckoutTarget) : undefined);
+  const unavailableBookingActionLabel = formalAvailabilityLoading ? "正在读取可预约服务…" : "暂无可预约服务";
+  const bookingActionStatusLabel = !formalAvailabilityLoading && isTechnicianPricingActive && formalTimeOptions.length > 0
+    ? "选择技师"
+    : unavailableBookingActionLabel;
   const renderBookingAction = (className: string, label: string) =>
     hasBookableCheckoutTarget ? (
       <PrimaryButton className={className} to={bookingHref}>
@@ -3421,7 +3475,7 @@ export function StoreDetailExperience({
         role="button"
       >
         <AppIcon className="h-4 w-4" name="calendar" />
-        <span>暂无可预约服务</span>
+        <span>{translateText(bookingActionStatusLabel, language)}</span>
       </div>
     );
   const canForwardOfferToNeedo = session?.portal === "merchant" && session.linkedStoreId === store.id && !isMerchantEditable;
@@ -3848,8 +3902,10 @@ export function StoreDetailExperience({
 
           return (
             <StoreTechnicianServiceListRow
+              availabilityLoading={selectable && formalAvailabilityLoading}
               fallbackServices={services}
               isMerchantEditable={isMerchantEditable}
+              language={language}
               key={technician.id}
               onSelect={selectable ? () => {
                 if (unavailable) {
@@ -4256,7 +4312,7 @@ export function StoreDetailExperience({
                     onTimeChange={setSelectedTime}
                     alwaysAvailable={store.alwaysBookable}
                     availableDateKeys={formalApiOnly ? formalAvailableDateKeys : undefined}
-                    availabilityLoading={formalAvailableDateKeysStatus === "loading"}
+                    availabilityLoading={formalAvailabilityLoading}
                     authoritativeAvailability={formalApiOnly}
                     people={selectedPeople}
                     selectedDate={selectedVisitDate}
@@ -4310,6 +4366,7 @@ export function StoreDetailExperience({
                       return (
                         <StoreTechnicianSelectableCard
                           active={active}
+                          availabilityLoading={formalAvailabilityLoading}
                           fallbackServices={services}
                           isMerchantEditable={isMerchantEditable}
                           key={technician.id}

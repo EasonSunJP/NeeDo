@@ -1120,7 +1120,12 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
           currency: true,
           durationMinutes: true
         },
-        orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }],
+        orderBy: [
+          { isRecommended: "desc" as const },
+          { sourceShopServiceId: "desc" as const },
+          { sortOrder: "asc" as const },
+          { id: "asc" as const }
+        ],
         take: 1
       },
       user: {
