@@ -2,8 +2,23 @@ import { randomUUID } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createExchangeBookingFixture } from "../scripts/check-exchange-booking-conversion-flow";
 import { requireSafeExchangeClaimFlowEnvironment } from "../scripts/support/exchange-claim-flow-safety";
-import { BookingRepository } from "../src/repositories/booking.repository";
+import {
+  BookingRepository,
+  type AvailabilityListPayload,
+  type ScheduleSlotPayload
+} from "../src/repositories/booking.repository";
 import { BookingService } from "../src/services/booking.service";
+import type { PaginatedResponse } from "../src/utils/pagination";
+
+function requireSlotList(
+  result: PaginatedResponse<AvailabilityListPayload>
+): PaginatedResponse<ScheduleSlotPayload> {
+  const list: ScheduleSlotPayload[] = result.list.map((item) => {
+    if (!("id" in item)) throw new Error("Expected schedule slots, not availability summaries");
+    return item;
+  });
+  return { ...result, list };
+}
 
 const enabled = process.env.RUN_BOOKING_AVAILABILITY_INTEGRATION === "true";
 const integration = enabled ? describe : describe.skip;
@@ -141,8 +156,8 @@ integration("public availability agrees with authoritative Booking", () => {
         expectedPriceAmountJpy: 8800,
         fulfillmentMode: "store"
       });
-    const list = (includeUnavailable = false) =>
-      booking.listAvailableSlots({ ...query, includeUnavailable }, viewer);
+    const list = async (includeUnavailable = false) =>
+      requireSlotList(await booking.listAvailableSlots({ ...query, includeUnavailable }, viewer));
     const conflict = (data: Prisma.BookingOrderUpdateInput) =>
       tx.bookingOrder.update({
         where: { id: base.oldOrderId },
@@ -369,7 +384,7 @@ integration("public availability agrees with authoritative Booking", () => {
             data: { serviceId: f.base.serviceId, technicianServiceId: null }
           });
         }
-        const result = await f.booking.listAvailableSlots(
+        const result = requireSlotList(await f.booking.listAvailableSlots(
           {
             ...range,
             ...(mode === "technician"
@@ -377,7 +392,7 @@ integration("public availability agrees with authoritative Booking", () => {
               : { serviceId: f.base.serviceId })
           },
           f.viewer
-        );
+        ));
         expect(result.list.map((slot) => slot.id)).toEqual([f.nextSlotId]);
       });
     }

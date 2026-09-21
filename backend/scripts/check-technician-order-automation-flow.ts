@@ -196,8 +196,8 @@ async function loadFoundation(prisma: PrismaClient) {
     prisma.technicianProfile.update({ where: { id: technicianProfile.id }, data: { verifiedAt: technicianProfile.verifiedAt ?? new Date() } }),
     prisma.technicianProfile.update({ where: { id: pausedProfile.id }, data: { verifiedAt: pausedProfile.verifiedAt ?? new Date() } }),
     prisma.technicianWorkState.upsert({
-      where: { technicianProfileId: technicianProfile.id },
-      create: { technicianProfileId: technicianProfile.id, status: "on_duty", syncedAt: new Date() },
+      where: { technicianProfileId_shopId: { technicianProfileId: technicianProfile.id, shopId: shop.id } },
+      create: { technicianProfileId: technicianProfile.id, shopId: shop.id, status: "on_duty", syncedAt: new Date() },
       update: { status: "on_duty", syncedAt: new Date(), deletedAt: null }
     })
   ]);
@@ -519,7 +519,7 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
       serviceId: fixture.mismatchService.id, startsAt: new Date("2099-06-01T03:00:00.000Z"), priceJpy: Number(fixture.mismatchService.priceAmount)
     });
     await prisma.technicianWorkState.update({
-      where: { technicianProfileId: fixture.technicianProfile.id },
+      where: { technicianProfileId_shopId: { technicianProfileId: fixture.technicianProfile.id, shopId: fixture.shop.id } },
       data: { status: "in_service", syncedAt: new Date(), deletedAt: null }
     });
     try {
@@ -529,7 +529,7 @@ export async function runTechnicianOrderAutomationCheck(): Promise<void> {
       await processor.processBooking(bookingMismatch.id);
     } finally {
       await prisma.technicianWorkState.update({
-        where: { technicianProfileId: fixture.technicianProfile.id },
+        where: { technicianProfileId_shopId: { technicianProfileId: fixture.technicianProfile.id, shopId: fixture.shop.id } },
         data: { status: "on_duty", syncedAt: new Date(), deletedAt: null }
       });
     }

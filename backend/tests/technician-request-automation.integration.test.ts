@@ -139,7 +139,7 @@ integration("Request automation with real MySQL claims", () => {
       }
     });
     await client.technicianWorkState.create({
-      data: { technicianProfileId: profile.id, status: "on_duty" }
+      data: { technicianProfileId: profile.id, shopId: shop.id, status: "on_duty" }
     });
     const setting = await client.technicianAutomationSetting.create({
       data: { technicianProfileId: profile.id, kind: "REQUEST", enabled: true, version: 2, rules }
@@ -365,7 +365,7 @@ integration("Request automation with real MySQL claims", () => {
       }
     });
     await client.technicianWorkState.update({
-      where: { technicianProfileId: f.profile.id },
+      where: { technicianProfileId_shopId: { technicianProfileId: f.profile.id, shopId: f.shop.id } },
       data: { status: "off_duty" }
     });
     await client.technicianAutomationSetting.update({
@@ -407,7 +407,7 @@ integration("Request automation with real MySQL claims", () => {
   it("keeps an offline online-only rule unmatched with an auditable reason", async () => {
     const f = fixture;
     await client.technicianWorkState.update({
-      where: { technicianProfileId: f.profile.id },
+      where: { technicianProfileId_shopId: { technicianProfileId: f.profile.id, shopId: f.shop.id } },
       data: { status: "off_duty" }
     });
 

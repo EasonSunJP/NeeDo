@@ -46,7 +46,7 @@ describe("RealtimeRepository friend activity status", () => {
     };
   }
 
-  it("uses an author-scoped, visibility-safe existence query without reading media", async () => {
+  it("uses an author-scoped, visibility-safe post existence query with only avatar media", async () => {
     const client = createClient({ id: 88, createdAt: latestVisiblePostAt });
     const repository = new RealtimeRepository(client as unknown as PrismaClient);
     const method = (repository as unknown as { getSocialActivityStatus?: ActivityStatusMethod })
@@ -88,7 +88,16 @@ describe("RealtimeRepository friend activity status", () => {
           select: { displayName: true, deletedAt: true }
         },
         technicianProfile: {
-          select: { displayName: true, deletedAt: true }
+          select: {
+            displayName: true,
+            deletedAt: true,
+            mediaAssets: {
+              where: { usageType: "avatar", isActive: true, deletedAt: null },
+              orderBy: { id: "desc" },
+              take: 1,
+              select: { url: true }
+            }
+          }
         },
         identities: {
           where: { deletedAt: null, isActive: true },
