@@ -83,4 +83,40 @@ describe("walletApi", () => {
       { body: { action: "approve", note: "资料及到账确认" }, method: "POST" }
     );
   });
+
+  it("uses distinct backoffice endpoints for Test NDP credit and formal NDP review requests", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await walletApi.creditTestNdp({
+      targetUserId: 41,
+      amountNdp: 2500,
+      reason: "staging scenario",
+      idempotencyKey: "test-credit-41"
+    });
+    await walletApi.createBackofficeTopup({
+      targetUserId: 42,
+      amountNdp: 5000,
+      note: "partner demo balance",
+      idempotencyKey: "formal-topup-42"
+    });
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/backoffice/test-ndp/credits", {
+      body: {
+        targetUserId: 41,
+        amountNdp: 2500,
+        reason: "staging scenario",
+        idempotencyKey: "test-credit-41"
+      },
+      method: "POST"
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/backoffice/wallet-adjustments", {
+      body: {
+        targetUserId: 42,
+        amountNdp: 5000,
+        note: "partner demo balance",
+        idempotencyKey: "formal-topup-42"
+      },
+      method: "POST"
+    });
+  });
 });

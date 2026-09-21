@@ -657,7 +657,10 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       loadRows(),
       this.client.user.count({ where })
     ]);
-    const balances = await this.managedUserBalances(rows.map((row) => row.id));
+    const balances = await this.managedUserBalances(
+      rows.map((row) => row.id),
+      input.scope !== "platform" || input.showTestNdpData !== false
+    );
     return buildPaginatedResponse(
       rows.map((row) => this.mapManagedUser(row, balances.get(`${row.id}:NDP`), input, balances.get(`${row.id}:TEST_NDP`))),
       total,
@@ -706,9 +709,10 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       select: buildManagedUserSelect(occurredAt, input)
     });
     if (!user) return null;
-    const bookingWhere = {
+    const bookingWhere: Prisma.BookingOrderWhereInput = {
       customerUserId: userId,
       ...(input.scope === "merchant" ? { shopId: input.shopId } : {}),
+      ...this.visibleTestNdpOrderWhere(input),
       deletedAt: null
     };
     const auditWhere = managedUserAuditWhere(input, userId);
@@ -720,6 +724,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           bookingOrder: {
             status: BookingOrderStatus.COMPLETED,
             deletedAt: null,
+            ...this.visibleTestNdpOrderWhere(input),
             ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
           }
         }
@@ -743,7 +748,10 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       : Promise.resolve([]);
     const [balances, totalBookings, completedBookings, completedSpend, credit, auditTotal, auditRows] =
       await Promise.all([
-        this.managedUserBalances([userId]),
+        this.managedUserBalances(
+          [userId],
+          input.scope !== "platform" || input.showTestNdpData !== false
+        ),
         this.client.bookingOrder.count({ where: bookingWhere }),
         this.client.bookingOrder.count({
           where: { ...bookingWhere, status: "COMPLETED" }
@@ -852,6 +860,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       where: {
         id: input.id,
         deletedAt: null,
+        ...this.visibleTestNdpOrderWhere(input),
         ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
       },
       include: this.orderDetailInclude()
@@ -1111,6 +1120,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       Prisma.sql`booking.status = ${"completed"}`,
       Prisma.sql`booking.payment_status <> ${"refunded"}`
     ];
+    if (input.scope === "platform" && input.showTestNdpData === false) {
+      filters.push(Prisma.sql`(financial.ndp_currency IS NULL OR financial.ndp_currency <> ${"TEST_NDP"})`);
+    }
     if (input.window.fromInclusive) {
       filters.push(Prisma.sql`booking.ends_at >= ${input.window.fromInclusive}`);
     }
@@ -2213,6 +2225,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         bookingOrders: { some: { shopId: input.shopId, deletedAt: null } }
       });
     }
+    if (typeof input.isTestAccount === "boolean") {
+      conditions.push({ isTestAccount: input.isTestAccount });
+    }
     if (input.keyword) {
       conditions.push({
         OR: [
@@ -2500,14 +2515,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   private async managedUserBalances(
-    userIds: number[]
+    userIds: number[],
+    includeTestNdp = true
   ): Promise<Map<string, { available: number; frozen: number }>> {
     if (userIds.length === 0) return new Map();
     const wallets = await this.client.wallet.findMany({
       where: {
         ownerType: "USER",
         ownerId: { in: userIds },
-        currency: { in: ["NDP", "TEST_NDP"] },
+        currency: { in: includeTestNdp ? ["NDP", "TEST_NDP"] : ["NDP"] },
         deletedAt: null
       },
       select: { ownerId: true, currency: true, availableBalance: true, frozenBalance: true }
@@ -2738,6 +2754,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   ): Prisma.BookingOrderWhereInput {
     return {
       deletedAt: null,
+      ...this.visibleTestNdpOrderWhere(scope),
       ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}),
       ...(input.status ? { status: this.orderStatusToDb(input.status) } : {}),
       ...(input.keyword
@@ -2760,6 +2777,23 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             }
           }
         : {})
+    };
+  }
+
+  private visibleTestNdpOrderWhere(scope: BackofficeScope): Prisma.BookingOrderWhereInput {
+    if (scope.scope !== "platform" || scope.showTestNdpData !== false) return {};
+    return {
+      NOT: [
+        { financial: { is: { ndpCurrency: "TEST_NDP", deletedAt: null } } },
+        {
+          checkout: {
+            is: {
+              deletedAt: null,
+              ledgerTransaction: { is: { currency: "TEST_NDP", deletedAt: null } }
+            }
+          }
+        }
+      ]
     };
   }
 

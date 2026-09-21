@@ -22,6 +22,7 @@ import type {
   LiveDashboardCacheStatus
 } from "./live-dashboard-cache.service";
 import type { LiveDashboardEventGatewayPort } from "./live-dashboard-event.gateway";
+import type { BackofficePreferenceService } from "./backoffice-preference.service";
 import type { Response } from "express";
 import { assertActivePlatformIdentity } from "./platform-identity-scope";
 
@@ -46,6 +47,7 @@ interface SerializedOrderSummary extends Omit<LiveDashboardOrderSummary, "occurr
 
 export interface LiveDashboardSnapshotResponse extends Omit<CachedLiveDashboardFacts, "scope"> {
   scope: LiveDashboardResponseScope;
+  testNdpVisible: boolean;
   cachedAt: string;
   freshnessSeconds: number;
   cacheStatus: LiveDashboardCacheStatus;
@@ -68,7 +70,8 @@ export class LiveDashboardService {
     private readonly cache: LiveDashboardCachePort,
     private readonly auditLog: LiveDashboardAudit,
     private readonly now: () => Date = () => new Date(),
-    private readonly eventGateway?: LiveDashboardEventGatewayPort
+    private readonly eventGateway?: LiveDashboardEventGatewayPort,
+    private readonly backofficePreferenceService?: Pick<BackofficePreferenceService, "getEffective">
   ) {}
 
   public async subscribe(
@@ -87,6 +90,8 @@ export class LiveDashboardService {
         statusCode: 503
       });
     }
+    const showTestNdpData =
+      (await this.backofficePreferenceService?.getEffective(actor.userId))?.showTestNdpData ?? true;
     await this.eventGateway.subscribe(
       {
         countryCode: query.country,
@@ -109,7 +114,8 @@ export class LiveDashboardService {
             period: query.period,
             resumed: lastEventId !== null
           }
-        })
+        }),
+      showTestNdpData ? undefined : (event) => event.type !== "order.changed"
     );
   }
 
@@ -120,13 +126,15 @@ export class LiveDashboardService {
     locale: LiveDashboardLocale
   ): Promise<LiveDashboardSnapshotResponse> {
     assertActivePlatformIdentity(actor);
+    const showTestNdpData =
+      (await this.backofficePreferenceService?.getEffective(actor.userId))?.showTestNdpData ?? true;
     const hierarchy = await this.resolveHierarchy(query, locale);
     const requestedScope: LiveDashboardScope = {
       countryCode: query.country,
       admin1Code: query.admin1 ?? null,
       admin2Code: query.admin2 ?? null
     };
-    const scopeKey = `${query.country}:${query.admin1 ?? "-"}:${query.admin2 ?? "-"}:${query.period}`;
+    const scopeKey = `${query.country}:${query.admin1 ?? "-"}:${query.admin2 ?? "-"}:${query.period}:${showTestNdpData ? "all" : "formal"}`;
     const cached = await this.cache.getOrCreate<CachedLiveDashboardFacts>(
       scopeKey,
       async () => {
@@ -134,7 +142,8 @@ export class LiveDashboardService {
         const repositoryFacts = await this.repository.getSnapshotFacts({
           scope: requestedScope,
           period: query.period,
-          evaluatedAt
+          evaluatedAt,
+          showTestNdpData
         });
         this.assertScope(repositoryFacts.scope, requestedScope);
         return this.serializeFacts(repositoryFacts);
@@ -157,7 +166,7 @@ export class LiveDashboardService {
     const projectMoney = (money: LiveDashboardSnapshotFacts["confirmedPayments"]) => ({
       jpy: money.jpy,
       ndp: money.ndp,
-      testNdp: money.testNdp
+      testNdp: showTestNdpData ? money.testNdp : 0
     });
     const projectOrder = (order: SerializedOrderSummary): SerializedOrderSummary => ({
       orderNo: order.orderNo,
@@ -181,6 +190,7 @@ export class LiveDashboardService {
         admin2: query.admin2 ?? null,
         breadcrumbs: hierarchy.breadcrumbs
       },
+      testNdpVisible: showTestNdpData,
       evaluatedAt: cached.value.evaluatedAt,
       cachedAt: cached.cachedAt.toISOString(),
       freshnessSeconds,

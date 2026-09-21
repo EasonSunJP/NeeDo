@@ -202,9 +202,17 @@ export class ExchangeOperationsRepository implements ExchangeOperationsRepositor
     );
   }
 
-  public async findDetail(postId: number, now: Date): Promise<ExchangeOperationsDetail | null> {
+  public async findDetail(
+    postId: number,
+    now: Date,
+    showTestNdpData = true
+  ): Promise<ExchangeOperationsDetail | null> {
     const record = await this.client.exchangePost.findFirst({
-      where: { id: postId, deletedAt: null },
+      where: {
+        id: postId,
+        deletedAt: null,
+        ...this.testNdpVisibilityWhere(showTestNdpData)
+      },
       include: operationsPostInclude
     });
     if (!record || !this.validSubtype(record)) return null;
@@ -308,11 +316,25 @@ export class ExchangeOperationsRepository implements ExchangeOperationsRepositor
     };
   }
 
+  private testNdpVisibilityWhere(showTestNdpData: boolean): Prisma.ExchangePostWhereInput {
+    return showTestNdpData
+      ? {}
+      : {
+          OR: [
+            { requestFinancial: { is: null } },
+            { requestFinancial: { is: { currency: "NDP", deletedAt: null } } }
+          ]
+        };
+  }
+
   private listWhere(
     input: Parameters<ExchangeOperationsRepositoryPort["list"]>[0]
   ): Prisma.ExchangePostWhereInput {
     const status = input.status;
     const conditions: Prisma.ExchangePostWhereInput[] = [];
+    if (input.showTestNdpData === false) {
+      conditions.push(this.testNdpVisibilityWhere(false));
+    }
 
     if (input.type === "demand") {
       conditions.push(

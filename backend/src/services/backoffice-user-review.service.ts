@@ -24,7 +24,8 @@ export class BackofficeUserReviewService {
 
   public async listOperationsReviews(
     actor: AuthenticatedAccessContext,
-    input: BackofficeOperationsReviewListQuery
+    input: BackofficeOperationsReviewListQuery,
+    showTestNdpData = true
   ): Promise<OperationsReviewPage> {
     this.assertOperationsActor(actor);
     return this.repository.listOperationsReviews({
@@ -37,17 +38,19 @@ export class BackofficeUserReviewService {
       ...(input.from ? { from: startOfTokyoCalendarDate(input.from) } : {}),
       ...(input.to
         ? { to: startOfTokyoCalendarDate(shiftCalendarDate(input.to, 1)) }
-        : {})
+        : {}),
+      showTestNdpData
     });
   }
 
   public async getOperationsReview(
     actor: AuthenticatedAccessContext,
-    reviewId: number
+    reviewId: number,
+    showTestNdpData = true
   ): Promise<OperationsReview> {
     this.assertOperationsActor(actor);
     if (!Number.isInteger(reviewId) || reviewId <= 0) throw this.validationError();
-    const review = await this.repository.getOperationsReview(reviewId);
+    const review = await this.repository.getOperationsReview(reviewId, showTestNdpData);
     if (review) return review;
     throw new AppError({
       code: ERROR_CODES.BACKOFFICE_USER_REVIEW_NOT_FOUND,
@@ -59,12 +62,14 @@ export class BackofficeUserReviewService {
   public async listForOperations(
     actor: AuthenticatedAccessContext,
     userId: number,
-    input: BackofficeUserReviewListQuery
+    input: BackofficeUserReviewListQuery,
+    showTestNdpData = true
   ): Promise<ReceivedUserReviewPage> {
     this.assertOperationsActor(actor);
     this.assertListInput(userId, input);
     return this.repository.listReceivedReviews({
       scope: "platform",
+      showTestNdpData,
       userId,
       page: input.page,
       pageSize: 10

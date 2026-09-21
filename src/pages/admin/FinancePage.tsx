@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
@@ -30,6 +30,9 @@ import { getFinanceNdpCopy } from "./financeNdpCopy";
 import { RefundDisputeReview } from "./RefundDisputeReview";
 
 const settlementPageSize = 20;
+const WalletAdjustmentReview = lazy(() =>
+  import("./WalletAdjustmentReview").then((module) => ({ default: module.WalletAdjustmentReview }))
+);
 
 const emptySettlementPage = (page = 1): PaginatedApiPayload<BackofficeFinanceSettlementPayload> => ({
   list: [],
@@ -216,7 +219,7 @@ function FinanceSettlementOverview() {
           {ndpMetrics.map(([label, value]) => (
             <article className="rounded-lg border border-line bg-white p-4 shadow-panel" data-no-i18n key={label}>
               <p className="text-sm text-ink/55">{label}</p>
-              <NdpMetricValue ndp={value.ndp} testNdp={value.testNdp} />
+              <NdpMetricValue ndp={value.ndp} showTestNdp={ndpSummary?.testNdpVisible !== false} testNdp={value.testNdp} />
             </article>
           ))}
         </section>
@@ -233,14 +236,16 @@ function FinanceSettlementOverview() {
             <strong className="mt-2 block text-2xl">
               {ndpSummary.settleableNdp.toLocaleString("ja-JP")} NDP
             </strong>
-            <p className="mt-1 text-xs font-bold text-ink/45">
+            {ndpSummary.testNdpVisible !== false ? <p className="mt-1 text-xs font-bold text-ink/45">
               <span>{ndpCopy.testExcluded}</span>
               <span>
                 ：{ndpSummary.platformNetRevenue.testNdp.toLocaleString("ja-JP")} Test NDP
               </span>
-            </p>
+            </p> : null}
           </section>
         ) : null}
+
+        <Suspense fallback={null}><WalletAdjustmentReview /></Suspense>
 
         <section className="mt-5 rounded-lg border border-line bg-white p-4 shadow-panel">
           <h2 className="font-bold">结算规则配置</h2>

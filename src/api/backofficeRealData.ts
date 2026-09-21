@@ -417,6 +417,7 @@ export interface NdpAmountPair {
 }
 
 export interface BackofficeNdpSummaryPayload {
+  testNdpVisible?: boolean;
   period: {
     date: string;
     timeZone: "Asia/Tokyo";
@@ -820,6 +821,7 @@ export interface DashboardHeadlineSeries3d {
 }
 
 export interface BackofficeDashboardPayload {
+  testNdpVisible?: boolean;
   filter: {
     period: DashboardPeriod;
     from: string;

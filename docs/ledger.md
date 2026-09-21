@@ -12,6 +12,15 @@ Migration `20260830210000_exchange_test_ndp_foundation` extends the same Wallet/
 - Wallets, transaction headers, immutable entries, reconciliation rows, holds, and order-financial snapshots persist currency. Service/repository checks reject cross-currency relations instead of silently converting them.
 - Test-account provisioning uses idempotent audited ledger credits/debits. It never edits a balance directly. The local foundation calibration target is exactly `100,000 TEST_NDP` available per current account while preserving frozen balances.
 
+Operations management rules:
+
+- `User.isTestAccount` remains the only test-participant source. Selecting any identity classifies the whole account; a shop is test-eligible only when its authoritative `ownerUserId` belongs to a test account.
+- `POST /api/v1/backoffice/test-ndp/credits` creates an audited `test_ndp_manual_credit` transaction for an eligible test user. It never creates formal reconciliation or settlement rows.
+- `POST /api/v1/backoffice/wallet-adjustments` creates a pending formal NDP top-up for a non-test user. Another authorized administrator must review it; self-review is rejected.
+- Test NDP mutations validate every available user/shop/merchant-account owner before changing a wallet. A non-test participant or non-test-owned shop rejects the transaction atomically.
+- `GET|PUT /api/v1/backoffice/preferences/test-ndp-visibility` stores the current administrator's personal display preference. Its environment default is on outside production and off in production. When off, operations APIs omit Test NDP balances/transactions and exclude Test NDP-backed orders, ranking rows, and derived dashboard totals; formal reconciliation is unchanged.
+- Test NDP never enters formal withdrawal, payout, merchant settlement, payroll settlement, reconciliation, or formal finance export, regardless of the personal display preference.
+
 Wallet reads and finance reporting expose both currencies without adding them together as formal NDP:
 
 - `GET /api/v1/wallets/me` returns the active wallet, including `currency`.

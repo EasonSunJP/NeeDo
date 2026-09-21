@@ -7,6 +7,8 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { ExchangeOperationsRepository } from "../repositories/exchange-operations.repository";
+import { BackofficePreferenceRepository } from "../repositories/backoffice-preference.repository";
+import { BackofficePreferenceService } from "../services/backoffice-preference.service";
 import { ExchangeOperationsService } from "../services/exchange-operations.service";
 import {
   exchangeOperationsListQuerySchema,
@@ -25,7 +27,13 @@ export const createExchangeOperationsRoutes = (
   const service =
     dependencies.exchangeOperationsService ??
     new ExchangeOperationsService(new ExchangeOperationsRepository());
-  const controller = new ExchangeOperationsController(service);
+  const preference = dependencies.backofficePreferenceRepository || config.NODE_ENV !== "test"
+    ? new BackofficePreferenceService(
+        dependencies.backofficePreferenceRepository ?? new BackofficePreferenceRepository(),
+        config.DEPLOY_ENV
+      )
+    : undefined;
+  const controller = new ExchangeOperationsController(service, preference);
 
   router.get(
     "/backoffice/exchange/posts",
@@ -44,4 +52,3 @@ export const createExchangeOperationsRoutes = (
 
   return router;
 };
-

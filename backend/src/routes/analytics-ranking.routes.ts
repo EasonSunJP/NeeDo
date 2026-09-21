@@ -8,8 +8,10 @@ import { validateRequest } from "../middlewares/validate-request.middleware";
 import { prisma } from "../prisma/client";
 import { AnalyticsRankingRepository } from "../repositories/analytics-ranking.repository";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
+import { BackofficePreferenceRepository } from "../repositories/backoffice-preference.repository";
 import { AnalyticsRankingService } from "../services/analytics-ranking.service";
 import { AuditLogService } from "../services/audit-log.service";
+import { BackofficePreferenceService } from "../services/backoffice-preference.service";
 import {
   analyticsRankingParamsSchema,
   analyticsRankingQuerySchema
@@ -29,7 +31,13 @@ export const createAnalyticsRankingRoutes = (
   const service = new AnalyticsRankingService(
     dependencies.analyticsRankingRepository ?? new AnalyticsRankingRepository(prisma),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository()),
-    dependencies.analyticsRankingClock
+    dependencies.analyticsRankingClock,
+    dependencies.backofficePreferenceRepository || config.NODE_ENV !== "test"
+      ? new BackofficePreferenceService(
+          dependencies.backofficePreferenceRepository ?? new BackofficePreferenceRepository(),
+          config.DEPLOY_ENV
+        )
+      : undefined
   );
   const controller = new AnalyticsRankingController(service);
   router.get(

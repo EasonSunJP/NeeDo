@@ -40,7 +40,7 @@ export function openLiveDashboardWindow(
 
 type DashboardPair = {
   dashboard: BackofficeDashboardPayload;
-  overview: DashboardOverviewPayload;
+  overview: DashboardOverviewPayload | null;
   query: DashboardQuery;
 };
 
@@ -124,6 +124,7 @@ export function DashboardPage() {
   const [query, setQuery] = useState<DashboardQuery>(defaultQuery);
   const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
   const [loadError, setLoadError] = useState("");
+  const [overviewStatus, setOverviewStatus] = useState<"loading" | "success" | "error">("loading");
   const [revision, setRevision] = useState(0);
   const requestIdRef = useRef(0);
 
@@ -133,23 +134,39 @@ export function DashboardPage() {
     requestIdRef.current = requestId;
     setLoadStatus("loading");
     setLoadError("");
+    setOverviewStatus("loading");
 
-    void Promise.all([
-      backofficeRealDataApi.dashboard("backoffice", query, { signal: controller.signal }),
-      backofficeRealDataApi.dashboardOverview(query, { signal: controller.signal })
-    ])
-      .then(([dashboard, overview]) => {
+    const dashboardRequest = backofficeRealDataApi.dashboard("backoffice", query, {
+      signal: controller.signal
+    });
+    const overviewRequest = backofficeRealDataApi.dashboardOverview(query, {
+      signal: controller.signal
+    });
+
+    void dashboardRequest
+      .then((dashboard) => {
         if (controller.signal.aborted || requestId !== requestIdRef.current) return;
-        if (!analyticsFiltersMatch(dashboard.filter, overview.filter)) {
-          throw new Error("error.dashboard.filter_mismatch");
-        }
-        setPair({ dashboard, overview, query: { ...query } });
+        setPair({ dashboard, overview: null, query: { ...query } });
         setLoadStatus("success");
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted || requestId !== requestIdRef.current) return;
         setLoadError(describeDashboardError(error));
         setLoadStatus("error");
+      });
+
+    void Promise.all([dashboardRequest, overviewRequest])
+      .then(([dashboard, overview]) => {
+        if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+        if (!analyticsFiltersMatch(dashboard.filter, overview.filter)) {
+          throw new Error("error.dashboard.filter_mismatch");
+        }
+        setPair({ dashboard, overview, query: { ...query } });
+        setOverviewStatus("success");
+      })
+      .catch(() => {
+        if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+        setOverviewStatus("error");
       });
 
     return () => {
@@ -215,7 +232,7 @@ export function DashboardPage() {
     ? [
         {
           accent: "purple" as const,
-          testNdp: dashboard.finance.userReward.testNdp,
+          testNdp: dashboard.testNdpVisible !== false ? dashboard.finance.userReward.testNdp : undefined,
           title: t("用户奖励 NDP"),
           unit: "ndp" as const,
           value: dashboard.finance.userReward.ndp
@@ -224,7 +241,7 @@ export function DashboardPage() {
           accent: "blue" as const,
           note: t("钱包存量为平台全量口径，不受城市筛选影响"),
           statusMessage: dashboard.finance.walletStock ? undefined : t("平台钱包存量暂不可用"),
-          testNdp: dashboard.finance.walletStock?.testNdp,
+          testNdp: dashboard.testNdpVisible !== false ? dashboard.finance.walletStock?.testNdp : undefined,
           title: t("存量 NDP"),
           unit: "ndp" as const,
           value: dashboard.finance.walletStock?.ndp
@@ -233,7 +250,7 @@ export function DashboardPage() {
           accent: "green" as const,
           note: t("提现金额为平台全量口径，不受城市筛选影响"),
           statusMessage: dashboard.finance.withdrawn ? undefined : t("平台提现数据暂不可用"),
-          testNdp: dashboard.finance.withdrawn?.testNdp,
+          testNdp: dashboard.testNdpVisible !== false ? dashboard.finance.withdrawn?.testNdp : undefined,
           title: t("提现 NDP"),
           unit: "ndp" as const,
           value: dashboard.finance.withdrawn?.ndp
@@ -313,6 +330,12 @@ export function DashboardPage() {
               {t("重新加载经营数据")}
             </Button>
           </section>
+        ) : null}
+
+        {dashboard && overviewStatus === "error" ? (
+          <p className="rounded-xl border border-coral/30 bg-coral/5 px-4 py-3 text-sm font-bold text-ink/60" role="status">
+            {t("经营数据服务暂时不可用，请稍后重试")}
+          </p>
         ) : null}
 
         {dashboard ? (

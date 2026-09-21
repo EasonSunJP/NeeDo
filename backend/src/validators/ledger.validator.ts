@@ -41,6 +41,20 @@ export const createWalletAdjustmentRequestBodySchema = z.object({
   note: z.string().trim().min(1).max(500).nullable().optional()
 });
 
+export const testNdpManualCreditBodySchema = z.object({
+  targetUserId: z.number().int().positive(),
+  amountNdp: z.number().int().positive().max(100_000_000),
+  reason: z.string().trim().min(1).max(500),
+  idempotencyKey: z.string().trim().min(8).max(160)
+}).strict();
+
+export const backofficeWalletTopupRequestBodySchema = z.object({
+  targetUserId: z.number().int().positive(),
+  amountNdp: z.number().int().positive().max(100_000_000),
+  idempotencyKey: z.string().trim().min(8).max(160),
+  note: z.string().trim().min(1).max(500).nullable().optional()
+}).strict();
+
 export const walletAdjustmentIdParamSchema = z.object({
   id: z.coerce.number().int().positive()
 });
@@ -76,6 +90,7 @@ export const ledgerTransactionListQuerySchema = withValidDateRange(
         "manual_topup_approved",
         "manual_withdrawal_approved",
         "seed_credit",
+        "test_ndp_manual_credit",
         "affiliate_task_budget_freeze",
         "affiliate_task_budget_release",
         "affiliate_reward_settlement",

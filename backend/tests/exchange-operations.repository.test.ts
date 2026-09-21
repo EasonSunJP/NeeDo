@@ -64,4 +64,32 @@ describe("Exchange operations privacy projection", () => {
       }
     }));
   });
+
+  it("excludes Test NDP-backed posts from list and detail when the administrator hides them", async () => {
+    const findMany = jest.fn(async () => []);
+    const count = jest.fn(async () => 0);
+    const findFirst = jest.fn(async () => null);
+    const repository = new ExchangeOperationsRepository({
+      exchangePost: { findMany, count, findFirst },
+      auditLog: { findMany: jest.fn() },
+      ledgerTransaction: { findMany: jest.fn() }
+    } as never);
+    const now = new Date("2026-09-13T02:00:00.000Z");
+
+    await repository.list({ page: 1, pageSize: 20, now, showTestNdpData: false });
+    await repository.findDetail(6, now, false);
+
+    const visibility = {
+      OR: [
+        { requestFinancial: { is: null } },
+        { requestFinancial: { is: { currency: "NDP", deletedAt: null } } }
+      ]
+    };
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ AND: expect.arrayContaining([visibility]) })
+    }));
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 6, deletedAt: null, ...visibility }
+    }));
+  });
 });

@@ -22,7 +22,6 @@ import { AdminDispatchPage } from "./pages/admin/AdminDispatchPage";
 import { AdminSupportPage } from "./pages/admin/AdminSupportPage";
 import { AvatarBadgesPage } from "./pages/admin/AvatarBadgesPage";
 import { CitySettingsPage } from "./pages/admin/CitySettingsPage";
-import { FinancePage } from "./pages/admin/FinancePage";
 import { FloorplanPage } from "./pages/admin/FloorplanPage";
 import { InventoryPage } from "./pages/admin/InventoryPage";
 import { MarketingPage } from "./pages/admin/MarketingPage";
@@ -226,6 +225,7 @@ const MerchantAutoDispatchRoutePage = lazy(() => import("./pages/mobile/Merchant
 const UserFavoritesRoutePage = lazy(() => import("./pages/user/UserFavoritesPage").then((module) => ({ default: module.UserFavoritesRoutePage })));
 const UserOrderDetailPage = lazy(() => import("./pages/user/UserOrderDetailPage").then((module) => ({ default: module.UserOrderDetailPage })));
 const DashboardPage = lazy(() => import("./pages/admin/DashboardPage").then((module) => ({ default: module.DashboardPage })));
+const FinancePage = lazy(() => import("./pages/admin/FinancePage").then((module) => ({ default: module.FinancePage })));
 const LiveDashboardPage = lazy(() => import("./pages/admin/LiveDashboardPage").then((module) => ({ default: module.LiveDashboardPage })));
 const DashboardMetricDetailPage = lazy(() => import("./pages/admin/DashboardMetricDetailPage").then((module) => ({ default: module.DashboardMetricDetailPage })));
 const MerchantAdminDashboardPage = lazy(() => import("./pages/merchant-admin/MerchantAdminDashboardPage").then((module) => ({ default: module.MerchantAdminDashboardPage })));
@@ -1581,7 +1581,7 @@ export default function App() {
               <Route path="/admin/afirieito/announcements/carousel" element={protectPermission("admin", "page:backoffice-affiliate-notice-carousel", <AffiliateNoticeCarouselPage />)} />
               <Route path="/admin/cps" element={protect("admin", <LegacyAdminAfirieitoRedirect />)} />
               <Route path="/admin/marketing" element={protect("admin", <MarketingPage />)} />
-              <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
+              <Route path="/admin/finance" element={protect("admin", <Suspense fallback={null}><FinancePage /></Suspense>)} />
               <Route path="/admin/finance/membership-reward-fee" element={protectPermission("admin", "page:backoffice-membership-reward-fee", <MembershipRewardFeePage />)} />
               <Route path="/admin/finance/operating-costs" element={protectPermission("admin", "backoffice:operating-cost:read", <Suspense fallback={null}><OperatingCostsPage /></Suspense>)} />
               <Route path="/admin/reviews" element={protectPermission("admin", "backoffice:users:read", <ReviewsPage />)} />

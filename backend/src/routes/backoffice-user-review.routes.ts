@@ -7,8 +7,10 @@ import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { BackofficeUserReviewRepository } from "../repositories/backoffice-user-review.repository";
+import { BackofficePreferenceRepository } from "../repositories/backoffice-preference.repository";
 import { AuditLogService } from "../services/audit-log.service";
 import { BackofficeUserReviewService } from "../services/backoffice-user-review.service";
+import { BackofficePreferenceService } from "../services/backoffice-preference.service";
 import {
   backofficeOperationsReviewListQuerySchema,
   backofficeUserReviewAmendmentBodySchema,
@@ -39,7 +41,16 @@ export const createBackofficeUserReviewRoutes = (
       dependencies.backofficeUserReviewRepository ?? new BackofficeUserReviewRepository(),
       audit
     );
-  const controller = new BackofficeUserReviewController(service as BackofficeUserReviewService);
+  const preference = dependencies.backofficePreferenceRepository || config.NODE_ENV !== "test"
+    ? new BackofficePreferenceService(
+        dependencies.backofficePreferenceRepository ?? new BackofficePreferenceRepository(),
+        config.DEPLOY_ENV
+      )
+    : undefined;
+  const controller = new BackofficeUserReviewController(
+    service as BackofficeUserReviewService,
+    preference
+  );
 
   router.get(
     "/backoffice/reviews",

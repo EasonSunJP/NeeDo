@@ -12854,6 +12854,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
+          "testNdpVisible",
           "period",
           "todayNdpConsumption",
           "platformNetRevenue",
@@ -12864,6 +12865,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "settleableNdp"
         ],
         properties: {
+          testNdpVisible: { type: "boolean" },
           period: {
             type: "object",
             additionalProperties: false,
@@ -24466,6 +24468,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     [`${config.API_PREFIX}/backoffice/wallet-adjustments`]: {
+      post: {
+        tags: ["Finance"],
+        summary: "Create a pending formal NDP credit request for a non-test user",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["targetUserId", "amountNdp", "idempotencyKey"],
+                properties: {
+                  targetUserId: { type: "integer", minimum: 1 },
+                  amountNdp: { type: "integer", minimum: 1, maximum: 100000000 },
+                  idempotencyKey: { type: "string", minLength: 8, maxLength: 160 },
+                  note: { type: ["string", "null"], maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Pending formal NDP credit request created" },
+          "409": { description: "Test account target or idempotency conflict" }
+        }
+      },
       get: {
         tags: ["Finance"],
         summary: "List wallet adjustment requests for operations review",
@@ -24487,6 +24515,60 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
         responses: { "200": { description: "Paginated platform wallet adjustment requests" } }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/test-ndp/credits`]: {
+      post: {
+        tags: ["Finance"],
+        summary: "Credit non-settleable Test NDP to an eligible test account",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["targetUserId", "amountNdp", "reason", "idempotencyKey"],
+                properties: {
+                  targetUserId: { type: "integer", minimum: 1 },
+                  amountNdp: { type: "integer", minimum: 1, maximum: 100000000 },
+                  reason: { type: "string", minLength: 1, maxLength: 500 },
+                  idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Independent Test NDP ledger transaction created" },
+          "409": { description: "Target is not eligible or idempotency conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/preferences/test-ndp-visibility`]: {
+      get: {
+        tags: ["Backoffice"],
+        summary: "Read the current administrator Test NDP visibility preference",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Effective personal preference and source" } }
+      },
+      put: {
+        tags: ["Backoffice"],
+        summary: "Update the current administrator Test NDP visibility preference",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["showTestNdpData"],
+                properties: { showTestNdpData: { type: "boolean" } }
+              }
+            }
+          }
+        },
+        responses: { "200": { description: "Explicit personal preference saved and audited" } }
       }
     },
     [`${config.API_PREFIX}/backoffice/wallet-adjustments/{id}/review`]: {
@@ -25037,6 +25119,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       type: "object",
                       additionalProperties: false,
                       required: [
+                        "testNdpVisible",
                         "scope",
                         "evaluatedAt",
                         "cachedAt",
@@ -25054,6 +25137,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                         "coverage"
                       ],
                       properties: {
+                        testNdpVisible: { type: "boolean" },
                         scope: {
                           type: "object",
                           additionalProperties: false,
@@ -25686,6 +25770,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           { name: "source", in: "query", schema: { type: "string", maxLength: 32 } },
+          { name: "isTestAccount", in: "query", schema: { type: "boolean" } },
           { name: "state", in: "query", schema: { type: "string", enum: ["active", "inactive"] } },
           {
             name: "states",

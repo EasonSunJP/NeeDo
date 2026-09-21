@@ -59,6 +59,23 @@ export type CreateWalletAdjustmentInput = {
   note?: string | null;
 };
 
+export type BackofficeNdpCreditInput = {
+  targetUserId: number;
+  amountNdp: number;
+  reason: string;
+  idempotencyKey: string;
+};
+
+export type LedgerTransaction = {
+  id: number;
+  transactionNo: string;
+  type: string;
+  status: string;
+  amount: number;
+  currency: "NDP" | "TEST_NDP";
+  createdAt: string;
+};
+
 export type WalletAdjustmentListQuery = {
   page?: number;
   pageSize?: number;
@@ -85,6 +102,18 @@ export const walletApi = {
   },
   createAdjustment(input: CreateWalletAdjustmentInput) {
     return httpClient.request<WalletAdjustmentRequest>("/wallet-adjustments", {
+      body: input,
+      method: "POST"
+    });
+  },
+  creditTestNdp(input: BackofficeNdpCreditInput) {
+    return httpClient.request<LedgerTransaction>("/backoffice/test-ndp/credits", {
+      body: input,
+      method: "POST"
+    });
+  },
+  createBackofficeTopup(input: Omit<BackofficeNdpCreditInput, "reason"> & { note?: string | null }) {
+    return httpClient.request<WalletAdjustmentRequest>("/backoffice/wallet-adjustments", {
       body: input,
       method: "POST"
     });

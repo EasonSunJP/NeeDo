@@ -6,10 +6,12 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { LedgerRepository } from "../repositories/ledger.repository";
+import { BackofficePreferenceRepository } from "../repositories/backoffice-preference.repository";
 import { ShopMembershipCardRedemptionRepository } from "../repositories/shop-membership-card-redemption.repository";
 import { AffiliateWithdrawalEligibilityRepository } from "../repositories/affiliate-withdrawal-eligibility.repository";
 import { AffiliateWithdrawalEligibilityService } from "../services/affiliate-withdrawal-eligibility.service";
 import { LedgerService } from "../services/ledger.service";
+import { BackofficePreferenceService } from "../services/backoffice-preference.service";
 import {
   ShopMembershipRewardDebtAllocator,
   type ShopMembershipRewardDebtRepositoryPort
@@ -23,7 +25,9 @@ import {
   walletAdjustmentListQuerySchema,
   walletAdjustmentMineQuerySchema,
   walletIdParamSchema,
-  walletLedgerQuerySchema
+  walletLedgerQuerySchema,
+  testNdpManualCreditBodySchema,
+  backofficeWalletTopupRequestBodySchema
 } from "../validators/ledger.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -36,7 +40,9 @@ export const LEDGER_ROUTE_PERMISSIONS = {
   backofficeWalletAdjustmentReview: "backoffice:wallet-adjustment:review",
   ledgerList: "finance:ledger:list",
   reconciliationList: "finance:reconciliation:list",
-  reconciliationExport: "finance:reconciliation:export"
+  reconciliationExport: "finance:reconciliation:export",
+  testNdpCredit: "backoffice:test-ndp:credit",
+  backofficeWalletAdjustmentCreate: "backoffice:wallet-adjustment:create"
 } as const;
 
 export const createLedgerRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
@@ -76,7 +82,15 @@ export const createLedgerRoutes = (config: AppConfig, dependencies: AppDependenc
       undefined,
       rewardDebtAllocator
     );
-  const controller = new LedgerController(ledgerService);
+  const controller = new LedgerController(
+    ledgerService,
+    dependencies.backofficePreferenceRepository || config.NODE_ENV !== "test"
+      ? new BackofficePreferenceService(
+          dependencies.backofficePreferenceRepository ?? new BackofficePreferenceRepository(),
+          config.DEPLOY_ENV
+        )
+      : undefined
+  );
 
   router.get(
     "/wallets/me",
@@ -89,6 +103,20 @@ export const createLedgerRoutes = (config: AppConfig, dependencies: AppDependenc
     authenticate(),
     authorize(LEDGER_ROUTE_PERMISSIONS.walletRead),
     controller.getMyWalletSummary
+  );
+  router.post(
+    "/backoffice/test-ndp/credits",
+    authenticate(),
+    authorize(LEDGER_ROUTE_PERMISSIONS.testNdpCredit),
+    validateRequest({ body: testNdpManualCreditBodySchema }),
+    controller.creditTestNdp
+  );
+  router.post(
+    "/backoffice/wallet-adjustments",
+    authenticate(),
+    authorize(LEDGER_ROUTE_PERMISSIONS.backofficeWalletAdjustmentCreate),
+    validateRequest({ body: backofficeWalletTopupRequestBodySchema }),
+    controller.createBackofficeWalletTopupRequest
   );
   router.post(
     "/wallet-adjustments",

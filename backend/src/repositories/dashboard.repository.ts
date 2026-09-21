@@ -216,6 +216,7 @@ export class DashboardRepository {
           ON profile.id = booking.technician_profile_id AND profile.deleted_at IS NULL
         INNER JOIN shops AS shop ON shop.id = booking.shop_id
         WHERE ${bookingScope}
+          AND ${this.orderVisibility(input)}
       )
       SELECT bucket.bucket_key AS bucketKey,
         (SELECT COUNT(slot.id)
@@ -452,18 +453,19 @@ export class DashboardRepository {
         where: this.scheduleWhere(shopId, window.previousFromInclusive, window.previousToExclusive)
       }),
       this.client.bookingOrder.aggregate({
-        where: this.completedGmvWhere(shopId, window.fromInclusive, window.toExclusive),
+        where: this.completedGmvWhere(input, shopId, window.fromInclusive, window.toExclusive),
         _sum: { priceAmount: true }
       }),
       this.client.bookingOrder.aggregate({
         where: this.completedGmvWhere(
+          input,
           shopId,
           window.previousFromInclusive,
           window.previousToExclusive
         ),
         _sum: { priceAmount: true }
       }),
-      this.client.bookingOrder.count({ where: this.pendingOrderWhere(shopId) }),
+      this.client.bookingOrder.count({ where: this.pendingOrderWhere(input, shopId) }),
       input.scope.kind === "platform"
         ? this.client.customerProfile.count({
             where: this.customerWhere(window.fromInclusive, window.toExclusive)
@@ -533,6 +535,7 @@ export class DashboardRepository {
             AND booking.starts_at >= period.from_inclusive
             AND booking.starts_at < period.to_exclusive
             AND TRIM(shop.city) = ${city}
+            AND ${this.orderVisibility(input)}
         ) AS serviceGmvJpy,
         (
           SELECT COUNT(profile.id)
@@ -558,6 +561,7 @@ export class DashboardRepository {
           WHERE booking.deleted_at IS NULL
             AND booking.status = ${"pending"}
             AND TRIM(shop.city) = ${city}
+            AND ${this.orderVisibility(input)}
         ) ELSE 0 END AS pendingOrders
       FROM periods AS period
     `);
@@ -601,6 +605,7 @@ export class DashboardRepository {
   }
 
   private completedGmvWhere(
+    input: DashboardAggregateInput,
     shopId: number | null,
     fromInclusive: Date,
     toExclusive: Date
@@ -610,14 +615,19 @@ export class DashboardRepository {
       status: "COMPLETED",
       paymentStatus: { notIn: ["REFUND_PENDING", "REFUNDED"] },
       startsAt: { gte: fromInclusive, lt: toExclusive },
+      ...this.visibleTestNdpOrderWhere(input),
       ...this.prismaRelatedShopScope(shopId)
     };
   }
 
-  private pendingOrderWhere(shopId: number | null): Prisma.BookingOrderWhereInput {
+  private pendingOrderWhere(
+    input: DashboardAggregateInput,
+    shopId: number | null
+  ): Prisma.BookingOrderWhereInput {
     return {
       deletedAt: null,
       status: "PENDING",
+      ...this.visibleTestNdpOrderWhere(input),
       ...this.prismaRelatedShopScope(shopId)
     };
   }
@@ -699,6 +709,45 @@ export class DashboardRepository {
     return this.rawRelatedShopScope(Prisma.sql`booking.shop_id`, shopId, city);
   }
 
+  private orderVisibility(input: DashboardAggregateInput): Prisma.Sql {
+    if (input.showTestNdpData !== false) return Prisma.sql`TRUE`;
+    return Prisma.sql`
+      NOT EXISTS (
+        SELECT 1 FROM order_financials AS visible_financial
+        WHERE visible_financial.booking_order_id = booking.id
+          AND visible_financial.ndp_currency = ${"TEST_NDP"}
+          AND visible_financial.deleted_at IS NULL
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM order_checkouts AS visible_checkout
+        INNER JOIN ledger_transactions AS visible_ledger
+          ON visible_ledger.id = visible_checkout.ledger_transaction_id
+          AND visible_ledger.deleted_at IS NULL
+        WHERE visible_checkout.booking_order_id = booking.id
+          AND visible_checkout.deleted_at IS NULL
+          AND visible_ledger.currency = ${"TEST_NDP"}
+      )
+    `;
+  }
+
+  private visibleTestNdpOrderWhere(input: DashboardAggregateInput): Prisma.BookingOrderWhereInput {
+    if (input.showTestNdpData !== false) return {};
+    return {
+      NOT: [
+        { financial: { is: { ndpCurrency: "TEST_NDP", deletedAt: null } } },
+        {
+          checkout: {
+            is: {
+              deletedAt: null,
+              ledgerTransaction: { is: { currency: "TEST_NDP", deletedAt: null } }
+            }
+          }
+        }
+      ]
+    };
+  }
+
   private slotScope(shopId: number | null, city: string | null): Prisma.Sql {
     return this.rawRelatedShopScope(Prisma.sql`slot.shop_id`, shopId, city);
   }
@@ -751,6 +800,7 @@ export class DashboardRepository {
           AND profile.deleted_at IS NULL
         INNER JOIN shops AS shop ON shop.id = booking.shop_id
         WHERE ${bookingScope}
+          AND ${this.orderVisibility(input)}
       )
       SELECT period_key AS periodKey, COUNT(DISTINCT profile_id) AS aggregateValue
       FROM active_profiles
@@ -780,6 +830,7 @@ export class DashboardRepository {
         AND booking.payment_status NOT IN (${"refund_pending"}, ${"refunded"})
       INNER JOIN shops AS shop ON shop.id = booking.shop_id
       WHERE ${scope}
+        AND ${this.orderVisibility(input)}
       GROUP BY period.period_key
     `);
   }
@@ -871,6 +922,7 @@ export class DashboardRepository {
         AND booking.deleted_at IS NULL
       INNER JOIN shops AS shop ON shop.id = booking.shop_id
       WHERE ${scope}
+        AND ${this.orderVisibility(input)}
       GROUP BY bucket.bucket_key
     `);
   }

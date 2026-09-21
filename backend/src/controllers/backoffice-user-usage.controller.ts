@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { BackofficeUserUsageService } from "../services/backoffice-user-usage.service";
+import type { BackofficePreferenceService } from "../services/backoffice-preference.service";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
@@ -10,7 +11,15 @@ import {
 } from "../validators/backoffice-user-usage.validator";
 
 export class BackofficeUserUsageController {
-  public constructor(private readonly service: BackofficeUserUsageService) {}
+  public constructor(
+    private readonly service: BackofficeUserUsageService,
+    private readonly preference?: Pick<BackofficePreferenceService, "getEffective">
+  ) {}
+
+  private async showTestNdpData(response: Response): Promise<boolean> {
+    const actor = getAuthenticatedAccess(response);
+    return (await this.preference?.getEffective(actor.userId))?.showTestNdpData ?? true;
+  }
 
   public listForOperations = this.handle(async (request, response) => {
     const { userId } = backofficeUserUsageParamsSchema.parse(request.params);
@@ -21,7 +30,8 @@ export class BackofficeUserUsageController {
           await this.service.listForOperations(
             getAuthenticatedAccess(response),
             userId,
-            backofficeUserUsageListQuerySchema.parse(request.query)
+            backofficeUserUsageListQuerySchema.parse(request.query),
+            await this.showTestNdpData(response)
           )
         )
       );
@@ -51,7 +61,8 @@ export class BackofficeUserUsageController {
           await this.service.getTimelineForOperations(
             getAuthenticatedAccess(response),
             userId,
-            orderId as number
+            orderId as number,
+            await this.showTestNdpData(response)
           )
         )
       );

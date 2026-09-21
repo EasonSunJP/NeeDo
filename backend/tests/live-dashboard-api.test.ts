@@ -319,7 +319,8 @@ describe("GET /api/v1/backoffice/dashboard/live-events", () => {
       { countryCode: "JP", admin1Code: "13", admin2Code: null },
       "1000-4",
       expect.anything(),
-      expect.any(Function)
+      expect.any(Function),
+      undefined
     );
     expect(fixture.auditLogRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({ action: "backoffice.dashboard.live_events.connect" })

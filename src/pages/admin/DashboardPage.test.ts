@@ -5,6 +5,7 @@ import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router-d
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import source from "./DashboardPage.tsx?raw";
 import type { AnalyticsRankingItem } from "../../api/backofficeRealData";
+import { ApiClientError } from "../../api/httpClient";
 import { DashboardPage } from "./DashboardPage";
 import { openLiveDashboardWindow } from "./DashboardPage";
 import { DashboardMetricDetailPage } from "./DashboardMetricDetailPage";
@@ -349,7 +350,7 @@ describe("operations unified data dashboard", () => {
     expect(getAnalyticsMetricInfoLabel("총매출", "ko")).toBe("총매출 설명 및 계산식 보기");
   });
 
-  it("fails closed on mismatched independently resolved windows and preserves the coherent pair", async () => {
+  it("keeps independently loaded dashboard data when the overview window mismatches", async () => {
     apiMocks.dashboard
       .mockResolvedValueOnce(dashboardPayload)
       .mockResolvedValueOnce(dashboardPayload);
@@ -368,9 +369,23 @@ describe("operations unified data dashboard", () => {
       .find((button) => button.textContent === "重置")!;
     await act(async () => { reset.click(); });
 
-    expect(container.textContent).toContain("经营数据加载失败");
-    expect(container.textContent).toContain("运营财务");
-    expect(container.textContent).toContain("以下仍显示上次成功结果");
+    expect(container.textContent).toContain("经营数据服务暂时不可用，请稍后重试");
+    expect(container.textContent).toContain("订单总量和服务 GMV");
+    expect(container.textContent).not.toContain("经营数据加载失败");
+  });
+
+  it("keeps the main dashboard visible when the overview request fails", async () => {
+    apiMocks.dashboard.mockResolvedValue(dashboardPayload);
+    apiMocks.dashboardOverview.mockRejectedValue(new ApiClientError("overview failed", 50001, 500));
+
+    await act(async () => {
+      root.render(createElement(MemoryRouter, null, createElement(DashboardPage)));
+    });
+
+    expect(container.querySelector('[aria-label="核心经营数据"]')).not.toBeNull();
+    expect(container.textContent).toContain("订单总量和服务 GMV");
+    expect(container.textContent).toContain("经营数据服务暂时不可用，请稍后重试");
+    expect(container.textContent).not.toContain("经营数据加载失败");
   });
 
   it("aborts and ignores an older paired generation", async () => {
@@ -408,8 +423,8 @@ describe("operations unified data dashboard", () => {
   });
   it("queries the formal aggregate with the shared date and city filter", () => {
     expect(source).toContain("DashboardFilterBar");
-    expect(source).toContain('backofficeRealDataApi.dashboard("backoffice", query, { signal: controller.signal })');
-    expect(source).toContain("backofficeRealDataApi.dashboardOverview(query, { signal: controller.signal })");
+    expect(source).toContain('backofficeRealDataApi.dashboard("backoffice", query, {');
+    expect(source).toContain("backofficeRealDataApi.dashboardOverview(query, {");
     expect(source).toContain("dashboard?.filter.availableCities");
     expect(source).toContain("dashboard.filter.previousFrom");
     expect(source).toContain("dashboard.filter.previousTo");

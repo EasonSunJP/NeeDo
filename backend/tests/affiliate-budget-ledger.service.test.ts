@@ -16,6 +16,7 @@ const now = new Date("2026-08-26T00:00:00.000Z");
 
 class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
   public readonly accountClassifications = new Map<number, boolean>();
+  public readonly ownerEligibility = new Map<string, boolean>();
   public readonly wallets = new Map<string, WalletPayload>();
   public readonly transactions = new Map<string, LedgerTransactionPayload>();
   public readonly entries: WalletLedgerPayload[] = [];
@@ -79,6 +80,13 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
     userId: number
   ): Promise<{ isTestAccount: boolean } | null> {
     return { isTestAccount: this.accountClassifications.get(userId) ?? false };
+  }
+
+  public async findWalletOwnerTestEligibility(
+    ownerType: WalletOwnerType,
+    ownerId: number
+  ): Promise<boolean> {
+    return this.ownerEligibility.get(`${ownerType}:${ownerId}`) ?? true;
   }
 
   public async getOrCreateWallet(input: {
@@ -291,6 +299,34 @@ describe("LedgerService affiliate task budget operations", () => {
       expect(repository.reconciliationRows).toHaveLength(isTestAccount ? 0 : 1);
     }
   );
+
+  it("rejects Test NDP budget movement for a non-test wallet owner", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    repository.accountClassifications.set(7, true);
+    repository.ownerEligibility.set("merchant_account:41", false);
+    repository.seedWallet({
+      ownerType: "merchant_account",
+      ownerId: 41,
+      availableBalance: 2_500_000,
+      currency: "TEST_NDP"
+    });
+
+    await expect(new LedgerService(repository).freezeAffiliateTaskBudget({
+      taskId: 182,
+      ownerType: "merchant_account",
+      ownerId: 41,
+      amountNdp: 2_000_000,
+      idempotencyKey: "affiliate-task:182:v1:freeze",
+      actorUserId: 7
+    })).rejects.toMatchObject({
+      code: ERROR_CODES.TEST_NDP_SETTLEMENT_FORBIDDEN,
+      statusCode: 409
+    });
+    expect(repository.wallets.get("merchant_account:41:TEST_NDP")).toMatchObject({
+      availableBalance: 2_500_000,
+      frozenBalance: 0
+    });
+  });
 
   it("freezes the complete task budget once and records immutable finance evidence", async () => {
     const repository = new AffiliateBudgetLedgerRepository();

@@ -205,7 +205,8 @@ describe("LiveDashboardService", () => {
     expect(repository.getSnapshotFacts).toHaveBeenCalledWith({
       scope: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
       period: "today",
-      evaluatedAt
+      evaluatedAt,
+      showTestNdpData: true
     });
     expect(result.scope).toEqual({
       country: "JP",
@@ -318,6 +319,69 @@ describe("LiveDashboardService", () => {
       service.getSnapshot(actor, context, { country: "JP", period: "today" }, "ja")
     ).rejects.toThrow("audit unavailable");
     expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("isolates hidden-Test-NDP snapshots and realtime events for the current administrator", async () => {
+    const repository = {
+      getSnapshotFacts: jest.fn(async () => ({
+        ...facts(),
+        scope: { countryCode: "JP" as const, admin1Code: null, admin2Code: null },
+        confirmedPayments: { jpy: 1000, ndp: 20, testNdp: 30 }
+      }))
+    };
+    const regions = { listChildren: jest.fn(async () => []), resolveVerifiedScope: jest.fn() };
+    const cache = {
+      getOrCreate: jest.fn(async (_key: string, factory: () => Promise<unknown>) => ({
+        value: await factory(),
+        cachedAt: evaluatedAt,
+        cacheStatus: "miss" as const
+      }))
+    };
+    const audit = { record: jest.fn(async () => undefined) };
+    const subscribe = jest.fn(async (...args: unknown[]) => {
+      void args;
+      return () => undefined;
+    });
+    const gateway = { subscribe, publish: jest.fn(), close: jest.fn() };
+    const preference = { getEffective: jest.fn(async () => ({ showTestNdpData: false, source: "explicit" as const })) };
+    const service = new LiveDashboardService(
+      repository,
+      regions,
+      cache as never,
+      audit,
+      () => evaluatedAt,
+      gateway,
+      preference
+    );
+
+    const snapshot = await service.getSnapshot(
+      actor,
+      context,
+      { country: "JP", period: "today" },
+      "ja"
+    );
+    expect(cache.getOrCreate).toHaveBeenCalledWith(
+      "JP:-:-:today:formal",
+      expect.any(Function),
+      expect.any(Function)
+    );
+    expect(repository.getSnapshotFacts).toHaveBeenCalledWith(expect.objectContaining({
+      showTestNdpData: false
+    }));
+    expect(snapshot).toMatchObject({ testNdpVisible: false, confirmedPayments: { testNdp: 0 } });
+
+    await service.subscribe(
+      actor,
+      context,
+      { country: "JP", period: "today" },
+      null,
+      {} as never
+    );
+    const filter = subscribe.mock.calls[0]?.[4] as
+      | ((event: { type: string }) => boolean)
+      | undefined;
+    expect(filter?.({ type: "order.changed" })).toBe(false);
+    expect(filter?.({ type: "metrics.invalidate" })).toBe(true);
   });
 
   it("treats a valid-shaped cached snapshot for another scope as degraded and recomputes", async () => {

@@ -67,6 +67,7 @@ describe("formal checkout NDP debit", () => {
         bookingOrderId: 41,
         checkoutId: 9,
         customerUserId: 101,
+        shopId: 51,
         payableNdp: 15_300,
         idempotencyKey: "checkout:41:ndp:pay:key-0001",
         actorUserId: 101
@@ -130,6 +131,7 @@ describe("formal checkout NDP debit", () => {
         bookingOrderId: 41,
         checkoutId: 9,
         customerUserId: 101,
+        shopId: 51,
         payableNdp: 15_300,
         idempotencyKey: "checkout-insufficient-01",
         actorUserId: 101
@@ -144,6 +146,10 @@ describe("formal checkout NDP debit", () => {
       runInTransaction: jest.fn(),
       findTransactionByIdempotencyKey: jest.fn(async () => null),
       findUserAccountClassification: jest.fn(async () => ({ isTestAccount: true })),
+      findShopOwnerAccountClassification: jest.fn(async () => ({
+        ownerUserId: 201,
+        isTestAccount: true
+      })),
       getOrCreateWallet: jest.fn(async () => ({
         id: 44,
         ownerType: "user",
@@ -195,6 +201,7 @@ describe("formal checkout NDP debit", () => {
       bookingOrderId: 41,
       checkoutId: 9,
       customerUserId: 101,
+      shopId: 51,
       payableNdp: 10,
       idempotencyKey: "checkout-test-account-01",
       actorUserId: 101
@@ -206,5 +213,34 @@ describe("formal checkout NDP debit", () => {
     });
     expect(repository.createFinanceReconciliation).not.toHaveBeenCalled();
     expect(repository.createAuditLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects Test NDP before wallet mutation when the shop owner is not a test account", async () => {
+    const repository: Record<string, jest.Mock> = {
+      runInTransaction: jest.fn(),
+      findTransactionByIdempotencyKey: jest.fn(async () => null),
+      findUserAccountClassification: jest.fn(async () => ({ isTestAccount: true })),
+      findShopOwnerAccountClassification: jest.fn(async () => ({
+        ownerUserId: 201,
+        isTestAccount: false
+      })),
+      getOrCreateWallet: jest.fn(),
+      applyWalletDelta: jest.fn()
+    };
+    repository.runInTransaction.mockImplementation(async (handler: (value: unknown) => unknown) =>
+      handler(repository)
+    );
+
+    await expect(new LedgerService(repository as never).debitCheckoutPayment({
+      bookingOrderId: 41,
+      checkoutId: 9,
+      customerUserId: 101,
+      shopId: 51,
+      payableNdp: 10,
+      idempotencyKey: "checkout-mixed-parties-01",
+      actorUserId: 101
+    })).rejects.toMatchObject({ code: ERROR_CODES.TEST_NDP_SETTLEMENT_FORBIDDEN });
+    expect(repository.getOrCreateWallet).not.toHaveBeenCalled();
+    expect(repository.applyWalletDelta).not.toHaveBeenCalled();
   });
 });

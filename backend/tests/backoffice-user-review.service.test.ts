@@ -48,7 +48,8 @@ describe("BackofficeUserReviewService", () => {
       status: "original",
       targetType: "technician",
       from: new Date("2026-09-09T15:00:00.000Z"),
-      to: new Date("2026-09-10T15:00:00.000Z")
+      to: new Date("2026-09-10T15:00:00.000Z"),
+      showTestNdpData: true
     });
   });
 

@@ -32,6 +32,7 @@ import type { PaginatedResponse } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import type { BackofficePreferenceService } from "./backoffice-preference.service";
 import type { LedgerCurrency } from "./ledger-currency.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
 import type { PlatformMembershipService } from "./platform-membership.service";
@@ -318,6 +319,7 @@ export const resolveTechnicianRankingWindow = (
 export type BackofficeScope =
   | {
       scope: "platform";
+      showTestNdpData?: boolean;
     }
   | {
       scope: "merchant";
@@ -871,6 +873,7 @@ export interface BackofficeNdpAggregate {
 export type NdpAmountPair = DashboardNdpPair;
 
 export interface BackofficeNdpSummaryPayload {
+  testNdpVisible?: boolean;
   period: {
     date: string;
     timeZone: "Asia/Tokyo";
@@ -992,7 +995,8 @@ export class BackofficeService {
       | BackofficeAnalyticsReader
       | Pick<PlatformMembershipService, "changeEntitlement">,
     platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">,
-    private readonly accountPostsRepository?: Pick<RealtimeRepositoryPort, "listSocialPosts">
+    private readonly accountPostsRepository?: Pick<RealtimeRepositoryPort, "listSocialPosts">,
+    private readonly backofficePreferenceService?: Pick<BackofficePreferenceService, "getEffective">
   ) {
     if (analyticsOrMembership && "getOperationsFinance" in analyticsOrMembership) {
       this.analyticsReader = analyticsOrMembership;
@@ -1005,6 +1009,10 @@ export class BackofficeService {
   private readonly analyticsReader?: BackofficeAnalyticsReader;
   private readonly platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
 
+  private async resolveTestNdpVisibility(actor: AuthenticatedAccessContext): Promise<boolean> {
+    return (await this.backofficePreferenceService?.getEffective(actor.userId))?.showTestNdpData ?? true;
+  }
+
   public async getDashboardOverview(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
@@ -1013,7 +1021,12 @@ export class BackofficeService {
     const reader = this.requireAnalyticsReader();
     const window = resolveDashboardWindow(query, this.now());
     const city = query.city ?? null;
-    const input: DashboardAggregateInput = { scope: { kind: "platform" }, city, window };
+    const input: DashboardAggregateInput = {
+      scope: { kind: "platform" },
+      city,
+      window,
+      showTestNdpData: await this.resolveTestNdpVisibility(actor)
+    };
     await this.record(
       actor,
       context,
@@ -1050,7 +1063,12 @@ export class BackofficeService {
     const reader = this.requireAnalyticsReader();
     const window = resolveDashboardWindow(query, this.now());
     const city = query.city ?? null;
-    const input: DashboardAggregateInput = { scope: { kind: "platform" }, city, window };
+    const input: DashboardAggregateInput = {
+      scope: { kind: "platform" },
+      city,
+      window,
+      showTestNdpData: await this.resolveTestNdpVisibility(actor)
+    };
     await this.record(
       actor,
       context,
@@ -1106,6 +1124,7 @@ export class BackofficeService {
     query: BackofficeDashboardQuery
   ): Promise<BackofficeDashboardPayload> {
     const evaluatedAt = this.now();
+    const showTestNdpData = await this.resolveTestNdpVisibility(actor);
     const window = resolveDashboardWindow(query, evaluatedAt);
     const headlineWindow = resolveDashboardWindow(
       {
@@ -1125,15 +1144,16 @@ export class BackofficeService {
     });
     const scope = { kind: "platform" } as const;
     const [aggregate, headlineBuckets] = await Promise.all([
-      this.repository.getDashboard({ scope, city, window, evaluatedAt }),
+      this.repository.getDashboard({ scope, city, window, evaluatedAt, showTestNdpData }),
       this.repository.getHeadlineSeries3d({
         scope,
         city,
         window: headlineWindow,
-        evaluatedAt
+        evaluatedAt,
+        showTestNdpData
       })
     ]);
-    return this.composeDashboard(
+    const dashboard = this.composeDashboard(
       aggregate,
       window,
       headlineWindow,
@@ -1142,6 +1162,7 @@ export class BackofficeService {
       null,
       evaluatedAt
     );
+    return showTestNdpData ? dashboard : this.hideDashboardTestNdp(dashboard);
   }
 
   public async listManagedUsers(
@@ -1152,7 +1173,11 @@ export class BackofficeService {
     await this.record(actor, context, "backoffice.users.list", "User", {
       filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
     });
-    return this.repository.listManagedUsers({ ...input, scope: "platform" }, this.now());
+    return this.repository.listManagedUsers({
+      ...input,
+      scope: "platform",
+      showTestNdpData: await this.resolveTestNdpVisibility(actor)
+    }, this.now());
   }
 
   public async listMerchantManagedUsers(
@@ -1192,7 +1217,12 @@ export class BackofficeService {
   ): Promise<BackofficeManagedUserDetailPayload> {
     await this.record(actor, context, "backoffice.user.read", "User", { userId });
     const detail = this.requireResult(
-      await this.repository.getManagedUser({ scope: "platform", userId, ...query }, this.now()),
+      await this.repository.getManagedUser({
+        scope: "platform",
+        userId,
+        ...query,
+        showTestNdpData: await this.resolveTestNdpVisibility(actor)
+      }, this.now()),
       "error.user.not_found"
     );
     return this.withManagedUserCapabilities(detail, actor, "platform");
@@ -1478,6 +1508,7 @@ export class BackofficeService {
     }
 
     return {
+      testNdpVisible: true,
       filter: {
         period: window.period,
         from: window.fromDate,
@@ -1555,6 +1586,25 @@ export class BackofficeService {
     };
   }
 
+  private hideDashboardTestNdp(dashboard: BackofficeDashboardPayload): BackofficeDashboardPayload {
+    const hide = <TPair extends DashboardNdpPair>(pair: TPair): TPair => ({
+      ...pair,
+      testNdp: 0
+    });
+    return {
+      ...dashboard,
+      testNdpVisible: false,
+      finance: {
+        ...dashboard.finance,
+        platformNetRevenue: hide(dashboard.finance.platformNetRevenue),
+        frozen: hide(dashboard.finance.frozen),
+        userReward: hide(dashboard.finance.userReward),
+        walletStock: dashboard.finance.walletStock ? hide(dashboard.finance.walletStock) : null,
+        withdrawn: dashboard.finance.withdrawn ? hide(dashboard.finance.withdrawn) : null
+      }
+    };
+  }
+
   private dashboardComparison(current: number, previous: number): DashboardMetricComparison {
     return {
       current,
@@ -1571,7 +1621,11 @@ export class BackofficeService {
   ): Promise<PaginatedResponse<BackofficeOrderPayload>> {
     await this.record(actor, context, "backoffice.orders.list", "booking_order");
 
-    return this.repository.listOrders({ ...input, scope: "platform" });
+    return this.repository.listOrders({
+      ...input,
+      scope: "platform",
+      showTestNdpData: await this.resolveTestNdpVisibility(actor)
+    });
   }
 
   public async getPlatformOrder(
@@ -1588,7 +1642,11 @@ export class BackofficeService {
       id
     );
     return this.requireResult(
-      await this.repository.findOrderById({ scope: "platform", id }),
+      await this.repository.findOrderById({
+        scope: "platform",
+        id,
+        showTestNdpData: await this.resolveTestNdpVisibility(actor)
+      }),
       "error.order.not_found"
     );
   }
@@ -1703,6 +1761,7 @@ export class BackofficeService {
       }
     );
 
+    const showTestNdpData = await this.resolveTestNdpVisibility(actor);
     const aggregates = await this.repository.summarizeNdpByCurrency({
       fromInclusive,
       toExclusive
@@ -1722,7 +1781,9 @@ export class BackofficeService {
       campaignDiscountNdp: 0
     };
     const formal = byCurrency.get("NDP") ?? empty;
-    const test = byCurrency.get("TEST_NDP") ?? { ...empty, ndpCurrency: "TEST_NDP" };
+    const test = showTestNdpData
+      ? byCurrency.get("TEST_NDP") ?? { ...empty, ndpCurrency: "TEST_NDP" }
+      : { ...empty, ndpCurrency: "TEST_NDP" as const };
     const pair = (selector: (aggregate: BackofficeNdpAggregate) => number): NdpAmountPair => ({
       ndp: selector(formal),
       testNdp: selector(test)
@@ -1747,6 +1808,7 @@ export class BackofficeService {
     const platformNetRevenue = pair(netRevenue);
 
     return {
+      testNdpVisible: showTestNdpData,
       period: { date, timeZone: "Asia/Tokyo" },
       todayNdpConsumption: pair(consumption),
       platformNetRevenue,
@@ -1826,6 +1888,7 @@ export class BackofficeService {
     });
     const ranking = await this.repository.listTechnicianRankings({
       scope: "platform",
+      showTestNdpData: await this.resolveTestNdpVisibility(actor),
       ...input,
       window
     });
@@ -1862,6 +1925,7 @@ export class BackofficeService {
     );
 
     const rows: BackofficeTechnicianRankingRowPayload[] = [];
+    const showTestNdpData = await this.resolveTestNdpVisibility(actor);
     const pageSize = 100;
     const exportLimit = 5000;
     let page = 1;
@@ -1870,6 +1934,7 @@ export class BackofficeService {
     do {
       const result = await this.repository.listTechnicianRankings({
         scope: "platform",
+        showTestNdpData,
         ...input,
         page,
         pageSize,

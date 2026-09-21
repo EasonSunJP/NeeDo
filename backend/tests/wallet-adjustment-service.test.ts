@@ -161,6 +161,70 @@ const createRepository = (availableBalance = 1000, isTestAccount = false) => {
 };
 
 describe("LedgerService wallet adjustment requests", () => {
+  it("creates an idempotent pending formal NDP top-up for a selected non-test user", async () => {
+    const repository = createRepository();
+    repository.getOrCreateWallet.mockResolvedValue({
+      id: 73,
+      ownerType: "user",
+      ownerId: 42,
+      currency: "NDP",
+      availableBalance: 0,
+      frozenBalance: 0,
+      createdAt: now,
+      updatedAt: now
+    });
+    const service = new LedgerService(repository as never);
+    const input = {
+      targetUserId: 42,
+      amountNdp: 5_000,
+      idempotencyKey: "backoffice-user-topup-42",
+      note: "partner demo credit"
+    };
+
+    const created = await service.createBackofficeWalletTopupRequest(operator, input);
+    const retry = await service.createBackofficeWalletTopupRequest(operator, input);
+
+    expect(created).toMatchObject({
+      type: "topup",
+      status: "pending",
+      ownerType: "user",
+      ownerId: 42,
+      walletId: 73,
+      amountNdp: 5_000,
+      requestedById: operator.userId
+    });
+    expect(retry).toEqual(created);
+    expect(repository.createWalletAdjustmentRequest).toHaveBeenCalledTimes(1);
+    expect(repository.applyWalletDelta).not.toHaveBeenCalled();
+  });
+
+  it("does not let the requester review their own formal NDP top-up", async () => {
+    const repository = createRepository();
+    repository.getOrCreateWallet.mockResolvedValue({
+      id: 73,
+      ownerType: "user",
+      ownerId: 42,
+      currency: "NDP",
+      availableBalance: 0,
+      frozenBalance: 0,
+      createdAt: now,
+      updatedAt: now
+    });
+    const service = new LedgerService(repository as never);
+    await service.createBackofficeWalletTopupRequest(operator, {
+      targetUserId: 42,
+      amountNdp: 5_000,
+      idempotencyKey: "backoffice-user-topup-self-review",
+      note: "requires another reviewer"
+    });
+
+    await expect(service.reviewWalletAdjustmentRequest(operator, 41, {
+      action: "approve",
+      note: "approve"
+    })).rejects.toMatchObject({ code: ERROR_CODES.CANNOT_MODIFY_SELF, statusCode: 403 });
+    expect(repository.applyWalletDelta).not.toHaveBeenCalled();
+  });
+
   it.each(["topup", "withdrawal"] as const)("rejects %s for a Test NDP account", async (type) => {
     const repository = createRepository(1000, true);
     const service = new LedgerService(repository as never);

@@ -185,6 +185,52 @@ export class LedgerRepository implements LedgerRepositoryPort {
     });
   }
 
+  public async findShopOwnerAccountClassification(
+    shopId: number
+  ): Promise<{ ownerUserId: number; isTestAccount: boolean } | null> {
+    const shop = await this.client.shop.findFirst({
+      where: { id: shopId, deletedAt: null },
+      select: {
+        ownerUserId: true,
+        owner: { select: { isTestAccount: true, deletedAt: true } }
+      }
+    });
+    return shop?.ownerUserId && shop.owner && shop.owner.deletedAt === null
+      ? { ownerUserId: shop.ownerUserId, isTestAccount: shop.owner.isTestAccount }
+      : null;
+  }
+
+  public async findWalletOwnerTestEligibility(
+    ownerType: WalletOwnerType,
+    ownerId: number
+  ): Promise<boolean> {
+    if (ownerType === "platform") return true;
+    if (ownerType === "user") {
+      return (await this.findUserAccountClassification(ownerId))?.isTestAccount === true;
+    }
+    if (ownerType === "shop") {
+      return (await this.findShopOwnerAccountClassification(ownerId))?.isTestAccount === true;
+    }
+    if (ownerType === "merchant_account") {
+      const account = await this.client.merchantAccount.findFirst({
+        where: { id: ownerId, deletedAt: null },
+        select: {
+          owner: { select: { isTestAccount: true, deletedAt: true } },
+          memberships: {
+            where: { deletedAt: null, endsAt: null },
+            select: { shop: { select: { owner: { select: { isTestAccount: true, deletedAt: true } } } } }
+          }
+        }
+      });
+      return Boolean(
+        account?.owner?.isTestAccount &&
+        !account.owner.deletedAt &&
+        account.memberships.every(({ shop }) => shop.owner?.isTestAccount && !shop.owner.deletedAt)
+      );
+    }
+    return false;
+  }
+
   public async getOrCreateWallet(input: {
     ownerType: WalletOwnerType;
     ownerId: number;
@@ -965,6 +1011,13 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return this.mapWallet(wallet);
   }
 
+  public async findWalletById(walletId: number): Promise<WalletPayload | null> {
+    const wallet = await this.client.wallet.findFirst({
+      where: { id: walletId, deletedAt: null }
+    });
+    return wallet ? this.mapWallet(wallet) : null;
+  }
+
   public async getDatabaseNow(): Promise<Date> {
     const rows = await this.client.$queryRaw<Array<{ now: Date }>>(
       Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS now`
@@ -1474,6 +1527,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
   private transactionWhere(input: LedgerTransactionListInput): Prisma.LedgerTransactionWhereInput {
     return {
       deletedAt: null,
+      ...(input.currency ? { currency: input.currency } : {}),
       ...(input.type ? { type: this.transactionTypeToDb(input.type) } : {}),
       ...(input.referenceType ? { referenceType: input.referenceType } : {}),
       ...(input.referenceId ? { referenceId: input.referenceId } : {}),
@@ -1864,6 +1918,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
     if (type === "test_balance_calibration") {
       return "TEST_BALANCE_CALIBRATION" as const;
     }
+    if (type === "test_ndp_manual_credit") {
+      return "TEST_NDP_MANUAL_CREDIT" as const;
+    }
     if (type === "affiliate_task_budget_freeze") {
       return "AFFILIATE_TASK_BUDGET_FREEZE" as const;
     }
@@ -1946,6 +2003,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
     }
     if (type === "TEST_BALANCE_CALIBRATION") {
       return "test_balance_calibration";
+    }
+    if (type === "TEST_NDP_MANUAL_CREDIT") {
+      return "test_ndp_manual_credit";
     }
     if (type === "AFFILIATE_TASK_BUDGET_FREEZE") {
       return "affiliate_task_budget_freeze";

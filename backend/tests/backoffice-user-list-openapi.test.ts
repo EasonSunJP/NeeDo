@@ -29,6 +29,7 @@ describe("backoffice all-user OpenAPI", () => {
       expect.arrayContaining([
         "city",
         "emailState",
+        "isTestAccount",
         "privacy",
         "minBookings",
         "maxBookings",
@@ -39,7 +40,7 @@ describe("backoffice all-user OpenAPI", () => {
     const merchantQueryNames = response.body.paths[
       "/api/v1/merchant-admin/users"
     ].get.parameters.map((parameter: { name: string }) => parameter.name);
-    expect(merchantQueryNames).toEqual(queryNames);
+    expect(merchantQueryNames).toEqual(queryNames.filter((name: string) => name !== "isTestAccount"));
     const experienceSchema = response.body.components.schemas.BackofficeManagedUserExperience;
     expect(experienceSchema.required).toContain("totalExp");
     expect(experienceSchema.properties.totalExp.type).toBe("string");

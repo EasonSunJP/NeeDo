@@ -7,8 +7,10 @@ import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { BackofficeUserUsageRepository } from "../repositories/backoffice-user-usage.repository";
+import { BackofficePreferenceRepository } from "../repositories/backoffice-preference.repository";
 import { AuditLogService } from "../services/audit-log.service";
 import { BackofficeUserUsageService } from "../services/backoffice-user-usage.service";
+import { BackofficePreferenceService } from "../services/backoffice-preference.service";
 import {
   backofficeRefundAmendmentBodySchema,
   backofficeUserUsageCommentBodySchema,
@@ -39,7 +41,16 @@ export const createBackofficeUserUsageRoutes = (
       dependencies.backofficeUserUsageRepository ?? new BackofficeUserUsageRepository(),
       audit
     );
-  const controller = new BackofficeUserUsageController(service as BackofficeUserUsageService);
+  const preference = dependencies.backofficePreferenceRepository || config.NODE_ENV !== "test"
+    ? new BackofficePreferenceService(
+        dependencies.backofficePreferenceRepository ?? new BackofficePreferenceRepository(),
+        config.DEPLOY_ENV
+      )
+    : undefined;
+  const controller = new BackofficeUserUsageController(
+    service as BackofficeUserUsageService,
+    preference
+  );
   const readRoutes = [
     {
       prefix: "/backoffice",

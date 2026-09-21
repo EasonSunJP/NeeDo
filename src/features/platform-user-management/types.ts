@@ -239,6 +239,7 @@ export type UserListQuery = {
   identityType?: PlatformIdentityType;
   identityTypes?: PlatformIdentityType[];
   source?: string;
+  isTestAccount?: boolean;
   state?: "active" | "inactive";
   states?: Array<"active" | "inactive">;
   ekyc?: "verified" | "unverified";

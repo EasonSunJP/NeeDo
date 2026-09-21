@@ -50,6 +50,7 @@ export type LedgerTransactionType =
   | "affiliate_reward_reversal"
   | "affiliate_reward_recovery"
   | "test_balance_calibration"
+  | "test_ndp_manual_credit"
   | "exchange_request_publication_freeze"
   | "exchange_request_publication_capture"
   | "exchange_request_publication_release"
@@ -132,6 +133,20 @@ export interface CreateWalletAdjustmentRequestInput {
   amountNdp: number;
   idempotencyKey: string;
   bankReference?: string | null;
+  note?: string | null;
+}
+
+export interface TestNdpManualCreditInput {
+  targetUserId: number;
+  amountNdp: number;
+  reason: string;
+  idempotencyKey: string;
+}
+
+export interface BackofficeWalletTopupRequestInput {
+  targetUserId: number;
+  amountNdp: number;
+  idempotencyKey: string;
   note?: string | null;
 }
 
@@ -396,6 +411,7 @@ export interface WalletLedgerListInput extends PaginationInput {
 }
 
 export interface LedgerTransactionListInput extends PaginationInput {
+  currency?: LedgerCurrency;
   type?: LedgerTransactionType;
   referenceType?: string;
   referenceId?: number;
@@ -423,6 +439,13 @@ export interface LedgerRepositoryPort {
     idempotencyKey: string
   ) => Promise<LedgerTransactionPayload | null>;
   findUserAccountClassification: (userId: number) => Promise<{ isTestAccount: boolean } | null>;
+  findShopOwnerAccountClassification?: (
+    shopId: number
+  ) => Promise<{ ownerUserId: number; isTestAccount: boolean } | null>;
+  findWalletOwnerTestEligibility?: (
+    ownerType: WalletOwnerType,
+    ownerId: number
+  ) => Promise<boolean>;
   getOrCreateWallet: (input: {
     ownerType: WalletOwnerType;
     ownerId: number;
@@ -439,6 +462,7 @@ export interface LedgerRepositoryPort {
     bookingOrderId: number
   ) => Promise<OrderFinancialPlatformFeeSnapshot | null>;
   lockWalletById?: (walletId: number) => Promise<WalletPayload | null>;
+  findWalletById?: (walletId: number) => Promise<WalletPayload | null>;
   getDatabaseNow?: () => Promise<Date>;
   findPlatformFeeHoldByBookingOrderId?: (
     bookingOrderId: number
@@ -666,6 +690,7 @@ export interface CheckoutPaymentLedgerInput {
   bookingOrderId: number;
   checkoutId: number;
   customerUserId: number;
+  shopId: number;
   payableNdp: number;
   idempotencyKey: string;
   actorUserId: number;
@@ -1287,6 +1312,7 @@ export class LedgerService
         throw this.walletMutationError();
       }
       const currency = await this.resolveCurrencyForUser(repository, input.actorUserId);
+      await this.assertTestNdpOwnerEligible(repository, currency, input.ownerType, input.ownerId);
 
       const wallet = await repository.getOrCreateWallet({
         ownerType: input.ownerType,
@@ -1372,6 +1398,7 @@ export class LedgerService
           metadata.bookingOrderId !== input.bookingOrderId ||
           metadata.checkoutId !== input.checkoutId ||
           metadata.customerUserId !== input.customerUserId ||
+          metadata.shopId !== input.shopId ||
           metadata.commandKey !== input.idempotencyKey ||
           metadata.purpose !== "checkout_ndp_payment"
         ) {
@@ -1392,6 +1419,13 @@ export class LedgerService
         throw this.walletMutationError();
       }
       const currency = await this.resolveCurrencyForUser(repository, input.customerUserId);
+      if (currency === "TEST_NDP") {
+        if (!repository.findShopOwnerAccountClassification) {
+          throw this.repositoryUnavailableError();
+        }
+        const shopOwner = await repository.findShopOwnerAccountClassification(input.shopId);
+        if (!shopOwner?.isTestAccount) throw this.testNdpSettlementForbiddenError();
+      }
       const wallet = await repository.getOrCreateWallet({
         ownerType: "user",
         ownerId: input.customerUserId,
@@ -1428,6 +1462,7 @@ export class LedgerService
           bookingOrderId: input.bookingOrderId,
           checkoutId: input.checkoutId,
           customerUserId: input.customerUserId,
+          shopId: input.shopId,
           walletId: lockedWallet.id
         }
       });
@@ -1568,6 +1603,12 @@ export class LedgerService
       ) {
         throw this.walletMutationError();
       }
+      await this.assertTestNdpOwnerEligible(
+        repository,
+        publisherWallet.currency,
+        publisherWallet.ownerType,
+        publisherWallet.ownerId
+      );
       if (publisherWallet.frozenBalance < grossAmountNdp) {
         throw this.insufficientFrozenError();
       }
@@ -3651,7 +3692,29 @@ export class LedgerService
       });
     }
 
-    return this.resolveCurrencyForUser(repository, userId);
+    return this.resolveCurrencyForUser(repository, userId).then(async (currency) => {
+      await this.assertTestNdpOwnerEligible(repository, currency, "shop", input.shopId);
+      return currency;
+    });
+  }
+
+  private async assertTestNdpOwnerEligible(
+    repository: LedgerRepositoryPort,
+    currency: LedgerCurrency,
+    ownerType: WalletOwnerType,
+    ownerId: number
+  ): Promise<void> {
+    if (currency !== "TEST_NDP" || ownerType === "platform") return;
+    const eligible = repository.findWalletOwnerTestEligibility
+      ? await repository.findWalletOwnerTestEligibility(ownerType, ownerId)
+      : ownerType === "user"
+        ? (await repository.findUserAccountClassification(ownerId))?.isTestAccount === true
+        : ownerType === "shop" && repository.findShopOwnerAccountClassification
+          ? (await repository.findShopOwnerAccountClassification(ownerId))?.isTestAccount === true
+          : false;
+    if (!eligible) {
+      throw this.testNdpSettlementForbiddenError();
+    }
   }
 
   private async lockWalletById(
@@ -3985,6 +4048,132 @@ export class LedgerService
     });
   }
 
+  public creditTestNdp(
+    actor: AuthenticatedAccessContext,
+    input: TestNdpManualCreditInput
+  ): Promise<LedgerTransactionPayload> {
+    if (!Number.isSafeInteger(input.targetUserId) || input.targetUserId <= 0 ||
+      !Number.isSafeInteger(input.amountNdp) || input.amountNdp <= 0 ||
+      input.amountNdp > 100_000_000 || !input.reason.trim()) {
+      throw this.walletMutationError();
+    }
+    return this.repository.runInTransaction(async (repository) => {
+      const existing = await repository.findTransactionByIdempotencyKey(input.idempotencyKey);
+      if (existing) {
+        const metadata = existing.metadata && typeof existing.metadata === "object"
+          ? existing.metadata as Record<string, unknown>
+          : {};
+        if (existing.type !== "test_ndp_manual_credit" ||
+          existing.referenceType !== "user" || existing.referenceId !== input.targetUserId ||
+          existing.amount !== input.amountNdp || existing.currency !== "TEST_NDP" ||
+          metadata.reason !== input.reason.trim()) {
+          throw new AppError({
+            code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+            message: "error.idempotency.key_reused",
+            statusCode: 409
+          });
+        }
+        return existing;
+      }
+      const classification = await repository.findUserAccountClassification(input.targetUserId);
+      if (!classification?.isTestAccount) throw this.testNdpSettlementForbiddenError();
+      const wallet = await repository.getOrCreateWallet({
+        ownerType: "user",
+        ownerId: input.targetUserId,
+        currency: "TEST_NDP"
+      });
+      const lockedWallet = repository.lockWalletById
+        ? await repository.lockWalletById(wallet.id)
+        : wallet;
+      if (!lockedWallet || lockedWallet.ownerType !== "user" ||
+        lockedWallet.ownerId !== input.targetUserId || lockedWallet.currency !== "TEST_NDP") {
+        throw this.walletMutationError();
+      }
+      const updatedWallet = await repository.applyWalletDelta({
+        walletId: lockedWallet.id,
+        availableDelta: input.amountNdp,
+        frozenDelta: 0
+      });
+      if (!updatedWallet) throw this.walletMutationError();
+      const transaction = await repository.createTransaction({
+        idempotencyKey: input.idempotencyKey,
+        type: "test_ndp_manual_credit",
+        referenceType: "user",
+        referenceId: input.targetUserId,
+        actorUserId: actor.userId,
+        amount: input.amountNdp,
+        currency: "TEST_NDP",
+        metadata: { reason: input.reason.trim(), walletId: lockedWallet.id }
+      });
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: lockedWallet.id,
+        direction: "available_credit",
+        amount: input.amountNdp,
+        availableDelta: input.amountNdp,
+        frozenDelta: 0,
+        availableBalanceAfter: updatedWallet.availableBalance,
+        frozenBalanceAfter: updatedWallet.frozenBalance,
+        reason: "test_ndp_manual_credit"
+      });
+      await repository.createAuditLog({
+        actorUserId: actor.userId,
+        action: "ledger.test_ndp.manual_credit",
+        targetType: "User",
+        targetId: input.targetUserId,
+        metadata: { amountNdp: input.amountNdp, reason: input.reason.trim(), transactionId: transaction.id }
+      });
+      return (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ?? transaction;
+    });
+  }
+
+  public createBackofficeWalletTopupRequest(
+    actor: AuthenticatedAccessContext,
+    input: BackofficeWalletTopupRequestInput
+  ): Promise<WalletAdjustmentRequestPayload> {
+    return this.repository.runInTransaction(async (repository) => {
+      this.assertWalletAdjustmentRepository(repository);
+      const owner = { ownerType: "user" as const, ownerId: input.targetUserId };
+      const classification = await repository.findUserAccountClassification(input.targetUserId);
+      if (!classification) throw this.walletMutationError();
+      if (classification.isTestAccount) throw this.testNdpSettlementForbiddenError();
+      const existing = await repository.findWalletAdjustmentByIdempotencyKey!(input.idempotencyKey);
+      if (existing) {
+        if (existing.ownerType !== owner.ownerType || existing.ownerId !== owner.ownerId ||
+          existing.type !== "topup" || existing.amountNdp !== input.amountNdp ||
+          existing.note !== (input.note ?? null)) {
+          throw this.walletAdjustmentConflictError();
+        }
+        return existing;
+      }
+      const wallet = await repository.getOrCreateWallet({ ...owner, currency: "NDP" });
+      if (
+        wallet.ownerType !== owner.ownerType ||
+        wallet.ownerId !== owner.ownerId ||
+        wallet.currency !== "NDP"
+      ) {
+        throw this.walletMutationError();
+      }
+      const created = await repository.createWalletAdjustmentRequest!({
+        type: "topup",
+        ...owner,
+        walletId: wallet.id,
+        amountNdp: input.amountNdp,
+        idempotencyKey: input.idempotencyKey,
+        note: input.note ?? null,
+        requestedById: actor.userId
+      });
+      await repository.createAuditLog({
+        actorUserId: actor.userId,
+        action: "wallet.adjustment.requested",
+        targetType: "wallet_adjustment_request",
+        targetId: created.id,
+        metadata: { type: "topup", ownerType: "user", ownerId: input.targetUserId, amountNdp: input.amountNdp }
+      });
+      return created;
+    });
+  }
+
   public listMyWalletAdjustmentRequests(
     actor: AuthenticatedAccessContext,
     input: PaginationInput
@@ -4032,6 +4221,14 @@ export class LedgerService
         }
 
         throw this.walletAdjustmentInvalidStateError();
+      }
+
+      if (request.requestedById === actor.userId) {
+        throw new AppError({
+          code: ERROR_CODES.CANNOT_MODIFY_SELF,
+          message: "error.wallet.adjustment_self_review_forbidden",
+          statusCode: 403
+        });
       }
 
       if (input.action === "reject") {
@@ -4393,7 +4590,8 @@ export class LedgerService
 
   public async listWalletLedger(
     actor: AuthenticatedAccessContext,
-    input: WalletLedgerListInput
+    input: WalletLedgerListInput,
+    showTestNdpData = true
   ): Promise<PaginatedResponse<WalletLedgerPayload>> {
     if (!this.repository.listWalletLedger || !this.repository.findWallet) {
       throw this.repositoryUnavailableError();
@@ -4410,6 +4608,19 @@ export class LedgerService
       });
 
       if (!wallet || wallet.id !== input.walletId) {
+        throw new AppError({
+          code: ERROR_CODES.WALLET_NOT_FOUND,
+          message: "error.wallet.not_found",
+          statusCode: 404
+        });
+      }
+    }
+
+    if (!showTestNdpData) {
+      const wallet = this.repository.findWalletById
+        ? await this.repository.findWalletById(input.walletId)
+        : null;
+      if (wallet?.currency === "TEST_NDP") {
         throw new AppError({
           code: ERROR_CODES.WALLET_NOT_FOUND,
           message: "error.wallet.not_found",

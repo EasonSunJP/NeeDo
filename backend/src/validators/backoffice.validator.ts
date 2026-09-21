@@ -78,6 +78,9 @@ export const backofficeManagedUserListQuerySchema = z
     identityType: managedIdentityTypeSchema.optional(),
     identityTypes: repeated(managedIdentityTypeSchema),
     source: z.string().trim().min(1).max(32).optional(),
+    isTestAccount: z
+      .union([z.boolean(), z.enum(["true", "false"]).transform((value) => value === "true")])
+      .optional(),
     state: z.enum(["active", "inactive"]).optional(),
     states: repeated(z.enum(["active", "inactive"])),
     ekyc: z.enum(["verified", "unverified"]).optional(),

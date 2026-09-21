@@ -24,12 +24,12 @@ function PanelHeading({ scopeLabel, title }: { scopeLabel: string; title: string
   );
 }
 
-function MoneyRows({ locale, money }: { locale: string; money: Money }) {
+function MoneyRows({ locale, money, showTestNdp }: { locale: string; money: Money; showTestNdp: boolean }) {
   return (
     <div className="live-dashboard-money-rows">
       <strong>{jpyFormat(money.jpy, locale)}</strong>
       <span>{numberFormat(money.ndp, locale)} NDP</span>
-      <span>{numberFormat(money.testNdp, locale)} Test NDP</span>
+      {showTestNdp ? <span>{numberFormat(money.testNdp, locale)} Test NDP</span> : null}
     </div>
   );
 }
@@ -77,9 +77,9 @@ export function LiveDashboardPanels({ map, snapshot }: LiveDashboardPanelsProps)
           <PanelHeading scopeLabel={scopeLabel} title={t("订单经营")} />
           <article className="live-dashboard-total-order"><span>{t("订单总量")}</span><strong>{numberFormat(snapshot.orders.total, locale)}</strong></article>
           <div className="live-dashboard-finance-stack">
-            <article><span>{t("服务 GMV")}</span><MoneyRows locale={locale} money={snapshot.orders.serviceGmv} /></article>
-            <article><span>{t("平台净收入")}</span><MoneyRows locale={locale} money={snapshot.orders.platformNetRevenue} /></article>
-            <article><span>{t("代理商分佣")}</span>{snapshot.orders.agentCommission ? <MoneyRows locale={locale} money={snapshot.orders.agentCommission} /> : <strong className="live-dashboard-unavailable">{t("代理商分佣暂不可用")}</strong>}</article>
+            <article><span>{t("服务 GMV")}</span><MoneyRows locale={locale} money={snapshot.orders.serviceGmv} showTestNdp={snapshot.testNdpVisible} /></article>
+            <article><span>{t("平台净收入")}</span><MoneyRows locale={locale} money={snapshot.orders.platformNetRevenue} showTestNdp={snapshot.testNdpVisible} /></article>
+            <article><span>{t("代理商分佣")}</span>{snapshot.orders.agentCommission ? <MoneyRows locale={locale} money={snapshot.orders.agentCommission} showTestNdp={snapshot.testNdpVisible} /> : <strong className="live-dashboard-unavailable">{t("代理商分佣暂不可用")}</strong>}</article>
           </div>
         </section>
         <section className="live-dashboard-panel is-coverage">
@@ -93,7 +93,7 @@ export function LiveDashboardPanels({ map, snapshot }: LiveDashboardPanelsProps)
       <section className="live-dashboard-center">
         <section className="live-dashboard-confirmed-payments">
           <div><span>{t("已确认服务支付")}</span><small data-scope-label={scopeLabel}>{scopeLabel}</small></div>
-          <MoneyRows locale={locale} money={snapshot.confirmedPayments} />
+          <MoneyRows locale={locale} money={snapshot.confirmedPayments} showTestNdp={snapshot.testNdpVisible} />
         </section>
         {map}
         <section className="live-dashboard-panel is-trend">

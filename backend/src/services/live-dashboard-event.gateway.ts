@@ -38,6 +38,7 @@ interface LiveDashboardPreparedSubscription {
 }
 
 export type LiveDashboardBeforeConnect = () => Promise<void>;
+export type LiveDashboardEventFilter = (event: LiveDashboardEvent) => boolean;
 
 export interface LiveDashboardEventStreamPort {
   append(event: string): Promise<LiveDashboardEventStreamEntry>;
@@ -57,7 +58,8 @@ export interface LiveDashboardEventGatewayPort extends LiveDashboardEventPublish
     scope: LiveDashboardScope,
     lastEventId: string | null,
     response: Response,
-    beforeConnect?: LiveDashboardBeforeConnect
+    beforeConnect?: LiveDashboardBeforeConnect,
+    eventFilter?: LiveDashboardEventFilter
   ): Promise<() => void>;
   close(): Promise<void>;
 }
@@ -72,6 +74,7 @@ interface Subscriber {
   scope: LiveDashboardScope;
   response: Response;
   lastSentId: string | null;
+  eventFilter?: LiveDashboardEventFilter;
   heartbeat?: ReturnType<typeof setInterval>;
   unsubscribe: () => void;
 }
@@ -189,10 +192,11 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     scope: LiveDashboardScope,
     lastEventId: string | null,
     response: Response,
-    beforeConnect: LiveDashboardBeforeConnect = async () => undefined
+    beforeConnect: LiveDashboardBeforeConnect = async () => undefined,
+    eventFilter?: LiveDashboardEventFilter
   ): Promise<() => void> {
     const setup = this.runSerialized(() =>
-      this.subscribeInternal(scope, lastEventId, response, beforeConnect)
+      this.subscribeInternal(scope, lastEventId, response, beforeConnect, eventFilter)
     );
     this.pendingClientSetups.add(setup);
     void setup.then(
@@ -206,7 +210,8 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     scope: LiveDashboardScope,
     lastEventId: string | null,
     response: Response,
-    beforeConnect: LiveDashboardBeforeConnect
+    beforeConnect: LiveDashboardBeforeConnect,
+    eventFilter?: LiveDashboardEventFilter
   ): Promise<() => void> {
     const stopUnestablished = (): void => {
       if (this.isResponseActive(response)) response.end();
@@ -268,6 +273,7 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     subscriber.scope = { ...scope };
     subscriber.response = response;
     subscriber.lastSentId = lastEventId;
+    subscriber.eventFilter = eventFilter;
     subscriber.unsubscribe = unsubscribe;
     this.subscribers.add(subscriber);
     response.on("close", unsubscribe);
@@ -325,6 +331,10 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
 
   private sendEvent(subscriber: Subscriber, event: LiveDashboardEvent): boolean {
     if (!this.matchesScope(subscriber.scope, event.scope)) return true;
+    if (subscriber.eventFilter && !subscriber.eventFilter(event)) {
+      subscriber.lastSentId = event.id;
+      return true;
+    }
     if (subscriber.lastSentId && this.compareEventIds(event.id, subscriber.lastSentId) <= 0) {
       return true;
     }

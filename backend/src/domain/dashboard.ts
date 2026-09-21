@@ -28,6 +28,7 @@ export interface DashboardAggregateInput {
   city: string | null;
   window: DashboardWindow;
   evaluatedAt?: Date;
+  showTestNdpData?: boolean;
 }
 
 export interface DashboardNdpPair {
@@ -163,6 +164,7 @@ export interface DashboardAggregateFacts extends DashboardActivityFacts {
 }
 
 export interface BackofficeDashboardPayload {
+  testNdpVisible?: boolean;
   filter: {
     period: DashboardPeriod;
     from: string;

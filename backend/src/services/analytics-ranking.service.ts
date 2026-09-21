@@ -13,6 +13,7 @@ import { AppError } from "../utils/app-error";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import { assertActivePlatformIdentity } from "./platform-identity-scope";
+import type { BackofficePreferenceService } from "./backoffice-preference.service";
 
 type AnalyticsRankingAudit = Pick<AuditLogService, "record">;
 
@@ -20,7 +21,8 @@ export class AnalyticsRankingService {
   public constructor(
     private readonly repository: AnalyticsRankingRepositoryPort,
     private readonly auditLog: AnalyticsRankingAudit,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly backofficePreferenceService?: Pick<BackofficePreferenceService, "getEffective">
   ) {}
 
   public async list(
@@ -53,7 +55,8 @@ export class AnalyticsRankingService {
         city: query.city ?? null,
         categoryId,
         page: query.page,
-        pageSize: query.pageSize
+        pageSize: query.pageSize,
+        showTestNdpData: (await this.backofficePreferenceService?.getEffective(actor.userId))?.showTestNdpData ?? true
       });
       await this.auditLog.record({
         actor,

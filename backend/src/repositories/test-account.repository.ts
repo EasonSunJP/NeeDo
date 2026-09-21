@@ -78,11 +78,20 @@ export class TestAccountRepository
     userId: number,
     currency: "NDP" | "TEST_NDP"
   ): Promise<boolean> {
+    const ownedShopIds = (await this.client.shop.findMany({
+      where: { ownerUserId: userId, deletedAt: null },
+      select: { id: true }
+    })).map((shop) => shop.id);
+    const ownerScope = [
+      { ownerType: "USER" as const, ownerId: userId },
+      ...(ownedShopIds.length
+        ? [{ ownerType: "SHOP" as const, ownerId: { in: ownedShopIds } }]
+        : [])
+    ];
     const [frozenWallet, activeHold, pendingAdjustment, unsettledOrder] = await Promise.all([
       this.client.wallet.findFirst({
         where: {
-          ownerType: "USER",
-          ownerId: userId,
+          OR: ownerScope,
           currency,
           frozenBalance: { gt: 0 },
           deletedAt: null
@@ -91,8 +100,7 @@ export class TestAccountRepository
       }),
       this.client.walletHold.findFirst({
         where: {
-          ownerType: "USER",
-          ownerId: userId,
+          OR: ownerScope,
           currency,
           status: { in: ["active", "partially_captured"] },
           deletedAt: null
@@ -101,8 +109,7 @@ export class TestAccountRepository
       }),
       this.client.walletAdjustmentRequest.findFirst({
         where: {
-          ownerType: "USER",
-          ownerId: userId,
+          OR: ownerScope,
           status: "PENDING",
           deletedAt: null,
           wallet: { currency, deletedAt: null }
@@ -111,7 +118,10 @@ export class TestAccountRepository
       }),
       this.client.orderFinancial.findFirst({
         where: {
-          customerUserId: userId,
+          OR: [
+            { customerUserId: userId },
+            ...(ownedShopIds.length ? [{ shopId: { in: ownedShopIds } }] : [])
+          ],
           ndpCurrency: currency,
           settlementStatus: {
             notIn: ["settled", "cancelled", "compensated", "refunded"]

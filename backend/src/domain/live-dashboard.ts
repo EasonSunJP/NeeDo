@@ -16,6 +16,7 @@ export interface LiveDashboardInput {
   scope: LiveDashboardScope;
   period: LiveDashboardPeriod;
   evaluatedAt: Date;
+  showTestNdpData?: boolean;
 }
 
 export interface LiveDashboardCoverage {
