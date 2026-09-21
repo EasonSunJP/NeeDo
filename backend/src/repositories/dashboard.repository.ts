@@ -906,7 +906,18 @@ export class DashboardRepository {
       WITH buckets AS (${buckets})
       SELECT
         bucket.bucket_key AS bucketKey,
-        COUNT(booking.id) AS orderCount,
+        COALESCE(SUM(
+          CASE
+            WHEN booking.status IN (
+              ${"confirmed"},
+              ${"in_service"},
+              ${"awaiting_checkout"},
+              ${"awaiting_payment_confirmation"},
+              ${"completed"}
+            ) THEN 1
+            ELSE 0
+          END
+        ), 0) AS orderCount,
         COALESCE(SUM(
           CASE
             WHEN booking.status = ${"completed"}
