@@ -96,6 +96,6 @@ describe("describeBookingOrderMutationError", () => {
   ])("does not misreport account or wallet lookup failure %s as a missing order", (message, code) => {
     expect(
       describeBookingOrderMutationError(new ApiClientError(message, code, 404), "zh")
-    ).toBe("无法确认账户或 NDP 钱包，请重新登录后重试");
+    ).toBe("账户或 NDP 钱包不可用，请重登");
   });
 });
