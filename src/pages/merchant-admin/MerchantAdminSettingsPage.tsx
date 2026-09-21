@@ -15,13 +15,13 @@ import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdm
 import { PayrollSchedulePolicyEditor } from "../../components/merchant-admin/PayrollSchedulePolicyEditor";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
-import { coreReadApi, mapCoreShopToStore } from "../../features/core-read/api";
+import { coreReadApi, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
 import { describeMerchantReadError } from "../../features/merchant-admin/merchantReadError";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { StoreDetailExperience } from "../user/StoreDetailPage";
-import type { Store } from "../../types/domain";
+import type { Store, Technician } from "../../types/domain";
 
 type ShopDraft = {
   name: string;
@@ -82,6 +82,7 @@ export function MerchantAdminSettingsPage() {
   const { language } = useOptionalI18n();
   const [shop, setShop] = useState<BackofficeShopPayload | null>(null);
   const [presentationStore, setPresentationStore] = useState<Store | null>(null);
+  const [presentationTechnicians, setPresentationTechnicians] = useState<Technician[]>([]);
   const [presentationLoadError, setPresentationLoadError] = useState("");
   const [draft, setDraft] = useState<ShopDraft>(emptyDraft);
   const [loading, setLoading] = useState(true);
@@ -111,16 +112,23 @@ export function MerchantAdminSettingsPage() {
         try {
           const detail = await loadCoreReadWithTransientRetry(() => coreReadApi.getShopDetail(currentShop.id));
           setPresentationStore(mapCoreShopToStore(detail));
+          setPresentationTechnicians(detail.technicians.map((technician) => ({
+            ...mapCoreTechnicianToTechnician(technician),
+            storeId: String(detail.id)
+          })));
         } catch (presentationError) {
           setPresentationStore(null);
+          setPresentationTechnicians([]);
           setPresentationLoadError(describeMerchantReadError(presentationError, language));
         }
       } else {
         setPresentationStore(null);
+        setPresentationTechnicians([]);
       }
     } catch (loadError) {
       setShop(null);
       setPresentationStore(null);
+      setPresentationTechnicians([]);
       setError(describeMerchantReadError(loadError, language));
     } finally {
       setLoading(false);
@@ -365,7 +373,12 @@ export function MerchantAdminSettingsPage() {
               </div>
             ) : presentationStore ? (
               <div className="bg-[color:var(--client-bg)] p-4 sm:p-5">
-                <StoreDetailExperience embedded scope="merchant" store={presentationStore} />
+                <StoreDetailExperience
+                  embedded
+                  scope="merchant"
+                  store={presentationStore}
+                  techniciansOverride={presentationTechnicians}
+                />
               </div>
             ) : (
               <p className="m-5 rounded-lg border border-line bg-paper p-4 text-sm font-bold text-ink/55">
