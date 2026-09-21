@@ -11,6 +11,7 @@ import type { MessageCenterContext } from "../../lib/messageCenter";
 import { shareContent } from "../../lib/share";
 import { likeExchangePost, recordExchangeShare, unlikeExchangePost } from "./api";
 import { ExchangeComposer } from "./ExchangeComposer";
+import { ExchangeIntelligenceShopCard } from "./ExchangeIntelligenceShopCard";
 import { exchangeText } from "./i18n";
 import type { ExchangeInteractionCounts, ExchangePost, ExchangePostType } from "./types";
 import { useExchangeFeed, type ExchangeFeedError } from "./useExchangeFeed";
@@ -81,15 +82,14 @@ function priceLabel(post: ExchangePost) {
 }
 
 function postTags(post: ExchangePost, language: Language) {
-  const identity = post.publisher
-    ? `${post.publisher.displayName} · ${post.publisher.publicId}`
-    : exchangeText("publisherHidden", language);
   if (post.demand) {
+    const identity = post.publisher
+      ? `${post.publisher.displayName} · ${post.publisher.publicId}`
+      : exchangeText("publisherHidden", language);
     return [identity, exchangeText(post.demand.serviceMode === "home" ? "home" : "store", language), post.areaLabel];
   }
-  if (!post.intelligence) return [identity, post.areaLabel];
+  if (!post.intelligence) return [post.areaLabel];
   const tags = [
-    identity,
     exchangeText(post.intelligence.serviceMode, language),
     ...post.intelligence.serviceAreas
   ];
@@ -111,8 +111,8 @@ function matchesSearch(post: ExchangePost, query: string) {
     post.title,
     post.detail,
     post.areaLabel,
-    post.publisher?.displayName ?? "",
-    post.publisher?.publicId ?? "",
+    post.type === "demand" ? post.publisher?.displayName ?? "" : post.intelligence?.publisherCard?.type === "shop" ? post.intelligence.publisherCard.name : "",
+    post.type === "demand" ? post.publisher?.publicId ?? "" : "",
     ...(post.intelligence?.serviceAreas ?? [])
   ].some((value) => value.toLocaleLowerCase().includes(query));
 }
@@ -174,6 +174,7 @@ function PostCard({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       openDetail();
@@ -222,11 +223,12 @@ function PostCard({
             ) : null}
           </div>
         }
-        image={post.publisher?.avatarUrl || fallbackPublisherImage}
-        imageAlt={publisherName}
+        image={post.type === "demand" ? post.publisher?.avatarUrl || fallbackPublisherImage : undefined}
+        imageAlt={post.type === "demand" ? publisherName : undefined}
         imageLabel={t(post.type)}
         noteLabel={t("note")}
         noteValue={<span data-no-i18n="true">{post.detail}</span>}
+        supplementaryContent={post.type === "intelligence" ? <ExchangeIntelligenceShopCard context={context} language={language} post={post} /> : undefined}
         tags={postTags(post, language)}
         title={<span data-no-i18n="true">{post.title}</span>}
         titleBadge={nowMs - new Date(post.publishedAt).getTime() <= 86_400_000 ? "NEW" : undefined}

@@ -120,7 +120,13 @@ function fixture() {
         serviceMode: "store",
         areaLabel: "Tokyo",
         addressLabel: null,
-        serviceAreas: ["Tokyo"]
+        serviceAreas: ["Tokyo"],
+        publisher: {
+          publicId: "s0000000701",
+          identityType: "technician",
+          displayName: "Technician",
+          avatarUrl: null
+        }
       }
     })),
     createPost: jest.fn(async () => ({ id: 51 })),
@@ -198,12 +204,21 @@ describe("Exchange demand eKYC policy", () => {
     state.repository.resolveActor.mockResolvedValue({
       ...actor,
       identityType: "technician",
+      scopeType: "technician_profile",
+      scopeId: 701,
+      publicId: "s0000000701",
+      displayName: "Technician",
       customerMembership: null
     });
     await state.service.publish(
       {
         ...access,
-        currentIdentityType: "technician"
+        currentIdentityType: "technician",
+        currentIdentityScopeType: "technician_profile",
+        currentIdentityScopeId: 701,
+        currentPublicId: "s0000000701",
+        roles: ["technician"],
+        permissions: ["exchange:posts:create-intelligence"]
       },
       {
         type: "intelligence",

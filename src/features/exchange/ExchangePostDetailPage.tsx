@@ -23,6 +23,7 @@ import {
   withdrawExchangePost
 } from "./api";
 import { ExchangeClaimPanel } from "./ExchangeClaimPanel";
+import { ExchangeIntelligenceShopCard } from "./ExchangeIntelligenceShopCard";
 import { ExchangeInteractions } from "./ExchangeInteractions";
 import { ExchangeReceivedClaims } from "./ExchangeReceivedClaims";
 import { ExchangeMatchedBookingCard } from "./ExchangeMatchedBookingCard";
@@ -171,14 +172,20 @@ function HeaderActionButton({
 }
 
 function DetailHero({ label, post, publisherAlt }: { label: string; post: ExchangePost; publisherAlt: string }) {
-  const image = post.publisher?.avatarUrl || fallbackPublisherImage;
+  const shop = post.intelligence?.publisherCard?.type === "shop" ? post.intelligence.publisherCard : null;
+  const image = shop
+    ? shop.coverUrl ?? shop.imageUrls[0] ?? shop.avatarUrl ?? fallbackPublisherImage
+    : post.type === "intelligence" && post.publisher?.identityType !== "technician"
+      ? fallbackPublisherImage
+      : post.publisher?.avatarUrl ?? fallbackPublisherImage;
+  const imageAlt = shop?.name ?? (post.type === "intelligence" ? publisherAlt : post.publisher?.displayName ?? publisherAlt);
   return (
     <section
       className="relative h-[238px] overflow-hidden rounded-[28px] bg-[color:var(--client-surface)] text-white shadow-soft"
       data-no-i18n="true"
       data-testid="exchange-detail-hero"
     >
-      <img alt={post.publisher?.displayName ?? publisherAlt} className="absolute inset-0 h-full w-full object-cover" src={image} />
+      <img alt={imageAlt} className="absolute inset-0 h-full w-full object-cover" src={image} />
       <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-black/32 to-black/90" />
       <div className="relative flex h-full flex-col justify-between p-4">
         <div>
@@ -574,14 +581,18 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
 
         {post.type === "demand" ? <PublisherCard language={language} post={post} /> : null}
 
-        {post.intelligence?.publisherCard ? (
+        {post.intelligence?.publisherCard?.type === "shop" ? (
+          <div data-no-i18n="true" data-testid="exchange-intelligence-publisher-card">
+            <ExchangeIntelligenceShopCard context={context} language={language} post={post} />
+          </div>
+        ) : post.intelligence?.publisherCard ? (
           <div data-no-i18n="true" data-testid="exchange-intelligence-publisher-card">
             <UnifiedProfileCard
               data={mapExchangeIntelligencePublisherToProfileData(
                 post.intelligence.publisherCard,
                 t(post.intelligence.serviceMode),
                 {
-                  entity: t(post.intelligence.publisherCard.type === "shop" ? "merchantIdentity" : "technicianIdentity"),
+                  entity: t("technicianIdentity"),
                   bookable: t("bookable"),
                   unavailable: t("currentUnavailable"),
                   rating: t("rating"),
@@ -589,9 +600,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
                   serviceMode: t("serviceModeLabel"),
                   completedOrders: t("completedOrders"),
                   acceptanceRate: t("acceptanceRate"),
-                  experience: post.intelligence.publisherCard.type === "technician"
-                    ? `${post.intelligence.publisherCard.yearsExperience}${t("yearsSuffix")}`
-                    : ""
+                  experience: `${post.intelligence.publisherCard.yearsExperience}${t("yearsSuffix")}`
                 }
               )}
               detailTo={post.intelligence.publisherCard.detailPath}
