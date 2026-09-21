@@ -59,8 +59,8 @@ const basePost = () => ({
   ownerIdentityId: 17,
   publisherPublicId: "b0000000017",
   publisherIdentityType: "merchant_owner",
-  publisherDisplayName: "青山ケア",
-  publisherAvatarUrl: null,
+  publisherDisplayName: "LifeDance 管理员",
+  publisherAvatarUrl: "https://cdn.example.test/admin-avatar.jpg",
   type: "INTELLIGENCE",
   status: "PUBLISHED",
   title: "青山限定",
@@ -120,6 +120,12 @@ describe("Exchange Intelligence booking projection", () => {
   it("projects an authoritative shop target, public publisher card, and public service card", async () => {
     const { result, findFirst } = await find(basePost());
 
+    expect(result?.publisher).toEqual({
+      publicId: "shop0000000011",
+      identityType: "shop",
+      displayName: "青山ケア",
+      avatarUrl: "https://cdn.example.test/shop-avatar.jpg"
+    });
     expect(result?.intelligence).toEqual(
       expect.objectContaining({
         booking: {
@@ -186,6 +192,7 @@ describe("Exchange Intelligence booking projection", () => {
     expect(serialized).not.toMatch(
       /"(?:userId|identityId|shopId|technicianProfileId|phone|email|homeAddress|kyc[^"]*)"/u
     );
+    expect(JSON.stringify(result)).not.toMatch(/LifeDance 管理员|b0000000017|admin-avatar/u);
   });
 
   it("projects the canonical technician without falling back to the account avatar", async () => {

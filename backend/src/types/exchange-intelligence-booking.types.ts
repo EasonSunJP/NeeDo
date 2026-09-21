@@ -1,5 +1,5 @@
 import type { PaginatedResponse } from "../utils/pagination";
-import type { ExchangeServiceMode } from "./exchange.types";
+import type { ExchangeActorPayload, ExchangeServiceMode } from "./exchange.types";
 
 export type ExchangeIntelligenceServiceRef = `shop:${number}` | `technician:${number}`;
 
@@ -45,6 +45,7 @@ export interface ExchangeIntelligencePublicationService {
   areaLabel: string;
   addressLabel: string | null;
   serviceAreas: string[];
+  publisher: ExchangeActorPayload;
 }
 
 export type ExchangeIntelligencePublicationServiceResolution =

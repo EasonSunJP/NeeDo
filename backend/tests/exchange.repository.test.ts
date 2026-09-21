@@ -68,10 +68,18 @@ describe("ExchangePostRepository", () => {
       deletedAt: null,
       category: { isActive: true, deletedAt: null },
       shop: {
+        name: "StagingTest",
         city: "港区",
         address: "港区青山1-1",
         status: "published",
         deletedAt: null,
+        mediaAssets: [
+          {
+            url: "https://example.test/staging-test-avatar.jpg",
+            usageType: "avatar",
+            sortOrder: 0
+          }
+        ],
         publicIdentifier: {
           publicId: "shop00000011",
           kind: "SHOP",
@@ -113,7 +121,13 @@ describe("ExchangePostRepository", () => {
         serviceMode: "onsite",
         areaLabel: "港区",
         addressLabel: "港区青山1-1",
-        serviceAreas: ["港区"]
+        serviceAreas: ["港区"],
+        publisher: {
+          publicId: "shop00000011",
+          identityType: "shop",
+          displayName: "StagingTest",
+          avatarUrl: "https://example.test/staging-test-avatar.jpg"
+        }
       }
     });
 
@@ -190,7 +204,13 @@ describe("ExchangePostRepository", () => {
         serviceId: null,
         technicianServiceId: 701,
         serviceMode: "store",
-        serviceAreas: ["港区", "渋谷区"]
+        serviceAreas: ["港区", "渋谷区"],
+        publisher: {
+          publicId: "s0000000081",
+          identityType: "technician",
+          displayName: "山田 花子",
+          avatarUrl: null
+        }
       })
     });
     expect(affiliationFindFirst).toHaveBeenCalledWith({
@@ -220,7 +240,13 @@ describe("ExchangePostRepository", () => {
       serviceMode: "onsite" as const,
       areaLabel: "港区",
       addressLabel: "港区青山1-1",
-      serviceAreas: ["港区"]
+      serviceAreas: ["港区"],
+      publisher: {
+        publicId: "shop00000011",
+        identityType: "shop",
+        displayName: "StagingTest",
+        avatarUrl: "https://example.test/staging-test-avatar.jpg"
+      }
     };
 
     await repository.createPost({
@@ -231,8 +257,8 @@ describe("ExchangePostRepository", () => {
         scopeType: "shop",
         scopeId: 11,
         publicId: "b0000000017",
-        displayName: "青山ケア",
-        avatarUrl: null,
+        displayName: "LifeDance 管理员",
+        avatarUrl: "https://example.test/admin-avatar.jpg",
         isTestAccount: true,
         customerMembership: null,
         shopScope: { shopId: 11, status: "published" }
@@ -262,6 +288,10 @@ describe("ExchangePostRepository", () => {
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         areaLabel: "港区",
+        publisherPublicId: "shop00000011",
+        publisherIdentityType: "shop",
+        publisherDisplayName: "StagingTest",
+        publisherAvatarUrl: "https://example.test/staging-test-avatar.jpg",
         intelligence: {
           create: {
             serviceId: 501,
@@ -1053,6 +1083,13 @@ describe("ExchangePostRepository", () => {
       authorUserId: 8,
       type: "INTELLIGENCE",
       publisherIdentityType: "technician",
+      authorIdentity: {
+        type: "technician",
+        scopeType: "technician_profile",
+        scopeId: 81,
+        isActive: true,
+        deletedAt: null
+      },
       demand: null,
       intelligence: {
         serviceId: null,

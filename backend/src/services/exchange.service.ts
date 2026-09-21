@@ -453,6 +453,8 @@ export class ExchangeService {
             postType: input.type,
             serviceRef: resolvedService.serviceRef,
             serviceOwnerType: resolvedService.serviceId === null ? "technician" : "shop",
+            publisherPublicId: resolvedService.publisher.publicId,
+            publisherIdentityType: resolvedService.publisher.identityType,
             catalogPriceJpy: resolvedService.catalogPriceJpy,
             campaignPriceJpy: input.campaignPriceJpy
           })

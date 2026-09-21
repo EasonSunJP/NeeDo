@@ -124,6 +124,54 @@ describe("ExchangeFeedPage", () => {
     expect(markup).not.toContain("u0000000041");
   });
 
+  it.each(["user", "merchant"] as const)(
+    "renders a shop-authored Intelligence card as the shop in the %s portal",
+    (context) => {
+      const intelligencePost = {
+        ...demandPost,
+        id: 51,
+        type: "intelligence",
+        publisher: {
+          publicId: "shop00000011",
+          identityType: "shop",
+          displayName: "StagingTest",
+          avatarUrl: null
+        },
+        demand: null,
+        intelligence: {
+          serviceMode: "store",
+          addressLabel: "東京都新宿区",
+          serviceAreas: ["新宿区"],
+          originalPriceJpy: 12_000,
+          campaignPriceJpy: 10_000,
+          booking: {
+            available: true,
+            unavailableReason: null,
+            target: { type: "shop_service", id: 501 },
+            catalogPriceJpy: 12_000,
+            campaignPriceJpy: 10_000,
+            serviceName: "正式サービス",
+            durationMinutes: 60,
+            serviceMode: "store",
+            serviceWindow: {
+              startsAt: demandPost.serviceStartAt,
+              endsAt: demandPost.serviceEndAt
+            }
+          },
+          publisherCard: null,
+          serviceCard: null
+        }
+      } as ExchangePost;
+
+      const markup = renderFeed({ posts: [intelligencePost], activeType: "intelligence" }, context);
+
+      expect(markup).toContain("StagingTest");
+      expect(markup).toContain("shop00000011");
+      expect(markup).not.toContain("LifeDance 管理员");
+      expect(markup).not.toContain("b0000000001");
+    }
+  );
+
   it("shows distinct loading, empty, permission, authentication, and unavailable states", () => {
     expect(renderFeed({ loading: true, posts: [] })).toContain("正在读取正式需求");
     expect(renderFeed({ posts: [], total: 0 })).toContain("还没有正式需求");

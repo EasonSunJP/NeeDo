@@ -114,7 +114,13 @@ const resolvedIntelligenceService = {
   serviceMode: "onsite" as const,
   areaLabel: "港区",
   addressLabel: "港区青山1-1",
-  serviceAreas: ["港区"]
+  serviceAreas: ["港区"],
+  publisher: {
+    publicId: "shop00000011",
+    identityType: "shop",
+    displayName: "StagingTest",
+    avatarUrl: "https://example.test/staging-test-avatar.jpg"
+  }
 };
 
 const demandInput = {
@@ -1073,7 +1079,13 @@ describe("ExchangeService", () => {
             serviceDurationMinutes: 90,
             catalogPriceJpy: 18_000,
             serviceMode: "store" as const,
-            serviceAreas: ["港区", "渋谷区"]
+            serviceAreas: ["港区", "渋谷区"],
+            publisher: {
+              publicId: "s0000000081",
+              identityType: "technician",
+              displayName: actor.displayName,
+              avatarUrl: actor.avatarUrl
+            }
           }
         : resolvedIntelligenceService;
       repository.resolveIntelligencePublicationService.mockResolvedValueOnce({
@@ -1118,6 +1130,16 @@ describe("ExchangeService", () => {
       );
       expect(repository.createPost).toHaveBeenCalledWith(
         expect.objectContaining({ intelligenceService: publicationService })
+      );
+      expect(repository.createAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            identityId: 17,
+            identityType,
+            publisherPublicId: publicationService.publisher.publicId,
+            publisherIdentityType: publicationService.publisher.identityType
+          })
+        })
       );
     }
   );
