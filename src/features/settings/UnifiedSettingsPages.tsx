@@ -1,4 +1,9 @@
 import { getPortalEntryUrl } from "../../auth/portalEntry";
+import {
+  backofficeRealDataApi,
+  type BackofficeShopPayload,
+  type MerchantShopUpdateInput
+} from "../../api/backofficeRealData";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import "./registerRouteI18n";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -13,7 +18,6 @@ import { businessNavItems } from "../../components/mobile/businessNavItems";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { AvatarImage } from "../../components/ui/AvatarImage";
-import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { deploymentVersionLabel } from "../../config/deploymentVersion";
@@ -35,11 +39,6 @@ import {
   type PwaInstallPlatform,
   type PwaInstallPromptOutcome
 } from "../../lib/pwaInstall";
-import {
-  detectStorePresentationIndustry,
-  getStorePresentationConfig,
-  normalizeStorePresentationConfig
-} from "../../lib/storePresentation";
 import { cn } from "../../lib/utils";
 import { updateStoreEntity, useEntityStore } from "../../state/entityStore";
 import { selectHomeLocationManually } from "../../state/homeLocationStore";
@@ -47,7 +46,7 @@ import { updateHomeLayoutConfig, useHomeLayoutStore, type HomeLocationOption } f
 import { getNeedoPetAssetProgress, preloadNeedoPetAssets, useNeedoPetAssetReadiness, type NeedoPetAssetReadiness } from "../../state/needoPetAssets";
 import { setNeedoPetEnabled, useNeedoPetSettings } from "../../state/needoPetSettings";
 import { useProfileCardBackgroundSettings } from "../../state/profileCardBackgroundStore";
-import type { Customer, InfoCardVisibilityMode, InfoCardVisibilitySettings, Store, StorePresentationConfig, Technician } from "../../types/domain";
+import type { Customer, Store, Technician } from "../../types/domain";
 import { clientThemes, useClientTheme, type ClientThemeDefinition } from "../../theme/ClientThemeProvider";
 import {
   summarizePortalSettingsState,
@@ -76,7 +75,6 @@ import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheS
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
 const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
 const appVersion = deploymentVersionLabel;
-const merchantTagPool = ["深夜营业", "女性友好", "到店主力", "上门服务", "可预约", "多语言", "企业合作", "高复购"];
 
 function normalizeAreaToken(value: string) {
   return value.toLocaleLowerCase().replace(/[\s/／・,，、区市町丁目.-]/g, "");
@@ -124,17 +122,6 @@ function createManualHomeLocation(area: string): HomeLocationOption {
     city: area === "横滨" ? "横滨" : "东京",
     area
   };
-}
-
-function settingsListToText(items: string[]) {
-  return items.join("\n");
-}
-
-function settingsTextToList(value: string) {
-  return value
-    .split(/\n|,|，|、/)
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 const compactPortalLabels: Record<PortalScope, { label: string; caption: string }> = {
@@ -1487,178 +1474,6 @@ function PwaInstallGuideDialog({
   );
 }
 
-const defaultInfoCardVisibility: InfoCardVisibilitySettings = {
-  mode: "public",
-  tagIds: [],
-  profileKeys: [],
-  includeRelatedPeople: true
-};
-
-const infoCardVisibilityModes: Array<{ value: InfoCardVisibilityMode; title: string; description: string }> = [
-  { value: "public", title: "公开", description: "所有可进入资料页的人都能看到这张信息卡。" },
-  { value: "private", title: "隐私", description: "仅本人、平台审核和必要安全场景可见。" },
-  { value: "tag_only", title: "仅对某标签人群可见", description: "只有命中所选标签的人群可以看到。" },
-  { value: "person_only", title: "仅对某人可见", description: "只允许指定用户、技师或店铺账号查看。" }
-];
-
-function normalizeInfoCardVisibilityDraft(value?: InfoCardVisibilitySettings): InfoCardVisibilitySettings {
-  return {
-    mode: value?.mode ?? defaultInfoCardVisibility.mode,
-    tagIds: Array.from(new Set(value?.tagIds ?? [])),
-    profileKeys: Array.from(new Set(value?.profileKeys ?? [])),
-    includeRelatedPeople: value?.includeRelatedPeople ?? defaultInfoCardVisibility.includeRelatedPeople
-  };
-}
-
-function getInfoCardVisibilityLabel(value: InfoCardVisibilitySettings) {
-  const modeLabel = infoCardVisibilityModes.find((item) => item.value === value.mode)?.title ?? "公开";
-  const details =
-    value.mode === "tag_only"
-      ? value.tagIds.length > 0
-        ? `${value.tagIds.length} 个标签`
-        : "未选标签"
-      : value.mode === "person_only"
-        ? value.profileKeys.length > 0
-          ? `${value.profileKeys.length} 人`
-          : "未指定对象"
-        : "";
-  const relatedLabel = value.includeRelatedPeople ? "关联人可见" : "关联人不可见";
-
-  return [modeLabel, details, relatedLabel].filter(Boolean).join(" · ");
-}
-
-function toggleDraftValue(values: string[], value: string) {
-  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
-}
-
-function buildInfoCardProfileKey(kind: "user" | "technician" | "shop", id: string) {
-  return `${kind}:${id}`;
-}
-
-function InfoCardVisibilityEditor({
-  availableTags,
-  value,
-  onChange
-}: {
-  availableTags: string[];
-  value: InfoCardVisibilitySettings;
-  onChange: (value: InfoCardVisibilitySettings) => void;
-}) {
-  const { customers, technicians, stores } = useEntityStore();
-  const tagOptions = Array.from(new Set(availableTags.filter(Boolean))).slice(0, 20);
-  const profileOptions = [
-    ...customers.map((customer) => ({
-      key: buildInfoCardProfileKey("user", customer.id),
-      label: customer.nickname?.trim() || customer.name,
-      caption: "用户"
-    })),
-    ...technicians.map((technician) => ({
-      key: buildInfoCardProfileKey("technician", technician.id),
-      label: technician.nickname?.trim() || technician.name,
-      caption: "技师"
-    })),
-    ...stores.map((store) => ({
-      key: buildInfoCardProfileKey("shop", store.id),
-      label: store.name,
-      caption: "店铺"
-    }))
-  ].slice(0, 24);
-  const update = (patch: Partial<InfoCardVisibilitySettings>) => onChange({ ...value, ...patch });
-  const optionClassName = (active: boolean) =>
-    cn(
-      "rounded-[22px] border px-4 py-3 text-left transition",
-      active
-        ? "border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
-        : "border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)]"
-    );
-  const chipClassName = (active: boolean) =>
-    cn(
-      "rounded-full border px-3 py-2 text-xs font-black transition",
-      active
-        ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]"
-        : "border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-text)]"
-    );
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,transparent)] px-4 py-3">
-        <p className="text-xs font-black uppercase tracking-[0.14em] text-[color:var(--client-muted)]">当前可见范围</p>
-        <p className="mt-1 text-sm font-black text-[color:var(--client-text)]">{getInfoCardVisibilityLabel(value)}</p>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        {infoCardVisibilityModes.map((item) => {
-          const active = value.mode === item.value;
-
-          return (
-            <button className={optionClassName(active)} key={item.value} onClick={() => update({ mode: item.value })} type="button">
-              <div className="flex gap-3">
-                <SelectionIndicator active={active} />
-                <span className="min-w-0">
-                  <span className="block text-sm font-black text-[color:var(--client-text)]">{item.title}</span>
-                  <span className="mt-1 block text-xs leading-5 text-[color:var(--client-muted)]">{item.description}</span>
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {value.mode === "tag_only" ? (
-        <div>
-          <p className="mb-2 text-xs font-black text-[color:var(--client-muted)]">可见标签</p>
-          <div className="flex flex-wrap gap-2">
-            {tagOptions.length > 0 ? (
-              tagOptions.map((tag) => (
-                <button
-                  className={chipClassName(value.tagIds.includes(tag))}
-                  key={tag}
-                  onClick={() => update({ tagIds: toggleDraftValue(value.tagIds, tag) })}
-                  type="button"
-                >
-                  {tag}
-                </button>
-              ))
-            ) : (
-              <p className="text-sm text-[color:var(--client-muted)]">当前信息卡还没有可用标签。</p>
-            )}
-          </div>
-        </div>
-      ) : null}
-
-      {value.mode === "person_only" ? (
-        <div>
-          <p className="mb-2 text-xs font-black text-[color:var(--client-muted)]">指定可见对象</p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {profileOptions.map((profile) => {
-              const active = value.profileKeys.includes(profile.key);
-
-              return (
-                <button className={optionClassName(active)} key={profile.key} onClick={() => update({ profileKeys: toggleDraftValue(value.profileKeys, profile.key) })} type="button">
-                  <div className="flex items-center gap-3">
-                    <SelectionIndicator active={active} />
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-black text-[color:var(--client-text)]">{profile.label}</span>
-                      <span className="mt-0.5 block text-xs text-[color:var(--client-muted)]">{profile.caption}</span>
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
-      <SettingsToggleRow
-        checked={value.includeRelatedPeople}
-        description="开启后，订单关联、关注关系、所属店铺/员工等业务关联人也可以按当前范围查看。"
-        onChange={(checked) => update({ includeRelatedPeople: checked })}
-        title="关联人可见"
-      />
-    </div>
-  );
-}
-
 function ThemeOptionRow({
   item,
   active,
@@ -2566,340 +2381,228 @@ function TechnicianProfileSettingsPage({
   );
 }
 
-function MerchantProfileSettingsPage({ portal, store }: { portal: UnifiedSettingsPortal; store: Store }) {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const availableTags = Array.from(new Set([...merchantTagPool, ...store.tags]));
-  const focus = searchParams.get("focus");
-  const coverInputRef = useRef<HTMLInputElement | null>(null);
-  const buildDraft = (source: Store) => ({
-    cover: source.cover,
-    gallery: [...source.gallery].slice(0, 5),
-    name: source.name,
-    area: source.area,
-    address: source.address,
-    businessHours: source.businessHours,
-    nextSlot: source.nextSlot,
-    priceLabel: source.priceLabel,
-    rankLabel: source.rankLabel,
-    description: source.description,
-    tags: [...source.tags],
-    mode: source.mode,
-    presentation: getStorePresentationConfig(source, detectStorePresentationIndustry(source)),
-    infoCardVisibility: normalizeInfoCardVisibilityDraft(source.infoCardVisibility)
-  });
-  const [draft, setDraft] = useState(() => buildDraft(store));
-  const updatePresentationDraft = <Key extends keyof StorePresentationConfig>(key: Key, value: StorePresentationConfig[Key]) => {
-    setDraft((current) => ({ ...current, presentation: { ...current.presentation, [key]: value } }));
+type MerchantShopProfileDraft = {
+  name: string;
+  description: string;
+  city: string;
+  address: string;
+  phone: string;
+};
+
+function createMerchantShopProfileDraft(shop: BackofficeShopPayload): MerchantShopProfileDraft {
+  return {
+    name: shop.name,
+    description: shop.description ?? "",
+    city: shop.city,
+    address: shop.address,
+    phone: shop.phone ?? ""
   };
+}
+
+function createMerchantShopProfileUpdate(
+  draft: MerchantShopProfileDraft
+): MerchantShopUpdateInput {
+  return {
+    name: draft.name.trim(),
+    description: draft.description.trim() || null,
+    city: draft.city.trim(),
+    address: draft.address.trim(),
+    phone: draft.phone.trim() || null
+  };
+}
+
+function MerchantProfileSettingsPage({
+  portal,
+  shop
+}: {
+  portal: UnifiedSettingsPortal;
+  shop: BackofficeShopPayload;
+}) {
+  const navigate = useNavigate();
+  const [savedShop, setSavedShop] = useState(shop);
+  const [draft, setDraft] = useState(() => createMerchantShopProfileDraft(shop));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const canSave = Boolean(draft.name.trim() && draft.city.trim() && draft.address.trim());
 
   useEffect(() => {
-    setDraft(buildDraft(store));
-  }, [
-    store.id,
-    store.cover,
-    store.gallery,
-    store.name,
-    store.area,
-    store.address,
-    store.businessHours,
-    store.nextSlot,
-    store.priceLabel,
-    store.rankLabel,
-    store.description,
-    store.tags,
-    store.mode,
-    store.presentation
-  ]);
-  const handleCoverUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    setSavedShop(shop);
+    setDraft(createMerchantShopProfileDraft(shop));
+    setSaveError("");
+    setSaved(false);
+  }, [shop]);
 
-    if (!file) {
+  const updateDraft = (patch: Partial<MerchantShopProfileDraft>) => {
+    setDraft((current) => ({ ...current, ...patch }));
+    setSaved(false);
+  };
+
+  const handleSave = async () => {
+    if (!canSave || saving) {
       return;
     }
 
-    const nextCover = await readImageFileAsDataUrl(file);
-    setDraft((current) => ({ ...current, cover: nextCover }));
-    event.target.value = "";
+    setSaving(true);
+    setSaveError("");
+    setSaved(false);
+    try {
+      const updated = await backofficeRealDataApi.updateMerchantShop(
+        createMerchantShopProfileUpdate(draft)
+      );
+      setSavedShop(updated);
+      setDraft(createMerchantShopProfileDraft(updated));
+      setSaved(true);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <SettingsDetailPage
       backTo={getSettingsBasePath(portal)}
-      contentClassName="space-y-8 pb-32"
-      info="店铺独有资料继续保留，但已经完全迁入统一设置页骨架，不再停留在商户我的页里分散维护。"
+      contentClassName="space-y-6 pb-32"
+      info="当前页面只读取和保存登录商户身份有权管理的店铺正式资料，不接受前端指定其他店铺。"
       title="店铺信息维护"
     >
-      <SectionBlock description="门店资料、展示信息和经营方式统一在这里维护，样式和交互与用户端设置页保持一致。" title="店铺资料">
-        <SurfacePanel className="space-y-4">
-          <div className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)]">
-            <img alt={draft.name} className="h-44 w-full object-cover" src={draft.cover} />
-            <div className="space-y-2 px-4 py-4">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-[color:var(--client-primary)]">预览</p>
-              <p className="text-[24px] font-black text-[color:var(--client-text)]">{draft.name}</p>
-              <p className="text-sm font-semibold text-[color:var(--client-primary)]">{draft.rankLabel}</p>
-              <p className="text-sm leading-6 text-[color:var(--client-muted)]">{draft.presentation.subtitle}</p>
-              <p className="text-sm text-[color:var(--client-muted)]">{draft.area} · {draft.address}</p>
-              <p className="text-sm text-[color:var(--client-muted)]">
-                {draft.presentation.station} · {draft.businessHours} · 最近可约 {draft.nextSlot}
-              </p>
-              <p className="text-sm text-[color:var(--client-muted)]">可见范围 · {getInfoCardVisibilityLabel(draft.infoCardVisibility)}</p>
-            </div>
-          </div>
-        </SurfacePanel>
-
-        <SurfacePanel className={cn("space-y-4", focus === "gallery" && "ring-2 ring-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)]")}>
-          <div>
-            <p className="text-sm font-black text-[color:var(--client-text)]">图片内容</p>
-            <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">服务展示里的轮播图、缩略图和环境图都从这里统一维护。</p>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
-            <input accept="image/*" className="hidden" onChange={handleCoverUpload} ref={coverInputRef} type="file" />
-            <div className="min-w-0">
-              <p className="text-sm font-black text-[color:var(--client-text)]">封面图片</p>
-              <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">从本地上传新封面，不需要填写图片链接。</p>
-            </div>
-            <SecondaryButton className="shrink-0" onClick={() => coverInputRef.current?.click()}>
-              上传封面
-            </SecondaryButton>
-          </div>
-
-          <ImageGalleryManager
-            coverHint="最多 5 张，店铺详情页会按这里的顺序轮播；为空时自动回退到封面图。"
-            description="商户端可直接增减和替换店铺轮播图，保存后店铺详情页立即更新。"
-            images={draft.gallery}
-            label="店铺轮播图"
-            maxImages={5}
-            onChange={(gallery) => setDraft((current) => ({ ...current, gallery: gallery.slice(0, 5) }))}
-          />
-        </SurfacePanel>
-
-        <SurfacePanel className={cn("space-y-4", focus === "basic" && "ring-2 ring-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)]")}>
-          <div>
-            <p className="text-sm font-black text-[color:var(--client-text)]">基础资料</p>
-            <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">店铺名称、地址、营业时间和经营方式会同步到服务展示信息卡。</p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">店铺名称</span>
-              <input
-                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
-                onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-                value={draft.name}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">服务区域</span>
-              <input
-                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
-                onChange={(event) => setDraft((current) => ({ ...current, area: event.target.value }))}
-                value={draft.area}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">店铺地址</span>
-              <input
-                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
-                onChange={(event) => setDraft((current) => ({ ...current, address: event.target.value }))}
-                value={draft.address}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">营业时间</span>
-              <input
-                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
-                onChange={(event) => setDraft((current) => ({ ...current, businessHours: event.target.value }))}
-                value={draft.businessHours}
-              />
-            </label>
-          </div>
-
-          <div>
-            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">经营方式</span>
-            <SegmentedTabs
-              items={[
-                { label: "上门服务", value: "home" },
-                { label: "到店服务", value: "store" }
-              ]}
-              onChange={(value) => setDraft((current) => ({ ...current, mode: value as Store["mode"] }))}
-              value={draft.mode}
+      <SurfacePanel className="space-y-3">
+        <p className="text-xs font-black uppercase tracking-[0.16em] text-[color:var(--client-primary)]">
+          正式店铺资料
+        </p>
+        <div className="flex items-center gap-3">
+          {savedShop.avatarUrl ? (
+            <AvatarImage
+              alt={savedShop.name}
+              className="h-16 w-16 shrink-0 rounded-[20px] object-cover"
+              src={savedShop.avatarUrl}
             />
+          ) : (
+            <span className="grid h-16 w-16 shrink-0 place-items-center rounded-[20px] bg-[color:var(--client-primary-soft)] text-xl font-black text-[color:var(--client-primary-strong)]">
+              {savedShop.name.slice(0, 1)}
+            </span>
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-xl font-black text-[color:var(--client-text)]">{savedShop.name}</p>
+            <p className="mt-1 text-sm text-[color:var(--client-muted)]">
+              {savedShop.city} · {savedShop.address}
+            </p>
           </div>
-        </SurfacePanel>
+        </div>
+      </SurfacePanel>
 
-        <SurfacePanel className={cn("space-y-4", focus === "presentation" && "ring-2 ring-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)]")}>
-          <div>
-            <p className="text-sm font-black text-[color:var(--client-text)]">展示信息</p>
-            <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">价格、角标、最近可约和介绍文案会同步到服务展示的图片与信息卡。</p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">价格说明</span>
-              <input
-                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
-                onChange={(event) => setDraft((current) => ({ ...current, priceLabel: event.target.value }))}
-                value={draft.priceLabel}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">首页角标</span>
-              <input
-                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
-                onChange={(event) => setDraft((current) => ({ ...current, rankLabel: event.target.value }))}
-                value={draft.rankLabel}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">最近可约</span>
-              <input
-                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
-                onChange={(event) => setDraft((current) => ({ ...current, nextSlot: event.target.value }))}
-                value={draft.nextSlot}
-              />
-            </label>
-          </div>
-
-          <div className="grid gap-4">
-            <label className="block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">前台首屏说明</span>
-              <textarea
-                className="min-h-[104px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
-                onChange={(event) => updatePresentationDraft("subtitle", event.target.value)}
-                value={draft.presentation.subtitle}
-              />
-            </label>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">最近车站</span>
-                <input
-                  className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
-                  onChange={(event) => updatePresentationDraft("station", event.target.value)}
-                  value={draft.presentation.station}
-                />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">距离说明</span>
-                <input
-                  className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
-                  onChange={(event) => updatePresentationDraft("distance", event.target.value)}
-                  value={draft.presentation.distance}
-                />
-              </label>
-            </div>
-            <label className="block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">交通说明</span>
-              <textarea
-                className="min-h-[96px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
-                onChange={(event) => updatePresentationDraft("access", event.target.value)}
-                value={draft.presentation.access}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">到店提示</span>
-              <textarea
-                className="min-h-[96px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
-                onChange={(event) => updatePresentationDraft("routeGuide", event.target.value)}
-                value={draft.presentation.routeGuide}
-              />
-            </label>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">支付方式</span>
-                <textarea
-                  className="min-h-[104px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
-                  onChange={(event) => updatePresentationDraft("paymentMethods", settingsTextToList(event.target.value))}
-                  value={settingsListToText(draft.presentation.paymentMethods)}
-                />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">设备 / 服务标记</span>
-                <textarea
-                  className="min-h-[104px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
-                  onChange={(event) => updatePresentationDraft("equipment", settingsTextToList(event.target.value))}
-                  value={settingsListToText(draft.presentation.equipment)}
-                />
-              </label>
-            </div>
-          </div>
-
-          <div>
-            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">店铺标签</span>
-            <div className="flex flex-wrap gap-2">
-              {availableTags.map((tag) => {
-                const active = draft.tags.includes(tag);
-
-                return (
-                  <button
-                    className={`rounded-full px-3 py-2 text-xs font-black ${
-                      active
-                        ? "bg-[color:var(--client-primary)] text-[#090806]"
-                        : "bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-text)]"
-                    }`}
-                    key={tag}
-                    onClick={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        tags: current.tags.includes(tag) ? current.tags.filter((item) => item !== tag) : [...current.tags, tag]
-                      }))
-                    }
-                    type="button"
-                  >
-                    {tag}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
+      <SettingsSection
+        description="店铺名称、城市、地址、联系电话和介绍均写入正式数据库，并与商户后台共用同一资料源。"
+        headerMode="info"
+        panelClassName="space-y-4 p-4"
+        title="基础资料"
+      >
+        <div className="grid gap-4 md:grid-cols-2">
           <label className="block">
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">店铺名称</span>
+            <input
+              className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+              onChange={(event) => updateDraft({ name: event.target.value })}
+              value={draft.name}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">城市</span>
+            <input
+              className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+              onChange={(event) => updateDraft({ city: event.target.value })}
+              value={draft.city}
+            />
+          </label>
+          <label className="block md:col-span-2">
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">店铺地址</span>
+            <input
+              className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+              onChange={(event) => updateDraft({ address: event.target.value })}
+              value={draft.address}
+            />
+          </label>
+          <label className="block md:col-span-2">
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">联系电话</span>
+            <input
+              className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+              onChange={(event) => updateDraft({ phone: event.target.value })}
+              value={draft.phone}
+            />
+          </label>
+          <label className="block md:col-span-2">
             <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">店铺介绍</span>
             <textarea
               className="min-h-[160px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
-              onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+              onChange={(event) => updateDraft({ description: event.target.value })}
               value={draft.description}
             />
           </label>
-        </SurfacePanel>
+        </div>
+      </SettingsSection>
 
-        <SurfacePanel className="space-y-4">
-          <div>
-            <p className="text-sm font-black text-[color:var(--client-text)]">信息卡可见范围</p>
-            <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">控制店铺信息卡在搜索、动态、聊天和订单联系卡中的展示对象。</p>
-          </div>
-          <InfoCardVisibilityEditor
-            availableTags={[...draft.tags, draft.area, draft.mode === "store" ? "到店服务" : "上门服务", draft.presentation.station]}
-            onChange={(infoCardVisibility) => setDraft((current) => ({ ...current, infoCardVisibility }))}
-            value={draft.infoCardVisibility}
-          />
-        </SurfacePanel>
-      </SectionBlock>
+      {saveError ? (
+        <p className="text-center text-xs font-bold text-[color:var(--client-danger)]" role="alert">
+          店铺资料保存失败：{saveError}
+        </p>
+      ) : null}
+      {saved ? (
+        <p className="text-center text-xs font-bold text-[color:var(--client-primary)]" role="status">
+          店铺基础资料已保存并写入数据库
+        </p>
+      ) : null}
 
       <StickySaveBar
         onCancel={() => navigate(-1)}
-        onSave={() => {
-          updateStoreEntity(store.id, {
-            cover: draft.cover,
-            gallery: draft.gallery.slice(0, 5),
-            name: draft.name,
-            area: draft.area,
-            address: draft.address,
-            businessHours: draft.businessHours,
-            nextSlot: draft.nextSlot,
-            priceLabel: draft.priceLabel,
-            rankLabel: draft.rankLabel,
-            description: draft.description,
-            tags: draft.tags,
-            mode: draft.mode,
-            presentation: normalizeStorePresentationConfig(draft.presentation, detectStorePresentationIndustry({ tags: draft.tags })),
-            infoCardVisibility: normalizeInfoCardVisibilityDraft(draft.infoCardVisibility)
-          });
-          navigate(getSettingsBasePath(portal));
-        }}
+        onSave={() => void handleSave()}
+        saveLabel={saving ? "保存中…" : "保存并留在当前页面"}
       />
     </SettingsDetailPage>
+  );
+}
+
+function FormalMerchantProfileSettingsPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { session } = useAuth();
+  const [revision, setRevision] = useState(0);
+  const ownerKey = session
+    ? JSON.stringify([
+        session.id,
+        session.activeIdentityId,
+        session.merchantShopPublicId ?? ""
+      ])
+    : null;
+  const profileQuery = useCoreReadQuery(
+    () => session && ownerKey
+      ? backofficeRealDataApi.merchantShop().then((page) => ({ ownerKey, page }))
+      : null,
+    [revision, ownerKey]
+  );
+  const page = profileQuery.data?.ownerKey === ownerKey ? profileQuery.data.page : null;
+  const shop = page?.list[0];
+  const waitingForCurrentOwner = Boolean(
+    ownerKey && profileQuery.data && !page && !profileQuery.error
+  );
+
+  if (profileQuery.loading || waitingForCurrentOwner) {
+    return <SettingsProfileResourceState loading portal={portal} title="店铺信息维护" />;
+  }
+
+  if (!shop || profileQuery.error) {
+    return (
+      <SettingsProfileResourceState
+        loading={false}
+        onRetry={() => setRevision((current) => current + 1)}
+        portal={portal}
+        title="店铺信息维护"
+      />
+    );
+  }
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <MerchantProfileSettingsPage portal={portal} shop={shop} />
+    </PortalScopedSettingsPage>
   );
 }
 
@@ -2929,24 +2632,12 @@ function FormalTechnicianProfileSettingsPage({ portal }: { portal: UnifiedSettin
 }
 
 export function UnifiedSettingsProfilePage({ portal }: { portal: UnifiedSettingsPortal }) {
-  const { session } = useAuth();
-  const { stores } = useEntityStore();
-  const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
-
   if (portal === "user") {
     return <Navigate replace to={getPortalMePath(portal)} />;
   }
 
   if (portal === "merchant") {
-    if (!store) {
-      return <SettingsProfileResourceState loading={false} portal={portal} />;
-    }
-
-    return (
-      <PortalScopedSettingsPage portal={portal}>
-        <MerchantProfileSettingsPage portal={portal} store={store} />
-      </PortalScopedSettingsPage>
-    );
+    return <FormalMerchantProfileSettingsPage portal={portal} />;
   }
 
   if (portal === "technician") {
