@@ -21,6 +21,9 @@ describe("technician per-shop work-state persistence", () => {
     expect(migration).toContain("ADD COLUMN `current_operating_shop_id` INTEGER NULL");
     expect(migration).toContain("ADD COLUMN `shop_id` INTEGER NULL");
     expect(migration).toContain("technician_work_states_profile_shop_key");
+    expect(migration.indexOf("CREATE UNIQUE INDEX `technician_work_states_profile_shop_key`")).toBeLessThan(
+      migration.indexOf("DROP INDEX `technician_work_states_technician_profile_id_key`")
+    );
     expect(migration).toContain("technician_profiles_current_operating_shop_id_fkey");
     expect(migration).toContain("technician_work_states_shop_id_fkey");
     expect(migration).toContain("technician_shop_affiliations");

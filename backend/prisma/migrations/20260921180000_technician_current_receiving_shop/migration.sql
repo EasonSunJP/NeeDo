@@ -45,11 +45,11 @@ SET work_state.`shop_id` = profile.`current_operating_shop_id`
 WHERE work_state.`deleted_at` IS NULL
   AND work_state.`shop_id` IS NULL;
 
-ALTER TABLE `technician_work_states`
-  DROP INDEX `technician_work_states_technician_profile_id_key`;
-
 CREATE UNIQUE INDEX `technician_work_states_profile_shop_key`
   ON `technician_work_states`(`technician_profile_id`, `shop_id`);
+
+ALTER TABLE `technician_work_states`
+  DROP INDEX `technician_work_states_technician_profile_id_key`;
 
 CREATE INDEX `technician_work_states_shop_id_idx`
   ON `technician_work_states`(`shop_id`);
