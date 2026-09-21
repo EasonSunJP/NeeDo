@@ -3818,9 +3818,25 @@ export class BookingRepository implements BookingRepositoryPort {
             }
           }
 
+          const resolvedScheduleSlotIds: number[] = [];
+          for (let index = 0; index < scheduleSlotIds.length; index += 1) {
+            const scheduleSlotId = scheduleSlotIds[index]!;
+            const resolvedScheduleSlotId = decodeDynamicAvailabilityId(scheduleSlotId)
+              ? await this.materializeDynamicScheduleSlot(tx, {
+                  ...input,
+                  technicianServiceId: technicianServiceIds[index]!,
+                  technicianServiceIds: undefined,
+                  scheduleSlotId,
+                  scheduleSlotIds: undefined
+                })
+              : scheduleSlotId;
+            if (!resolvedScheduleSlotId) return null;
+            resolvedScheduleSlotIds.push(resolvedScheduleSlotId);
+          }
+
           const loadSlots = () => tx.scheduleSlot.findMany({
             where: {
-              id: { in: scheduleSlotIds },
+              id: { in: resolvedScheduleSlotIds },
               technicianServiceId: { in: technicianServiceIds },
               serviceId: null,
               deletedAt: null,
@@ -3845,10 +3861,12 @@ export class BookingRepository implements BookingRepositoryPort {
           });
           const orderSlots = (rows: SlotRecord[]) => {
             const byId = new Map(rows.map((row) => [row.id, row]));
-            return scheduleSlotIds.map((id) => byId.get(id)).filter((row): row is SlotRecord => Boolean(row));
+            return resolvedScheduleSlotIds
+              .map((id) => byId.get(id))
+              .filter((row): row is SlotRecord => Boolean(row));
           };
           let slots = orderSlots(await loadSlots());
-          if (slots.length !== scheduleSlotIds.length) return null;
+          if (slots.length !== resolvedScheduleSlotIds.length) return null;
           const firstSlot = slots[0]!;
           const firstCurrency = firstSlot.technicianService?.currency;
           if (
@@ -3927,7 +3945,7 @@ export class BookingRepository implements BookingRepositoryPort {
 
           slots = orderSlots(await loadSlots());
           if (
-            slots.length !== scheduleSlotIds.length ||
+            slots.length !== resolvedScheduleSlotIds.length ||
             slots.some((slot, index) =>
               slot.status !== "AVAILABLE" ||
               slot.bookedCount >= slot.capacity ||

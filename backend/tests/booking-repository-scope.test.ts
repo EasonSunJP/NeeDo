@@ -742,6 +742,48 @@ const createPendingReplacementHarness = (
 };
 
 describe("BookingRepository order list scope", () => {
+  it("materializes every dynamic selector before loading a technician-service bundle", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 101 }]),
+      scheduleSlot: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+    const materialize = jest
+      .spyOn(repository as never, "materializeDynamicScheduleSlot" as never)
+      .mockResolvedValueOnce(201 as never)
+      .mockResolvedValueOnce(202 as never);
+
+    await expect(repository.createBooking({
+      customerUserId: 101,
+      technicianServiceId: 301,
+      technicianServiceIds: [301, 307],
+      scheduleSlotId: -64_320_701_317,
+      scheduleSlotIds: [-64_320_701_317, -64_320_701_377],
+      nominatedTechnicianProfileId: 133,
+      expectedPriceAmountJpy: 12_100,
+      fulfillmentMode: "store",
+      serviceLocation: { source: "SHOP_LOCATION" }
+    })).resolves.toBeNull();
+
+    expect(materialize).toHaveBeenNthCalledWith(1, tx, expect.objectContaining({
+      technicianServiceId: 301,
+      scheduleSlotId: -64_320_701_317,
+      technicianServiceIds: undefined,
+      scheduleSlotIds: undefined
+    }));
+    expect(materialize).toHaveBeenNthCalledWith(2, tx, expect.objectContaining({
+      technicianServiceId: 307,
+      scheduleSlotId: -64_320_701_377,
+      technicianServiceIds: undefined,
+      scheduleSlotIds: undefined
+    }));
+    expect(tx.scheduleSlot.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { in: [201, 202] } })
+    }));
+  });
+
   it("rejects a multi-service bundle unless its selected slots form one continuous technician timeline", async () => {
     const firstStartsAt = new Date("2026-10-01T01:00:00.000Z");
     const firstEndsAt = new Date("2026-10-01T02:00:00.000Z");

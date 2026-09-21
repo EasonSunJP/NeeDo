@@ -229,6 +229,24 @@ describe("bookingCreateBodySchema", () => {
       fulfillmentMode: "home"
     }).success).toBe(false);
   });
+
+  it("accepts non-zero dynamic selectors for every service in a technician-service bundle", () => {
+    const dynamicBundle = {
+      expectedPriceAmountJpy: 12_100,
+      technicianServiceId: 301,
+      technicianServiceIds: [301, 307],
+      scheduleSlotId: -64_320_701_317,
+      scheduleSlotIds: [-64_320_701_317, -64_320_701_377],
+      nominatedTechnicianProfileId: 133,
+      fulfillmentMode: "store" as const
+    };
+
+    expect(bookingCreateBodySchema.safeParse(dynamicBundle).success).toBe(true);
+    expect(bookingCreateBodySchema.safeParse({
+      ...dynamicBundle,
+      scheduleSlotIds: [-64_320_701_317, 0]
+    }).success).toBe(false);
+  });
 });
 
 describe("orderListQuerySchema", () => {
