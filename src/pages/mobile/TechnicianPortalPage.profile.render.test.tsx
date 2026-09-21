@@ -412,6 +412,12 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     await act(async () => editButton?.click());
     const saveButton = container.querySelector<HTMLButtonElement>('[data-testid="technician-profile-save-action"]');
     expect(saveButton?.textContent).toContain("保存并退出编辑模式");
+    const saveBar = saveButton?.closest<HTMLElement>(".client-bottom-action-shell");
+    expect(saveBar?.style.getPropertyValue("--client-main-nav-action-offset")).toBe("0px");
+    expect(saveBar?.className).toContain("pointer-events-none");
+    expect(saveButton?.parentElement?.className).toContain("!bg-transparent");
+    expect(saveButton?.closest('[data-testid="technician-info-card"]')?.parentElement?.className)
+      .toContain("pb-[calc(132px+env(safe-area-inset-bottom))]");
     await act(async () => saveButton?.click());
     await flushUntil(() => expect(updateRequest).toHaveBeenCalledTimes(1));
 

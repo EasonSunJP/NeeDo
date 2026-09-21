@@ -247,7 +247,7 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(meHeaderSource).toContain('onClose={() => navigate("/technician")}');
     expect(meHeaderSource).not.toContain('label="打开技师设置"');
     expect(meHeaderSource).toContain("footer={");
-    expect(source).toContain('className="client-app-gutter space-y-4 pb-32 pt-4"');
+    expect(source).toContain('meTab === "info" ? "pb-[calc(132px+env(safe-area-inset-bottom))]" : "pb-32"');
     expect(source).not.toContain("<FloatingHomeHeader panelClassName=\"relative overflow-hidden\" stacked>");
     expect(source).toContain('to="/technician/shop-stays"');
     expect(source).toContain("入住店铺");

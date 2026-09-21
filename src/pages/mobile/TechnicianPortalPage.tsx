@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
@@ -74,6 +74,7 @@ const surface = {
   chip: "border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]",
   muted: "text-[color:var(--client-muted)]"
 };
+const profileSaveBarStyle = { "--client-main-nav-action-offset": "0px" } as CSSProperties;
 
 function getFormalTechnicianProfileId(session: AuthSession | null) {
   if (
@@ -524,8 +525,12 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
         />
       </div>
       {editing ? (
-        <StickyBottomBar>
-          <button className="w-full rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-60" data-testid="technician-profile-save-action" disabled={saving} onClick={() => void saveProfile()} type="button">
+        <StickyBottomBar
+          className="pointer-events-none !pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)]"
+          panelClassName="pointer-events-auto !rounded-none !border-0 !bg-transparent !p-0 !shadow-none !backdrop-blur-none"
+          style={profileSaveBarStyle}
+        >
+          <button className="w-full rounded-full bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60" data-testid="technician-profile-save-action" disabled={saving} onClick={() => void saveProfile()} type="button">
             {saving ? "正在保存资料" : "保存并退出编辑模式"}
           </button>
         </StickyBottomBar>
@@ -899,7 +904,7 @@ function TechnicianPortalContent({ initialSelfProfile, technician, walletSummary
             onClose={() => navigate("/technician")}
             title="个人中心"
           />
-          <div className="client-app-gutter space-y-4 pb-32 pt-4">
+          <div className={cn("client-app-gutter space-y-4 pt-4", meTab === "info" ? "pb-[calc(132px+env(safe-area-inset-bottom))]" : "pb-32")}>
             {meTab === "info" ? (
               <>
                 <Link className={cn(surface.panel, "mb-4 flex min-h-16 items-center justify-between rounded-[18px] border px-4 py-3")} to="/technician/shop-stays">
