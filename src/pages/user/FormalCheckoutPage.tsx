@@ -868,6 +868,12 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const displayServiceInfos = bundleServices.length > 1
     ? bundleServices.map((item) => item.serviceInfo)
     : displayServiceInfo ? [displayServiceInfo] : [];
+  const displayedServiceAmountJpy = technicianServiceIds.length > 1
+    ? Number(selectedSlot?.priceAmount ?? displayServiceInfos.reduce(
+        (total, item) => total + Number(item.priceAmount),
+        0
+      ))
+    : Number(displayServiceInfo?.priceAmount ?? 0);
   const sourcePublisherData = useMemo(() => {
     const publisher = intelligenceSource?.publisherCard ?? fixedTechnicianPublisher;
     if (!publisher) return null;
@@ -1458,7 +1464,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               <div className="grid grid-cols-[minmax(0,1fr),auto] items-end gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-black text-[color:color-mix(in_srgb,var(--client-text)_72%,var(--client-muted)_28%)]" data-no-i18n>{t("amountDue")}</p>
-                  <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(Number(displayServiceInfo.priceAmount) + (selectedTechnicianProfileId ? selectedSlot?.nominationFeeJpy ?? 0 : 0) + (fulfillmentMode === "home" && estimateStatus === "success" ? estimate?.fareAmountJpy ?? 0 : 0))}</strong>
+                  <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(displayedServiceAmountJpy + (selectedTechnicianProfileId ? selectedSlot?.nominationFeeJpy ?? 0 : 0) + (fulfillmentMode === "home" && estimateStatus === "success" ? estimate?.fareAmountJpy ?? 0 : 0))}</strong>
                   {selectedTechnicianProfileId ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("includesNominationFee", { amount: yen(selectedSlot?.nominationFeeJpy ?? 0) })}</span> : null}
                   {fulfillmentMode === "home" ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("serviceAndTravelFee")}</span> : null}
                 </div>
