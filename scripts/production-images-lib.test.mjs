@@ -142,7 +142,7 @@ test("retains every APNG frame even when the image decoder reports one page", as
   assert.deepEqual(result.bytes, animatedPng);
 });
 
-test("ships Xiaobai motion clips as compact six-frame-per-second APNGs", async () => {
+test("keeps Xiaobai APNG source clips normalized for atlas generation", async () => {
   const animatedAssets = [
     "xiao-bai-death.png",
     "xiao-bai-enter.png",

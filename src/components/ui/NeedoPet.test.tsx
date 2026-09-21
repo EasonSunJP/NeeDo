@@ -3,32 +3,32 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import source from "./NeedoPet.tsx?raw";
-import { NeedoPetRunningSprite } from "./NeedoPet";
+import { getPetMotionFrameIndex, getPetMotionFrameSource, NeedoPetRunningSprite } from "./NeedoPet";
 
 const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
 describe("NeedoPetRunningSprite", () => {
+  it("selects deterministic looping and one-shot atlas frames", () => {
+    expect(getPetMotionFrameIndex(2_000, 1_000 / 6, 14, true)).toBe(12);
+    expect(getPetMotionFrameIndex(3_000, 1_000 / 6, 14, true)).toBe(4);
+    expect(getPetMotionFrameIndex(3_000, 1_000 / 6, 14, false)).toBe(13);
+    expect(getPetMotionFrameSource(12, 10, 132, 143)).toEqual({ sourceX: 264, sourceY: 143 });
+  });
+
   it("renders nothing while Xiaobai running assets are not ready", () => {
     expect(renderToStaticMarkup(<NeedoPetRunningSprite />)).toBe("");
   });
 
   it("loads motion clips on demand instead of preloading every idle animation", () => {
     expect(source).not.toContain("clips.forEach");
+    expect(source).toContain("const nextAtlas = new Image()");
+    expect(source).toContain("nextAtlas.onload = switchClip");
     expect(source).toContain('fallbackSrc={petSpriteSrc.idle}');
     expect(source).toContain('fallbackSrc={petSpriteSrc.running}');
-    expect(source).toContain('src={sprite === "death" ? petSpriteSrc.grave : petSpriteSrc.idle}');
+    expect(source).toContain('fallbackSrc={sprite === "death" ? petSpriteSrc.grave : petSpriteSrc.idle}');
   });
 
-  it("stages transparent APNGs before swapping out fallback sprites", () => {
-    expect(source).toContain("const [loadedSrc, setLoadedSrc] = useState<string | null>(null)");
-    expect(source).toContain("{loadedSrc === clip.src ? (");
-    expect(source).toContain("setLoadedSrc(clip.src)");
-    expect(source).toContain("const [loadedRunId, setLoadedRunId] = useState<number | null>(null)");
-    expect(source).toContain("{loadedRunId === runId ? (");
-    expect(source).toContain("onLoad={() => setLoadedRunId(runId)}");
-  });
-
-  it("never paints a fallback underneath a transparent animation", () => {
+  it("uses one fixed canvas per motion instead of native animated images", () => {
     const motionSequenceSource = source.slice(
       source.indexOf("function NeedoPetMotionSequence"),
       source.indexOf("function NeedoPetOneShotMotion")
@@ -38,14 +38,18 @@ describe("NeedoPetRunningSprite", () => {
       source.indexOf("function NeedoPetSprite")
     );
 
-    expect(motionSequenceSource).toContain('className="needo-pet-motion-image is-preloader"');
-    expect(motionSequenceSource).toContain("{loadedSrc === clip.src ? (");
-    expect(oneShotMotionSource).toContain('className="needo-pet-motion-image is-preloader"');
-    expect(oneShotMotionSource).toContain("{loadedRunId === runId ? (");
+    expect(motionSequenceSource.match(/<NeedoPetCanvas\b/g)).toHaveLength(1);
+    expect(oneShotMotionSource.match(/<NeedoPetCanvas\b/g)).toHaveLength(1);
+    expect(motionSequenceSource).not.toContain("<img");
+    expect(oneShotMotionSource).not.toContain("<img");
+    expect(source).not.toContain("is-preloader");
+    expect(source).not.toContain("is-fallback");
   });
 
-  it("keeps APNG preload probes out of the painted frame", () => {
-    expect(styles).toMatch(/\.needo-pet-motion-image\.is-preloader\s*{[^}]*visibility:\s*hidden;/s);
+  it("does not keep hidden native animation decoders in the composited pet layer", () => {
+    expect(styles).not.toMatch(/\.needo-pet-motion-image\.is-preloader/);
+    expect(styles).not.toMatch(/\.needo-pet-motion-image\.is-fallback/);
+    expect(styles).toMatch(/\.needo-pet-motion-canvas\s*{[^}]*width:\s*132px;[^}]*height:\s*143px;/s);
   });
 
   it("keeps the pet button above its operation panel", () => {

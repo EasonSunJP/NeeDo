@@ -114,7 +114,7 @@ describe("needoPetAssets", () => {
   });
 
   it("restores readiness from the matching local asset version", async () => {
-    const version = "20260921b";
+    const version = "20260921c";
     const localStorage = createStorage({
       "needo.digital-pet.assets.v1": JSON.stringify({ status: "ready", version })
     });
@@ -132,11 +132,20 @@ describe("needoPetAssets", () => {
   it("keeps Xiaobai clip timing aligned with the 6 fps assets", async () => {
     stubWindow(createStorage());
 
-    const { xiaobaiIdleClips, xiaobaiOneShotClips, xiaobaiRunningClips, xiaobaiPetAssetVersion } = await import(
+    const { xiaobaiIdleClips, xiaobaiOneShotClips, xiaobaiPetAssetManifest, xiaobaiRunningClips, xiaobaiPetAssetVersion } = await import(
       "./needoPetAssets"
     );
 
-    expect(xiaobaiPetAssetVersion).toBe("20260921b");
+    expect(xiaobaiPetAssetVersion).toBe("20260921c");
+    expect([
+      ...xiaobaiIdleClips.map((clip) => clip.src),
+      ...xiaobaiRunningClips.map((clip) => clip.src),
+      ...Object.values(xiaobaiOneShotClips).map((clip) => clip.src)
+    ].every((src) => src.includes("-atlas.png?v=20260921c"))).toBe(true);
+    expect(xiaobaiIdleClips.map((clip) => clip.frameCount)).toEqual([40, 22, 40, 30, 35, 31, 38, 30]);
+    expect(xiaobaiRunningClips.map((clip) => clip.frameCount)).toEqual([10, 17]);
+    expect(xiaobaiPetAssetManifest.filter((src) => src.includes("-atlas.png"))).toHaveLength(14);
+    expect(xiaobaiPetAssetManifest.some((src) => /xiao-bai-(death|enter|exit|revive)\.png/u.test(src))).toBe(false);
     expect(xiaobaiIdleClips.map((clip) => clip.durationMs)).toEqual([6_667, 3_667, 6_667, 5_000, 5_833, 5_167, 6_333, 5_000]);
     expect(xiaobaiRunningClips.map((clip) => clip.durationMs)).toEqual([6_667, 8_500]);
     expect(xiaobaiOneShotClips).toMatchObject({

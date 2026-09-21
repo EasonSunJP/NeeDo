@@ -20,9 +20,15 @@ export type XiaobaiPetSpriteKey =
   | "waving";
 
 export type XiaobaiPetOneShotSpriteKey = "death" | "enter" | "exit" | "revive";
+export type XiaobaiPetStaticSpriteKey = Exclude<XiaobaiPetSpriteKey, XiaobaiPetOneShotSpriteKey>;
 
 export type NeedoPetMotionClip = {
+  columns: number;
   durationMs: number;
+  frameCount: number;
+  frameDurationMs: number;
+  frameHeight: number;
+  frameWidth: number;
   src: string;
 };
 
@@ -39,17 +45,14 @@ export type NeedoPetAssetReadiness = {
 };
 
 const assetStorageKey = "needo.digital-pet.assets.v1";
-export const xiaobaiPetAssetVersion = "20260921b";
+export const xiaobaiPetAssetVersion = "20260921c";
 
 export function getVersionedNeedoPetAsset(src: string) {
   return `${src}?v=${xiaobaiPetAssetVersion}`;
 }
 
-export const petSpriteSrc: Record<XiaobaiPetSpriteKey, string> = {
+export const petSpriteSrc: Record<XiaobaiPetStaticSpriteKey, string> = {
   angry: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-angry.png"),
-  death: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-death.png"),
-  enter: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-enter.png"),
-  exit: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-exit.png"),
   failed: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-failed.png"),
   happy: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-happy.png"),
   grave: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-grave.png"),
@@ -58,34 +61,47 @@ export const petSpriteSrc: Record<XiaobaiPetSpriteKey, string> = {
   jumping: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-jumping.png"),
   notice: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-notice.png"),
   phone: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-phone.png"),
-  revive: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-revive.png"),
   running: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-running.png"),
   sleeping: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-sleeping.png"),
   waiting: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-waiting.png"),
   waving: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-waving.png")
 };
 
+const xiaobaiFrameDurationMs = 1_000 / 6;
+
+function getXiaobaiMotionClip(name: string, frameCount: number, durationMs: number): NeedoPetMotionClip {
+  return {
+    columns: 10,
+    durationMs,
+    frameCount,
+    frameDurationMs: xiaobaiFrameDurationMs,
+    frameHeight: 143,
+    frameWidth: 132,
+    src: getVersionedNeedoPetAsset(`/images/needo-pet/${name}-atlas.png`)
+  };
+}
+
 export const xiaobaiIdleClips = [
-  { durationMs: 6_667, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-question-cheer.png") },
-  { durationMs: 3_667, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-sparkle.png") },
-  { durationMs: 6_667, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-heart-thanks.png") },
-  { durationMs: 5_000, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-angry.png") },
-  { durationMs: 5_833, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-sad.png") },
-  { durationMs: 5_167, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-sleepy.png") },
-  { durationMs: 6_333, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-excited.png") },
-  { durationMs: 5_000, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle-thinking.png") }
+  getXiaobaiMotionClip("xiao-bai-idle-question-cheer", 40, 6_667),
+  getXiaobaiMotionClip("xiao-bai-idle-sparkle", 22, 3_667),
+  getXiaobaiMotionClip("xiao-bai-idle-heart-thanks", 40, 6_667),
+  getXiaobaiMotionClip("xiao-bai-idle-angry", 30, 5_000),
+  getXiaobaiMotionClip("xiao-bai-idle-sad", 35, 5_833),
+  getXiaobaiMotionClip("xiao-bai-idle-sleepy", 31, 5_167),
+  getXiaobaiMotionClip("xiao-bai-idle-excited", 38, 6_333),
+  getXiaobaiMotionClip("xiao-bai-idle-thinking", 30, 5_000)
 ] as const satisfies readonly NeedoPetMotionClip[];
 
 export const xiaobaiRunningClips = [
-  { durationMs: 6_667, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-run-dash.png") },
-  { durationMs: 8_500, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-run-sprint.png") }
+  getXiaobaiMotionClip("xiao-bai-run-dash", 10, 6_667),
+  getXiaobaiMotionClip("xiao-bai-run-sprint", 17, 8_500)
 ] as const satisfies readonly NeedoPetMotionClip[];
 
 export const xiaobaiOneShotClips: Record<XiaobaiPetOneShotSpriteKey, NeedoPetMotionClip> = {
-  death: { durationMs: 7_500, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-death.png") },
-  enter: { durationMs: 3_000, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-enter.png") },
-  exit: { durationMs: 4_833, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-exit.png") },
-  revive: { durationMs: 6_500, src: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-revive.png") }
+  death: getXiaobaiMotionClip("xiao-bai-death", 45, 7_500),
+  enter: getXiaobaiMotionClip("xiao-bai-enter", 18, 3_000),
+  exit: getXiaobaiMotionClip("xiao-bai-exit", 29, 4_833),
+  revive: getXiaobaiMotionClip("xiao-bai-revive", 39, 6_500)
 };
 
 export const xiaobaiPetAssetManifest = Array.from(

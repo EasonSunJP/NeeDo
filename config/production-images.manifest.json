@@ -3875,6 +3875,22 @@
       "exceptionReason": null
     },
     {
+      "path": "public/images/needo-pet/xiao-bai-death-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "7391b91ed5f4f6005fd315d5dc1316ec8ba0ea0155830df0e89bb5866eacc648",
+      "resultSha256": "7391b91ed5f4f6005fd315d5dc1316ec8ba0ea0155830df0e89bb5866eacc648",
+      "sourceBytes": 428666,
+      "resultBytes": 428666,
+      "width": 1320,
+      "height": 715,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
+    },
+    {
       "path": "public/images/needo-pet/xiao-bai-death.png",
       "status": "kept-original",
       "sourceSha256": "530f279e3a944d62288a503245e2071fb88984b1e84a9e733d889e4901593be9",
@@ -3891,6 +3907,22 @@
       "exceptionReason": "multi-frame-preserved"
     },
     {
+      "path": "public/images/needo-pet/xiao-bai-enter-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "ff2b0db73a6ef7ee82766397912ea7c57a6f5150c5af631f96b5a3f28d3682ee",
+      "resultSha256": "ff2b0db73a6ef7ee82766397912ea7c57a6f5150c5af631f96b5a3f28d3682ee",
+      "sourceBytes": 142281,
+      "resultBytes": 142281,
+      "width": 1320,
+      "height": 286,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
+    },
+    {
       "path": "public/images/needo-pet/xiao-bai-enter.png",
       "status": "kept-original",
       "sourceSha256": "ea71899b9e27e4b69a3e83becf61e0771f93fa738f97d7aa89035f3902ed5f2f",
@@ -3905,6 +3937,22 @@
       "codec": "original",
       "ssim": 1,
       "exceptionReason": "multi-frame-preserved"
+    },
+    {
+      "path": "public/images/needo-pet/xiao-bai-exit-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "5237c80db4cddb73759c6c1d43d4a0219eef2baf7843c71e67e6780a682b73b7",
+      "resultSha256": "5237c80db4cddb73759c6c1d43d4a0219eef2baf7843c71e67e6780a682b73b7",
+      "sourceBytes": 148912,
+      "resultBytes": 148912,
+      "width": 1320,
+      "height": 429,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
     },
     {
       "path": "public/images/needo-pet/xiao-bai-exit.png",
@@ -3987,6 +4035,22 @@
       "exceptionReason": null
     },
     {
+      "path": "public/images/needo-pet/xiao-bai-idle-angry-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "27bf5d73f046c3eb2f62b3b43ab7618838328bd67f6da35d54d9d640318e77df",
+      "resultSha256": "27bf5d73f046c3eb2f62b3b43ab7618838328bd67f6da35d54d9d640318e77df",
+      "sourceBytes": 304325,
+      "resultBytes": 304325,
+      "width": 1320,
+      "height": 429,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
+    },
+    {
       "path": "public/images/needo-pet/xiao-bai-idle-angry.png",
       "status": "kept-original",
       "sourceSha256": "c57a29cb42ff2f62ee626373718a2db716fcadd825f1682042c4bc3b68a48d4e",
@@ -4001,6 +4065,22 @@
       "codec": "original",
       "ssim": 1,
       "exceptionReason": "multi-frame-preserved"
+    },
+    {
+      "path": "public/images/needo-pet/xiao-bai-idle-excited-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "6e03a3d05f5995e4a8d65bcb80cad5a68a34855507ffd7d7485c4edb0327050f",
+      "resultSha256": "6e03a3d05f5995e4a8d65bcb80cad5a68a34855507ffd7d7485c4edb0327050f",
+      "sourceBytes": 387874,
+      "resultBytes": 387874,
+      "width": 1320,
+      "height": 572,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
     },
     {
       "path": "public/images/needo-pet/xiao-bai-idle-excited.png",
@@ -4019,6 +4099,22 @@
       "exceptionReason": "multi-frame-preserved"
     },
     {
+      "path": "public/images/needo-pet/xiao-bai-idle-heart-thanks-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "a5e8e06e7e54790613b153628feeba072873a7be7497105474951057eece307d",
+      "resultSha256": "a5e8e06e7e54790613b153628feeba072873a7be7497105474951057eece307d",
+      "sourceBytes": 348280,
+      "resultBytes": 348280,
+      "width": 1320,
+      "height": 572,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
+    },
+    {
       "path": "public/images/needo-pet/xiao-bai-idle-heart-thanks.png",
       "status": "kept-original",
       "sourceSha256": "5f0a38636babcd1c60ff27d33dd434f5777515c60e3dbfb6fb8c4e20a1ec8130",
@@ -4033,6 +4129,22 @@
       "codec": "original",
       "ssim": 1,
       "exceptionReason": "multi-frame-preserved"
+    },
+    {
+      "path": "public/images/needo-pet/xiao-bai-idle-question-cheer-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "31612984b842ff0ad068c3b8b79e36f492f694a105bdc7a3a073030e676787c6",
+      "resultSha256": "31612984b842ff0ad068c3b8b79e36f492f694a105bdc7a3a073030e676787c6",
+      "sourceBytes": 355201,
+      "resultBytes": 355201,
+      "width": 1320,
+      "height": 572,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
     },
     {
       "path": "public/images/needo-pet/xiao-bai-idle-question-cheer.png",
@@ -4051,6 +4163,22 @@
       "exceptionReason": "multi-frame-preserved"
     },
     {
+      "path": "public/images/needo-pet/xiao-bai-idle-sad-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "fcb3055af89f6016e7f980329751eb1a46f27d9b3bc5dfeea7405853a4672cca",
+      "resultSha256": "fcb3055af89f6016e7f980329751eb1a46f27d9b3bc5dfeea7405853a4672cca",
+      "sourceBytes": 336183,
+      "resultBytes": 336183,
+      "width": 1320,
+      "height": 572,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
+    },
+    {
       "path": "public/images/needo-pet/xiao-bai-idle-sad.png",
       "status": "kept-original",
       "sourceSha256": "2106e5d13c0fb51e1cd16b9f7659c7ddc167bc933ce2bb648fc0a04742cb69bf",
@@ -4065,6 +4193,22 @@
       "codec": "original",
       "ssim": 1,
       "exceptionReason": "multi-frame-preserved"
+    },
+    {
+      "path": "public/images/needo-pet/xiao-bai-idle-sleepy-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "9aa0b6f914b9830722c85cb5b75802dd717e98a1f33292eb1dc7faed798d1431",
+      "resultSha256": "9aa0b6f914b9830722c85cb5b75802dd717e98a1f33292eb1dc7faed798d1431",
+      "sourceBytes": 305946,
+      "resultBytes": 305946,
+      "width": 1320,
+      "height": 572,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
     },
     {
       "path": "public/images/needo-pet/xiao-bai-idle-sleepy.png",
@@ -4083,6 +4227,22 @@
       "exceptionReason": "multi-frame-preserved"
     },
     {
+      "path": "public/images/needo-pet/xiao-bai-idle-sparkle-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "b6aa16ca9b3c289ad3385e7b353f135755c1cd7c8e30f7be0adf8ca0bc2ae76e",
+      "resultSha256": "b6aa16ca9b3c289ad3385e7b353f135755c1cd7c8e30f7be0adf8ca0bc2ae76e",
+      "sourceBytes": 186691,
+      "resultBytes": 186691,
+      "width": 1320,
+      "height": 429,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
+    },
+    {
       "path": "public/images/needo-pet/xiao-bai-idle-sparkle.png",
       "status": "kept-original",
       "sourceSha256": "6a3a35db2f0f7c309bbe93d4c1c8eb9e11d779c67ce54a0fbefd6d3b127f9c54",
@@ -4097,6 +4257,22 @@
       "codec": "original",
       "ssim": 1,
       "exceptionReason": "multi-frame-preserved"
+    },
+    {
+      "path": "public/images/needo-pet/xiao-bai-idle-thinking-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "570d4c5732826a0b2f4b5c4e7c15c44cc9f3c9a22c457787bdb01439124f7c7b",
+      "resultSha256": "570d4c5732826a0b2f4b5c4e7c15c44cc9f3c9a22c457787bdb01439124f7c7b",
+      "sourceBytes": 279258,
+      "resultBytes": 279258,
+      "width": 1320,
+      "height": 429,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
     },
     {
       "path": "public/images/needo-pet/xiao-bai-idle-thinking.png",
@@ -4179,6 +4355,22 @@
       "exceptionReason": null
     },
     {
+      "path": "public/images/needo-pet/xiao-bai-revive-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "bf05162054f1301f64403f334708642e63d0688e0439feae618a6618e252882b",
+      "resultSha256": "bf05162054f1301f64403f334708642e63d0688e0439feae618a6618e252882b",
+      "sourceBytes": 486137,
+      "resultBytes": 486137,
+      "width": 1320,
+      "height": 572,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
+    },
+    {
       "path": "public/images/needo-pet/xiao-bai-revive.png",
       "status": "kept-original",
       "sourceSha256": "4c9dad0c34b69fa684cd2a4e48ea40e0428cee26e0157a9831332efd0b877e30",
@@ -4195,6 +4387,22 @@
       "exceptionReason": "multi-frame-preserved"
     },
     {
+      "path": "public/images/needo-pet/xiao-bai-run-dash-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "649b46b14d1e6b4a402da3fce3b87db49a4e94c50a1cee7cab7241ea05b00d27",
+      "resultSha256": "649b46b14d1e6b4a402da3fce3b87db49a4e94c50a1cee7cab7241ea05b00d27",
+      "sourceBytes": 107426,
+      "resultBytes": 107426,
+      "width": 1320,
+      "height": 143,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
+    },
+    {
       "path": "public/images/needo-pet/xiao-bai-run-dash.png",
       "status": "kept-original",
       "sourceSha256": "6a90fb63c5cf1b44bc8c88ccc5a1d030b859ccb242b228339d21102468200282",
@@ -4209,6 +4417,22 @@
       "codec": "original",
       "ssim": 1,
       "exceptionReason": "multi-frame-preserved"
+    },
+    {
+      "path": "public/images/needo-pet/xiao-bai-run-sprint-atlas.png",
+      "status": "kept-original",
+      "sourceSha256": "03765bc704111d29c35906f2e0d88d8993ac294fadca8270a6779707fc58ee88",
+      "resultSha256": "03765bc704111d29c35906f2e0d88d8993ac294fadca8270a6779707fc58ee88",
+      "sourceBytes": 206075,
+      "resultBytes": 206075,
+      "width": 1320,
+      "height": 286,
+      "format": "png",
+      "hasAlpha": true,
+      "pages": 1,
+      "codec": "original",
+      "ssim": 1,
+      "exceptionReason": "quality-or-savings-gate"
     },
     {
       "path": "public/images/needo-pet/xiao-bai-run-sprint.png",

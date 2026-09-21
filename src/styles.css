@@ -426,7 +426,7 @@ html[data-needo-display-mode="standalone"] .client-shell .client-floating-header
     transform 180ms ease;
 }
 
-.needo-pet-motion-image {
+.needo-pet-motion-canvas {
   position: absolute;
   left: 0;
   bottom: 0;
@@ -440,19 +440,6 @@ html[data-needo-display-mode="standalone"] .client-shell .client-floating-header
   -webkit-touch-callout: none;
   -webkit-user-drag: none;
   -webkit-user-select: none;
-}
-
-.needo-pet-motion-image.is-fallback {
-  z-index: 0;
-}
-
-.needo-pet-motion-image.is-preloader {
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.needo-pet-motion-image.is-active {
-  z-index: 1;
 }
 
 .needo-pet-svg {

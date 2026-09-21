@@ -571,7 +571,132 @@ function getNextMotionClipIndex(currentIndex: number, clipCount: number) {
   return (currentIndex + offset) % clipCount;
 }
 
-function NeedoPetMotionSequence({
+export function getPetMotionFrameIndex(
+  elapsedMs: number,
+  frameDurationMs: number,
+  frameCount: number,
+  loop: boolean
+) {
+  const elapsedFrame = Math.floor(elapsedMs / frameDurationMs);
+  return loop ? elapsedFrame % frameCount : Math.min(elapsedFrame, frameCount - 1);
+}
+
+export function getPetMotionFrameSource(frame: number, columns: number, frameWidth: number, frameHeight: number) {
+  return {
+    sourceX: (frame % columns) * frameWidth,
+    sourceY: Math.floor(frame / columns) * frameHeight
+  };
+}
+
+function NeedoPetCanvas({
+  clip,
+  fallbackSrc,
+  loop,
+  restartKey
+}: {
+  clip: PetMotionClip;
+  fallbackSrc: string;
+  loop: boolean;
+  restartKey?: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) {
+      return;
+    }
+
+    let animationFrame = 0;
+    let animationStarted = false;
+    let atlasReady = false;
+    let cancelled = false;
+    let lastFrame = -1;
+    let startedAt: number | null = null;
+    const atlas = new Image();
+    const fallback = new Image();
+
+    const clear = () => context.clearRect(0, 0, clip.frameWidth, clip.frameHeight);
+    const drawFallback = () => {
+      if (cancelled || atlasReady || fallback.naturalWidth <= 0 || fallback.naturalHeight <= 0) {
+        return;
+      }
+      const scale = Math.min(clip.frameWidth / fallback.naturalWidth, clip.frameHeight / fallback.naturalHeight);
+      const width = fallback.naturalWidth * scale;
+      const height = fallback.naturalHeight * scale;
+      clear();
+      context.drawImage(fallback, (clip.frameWidth - width) / 2, clip.frameHeight - height, width, height);
+    };
+    const drawFrame = (frame: number) => {
+      if (cancelled || frame === lastFrame) {
+        return;
+      }
+      lastFrame = frame;
+      const source = getPetMotionFrameSource(frame, clip.columns, clip.frameWidth, clip.frameHeight);
+      clear();
+      context.drawImage(
+        atlas,
+        source.sourceX,
+        source.sourceY,
+        clip.frameWidth,
+        clip.frameHeight,
+        0,
+        0,
+        clip.frameWidth,
+        clip.frameHeight
+      );
+    };
+    const animate = (time: number) => {
+      if (cancelled) {
+        return;
+      }
+      startedAt ??= time;
+      const elapsedMs = time - startedAt;
+      const elapsedFrame = Math.floor(elapsedMs / clip.frameDurationMs);
+      const frame = getPetMotionFrameIndex(elapsedMs, clip.frameDurationMs, clip.frameCount, loop);
+      drawFrame(frame);
+      if (loop || elapsedFrame < clip.frameCount - 1) {
+        animationFrame = window.requestAnimationFrame(animate);
+      }
+    };
+
+    clear();
+    fallback.onload = drawFallback;
+    fallback.src = fallbackSrc;
+    if (fallback.complete && fallback.naturalWidth > 0) {
+      drawFallback();
+    }
+
+    const startAnimation = () => {
+      if (cancelled || animationStarted) {
+        return;
+      }
+      animationStarted = true;
+      atlasReady = true;
+      startedAt = null;
+      lastFrame = -1;
+      animationFrame = window.requestAnimationFrame(animate);
+    };
+    atlas.decoding = "async";
+    atlas.onload = startAnimation;
+    atlas.src = clip.src;
+    if (atlas.complete && atlas.naturalWidth > 0) {
+      startAnimation();
+    }
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(animationFrame);
+      atlas.onload = null;
+      fallback.onload = null;
+    };
+  }, [clip, fallbackSrc, loop, restartKey]);
+
+  return <canvas aria-hidden="true" className="needo-pet-motion-canvas" height={clip.frameHeight} ref={canvasRef} width={clip.frameWidth} />;
+}
+
+export function NeedoPetMotionSequence({
   clips,
   fallbackSrc,
   sprite
@@ -581,28 +706,32 @@ function NeedoPetMotionSequence({
   sprite: "idle" | "running";
 }) {
   const [clipIndex, setClipIndex] = useState(() => Math.floor(Math.random() * clips.length));
-  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
-  const [previousSrc, setPreviousSrc] = useState<string | null>(null);
   const clip = clips[clipIndex] ?? clips[0];
 
   useEffect(() => {
     let cancelled = false;
-    const timer = window.setTimeout(() => {
-      const nextIndex = getNextMotionClipIndex(clipIndex, clips.length);
-      const nextClip = clips[nextIndex] ?? clips[0];
-      const image = new Image();
-      const switchClip = () => {
-        if (cancelled) {
-          return;
-        }
-        setPreviousSrc(clip.src);
+    let clipElapsed = false;
+    let nextAtlasReady = false;
+    const nextIndex = getNextMotionClipIndex(clipIndex, clips.length);
+    const nextClip = clips[nextIndex] ?? clips[0];
+    const nextAtlas = new Image();
+    const switchClip = () => {
+      nextAtlasReady = true;
+      if (!cancelled && clipElapsed) {
         setClipIndex(nextIndex);
-      };
+      }
+    };
 
-      image.onload = switchClip;
-      image.src = nextClip.src;
+    nextAtlas.decoding = "async";
+    nextAtlas.onload = switchClip;
+    nextAtlas.src = nextClip.src;
+    if (nextAtlas.complete && nextAtlas.naturalWidth > 0) {
+      switchClip();
+    }
 
-      if (image.complete && image.naturalWidth > 0) {
+    const timer = window.setTimeout(() => {
+      clipElapsed = true;
+      if (nextAtlasReady) {
         switchClip();
       }
     }, clip.durationMs);
@@ -610,61 +739,28 @@ function NeedoPetMotionSequence({
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      nextAtlas.onload = null;
     };
   }, [clip.durationMs, clip.src, clipIndex, clips]);
 
   return (
     <span className={cn("needo-pet-sprite-shell is-motion", sprite === "idle" ? "is-idle-motion" : "is-running-motion")} data-sprite={sprite}>
-      {loadedSrc === clip.src ? (
-        <img key={clip.src} alt="" className="needo-pet-motion-image is-active" draggable={false} src={clip.src} />
-      ) : (
-        <>
-          <img alt="" className="needo-pet-motion-image is-fallback" draggable={false} src={previousSrc ?? fallbackSrc} />
-          <img
-            key={`preload-${clip.src}`}
-            alt=""
-            aria-hidden="true"
-            className="needo-pet-motion-image is-preloader"
-            draggable={false}
-            onLoad={() => {
-              setLoadedSrc(clip.src);
-              setPreviousSrc(null);
-            }}
-            src={clip.src}
-          />
-        </>
-      )}
+      <NeedoPetCanvas clip={clip} fallbackSrc={fallbackSrc} loop />
     </span>
   );
 }
 
 function NeedoPetOneShotMotion({ runId, sprite }: { runId: number; sprite: PetOneShotSpriteKey }) {
-  const [loadedRunId, setLoadedRunId] = useState<number | null>(null);
   const clip = xiaobaiOneShotClips[sprite];
 
   return (
     <span className={cn("needo-pet-sprite-shell is-motion is-one-shot-motion", `is-${sprite}-motion`)} data-sprite={sprite}>
-      {loadedRunId === runId ? (
-        <img key={`${clip.src}-${runId}`} alt="" className="needo-pet-motion-image is-active" draggable={false} src={clip.src} />
-      ) : (
-        <>
-          <img
-            alt=""
-            className="needo-pet-motion-image is-fallback"
-            draggable={false}
-            src={sprite === "death" ? petSpriteSrc.grave : petSpriteSrc.idle}
-          />
-          <img
-            key={`preload-${clip.src}-${runId}`}
-            alt=""
-            aria-hidden="true"
-            className="needo-pet-motion-image is-preloader"
-            draggable={false}
-            onLoad={() => setLoadedRunId(runId)}
-            src={clip.src}
-          />
-        </>
-      )}
+      <NeedoPetCanvas
+        clip={clip}
+        fallbackSrc={sprite === "death" ? petSpriteSrc.grave : petSpriteSrc.idle}
+        loop={false}
+        restartKey={runId}
+      />
     </span>
   );
 }
