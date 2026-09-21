@@ -77,6 +77,25 @@ const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
 const HOME_ONLY_SERVICE_MODES = ["home", "home_visit", "onsite"] as const;
 const SERVICE_HASH_DOMAIN = "needo:order-service:verification-hash:v1\u0000";
 const SERVICE_START_EARLY_ALLOWANCE_MS = 30 * 60_000;
+const SUPPLEMENTARY_TECHNICIAN_SERVICE_NAME_PATTERN =
+  /(?:^|[\s|｜:：])(施術)?延長(?:[\s|｜:：]|$)|(?:^|[\s|｜:：])(オプション|追加|附加|加钟|加鐘|add[ -]?on|extension)(?:[\s|｜:：]|$)/iu;
+
+export function selectPrimaryTechnicianServiceSources<
+  TSource extends { name: string; technicianId: number }
+>(sources: readonly TSource[]): TSource[] {
+  const selected = new Map<number, TSource>();
+  for (const source of sources) {
+    const current = selected.get(source.technicianId);
+    if (
+      !current ||
+      (SUPPLEMENTARY_TECHNICIAN_SERVICE_NAME_PATTERN.test(current.name.normalize("NFKC")) &&
+        !SUPPLEMENTARY_TECHNICIAN_SERVICE_NAME_PATTERN.test(source.name.normalize("NFKC")))
+    ) {
+      selected.set(source.technicianId, source);
+    }
+  }
+  return [...selected.values()];
+}
 
 class FulfillmentTransactionAbort extends Error {}
 class CheckoutTransactionAbort extends Error {
@@ -1840,9 +1859,7 @@ export class BookingRepository implements BookingRepositoryPort {
     ]);
     const technicianServiceSources = technicianService
       ? [technicianService]
-      : [...new Map(
-          technicianServices.map((source) => [source.technicianId, source] as const)
-        ).values()];
+      : selectPrimaryTechnicianServiceSources(technicianServices);
     if (!shop || !locationShopIds.includes(shop.id)) {
       return buildPaginatedResponse([], 0, pagination);
     }
