@@ -570,15 +570,18 @@ describe("UnifiedSettingsPage formal customer summary", () => {
   });
 });
 
-describe("UnifiedSettingsPage Xiaobai asset gate", () => {
+describe("UnifiedSettingsPage Dodo asset gate", () => {
   const settingsHomeSource = source.slice(
     source.indexOf("export function UnifiedSettingsPage"),
     source.indexOf("export function UnifiedSettingsThemePage")
   );
 
-  it("uses the switch slot for download progress until Xiaobai assets are ready", () => {
+  it("uses the switch slot for download progress until Dodo assets are ready", () => {
     expect(settingsHomeSource).toContain("petAssetReadiness.ready ? (");
     expect(settingsHomeSource).toContain("<SettingsPetAssetProgress");
+    expect(settingsHomeSource).toContain("正在下载 Dodo 资源，完成后才能开启。");
+    expect(settingsHomeSource).toContain("Dodo 资源下载进度");
+    expect(settingsHomeSource).not.toContain("小白资源");
     expect(settingsHomeSource).not.toContain("disabled={!petAssetReadiness.ready}");
   });
 

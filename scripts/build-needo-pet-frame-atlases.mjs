@@ -9,6 +9,10 @@ import { inspectPngAnimation } from "./production-images-lib.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const assetDirectory = path.join(root, "public/images/needo-pet");
 const atlasColumns = 10;
+const fallbackBySourceAsset = new Map([
+  ["xiao-bai-idle-question-cheer.png", "xiao-bai-idle.png"],
+  ["xiao-bai-run-dash.png", "xiao-bai-running.png"],
+]);
 const animatedAssets = [
   "xiao-bai-death.png",
   "xiao-bai-enter.png",
@@ -73,6 +77,11 @@ async function buildAtlas(asset) {
     })
       .png({ adaptiveFiltering: true, compressionLevel: 9, palette: false })
       .toBuffer();
+    const fallback = await sharp(frameRaws[0], {
+      raw: { channels: 4, height: animation.height, width: animation.width },
+    })
+      .png({ adaptiveFiltering: true, compressionLevel: 9, palette: false })
+      .toBuffer();
 
     for (let index = 0; index < frameRaws.length; index += 1) {
       const expected = frameRaws[index];
@@ -95,10 +104,12 @@ async function buildAtlas(asset) {
       asset: asset.replace(/\.png$/u, "-atlas.png"),
       bytes: atlas,
       columns: atlasColumns,
+      fallback,
       frameCount: animation.frameCount,
       frameHeight: animation.height,
       frameWidth: animation.width,
       rows,
+      sourceAsset: asset,
     };
   } finally {
     await rm(temporaryDirectory, { force: true, recursive: true });
@@ -115,9 +126,21 @@ for (const result of results) {
   const temporaryPath = `${destination}.tmp`;
   await writeFile(temporaryPath, result.bytes);
   await rename(temporaryPath, destination);
+  const fallbackAsset = fallbackBySourceAsset.get(result.sourceAsset);
+  if (fallbackAsset) {
+    const fallbackDestination = path.join(assetDirectory, fallbackAsset);
+    const fallbackTemporaryPath = `${fallbackDestination}.tmp`;
+    await writeFile(fallbackTemporaryPath, result.fallback);
+    await rename(fallbackTemporaryPath, fallbackDestination);
+  }
 }
 
 process.stdout.write(`${JSON.stringify({
-  atlases: results.map(({ bytes, ...result }) => ({ ...result, resultBytes: bytes.length })),
+  atlases: results.map(({ bytes, fallback, ...result }) => ({
+    ...result,
+    fallbackAsset: fallbackBySourceAsset.get(result.sourceAsset) ?? null,
+    fallbackBytes: fallback.length,
+    resultBytes: bytes.length,
+  })),
   status: "built",
 })}\n`);

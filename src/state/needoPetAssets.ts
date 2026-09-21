@@ -1,23 +1,14 @@
 import { useSyncExternalStore } from "react";
 
 export type XiaobaiPetSpriteKey =
-  | "angry"
   | "death"
   | "enter"
   | "exit"
-  | "failed"
   | "happy"
   | "grave"
-  | "hungry"
   | "idle"
-  | "jumping"
-  | "notice"
-  | "phone"
   | "revive"
-  | "running"
-  | "sleeping"
-  | "waiting"
-  | "waving";
+  | "running";
 
 export type XiaobaiPetOneShotSpriteKey = "death" | "enter" | "exit" | "revive";
 export type XiaobaiPetStaticSpriteKey = Exclude<XiaobaiPetSpriteKey, XiaobaiPetOneShotSpriteKey>;
@@ -45,26 +36,17 @@ export type NeedoPetAssetReadiness = {
 };
 
 const assetStorageKey = "needo.digital-pet.assets.v1";
-export const xiaobaiPetAssetVersion = "20260921c";
+export const xiaobaiPetAssetVersion = "20260921d";
 
 export function getVersionedNeedoPetAsset(src: string) {
   return `${src}?v=${xiaobaiPetAssetVersion}`;
 }
 
 export const petSpriteSrc: Record<XiaobaiPetStaticSpriteKey, string> = {
-  angry: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-angry.png"),
-  failed: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-failed.png"),
   happy: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-happy.png"),
   grave: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-grave.png"),
-  hungry: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-hungry.png"),
   idle: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-idle.png"),
-  jumping: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-jumping.png"),
-  notice: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-notice.png"),
-  phone: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-phone.png"),
-  running: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-running.png"),
-  sleeping: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-sleeping.png"),
-  waiting: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-waiting.png"),
-  waving: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-waving.png")
+  running: getVersionedNeedoPetAsset("/images/needo-pet/xiao-bai-running.png")
 };
 
 const xiaobaiFrameDurationMs = 1_000 / 6;

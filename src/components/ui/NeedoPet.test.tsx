@@ -8,6 +8,11 @@ import { getPetMotionFrameIndex, getPetMotionFrameSource, NeedoPetRunningSprite 
 const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
 describe("NeedoPetRunningSprite", () => {
+  it("shows the pet name as Dodo", () => {
+    expect(source).toContain("<span>Dodo</span>");
+    expect(source).not.toContain("小白 / Xiaobai");
+  });
+
   it("selects deterministic looping and one-shot atlas frames", () => {
     expect(getPetMotionFrameIndex(2_000, 1_000 / 6, 14, true)).toBe(12);
     expect(getPetMotionFrameIndex(3_000, 1_000 / 6, 14, true)).toBe(4);

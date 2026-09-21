@@ -188,3 +188,26 @@ test("keeps Xiaobai APNG source clips normalized for atlas generation", async ()
 
   assert.ok(totalBytes <= 5 * 1024 * 1024, `Xiaobai motion clips exceed 5 MiB: ${totalBytes}`);
 });
+
+test("uses complete composited atlas frames for Xiaobai motion fallbacks", async () => {
+  const fallbacks = [
+    ["xiao-bai-idle.png", "xiao-bai-idle-question-cheer-atlas.png"],
+    ["xiao-bai-running.png", "xiao-bai-run-dash-atlas.png"]
+  ];
+
+  for (const [fallbackAsset, atlasAsset] of fallbacks) {
+    const fallbackBytes = await readFile(new URL(`../public/images/needo-pet/${fallbackAsset}`, import.meta.url));
+    const atlasBytes = await readFile(new URL(`../public/images/needo-pet/${atlasAsset}`, import.meta.url));
+    const fallback = await sharp(fallbackBytes)
+      .ensureAlpha()
+      .raw()
+      .toBuffer();
+    const atlasFrame = await sharp(atlasBytes)
+      .extract({ height: 143, left: 0, top: 0, width: 132 })
+      .ensureAlpha()
+      .raw()
+      .toBuffer();
+
+    assert.equal(fallback.equals(atlasFrame), true, `${fallbackAsset} must not contain an uncomposited partial frame`);
+  }
+});

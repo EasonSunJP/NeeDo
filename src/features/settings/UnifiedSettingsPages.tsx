@@ -1867,14 +1867,14 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
           <SettingsToggleRow
             badge="TEST"
             checked={petSettings.enabled}
-            description={t(petAssetReadiness.ready ? "开启后由屏幕宠物承接提醒气泡，首页右下角预约悬浮按钮会自动隐藏。" : "正在下载小白资源，完成后才能开启。")}
+            description={t(petAssetReadiness.ready ? "开启后由屏幕宠物承接提醒气泡，首页右下角预约悬浮按钮会自动隐藏。" : "正在下载 Dodo 资源，完成后才能开启。")}
             onChange={setNeedoPetEnabled}
             title={t("电子宠物")}
             trailing={
               petAssetReadiness.ready ? (
                 undefined
               ) : (
-                <SettingsPetAssetProgress label={t("小白资源下载进度")} readiness={petAssetReadiness} />
+                <SettingsPetAssetProgress label={t("Dodo 资源下载进度")} readiness={petAssetReadiness} />
               )
             }
           />

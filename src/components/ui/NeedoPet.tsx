@@ -1777,7 +1777,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
         <div className="needo-pet-panel" data-page-drag-ignore="true" style={panelStyle}>
           <div className="needo-pet-panel-header">
             <div>
-              <span>小白 / Xiaobai</span>
+              <span>Dodo</span>
               <strong>{care.alive ? "陪伴中" : "已死亡"}</strong>
             </div>
             <span className={cn("needo-pet-panel-status", care.alive ? "is-alive" : "is-dead")}>{care.alive ? "ON" : "OFF"}</span>
