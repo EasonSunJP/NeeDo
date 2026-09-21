@@ -1772,7 +1772,8 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       displayName: technician.displayName,
       city: technician.city,
       avatarUrl:
-        this.findMediaUrl(technician.mediaAssets, "avatar") ?? technician.user.avatarBootstrapUrl,
+        technician.mediaAssets.find((asset) => asset.usageType === "avatar")?.url ??
+        technician.user.avatarBootstrapUrl,
       reviewSummary: this.mapTechnicianReviewSummary(technician.reviewSummary),
       age: technician.age,
       favoriteCount: technician._count.entityFavorites,

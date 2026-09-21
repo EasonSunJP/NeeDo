@@ -231,6 +231,37 @@ function createRepositoryFixture(shopVisibility?: {
 }
 
 describe("CoreReadRepository multi-entity search", () => {
+  it("never substitutes a non-avatar technician media asset for the identity avatar", async () => {
+    const findMany = jest.fn(async () => [{
+      ...publishedTechnicianWithoutServices,
+      mediaAssets: [{
+        id: 91,
+        url: "/media/service-room.jpg",
+        usageType: "cover"
+      }],
+      user: {
+        ...publishedTechnicianWithoutServices.user,
+        avatarBootstrapUrl: "/media/eason-technician-avatar.jpg"
+      }
+    }]);
+    const repository = new CoreReadRepository({
+      technicianProfile: {
+        findMany,
+        count: jest.fn(async () => 1)
+      }
+    } as never);
+
+    await expect(repository.searchTechnicians({
+      entityType: "technician",
+      keywords: [],
+      categoryIds: [],
+      page: 1,
+      pageSize: 20
+    })).resolves.toMatchObject({
+      list: [{ avatarUrl: "/media/eason-technician-avatar.jpg" }]
+    });
+  });
+
   it("treats the public home filter as every home-capable persisted service mode", async () => {
     const fixture = createRepositoryFixture();
 
