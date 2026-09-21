@@ -875,6 +875,7 @@ export type CheckoutPaymentMethod = "cash" | "ndp" | "other";
 export type CheckoutPaymentEvidence =
   | "ndp_ledger"
   | "technician_receipt_confirmation"
+  | "merchant_receipt_override"
   | "operations_receipt_override";
 
 export interface OrderCheckoutPayload {
@@ -1003,6 +1004,11 @@ export type ConfirmCheckoutReceiptRepositoryInput = CheckoutActorInput & {
       }
     | {
         evidence: "operations_receipt_override";
+        audit: AuditLogCreateInput;
+      }
+    | {
+        evidence: "merchant_receipt_override";
+        merchantShopId: number;
         audit: AuditLogCreateInput;
       }
   );
@@ -6076,22 +6082,30 @@ export class BookingRepository implements BookingRepositoryPort {
   ): Promise<CheckoutMutationResult> {
     const validEvidence =
       input.evidence === "technician_receipt_confirmation" ||
+      input.evidence === "merchant_receipt_override" ||
       input.evidence === "operations_receipt_override";
     const hasAudit = Object.prototype.hasOwnProperty.call(input, "audit");
+    const expectedAuditAction =
+      input.evidence === "merchant_receipt_override"
+        ? "merchant_admin.order.checkout.receipt_override"
+        : "backoffice.order.checkout.receipt_override";
     const validAudit =
-      input.evidence === "operations_receipt_override" &&
+      (input.evidence === "merchant_receipt_override" ||
+        input.evidence === "operations_receipt_override") &&
       hasAudit &&
       input.audit &&
       input.audit.actorId === input.actorUserId &&
-      input.audit.action === "backoffice.order.checkout.receipt_override" &&
+      input.audit.action === expectedAuditAction &&
       input.audit.targetType === "BookingOrder" &&
-      input.audit.targetId === input.orderId;
+      input.audit.targetId === input.orderId &&
+      (input.evidence !== "merchant_receipt_override" ||
+        (Number.isSafeInteger(input.merchantShopId) && input.merchantShopId > 0));
     if (
       !options ||
       typeof options.settle !== "function" ||
       typeof options.settleAffiliate !== "function" ||
       !validEvidence ||
-      (input.evidence === "operations_receipt_override" ? !validAudit : hasAudit)
+      (input.evidence === "technician_receipt_confirmation" ? hasAudit : !validAudit)
     ) {
       return Promise.resolve({ outcome: "invalid_snapshot" });
     }
@@ -6101,6 +6115,12 @@ export class BookingRepository implements BookingRepositoryPort {
       const checkout = current
         ? await tx.orderCheckout.findUnique({ where: { bookingOrderId: current.id } })
         : null;
+      if (
+        input.evidence === "merchant_receipt_override" &&
+        (!current || current.shopId !== input.merchantShopId)
+      ) {
+        return { outcome: "not_found" };
+      }
       const replay = await this.resolveCheckoutReplay(tx, current, checkout, input, {
         eventType: DatabaseOrderServiceEventType.RECEIPT_CONFIRMED,
         reason: input.reason.trim(),
@@ -6110,6 +6130,8 @@ export class BookingRepository implements BookingRepositoryPort {
       const authorized =
         input.evidence === "operations_receipt_override"
           ? Boolean(current)
+          : input.evidence === "merchant_receipt_override"
+            ? Boolean(current && current.shopId === input.merchantShopId)
           : Boolean(
               current?.technicianProfileId &&
               current.technicianProfile &&
@@ -6156,6 +6178,8 @@ export class BookingRepository implements BookingRepositoryPort {
           paymentReference:
             input.evidence === "operations_receipt_override"
               ? `checkout:${checkout.id}:operations-receipt`
+              : input.evidence === "merchant_receipt_override"
+                ? `checkout:${checkout.id}:merchant-receipt`
               : `checkout:${checkout.id}:technician-receipt`,
           paymentNote: input.reason.trim(),
           updatedAt: now
@@ -6185,7 +6209,10 @@ export class BookingRepository implements BookingRepositoryPort {
       };
       await options.settle(context);
       await options.settleAffiliate(context);
-      if (input.evidence === "operations_receipt_override") {
+      if (
+        input.evidence === "merchant_receipt_override" ||
+        input.evidence === "operations_receipt_override"
+      ) {
         const auditMetadata =
           input.audit.metadata &&
           typeof input.audit.metadata === "object" &&
@@ -6201,7 +6228,10 @@ export class BookingRepository implements BookingRepositoryPort {
               checkoutId: checkout.id,
               selectedMethod: servicePaymentMethodFromDb(checkout.paymentMethod),
               checkoutAmountJpy: checkout.checkoutAmountJpy,
-              reason: input.reason.trim()
+              reason: input.reason.trim(),
+              ...(input.evidence === "merchant_receipt_override"
+                ? { shopId: input.merchantShopId }
+                : {})
             }
           })
         });
@@ -7593,6 +7623,7 @@ export class BookingRepository implements BookingRepositoryPort {
     if (
       !event ||
       (evidence !== "operations_receipt_override" &&
+        evidence !== "merchant_receipt_override" &&
         evidence !== "technician_receipt_confirmation") ||
       event.bookingOrderId !== current.id ||
       event.orderCheckoutId !== checkout.id ||
@@ -7612,10 +7643,14 @@ export class BookingRepository implements BookingRepositoryPort {
       }
       return evidence;
     }
+    const expectedAuditAction =
+      evidence === "merchant_receipt_override"
+        ? "merchant_admin.order.checkout.receipt_override"
+        : "backoffice.order.checkout.receipt_override";
     const audit = await transaction.auditLog.findFirst({
       where: {
         actorId: checkout.receiptConfirmedById,
-        action: "backoffice.order.checkout.receipt_override",
+        action: expectedAuditAction,
         targetType: "BookingOrder",
         targetId: current.id,
         deletedAt: null
@@ -7629,14 +7664,15 @@ export class BookingRepository implements BookingRepositoryPort {
     if (
       !audit ||
       audit.actorId !== checkout.receiptConfirmedById ||
-      audit.action !== "backoffice.order.checkout.receipt_override" ||
+      audit.action !== expectedAuditAction ||
       audit.targetType !== "BookingOrder" ||
       audit.targetId !== current.id ||
       auditMetadata.orderId !== current.id ||
       auditMetadata.checkoutId !== checkout.id ||
       auditMetadata.reason !== checkout.receiptConfirmationReason ||
       auditMetadata.selectedMethod !== servicePaymentMethodFromDb(checkout.paymentMethod) ||
-      auditMetadata.checkoutAmountJpy !== checkout.checkoutAmountJpy
+      auditMetadata.checkoutAmountJpy !== checkout.checkoutAmountJpy ||
+      (evidence === "merchant_receipt_override" && auditMetadata.shopId !== current.shopId)
     ) {
       throw new CheckoutTransactionAbort("invalid_snapshot");
     }
@@ -7742,6 +7778,7 @@ export class BookingRepository implements BookingRepositoryPort {
     }
     if (
       (evidenceOverride === "technician_receipt_confirmation" ||
+        evidenceOverride === "merchant_receipt_override" ||
         evidenceOverride === "operations_receipt_override") &&
       (!checkout.receiptConfirmedAt || checkout.ledgerTransactionId)
     ) {

@@ -568,6 +568,13 @@ export const SYSTEM_PERMISSIONS = [
     "平台运营以独立审计路径确认线下收款"
   ),
   createPermission(
+    "merchant-admin:order:checkout:receipt-override",
+    "商户确认正式线下收款",
+    "api",
+    "order",
+    "当前店铺商户以独立审计路径确认正式结账线下收款"
+  ),
+  createPermission(
     "merchant-admin:order-payment:write",
     "商户线下收款维护",
     "api",
@@ -2496,6 +2503,7 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:finance-order:read",
   "merchant-admin:finance-income-report:write",
   "merchant-admin:order-payment:write",
+  "merchant-admin:order:checkout:receipt-override",
   "merchant-admin:finance-rules:read",
   "merchant-admin:finance-rules:write",
   "merchant-admin:finance-rules:preview",

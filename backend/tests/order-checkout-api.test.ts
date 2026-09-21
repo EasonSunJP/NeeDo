@@ -56,6 +56,7 @@ const permissions = [
   "order:checkout:payment-method:write",
   "order:checkout:ndp:pay",
   "order:checkout:receipt:confirm",
+  "merchant-admin:order:checkout:receipt-override",
   "backoffice:order:checkout:receipt-override"
 ];
 
@@ -90,6 +91,15 @@ const createFixture = (availablePaymentMethods: Array<"cash" | "ndp"> = ["cash",
           currentIdentityScopeType: "global",
           currentIdentityScopeId: null
         };
+      if (token === "merchant")
+        return {
+          ...base,
+          userId: 404,
+          roles: ["merchant_owner"],
+          currentIdentityType: "merchant",
+          currentIdentityScopeType: "shop",
+          currentIdentityScopeId: 12
+        };
       return base;
     })
   } as never);
@@ -122,7 +132,10 @@ const createFixture = (availablePaymentMethods: Array<"cash" | "ndp"> = ["cash",
     confirmCheckoutReceipt: jest.fn(
       async (input: {
         actorUserId: number;
-        evidence: "technician_receipt_confirmation" | "operations_receipt_override";
+        evidence:
+          | "technician_receipt_confirmation"
+          | "merchant_receipt_override"
+          | "operations_receipt_override";
       }) =>
         outcome(input.actorUserId, {
           ...checkout,
@@ -158,7 +171,7 @@ const createFixture = (availablePaymentMethods: Array<"cash" | "ndp"> = ["cash",
 describe("formal order checkout API", () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it("runs all five routes through the real router, auth, validators and controller", async () => {
+  it("runs all six routes through the real router, auth, validators and controller", async () => {
     const f = createFixture();
     await request(f.app)
       .get("/api/v1/orders/41/checkout")
@@ -180,6 +193,11 @@ describe("formal order checkout API", () => {
       .send({ reason: "cash received", idempotencyKey: "checkout-receipt-key-01" })
       .expect(200);
     await request(f.app)
+      .post("/api/v1/merchant-admin/orders/41/checkout/confirm-receipt")
+      .set("Authorization", "Bearer merchant")
+      .send({ reason: "merchant verified cash", idempotencyKey: "checkout-merchant-key-01" })
+      .expect(200);
+    await request(f.app)
       .post("/api/v1/backoffice/orders/41/checkout/confirm-receipt")
       .set("Authorization", "Bearer operator")
       .send({ reason: "operations verified receipt", idempotencyKey: "checkout-override-key-01" })
@@ -187,7 +205,18 @@ describe("formal order checkout API", () => {
     expect(f.repository.getOrCreateCheckout).toHaveBeenCalledTimes(1);
     expect(f.repository.selectCheckoutPaymentMethod).toHaveBeenCalledTimes(1);
     expect(f.repository.payCheckoutWithNdp).toHaveBeenCalledTimes(1);
-    expect(f.repository.confirmCheckoutReceipt).toHaveBeenCalledTimes(2);
+    expect(f.repository.confirmCheckoutReceipt).toHaveBeenCalledTimes(3);
+    expect(f.repository.confirmCheckoutReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: 404,
+        merchantShopId: 12,
+        evidence: "merchant_receipt_override",
+        audit: expect.objectContaining({
+          action: "merchant_admin.order.checkout.receipt_override"
+        })
+      }),
+      expect.any(Object)
+    );
   });
 
   it("enforces strict 400, authentication 401, exact permission 403 and hidden actor mismatch 404", async () => {
@@ -279,7 +308,7 @@ describe("formal order checkout API", () => {
     );
   });
 
-  it("assigns least-privilege checkout permissions without granting merchant receipt confirmation", () => {
+  it("assigns least-privilege checkout permissions with a distinct merchant override", () => {
     const roles = buildRolePermissionAssignments();
     expect(roles.customer).toEqual(
       expect.arrayContaining([
@@ -294,5 +323,7 @@ describe("formal order checkout API", () => {
     expect(roles.operator).toContain("backoffice:order:checkout:receipt-override");
     expect(roles.merchant_owner).not.toContain("order:checkout:receipt:confirm");
     expect(roles.merchant_staff).not.toContain("order:checkout:receipt:confirm");
+    expect(roles.merchant_owner).toContain("merchant-admin:order:checkout:receipt-override");
+    expect(roles.merchant_staff).toContain("merchant-admin:order:checkout:receipt-override");
   });
 });

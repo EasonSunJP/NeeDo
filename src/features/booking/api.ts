@@ -23,6 +23,7 @@ export type AvailableCheckoutPaymentMethod = "cash" | "ndp";
 export type CheckoutPaymentEvidence =
   | "ndp_ledger"
   | "technician_receipt_confirmation"
+  | "merchant_receipt_override"
   | "operations_receipt_override";
 export type FulfillmentParticipant = "customer" | "technician";
 export type OrderStatusActorSource =
@@ -659,6 +660,12 @@ export const bookingApi = {
   },
   confirmReceipt(id: number, input: ConfirmCheckoutReceiptInput) {
     return httpClient.request<OrderCheckout>(`/orders/${id}/checkout/confirm-receipt`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  confirmMerchantReceipt(id: number, input: ConfirmCheckoutReceiptInput) {
+    return httpClient.request<OrderCheckout>(`/merchant-admin/orders/${id}/checkout/confirm-receipt`, {
       body: input,
       method: "POST"
     });

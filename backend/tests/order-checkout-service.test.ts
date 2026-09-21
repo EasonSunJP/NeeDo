@@ -436,6 +436,72 @@ describe("formal order checkout service", () => {
     expect(publisher.publish).toHaveBeenCalledTimes(2);
   });
 
+  it("builds a shop-scoped audited merchant receipt override", async () => {
+    const completedCheckout = {
+      id: 9,
+      orderId: 41,
+      status: "completed",
+      paymentMethod: "cash",
+      paymentEvidence: "merchant_receipt_override"
+    };
+    const repository = {
+      confirmCheckoutReceipt: jest.fn(async () => ({
+        outcome: "ok",
+        applied: false,
+        checkout: completedCheckout
+      })),
+      findOrderById: jest.fn(async () => null)
+    };
+    const audit = {
+      createInput: jest.fn((input) => input),
+      record: jest.fn(async () => undefined)
+    };
+    const merchant = {
+      ...customer,
+      userId: 404,
+      roles: ["merchant_owner"],
+      currentIdentityType: "merchant",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 12
+    };
+    const service = new BookingService(
+      repository as never,
+      undefined,
+      undefined,
+      audit as never
+    );
+
+    await (service.confirmCheckoutReceipt as any)(
+      merchant,
+      41,
+      {
+        reason: "store counted cash at counter",
+        idempotencyKey: "merchant-receipt-service-001"
+      },
+      { ip: "127.0.0.1", userAgent: "jest" },
+      "merchant"
+    );
+
+    expect(repository.confirmCheckoutReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: 41,
+        actorUserId: 404,
+        technicianProfileId: null,
+        merchantShopId: 12,
+        reason: "store counted cash at counter",
+        idempotencyKey: "merchant-receipt-service-001",
+        evidence: "merchant_receipt_override",
+        audit: expect.objectContaining({
+          action: "merchant_admin.order.checkout.receipt_override",
+          targetType: "BookingOrder",
+          targetId: 41,
+          metadata: { orderId: 41, shopId: 12, reason: "store counted cash at counter" }
+        })
+      }),
+      expect.objectContaining({ settle: expect.any(Function), settleAffiliate: expect.any(Function) })
+    );
+  });
+
   it("publishes every applied checkout advance once and skips idempotent replays", async () => {
     const cashCheckout = {
       id: 9,
@@ -581,7 +647,7 @@ describe("formal order checkout service", () => {
         idempotencyKey: "override-live-1"
       },
       context,
-      true
+      "operations"
     );
     await service.confirmCheckoutReceipt(
       operator as never,
@@ -591,7 +657,7 @@ describe("formal order checkout service", () => {
         idempotencyKey: "override-live-1"
       },
       context,
-      true
+      "operations"
     );
 
     expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledTimes(4);
@@ -1186,6 +1252,98 @@ describe("formal checkout repository state", () => {
     expect(replay).toMatchObject({ outcome: "ok", applied: false });
     expect(settle).toHaveBeenCalledTimes(1);
     expect(affiliate).toHaveBeenCalledTimes(1);
+  });
+
+  it("completes a cash checkout through an audited merchant receipt override", async () => {
+    const h = createRepositoryHarness();
+    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await h.repository.selectCheckoutPaymentMethod({
+      ...customerInput,
+      method: "cash",
+      idempotencyKey: "checkout-merchant-select-001"
+    });
+
+    const receipt = await (h.repository.confirmCheckoutReceipt as any)(
+      {
+        orderId: 41,
+        actorUserId: 404,
+        technicianProfileId: null,
+        merchantShopId: 12,
+        reason: "store counted cash at counter",
+        idempotencyKey: "checkout-merchant-receipt-001",
+        evidence: "merchant_receipt_override",
+        audit: {
+          actorId: 404,
+          action: "merchant_admin.order.checkout.receipt_override",
+          targetType: "BookingOrder",
+          targetId: 41,
+          metadata: { orderId: 41, reason: "store counted cash at counter" }
+        }
+      },
+      completionOptions
+    );
+
+    expect(receipt).toMatchObject({
+      outcome: "ok",
+      applied: true,
+      checkout: { status: "completed", paymentEvidence: "merchant_receipt_override" }
+    });
+    expect(h.order).toMatchObject({
+      status: "COMPLETED",
+      paymentStatus: "CONFIRMED",
+      paymentConfirmedById: 404,
+      paymentReference: `checkout:${h.checkout.id}:merchant-receipt`
+    });
+    expect(h.audits).toContainEqual(
+      expect.objectContaining({
+        actorId: 404,
+        action: "merchant_admin.order.checkout.receipt_override",
+        targetType: "BookingOrder",
+        targetId: 41,
+        metadata: expect.objectContaining({
+          orderId: 41,
+          checkoutId: h.checkout.id,
+          shopId: 12,
+          selectedMethod: "cash",
+          checkoutAmountJpy: 10_200,
+          reason: "store counted cash at counter"
+        })
+      })
+    );
+  });
+
+  it("hides a merchant receipt override outside the active shop scope", async () => {
+    const h = createRepositoryHarness();
+    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await h.repository.selectCheckoutPaymentMethod({
+      ...customerInput,
+      method: "cash",
+      idempotencyKey: "checkout-cross-shop-select-001"
+    });
+
+    await expect(
+      (h.repository.confirmCheckoutReceipt as any)(
+        {
+          orderId: 41,
+          actorUserId: 405,
+          technicianProfileId: null,
+          merchantShopId: 99,
+          reason: "cross-shop attempt",
+          idempotencyKey: "checkout-cross-shop-receipt-001",
+          evidence: "merchant_receipt_override",
+          audit: {
+            actorId: 405,
+            action: "merchant_admin.order.checkout.receipt_override",
+            targetType: "BookingOrder",
+            targetId: 41
+          }
+        },
+        completionOptions
+      )
+    ).resolves.toEqual({ outcome: "not_found" });
+    expect(h.order.status).toBe("AWAITING_PAYMENT_CONFIRMATION");
+    expect(h.checkout.receiptConfirmedAt).toBeNull();
+    expect(h.audits).toHaveLength(0);
   });
 
   it("fails closed when stored technician receipt evidence is missing, mismatched, or no longer assigned", async () => {

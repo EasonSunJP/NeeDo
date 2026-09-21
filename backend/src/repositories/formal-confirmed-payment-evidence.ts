@@ -66,6 +66,7 @@ export const formalConfirmedPaymentEvidence = (): Prisma.Sql => Prisma.sql`
       AND booking.payment_note = checkout.receipt_confirmation_reason
       AND booking.payment_reference IN (
         CONCAT(${"checkout:"}, checkout.id, ${":technician-receipt"}),
+        CONCAT(${"checkout:"}, checkout.id, ${":merchant-receipt"}),
         CONCAT(${"checkout:"}, checkout.id, ${":operations-receipt"})
       )
       AND (

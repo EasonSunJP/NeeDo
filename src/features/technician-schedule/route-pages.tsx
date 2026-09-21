@@ -928,6 +928,7 @@ function serviceRemainingSeconds(expectedEndsAt: string | null | undefined, now:
 function checkoutEvidenceLabel(checkout: OrderCheckout | null) {
   if (checkout?.paymentEvidence === "ndp_ledger") return "NDP 账本已结算";
   if (checkout?.paymentEvidence === "technician_receipt_confirmation") return "技师已确认收款";
+  if (checkout?.paymentEvidence === "merchant_receipt_override") return "店铺已代确认收款";
   if (checkout?.paymentEvidence === "operations_receipt_override") return "运营已确认收款";
   return "尚无收款凭证";
 }

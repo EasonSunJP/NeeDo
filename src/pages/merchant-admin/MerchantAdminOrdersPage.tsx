@@ -114,7 +114,7 @@ export function MerchantAdminOrdersPage() {
   const [refundReason, setRefundReason] = useState("已核实退款原因并完成线下退款");
   const [verificationCode, setVerificationCode] = useState("");
   const transitionInFlightRef = useRef(false);
-  const transitionKeys = useRef(new Map<"start" | "complete", { key: string; semantics: string }>());
+  const transitionKeys = useRef(new Map<"start" | "complete" | "receipt", { key: string; semantics: string }>());
 
   useEffect(() => {
     let current = true;
@@ -196,7 +196,7 @@ export function MerchantAdminOrdersPage() {
     setRevision((value) => value + 1);
   };
 
-  const retainedTransitionKey = (action: "start" | "complete", semantics: string) => {
+  const retainedTransitionKey = (action: "start" | "complete" | "receipt", semantics: string) => {
     const retained = transitionKeys.current.get(action);
     if (retained?.semantics === semantics) return retained.key;
     const key = createBookingIdempotencyKey();
@@ -277,25 +277,47 @@ export function MerchantAdminOrdersPage() {
   };
 
   const confirmPayment = async () => {
-    if (!selectedOrder || mutationStatus === "saving") return;
+    if (!selectedOrder || mutationStatus === "saving" || transitionInFlightRef.current) return;
     if (confirmIntent !== "payment-confirm") {
       setConfirmIntent("payment-confirm");
       return;
     }
+    const isFormalCheckoutReceipt =
+      selectedOrder.status === "awaiting_payment_confirmation" &&
+      selectedOrder.effectivePaymentMethod === "cash";
+    const receiptKey = isFormalCheckoutReceipt
+      ? retainedTransitionKey(
+          "receipt",
+          JSON.stringify([selectedOrder.id, "merchant_receipt_override"])
+        )
+      : null;
+    transitionInFlightRef.current = true;
     setMutationStatus("saving");
     setMutationError("");
     try {
-      await bookingApi.confirmManualPayment("merchant-admin", selectedOrder.id, {
-        amountJpy: Math.round(selectedOrder.totalAmountJpy),
-        method: paymentMethod,
-        reference: paymentReference.trim() || null,
-        note: "店铺后台确认线下收款"
-      });
+      if (isFormalCheckoutReceipt) {
+        await bookingApi.confirmMerchantReceipt(selectedOrder.id, {
+          reason: "店铺收银台已当面确认收到现金",
+          idempotencyKey: receiptKey!
+        });
+        transitionKeys.current.delete("receipt");
+      } else {
+        await bookingApi.confirmManualPayment("merchant-admin", selectedOrder.id, {
+          amountJpy: Math.round(selectedOrder.totalAmountJpy),
+          method: paymentMethod,
+          reference: paymentReference.trim() || null,
+          note: "店铺后台确认线下收款"
+        });
+      }
       finishMutation();
     } catch (error: unknown) {
+      if (isFormalCheckoutReceipt && !isAmbiguousOrderMutationError(error)) {
+        transitionKeys.current.delete("receipt");
+      }
       setMutationError(describeBookingOrderMutationError(error, language));
       setConfirmIntent(null);
     } finally {
+      transitionInFlightRef.current = false;
       setMutationStatus("idle");
     }
   };
@@ -540,6 +562,14 @@ export function MerchantAdminOrdersPage() {
 
             <section className="rounded-lg border border-line bg-white p-4">
               <h3 className="font-black text-ink">线下收款与退款</h3>
+              {selectedOrder.status === "awaiting_payment_confirmation" && selectedOrder.effectivePaymentMethod === "cash" ? (
+                <div className="mt-3 space-y-3">
+                  <p className="text-sm font-bold leading-6 text-ink/60">客户已选择现金支付。请仅在店铺实际收到订单全额后确认。</p>
+                  <Button disabled={mutationStatus === "saving"} onClick={() => void confirmPayment()}>
+                    {confirmIntent === "payment-confirm" ? `再次点击确认收款 ${yen(selectedOrder.totalAmountJpy)}` : `确认已收款 ${yen(selectedOrder.totalAmountJpy)}`}
+                  </Button>
+                </div>
+              ) : null}
               {selectedOrder.paymentStatus === "pending" && ["confirmed", "inService", "completed"].includes(selectedOrder.status) ? (
                 <div className="mt-3 space-y-3">
                   <select className="focus-ring h-10 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold text-ink" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as ManualPaymentMethod)}>
