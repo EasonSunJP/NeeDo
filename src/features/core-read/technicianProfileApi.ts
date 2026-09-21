@@ -76,7 +76,7 @@ export type TechnicianSelfProfileUpdate = Partial<Pick<
 export type TechnicianPersonalCenterUpdate = Pick<
   TechnicianSelfProfile,
   "gender" | "age" | "heightCm" | "languages" | "bio" | "visibility"
->;
+> & { avatarDataUrl?: string };
 
 export const technicianProfileApi = {
   getMine() {
@@ -89,6 +89,7 @@ export const technicianProfileApi = {
     });
     const scope = getAuthenticatedPersistentCacheScope();
     if (scope) await persistentResourceCache.write(scope, "technician:self", profile);
+    await persistentResourceCache.invalidate("public", `core:technician:${profile.id}`).catch(() => undefined);
     return profile;
   }
 };

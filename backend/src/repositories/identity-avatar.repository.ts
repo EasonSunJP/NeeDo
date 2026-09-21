@@ -18,14 +18,16 @@ export async function persistIdentityAvatar(
   transaction: Prisma.TransactionClient,
   input: IdentityAvatarMutation
 ): Promise<{ establishedBootstrap: boolean }> {
-  const bootstrap = await transaction.user.updateMany({
-    where: { avatarBootstrapUrl: null, id: input.userId },
-    data: {
-      avatarBootstrappedAt: input.capturedAt,
-      avatarBootstrapUrl: input.avatar.url,
-      avatarUrl: input.avatar.url
-    }
-  });
+  const bootstrap = input.source.kind === "technician"
+    ? { count: 0 }
+    : await transaction.user.updateMany({
+        where: { avatarBootstrapUrl: null, id: input.userId },
+        data: {
+          avatarBootstrappedAt: input.capturedAt,
+          avatarBootstrapUrl: input.avatar.url,
+          avatarUrl: input.avatar.url
+        }
+      });
 
   if (bootstrap.count === 0 && input.source.kind === "customer") {
     await transaction.user.update({

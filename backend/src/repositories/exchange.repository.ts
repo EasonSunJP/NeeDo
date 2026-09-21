@@ -416,6 +416,18 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
                 membershipExpiresAt: true,
                 deletedAt: true
               }
+            },
+            technicianProfile: {
+              select: {
+                id: true,
+                deletedAt: true,
+                mediaAssets: {
+                  where: { usageType: "avatar", isActive: true, deletedAt: null },
+                  orderBy: { id: "desc" },
+                  take: 1,
+                  select: { url: true }
+                }
+              }
             }
           }
         }
@@ -461,7 +473,13 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       scopeId: identity.scopeId,
       publicId: effectivePublicId,
       displayName: identity.displayName ?? identity.user.username,
-      avatarUrl: identity.user.avatarUrl,
+      avatarUrl: identity.type === "technician"
+        ? identity.scopeType === "technician_profile" &&
+          identity.user.technicianProfile?.id === identity.scopeId &&
+          identity.user.technicianProfile.deletedAt === null
+          ? identity.user.technicianProfile.mediaAssets[0]?.url ?? null
+          : null
+        : identity.user.avatarUrl,
       isTestAccount: identity.user.isTestAccount,
       customerMembership:
         customerProfile && customerProfile.deletedAt === null
@@ -643,13 +661,42 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         where,
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         skip: pagination.skip,
-        take: pagination.take
+        take: pagination.take,
+        include: {
+          authorIdentity: { select: { type: true, scopeType: true, scopeId: true } },
+          author: {
+            select: {
+              technicianProfile: {
+                select: {
+                  id: true,
+                  deletedAt: true,
+                  mediaAssets: {
+                    where: { usageType: "avatar", isActive: true, deletedAt: null },
+                    orderBy: { id: "desc" },
+                    take: 1,
+                    select: { url: true }
+                  }
+                }
+              }
+            }
+          }
+        }
       }),
       this.client.exchangeComment.count({ where })
     ]);
 
     return buildPaginatedResponse(
-      rows.map((row) => this.mapComment(row)),
+      rows.map((row) => this.mapComment({
+        ...row,
+        authorAvatarUrl: row.authorIdentityType === "technician"
+          ? row.authorIdentity?.type === "technician" &&
+            row.authorIdentity.scopeType === "technician_profile" &&
+            row.author.technicianProfile?.id === row.authorIdentity.scopeId &&
+            row.author.technicianProfile.deletedAt === null
+            ? row.author.technicianProfile.mediaAssets[0]?.url ?? null
+            : null
+          : row.authorAvatarUrl
+      })),
       total,
       pagination
     );

@@ -12,13 +12,14 @@ vi.mock("../../lib/persistentCacheScope", () => ({
 }));
 
 vi.mock("../../lib/persistentResourceCache", () => ({
-  persistentResourceCache: { write: vi.fn() }
+  persistentResourceCache: { invalidate: vi.fn(), write: vi.fn() }
 }));
 
 describe("technicianProfileApi", () => {
   beforeEach(() => {
     vi.mocked(httpClient.request).mockReset();
     vi.mocked(persistentResourceCache.write).mockReset().mockResolvedValue({});
+    vi.mocked(persistentResourceCache.invalidate).mockReset().mockResolvedValue();
   });
 
   it("reads and patches the approved authenticated technician fields without a client-selected id", async () => {
@@ -52,5 +53,22 @@ describe("technicianProfileApi", () => {
       "technician:self",
       saved
     );
+  });
+
+  it("invalidates the public technician profile after saving an avatar", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({ id: 81, avatarUrl: "/technician-avatar.png" });
+
+    await technicianProfileApi.updateMine({ avatarDataUrl: "data:image/png;base64,dGVjaA==" });
+
+    expect(persistentResourceCache.invalidate).toHaveBeenCalledWith("public", "core:technician:81");
+  });
+
+  it("keeps the confirmed save successful when public cache cleanup fails", async () => {
+    const saved = { id: 81, avatarUrl: "/technician-avatar.png" };
+    vi.mocked(httpClient.request).mockResolvedValue(saved);
+    vi.mocked(persistentResourceCache.invalidate).mockRejectedValue(new Error("cache unavailable"));
+
+    await expect(technicianProfileApi.updateMine({ avatarDataUrl: "data:image/png;base64,dGVjaA==" }))
+      .resolves.toBe(saved);
   });
 });

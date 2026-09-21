@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { persistIdentityAvatar } from "../src/repositories/identity-avatar.repository";
 
 describe("persistIdentityAvatar", () => {
-  it("claims the first account avatar as the immutable cross-identity baseline", async () => {
+  it("keeps the account avatar untouched when a technician first uploads an identity avatar", async () => {
     const transaction = {
       mediaAsset: {
         create: jest.fn().mockResolvedValue({ id: 91 }),
@@ -23,14 +23,7 @@ describe("persistIdentityAvatar", () => {
       userId: 9
     });
 
-    expect(transaction.user.updateMany).toHaveBeenCalledWith({
-      where: { avatarBootstrapUrl: null, id: 9 },
-      data: {
-        avatarBootstrappedAt: capturedAt,
-        avatarBootstrapUrl: "/media/avatars/first.png",
-        avatarUrl: "/media/avatars/first.png"
-      }
-    });
+    expect(transaction.user.updateMany).not.toHaveBeenCalled();
     expect(transaction.user.update).not.toHaveBeenCalled();
     expect(transaction.mediaAsset.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

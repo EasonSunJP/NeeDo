@@ -55,6 +55,40 @@ const demandRow = {
 };
 
 describe("ExchangePostRepository", () => {
+  it("resolves a technician comment author avatar from the technician identity", async () => {
+    const findFirst = jest.fn(async () => ({
+      id: 19,
+      userId: 9,
+      type: "technician",
+      scopeType: "technician_profile",
+      scopeId: 31,
+      displayName: "彩",
+      publicIdentifier: { publicId: "s0000000031", status: "ACTIVE", deletedAt: null },
+      user: {
+        username: "用户彩",
+        avatarUrl: "/user-avatar.png",
+        needoId: "u0000000009",
+        isTestAccount: false,
+        customerProfile: null,
+        technicianProfile: {
+          id: 31,
+          deletedAt: null,
+          mediaAssets: [{ url: "/technician-avatar.png" }]
+        }
+      }
+    }));
+    const repository = new ExchangePostRepository({ userIdentity: { findFirst } } as never);
+
+    await expect(repository.resolveActor({
+      userId: 9,
+      identityId: 19,
+      identityType: "technician",
+      scopeType: "technician_profile",
+      scopeId: 31,
+      publicId: "s0000000031"
+    })).resolves.toMatchObject({ avatarUrl: "/technician-avatar.png" });
+  });
+
   it("resolves a merchant Intelligence service from the active shop authority", async () => {
     const findUnique = jest.fn(async () => ({
       id: 501,
@@ -399,6 +433,18 @@ describe("ExchangePostRepository", () => {
                 membershipStartsAt: true,
                 membershipExpiresAt: true,
                 deletedAt: true
+              }
+            },
+            technicianProfile: {
+              select: {
+                id: true,
+                deletedAt: true,
+                mediaAssets: {
+                  where: { usageType: "avatar", isActive: true, deletedAt: null },
+                  orderBy: { id: "desc" },
+                  take: 1,
+                  select: { url: true }
+                }
               }
             }
           }
@@ -1184,11 +1230,61 @@ describe("ExchangePostRepository", () => {
       where: { postId: 41, deletedAt: null },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       skip: 0,
-      take: 10
+      take: 10,
+      include: {
+        authorIdentity: { select: { type: true, scopeType: true, scopeId: true } },
+        author: {
+          select: {
+            technicianProfile: {
+              select: {
+                id: true,
+                deletedAt: true,
+                mediaAssets: {
+                  where: { usageType: "avatar", isActive: true, deletedAt: null },
+                  orderBy: { id: "desc" },
+                  take: 1,
+                  select: { url: true }
+                }
+              }
+            }
+          }
+        }
+      }
     });
     expect(count).toHaveBeenCalledWith({ where: { postId: 41, deletedAt: null } });
     expect(JSON.stringify(result)).not.toContain("authorUserId");
     expect(JSON.stringify(result)).not.toContain("authorIdentityId");
+  });
+
+  it("shows the current technician avatar on comments written before an avatar change", async () => {
+    const row = {
+      id: 301,
+      postId: 41,
+      authorPublicId: "s0000000031",
+      authorIdentityType: "technician",
+      authorDisplayName: "彩",
+      authorAvatarUrl: "/old-technician-avatar.png",
+      content: "予約できますか？",
+      createdAt: new Date("2026-08-30T02:30:00.000Z"),
+      authorIdentity: { type: "technician", scopeType: "technician_profile", scopeId: 31 },
+      author: {
+        technicianProfile: {
+          id: 31,
+          deletedAt: null,
+          mediaAssets: [{ url: "/technician-avatar.png" }]
+        }
+      }
+    };
+    const repository = new ExchangePostRepository({
+      exchangeComment: {
+        findMany: jest.fn(async () => [row]),
+        count: jest.fn(async () => 1)
+      }
+    } as never);
+
+    const result = await repository.listComments(41, { page: 1, pageSize: 10 });
+
+    expect(result.list[0]?.author.avatarUrl).toBe("/technician-avatar.png");
   });
 
   it("exposes transaction-bound publication primitives with persisted fingerprint and audit", async () => {

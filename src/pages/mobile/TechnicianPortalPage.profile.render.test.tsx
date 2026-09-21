@@ -8,6 +8,7 @@ import { coreReadApi, type CoreTechnicianDetail } from "../../features/core-read
 import { technicianProfileApi, type TechnicianSelfProfile } from "../../features/core-read/technicianProfileApi";
 import { pricingModeApi, type TechnicianServicePayload } from "../../features/pricing-mode/api";
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
+import * as imageUpload from "../../lib/imageUpload";
 import { TechnicianProfileInfoView, fromTechnicianSelfProfile } from "../../shared/technician-profile";
 import { TechnicianPortalPage } from "./TechnicianPortalPage";
 import source from "./TechnicianPortalPage.tsx?raw";
@@ -425,6 +426,34 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     });
     expect(container.querySelector('[data-testid="technician-profile-save-action"]')).toBeNull();
     expect(container.querySelector('button[aria-label="编辑信息卡"]')).not.toBeNull();
+  });
+
+  it("previews and saves an avatar only through the active technician profile", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(employedTechnician);
+    vi.spyOn(imageUpload, "readImageFileAsDataUrl").mockResolvedValue("data:image/png;base64,dGVjaG5pY2lhbg==");
+    const updateRequest = vi.spyOn(technicianProfileApi, "updateMine").mockResolvedValue({
+      ...profile,
+      avatarUrl: "/technician-avatar.png"
+    });
+
+    await renderPortal();
+    await flushUntil(() => expect(container.querySelector('button[aria-label="编辑信息卡"]')).not.toBeNull());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="编辑信息卡"]')?.click());
+
+    const avatarInput = container.querySelector<HTMLInputElement>('input[aria-label="技师头像"]');
+    expect(avatarInput).not.toBeNull();
+    const file = new File(["avatar"], "technician.png", { type: "image/png" });
+    Object.defineProperty(avatarInput, "files", { configurable: true, value: [file] });
+    await act(async () => avatarInput?.dispatchEvent(new Event("change", { bubbles: true })));
+    await flushUntil(() => expect(container.querySelector<HTMLImageElement>('img[alt="技师头像预览"]')?.src).toContain("data:image/png;base64,dGVjaG5pY2lhbg=="));
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="technician-profile-save-action"]')?.click());
+    await flushUntil(() => expect(updateRequest).toHaveBeenCalledTimes(1));
+    expect(updateRequest).toHaveBeenCalledWith(expect.objectContaining({
+      avatarDataUrl: "data:image/png;base64,dGVjaG5pY2lhbg=="
+    }));
+    await flushUntil(() => expect(container.querySelector<HTMLImageElement>('img[alt="小林技师"]')?.src).toContain("/technician-avatar.png"));
   });
 
   it("requests and renders formal metrics for an independent technician without a shop", async () => {
