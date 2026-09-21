@@ -49,6 +49,12 @@ const operations = [
   ["post", "/api/v1/orders/{id}/checkout/confirm-receipt", "order:checkout:receipt:confirm", "200"],
   [
     "post",
+    "/api/v1/merchant-admin/orders/{id}/checkout/confirm-receipt",
+    "merchant-admin:order:checkout:receipt-override",
+    "200"
+  ],
+  [
+    "post",
     "/api/v1/backoffice/orders/{id}/checkout/confirm-receipt",
     "backoffice:order:checkout:receipt-override",
     "200"
@@ -92,7 +98,7 @@ describe("formal order fulfillment OpenAPI contract", () => {
     ).toContain("error.order.service_end_too_early");
   });
 
-  it("documents all 16 authenticated operations with exact permissions and unique operation IDs", () => {
+  it("documents all 17 authenticated operations with exact permissions and unique operation IDs", () => {
     const operationIds: string[] = [];
     for (const [method, path, permission, success] of operations) {
       const operation = paths[path]?.[method];
@@ -228,6 +234,7 @@ describe("formal order fulfillment OpenAPI contract", () => {
     for (const path of [
       "/api/v1/orders/{id}/checkout/pay/ndp",
       "/api/v1/orders/{id}/checkout/confirm-receipt",
+      "/api/v1/merchant-admin/orders/{id}/checkout/confirm-receipt",
       "/api/v1/backoffice/orders/{id}/checkout/confirm-receipt"
     ]) {
       expect(bodySchema("post", path).additionalProperties).toBe(false);
@@ -377,6 +384,7 @@ describe("formal order fulfillment OpenAPI contract", () => {
     expect(checkout.properties.paymentEvidence.enum).toEqual([
       "ndp_ledger",
       "technician_receipt_confirmation",
+      "merchant_receipt_override",
       "operations_receipt_override",
       null
     ]);

@@ -4603,6 +4603,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   enum: [
                     "ndp_ledger",
                     "technician_receipt_confirmation",
+                    "merchant_receipt_override",
                     "operations_receipt_override"
                   ]
                 },
@@ -12751,6 +12752,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             enum: [
               "ndp_ledger",
               "technician_receipt_confirmation",
+              "merchant_receipt_override",
               "operations_receipt_override",
               null
             ]
@@ -24135,6 +24137,37 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "409": checkoutConflictResponse,
           "503": dependencyUnavailableResponse(
             "the checkout ledger, affiliate, or booking-settlement dependency is unavailable"
+          )
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/orders/{id}/checkout/confirm-receipt`]: {
+      post: {
+        operationId: "overrideMerchantOrderCheckoutReceipt",
+        tags: ["Booking Checkout"],
+        summary: "Owning merchant confirms offline receipt",
+        description:
+          "Requires merchant-admin:order:checkout:receipt-override and the active shop scope owning the order. Audit and completion commit in one transaction.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "merchant-admin:order:checkout:receipt-override",
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: authJsonBody(
+          {
+            reason: { $ref: "#/components/schemas/TrimmedVisibleReason500" },
+            idempotencyKey: { $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey" }
+          },
+          ["reason", "idempotencyKey"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Completed merchant receipt override", {
+            $ref: "#/components/schemas/OrderCheckout"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "409": checkoutConflictResponse,
+          "503": dependencyUnavailableResponse(
+            "the merchant audit, checkout ledger, affiliate, or booking-settlement dependency is unavailable"
           )
         }
       }

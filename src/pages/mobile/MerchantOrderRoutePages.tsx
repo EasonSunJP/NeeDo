@@ -1054,6 +1054,7 @@ function formalMerchantOrderReadOnlyMessage(status: BookingOrder["status"]) {
 function formalCheckoutEvidenceLabel(evidence: OrderCheckout["paymentEvidence"]) {
   if (evidence === "ndp_ledger") return "NDP 账本已结算";
   if (evidence === "technician_receipt_confirmation") return "技师已确认收款";
+  if (evidence === "merchant_receipt_override") return "店铺已代确认收款";
   if (evidence === "operations_receipt_override") return "运营已确认收款";
   return "尚无收款凭证";
 }

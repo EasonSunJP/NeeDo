@@ -604,8 +604,7 @@ export class BookingController {
               getAuthenticatedAccess(response),
               this.getOrderId(request),
               confirmReceiptBodySchema.parse(request.body),
-              getRequestContext(request),
-              false
+              getRequestContext(request)
             )
           )
         );
@@ -629,7 +628,31 @@ export class BookingController {
               this.getOrderId(request),
               confirmReceiptBodySchema.parse(request.body),
               getRequestContext(request),
-              true
+              "operations"
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public overrideMerchantCheckoutReceipt = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.confirmCheckoutReceipt(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              confirmReceiptBodySchema.parse(request.body),
+              getRequestContext(request),
+              "merchant"
             )
           )
         );

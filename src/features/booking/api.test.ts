@@ -672,6 +672,28 @@ describe("bookingApi", () => {
     });
   });
 
+  it("confirms a formal checkout receipt through the merchant-scoped endpoint", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      code: 0,
+      message: "success",
+      data: { id: 91, orderId: 88, status: "completed" }
+    }));
+
+    await bookingApi.confirmMerchantReceipt(88, {
+      reason: "店铺收银台已当面确认收到现金",
+      idempotencyKey: "merchant-receipt-0001"
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/merchant-admin/orders/88/checkout/confirm-receipt",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(lastRequestBody()).toEqual({
+      reason: "店铺收银台已当面确认收到现金",
+      idempotencyKey: "merchant-receipt-0001"
+    });
+  });
+
   it("submits an idempotent overdue appointment resolution command", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       code: 0,

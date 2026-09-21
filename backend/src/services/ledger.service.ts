@@ -645,7 +645,10 @@ export interface BookingLedgerSettlementInput {
         amountJpy: number;
         baseServiceAmountJpy?: number;
         extensionAmountJpy?: number;
-        evidence: "technician_receipt_confirmation" | "operations_receipt_override";
+        evidence:
+          | "technician_receipt_confirmation"
+          | "merchant_receipt_override"
+          | "operations_receipt_override";
         confirmedById: number;
         confirmedAt: Date;
         reason: string;
@@ -3857,7 +3860,11 @@ export class LedgerService
       label: "线下服务收入已确认",
       amountJpy: payment.amountJpy,
       actorType:
-        payment.evidence === "technician_receipt_confirmation" ? "technician" : "backoffice",
+        payment.evidence === "technician_receipt_confirmation"
+          ? "technician"
+          : payment.evidence === "merchant_receipt_override"
+            ? "merchant"
+            : "backoffice",
       occurredAt: payment.confirmedAt.toISOString(),
       status: "confirmed",
       metadata: {

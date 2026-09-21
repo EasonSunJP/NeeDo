@@ -85,6 +85,7 @@ export const BOOKING_ROUTE_PERMISSIONS = {
   checkoutPaymentMethodWrite: "order:checkout:payment-method:write",
   checkoutNdpPay: "order:checkout:ndp:pay",
   checkoutReceiptConfirm: "order:checkout:receipt:confirm",
+  merchantCheckoutReceiptOverride: "merchant-admin:order:checkout:receipt-override",
   checkoutReceiptOverride: "backoffice:order:checkout:receipt-override",
   merchantPaymentWrite: "merchant-admin:order-payment:write",
   backofficePaymentWrite: "backoffice:order-payment:write",
@@ -366,6 +367,13 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.checkoutReceiptConfirm),
     validateRequest({ params: orderIdParamSchema, body: confirmReceiptBodySchema }),
     controller.confirmCheckoutReceipt
+  );
+  router.post(
+    "/merchant-admin/orders/:id/checkout/confirm-receipt",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.merchantCheckoutReceiptOverride),
+    validateRequest({ params: orderIdParamSchema, body: confirmReceiptBodySchema }),
+    controller.overrideMerchantCheckoutReceipt
   );
   router.post(
     "/backoffice/orders/:id/checkout/confirm-receipt",

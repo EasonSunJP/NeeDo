@@ -36,6 +36,14 @@ describe("MerchantAdminOrdersPage formal workflow", () => {
     expect(source).toContain('bookingApi.refundManualPayment("merchant-admin"');
   });
 
+  it("offers the merchant-scoped receipt confirmation for a formal cash checkout", () => {
+    expect(source).toContain('selectedOrder.status === "awaiting_payment_confirmation"');
+    expect(source).toContain('selectedOrder.effectivePaymentMethod === "cash"');
+    expect(source).toContain("bookingApi.confirmMerchantReceipt(selectedOrder.id");
+    expect(source).toContain('reason: "店铺收银台已当面确认收到现金"');
+    expect(source).toContain("idempotencyKey:");
+  });
+
   it("uses retained idempotency keys and blocks duplicate transition submissions", () => {
     expect(source).toContain("transitionInFlightRef.current");
     expect(source).toContain("transitionKeys.current");

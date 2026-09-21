@@ -483,6 +483,8 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                AND JSON_UNQUOTE(JSON_EXTRACT(event.metadata, ${"$.reason"})) = candidate.receipt_confirmation_reason
                AND ((candidate.payment_reference = CONCAT('checkout:', candidate.checkout_id, ':technician-receipt')
                      AND JSON_UNQUOTE(JSON_EXTRACT(event.metadata, ${"$.paymentEvidence"})) = ${"technician_receipt_confirmation"})
+                 OR (candidate.payment_reference = CONCAT('checkout:', candidate.checkout_id, ':merchant-receipt')
+                     AND JSON_UNQUOTE(JSON_EXTRACT(event.metadata, ${"$.paymentEvidence"})) = ${"merchant_receipt_override"})
                  OR (candidate.payment_reference = CONCAT('checkout:', candidate.checkout_id, ':operations-receipt')
                      AND JSON_UNQUOTE(JSON_EXTRACT(event.metadata, ${"$.paymentEvidence"})) = ${"operations_receipt_override"}))) = 1
         AND (SELECT COUNT(*) FROM order_service_events AS event
@@ -495,6 +497,24 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
         AND (
           (candidate.payment_reference = CONCAT('checkout:', candidate.checkout_id, ':technician-receipt')
            AND candidate.receipt_confirmed_by_id = candidate.technician_user_id)
+          OR
+          (candidate.payment_reference = CONCAT('checkout:', candidate.checkout_id, ':merchant-receipt')
+           AND (SELECT COUNT(*) FROM audit_logs AS audit
+                WHERE audit.actor_id = candidate.receipt_confirmed_by_id
+                  AND audit.action = ${"merchant_admin.order.checkout.receipt_override"}
+                  AND audit.target_type = ${"BookingOrder"}
+                  AND audit.target_id = candidate.id AND audit.deleted_at IS NULL
+                  AND JSON_LENGTH(audit.metadata) = 6
+                  AND JSON_TYPE(JSON_EXTRACT(audit.metadata, ${"$.orderId"})) = ${"INTEGER"}
+                  AND JSON_TYPE(JSON_EXTRACT(audit.metadata, ${"$.checkoutId"})) = ${"INTEGER"}
+                  AND JSON_TYPE(JSON_EXTRACT(audit.metadata, ${"$.shopId"})) = ${"INTEGER"}
+                  AND JSON_TYPE(JSON_EXTRACT(audit.metadata, ${"$.checkoutAmountJpy"})) = ${"INTEGER"}
+                  AND CAST(JSON_UNQUOTE(JSON_EXTRACT(audit.metadata, ${"$.orderId"})) AS UNSIGNED) = candidate.id
+                  AND CAST(JSON_UNQUOTE(JSON_EXTRACT(audit.metadata, ${"$.checkoutId"})) AS UNSIGNED) = candidate.checkout_id
+                  AND CAST(JSON_UNQUOTE(JSON_EXTRACT(audit.metadata, ${"$.shopId"})) AS UNSIGNED) = candidate.shop_id
+                  AND JSON_UNQUOTE(JSON_EXTRACT(audit.metadata, ${"$.selectedMethod"})) = candidate.checkout_payment_method
+                  AND CAST(JSON_UNQUOTE(JSON_EXTRACT(audit.metadata, ${"$.checkoutAmountJpy"})) AS SIGNED) = candidate.checkout_amount_jpy
+                  AND JSON_UNQUOTE(JSON_EXTRACT(audit.metadata, ${"$.reason"})) = candidate.receipt_confirmation_reason) = 1)
           OR
           (candidate.payment_reference = CONCAT('checkout:', candidate.checkout_id, ':operations-receipt')
            AND (SELECT COUNT(*) FROM audit_logs AS audit

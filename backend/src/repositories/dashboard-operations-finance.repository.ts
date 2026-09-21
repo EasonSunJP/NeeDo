@@ -39,7 +39,11 @@ export interface TravelFareDetailRow {
   policyVersion: number;
   bandMaximumDistanceMeters: number;
   fareAmountJpy: number;
-  paymentEvidence: "ndp_ledger" | "technician_receipt_confirmation" | "operations_receipt_override";
+  paymentEvidence:
+    | "ndp_ledger"
+    | "technician_receipt_confirmation"
+    | "merchant_receipt_override"
+    | "operations_receipt_override";
   reversalState: "none";
 }
 
@@ -122,6 +126,8 @@ export class DashboardOperationsFinanceRepository implements DashboardOperations
         checkout.travel_fare_amount_jpy AS fareAmountJpy,
         CASE
           WHEN checkout.ledger_transaction_id IS NOT NULL THEN ${"ndp_ledger"}
+          WHEN booking.payment_reference = CONCAT(${"checkout:"}, checkout.id, ${":merchant-receipt"})
+            THEN ${"merchant_receipt_override"}
           WHEN booking.payment_reference = CONCAT(${"checkout:"}, checkout.id, ${":operations-receipt"})
             THEN ${"operations_receipt_override"}
           ELSE ${"technician_receipt_confirmation"}
@@ -195,6 +201,7 @@ export class DashboardOperationsFinanceRepository implements DashboardOperations
             AND booking.payment_note = checkout.receipt_confirmation_reason
             AND booking.payment_reference IN (
               CONCAT(${"checkout:"}, checkout.id, ${":technician-receipt"}),
+              CONCAT(${"checkout:"}, checkout.id, ${":merchant-receipt"}),
               CONCAT(${"checkout:"}, checkout.id, ${":operations-receipt"})
             )
             AND (

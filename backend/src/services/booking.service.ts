@@ -1168,15 +1168,19 @@ export class BookingService {
     orderId: number,
     input: ConfirmReceiptInput,
     context: AuthRequestContext,
-    operationsOverride = false
+    confirmationMode: "technician" | "merchant" | "operations" = "technician"
   ): Promise<OrderCheckoutViewPayload> {
-    if (operationsOverride) {
+    let merchantShopId: number | null = null;
+    if (confirmationMode === "operations") {
       if (
         actor.currentIdentityScopeType !== "global" &&
         actor.currentIdentityScopeType !== "platform"
       ) {
         throw this.notFoundError();
       }
+      if (!this.auditLogService?.createInput) throw this.dependencyUnavailableError();
+    } else if (confirmationMode === "merchant") {
+      merchantShopId = requireMerchantShopId(actor);
       if (!this.auditLogService?.createInput) throw this.dependencyUnavailableError();
     } else if (
       actor.currentIdentityType !== "technician" ||
@@ -1187,7 +1191,7 @@ export class BookingService {
     }
     const availablePaymentMethods = await this.getAvailablePaymentMethods();
     const actorInput = this.checkoutActorInput(actor, orderId);
-    const repositoryInput = operationsOverride
+    const repositoryInput = confirmationMode === "operations"
       ? {
           ...actorInput,
           reason: input.reason,
@@ -1202,6 +1206,22 @@ export class BookingService {
             metadata: { orderId, reason: input.reason }
           })
         }
+      : confirmationMode === "merchant"
+        ? {
+            ...actorInput,
+            merchantShopId: merchantShopId!,
+            reason: input.reason,
+            idempotencyKey: input.idempotencyKey,
+            evidence: "merchant_receipt_override" as const,
+            audit: this.auditLogService!.createInput!({
+              actor,
+              action: "merchant_admin.order.checkout.receipt_override",
+              targetType: "BookingOrder",
+              targetId: orderId,
+              context,
+              metadata: { orderId, shopId: merchantShopId!, reason: input.reason }
+            })
+          }
       : {
           ...actorInput,
           reason: input.reason,
@@ -1350,6 +1370,7 @@ export class BookingService {
         : (context.checkout.paymentMethod === "cash" ||
               context.checkout.paymentMethod === "other") &&
             (context.checkout.paymentEvidence === "technician_receipt_confirmation" ||
+              context.checkout.paymentEvidence === "merchant_receipt_override" ||
               context.checkout.paymentEvidence === "operations_receipt_override") &&
             context.checkout.receiptConfirmedAt &&
             context.checkout.receiptConfirmationReason
