@@ -341,7 +341,6 @@ type TechnicianCardRecord = TechnicianProfile & {
   };
   user: {
     id: number;
-    avatarBootstrapUrl: string | null;
     identities: Array<{ id: number; publicIdentifier: PublicIdentifier | null }>;
   };
   shop?: { latitude: Prisma.Decimal | null; longitude: Prisma.Decimal | null } | null;
@@ -1131,7 +1130,6 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       user: {
         select: {
           id: true,
-          avatarBootstrapUrl: true,
           identities: {
             where: {
               deletedAt: null,
@@ -1772,8 +1770,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       displayName: technician.displayName,
       city: technician.city,
       avatarUrl:
-        technician.mediaAssets.find((asset) => asset.usageType === "avatar")?.url ??
-        technician.user.avatarBootstrapUrl,
+        technician.mediaAssets.find((asset) => asset.usageType === "avatar")?.url ?? null,
       reviewSummary: this.mapTechnicianReviewSummary(technician.reviewSummary),
       age: technician.age,
       favoriteCount: technician._count.entityFavorites,

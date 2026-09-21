@@ -267,6 +267,61 @@ describe("EntityEngagementRepository", () => {
     );
   });
 
+  it("uses only technician identity media for favorite technician cards", async () => {
+    const createdAt = new Date("2026-09-09T00:00:00.000Z");
+    const client = {
+      entityFavorite: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              createdAt,
+              shopId: null,
+              technicianProfileId: 8,
+              serviceId: null,
+              technicianServiceId: null,
+              shop: null,
+              service: null,
+              technicianService: null,
+              technicianProfile: {
+                displayName: "山田 花子",
+                bio: "整体",
+                languages: ["ja"],
+                mediaAssets: [],
+                reviewSummary: null,
+                performanceSummary: null,
+                _count: { entityShareEvents: 0 },
+                user: {
+                  avatarUrl: "/account-avatar-must-not-leak.png",
+                  avatarBootstrapUrl: "/account-bootstrap-must-not-leak.png",
+                  identities: [{ publicIdentifier: { publicId: "s0000000008" } }]
+                }
+              }
+            }
+          ])
+          .mockResolvedValueOnce([
+            {
+              shopId: null,
+              technicianProfileId: 8,
+              serviceId: null,
+              technicianServiceId: null
+            }
+          ]),
+        count: jest.fn(async () => 1),
+        groupBy: jest.fn(async () => [
+          { technicianProfileId: 8, _count: { _all: 1 } }
+        ])
+      }
+    };
+    const repository = new EntityEngagementRepository(client as never);
+
+    await expect(
+      repository.listFavorites({ userId: 42, page: 1, pageSize: 20, targetType: "technician" })
+    ).resolves.toMatchObject({
+      list: [{ card: { kind: "technician", imageUrl: null } }]
+    });
+  });
+
   it("counts a successful system share once for a repeated idempotency key", async () => {
     const event = {
       id: 21,

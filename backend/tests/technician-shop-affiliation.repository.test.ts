@@ -123,6 +123,21 @@ describe("TechnicianShopAffiliationRepository", () => {
     );
   });
 
+  it("does not fall back to the account avatar when a technician has no identity avatar", async () => {
+    const record = employeeRecord();
+    record.technicianProfile.mediaAssets = [];
+    const repository = new TechnicianShopAffiliationRepository({
+      technicianShopAffiliation: {
+        findMany: jest.fn().mockResolvedValue([record]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as unknown as PrismaClient);
+
+    await expect(
+      repository.listCurrentShopEmployees({ shopId: 16, page: 1, pageSize: 20 })
+    ).resolves.toMatchObject({ list: [{ avatarUrl: null }] });
+  });
+
   it("normalizes a legacy exclusive row to the single collaboration relationship", async () => {
     const repository = new TechnicianShopAffiliationRepository({
       technicianShopAffiliation: {

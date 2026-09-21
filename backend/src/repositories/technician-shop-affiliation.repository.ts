@@ -129,7 +129,6 @@ const employeeAffiliationSelect = Prisma.validator<Prisma.TechnicianShopAffiliat
       },
       user: {
         select: {
-          avatarBootstrapUrl: true,
           email: true,
           phone: true,
           isActive: true,
@@ -768,9 +767,7 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
         : ((workState?.status ?? "unsynced") as WorkStatus),
       needoId: technicianIdentifier.publicId,
       displayName: record.technicianProfile.displayName,
-      avatarUrl:
-        record.technicianProfile.mediaAssets[0]?.url ??
-        record.technicianProfile.user.avatarBootstrapUrl,
+      avatarUrl: record.technicianProfile.mediaAssets[0]?.url ?? null,
       email: record.technicianProfile.user.email,
       phone: record.technicianProfile.user.phone,
       profileStatus: record.technicianProfile.status,

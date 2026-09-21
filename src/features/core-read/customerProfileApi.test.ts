@@ -72,6 +72,7 @@ describe("customerProfileApi", () => {
       })
     ).toMatchObject({
       nickname: "松尾 雄大",
+      avatar: "/images/generated/profiles/dodo-default-avatar.webp",
       gender: "private",
       age: "36",
       height: "171cm",

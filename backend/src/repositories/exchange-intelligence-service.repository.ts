@@ -43,8 +43,8 @@ interface TechnicianServiceProjection {
     displayName: string;
     serviceArea: string | null;
     serviceAreasJson: Prisma.JsonValue | null;
+    mediaAssets: Array<{ url: string }>;
     user: {
-      avatarUrl: string | null;
       identities: Array<{ publicIdentifier: { publicId: string } | null }>;
     };
   };
@@ -206,9 +206,14 @@ export class ExchangeIntelligenceServiceRepository {
               displayName: true,
               serviceArea: true,
               serviceAreasJson: true,
+              mediaAssets: {
+                where: { usageType: "avatar", isActive: true, deletedAt: null },
+                orderBy: { id: "desc" },
+                take: 1,
+                select: { url: true }
+              },
               user: {
                 select: {
-                  avatarUrl: true,
                   identities: {
                     where: {
                       type: { in: ["technician", "service", "s"] },
@@ -276,7 +281,7 @@ export class ExchangeIntelligenceServiceRepository {
       technician: {
         publicId,
         displayName: record.technicianProfile.displayName,
-        avatarUrl: record.technicianProfile.user.avatarUrl,
+        avatarUrl: record.technicianProfile.mediaAssets[0]?.url ?? null,
         serviceArea: record.technicianProfile.serviceArea,
         serviceAreas: this.stringArray(record.technicianProfile.serviceAreasJson)
       }

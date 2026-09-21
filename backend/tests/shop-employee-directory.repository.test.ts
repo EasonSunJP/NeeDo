@@ -26,7 +26,7 @@ const technicianEmployeeRecord = {
   user: {
     needoId: "u0000000047",
     username: "斋藤账号",
-    avatarUrl: null,
+    avatarUrl: "/account-avatar-must-not-leak.png",
     email: "staff@example.com",
     phone: null
   },
@@ -40,6 +40,7 @@ const technicianEmployeeRecord = {
     technicianProfile: {
       displayName: "斋藤 花子",
       deletedAt: null,
+      mediaAssets: [{ url: "/technician-identity-avatar.png" }],
       user: {
         identities: [
           {
@@ -153,7 +154,7 @@ describe("ShopEmployeeDirectoryRepository", () => {
         {
           needoId: "u0000000047",
           displayName: "斋藤 花子",
-          avatarUrl: null,
+          avatarUrl: "/technician-identity-avatar.png",
           email: "staff@example.com",
           phone: null,
           status: "active",

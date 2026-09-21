@@ -138,7 +138,6 @@ const profileInclude = {
   },
   user: {
     select: {
-      avatarBootstrapUrl: true,
       identities: {
         where: { type: { in: ["technician", "service", "s"] }, isActive: true, deletedAt: null },
         include: { publicIdentifier: true },
@@ -302,7 +301,7 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       shopAccessStatus: shopAffiliations.length > 0 ? "active" : "requires_shop",
       shopAffiliations,
       displayName: profile.displayName,
-      avatarUrl: profile.mediaAssets[0]?.url ?? profile.user.avatarBootstrapUrl ?? null,
+      avatarUrl: profile.mediaAssets[0]?.url ?? null,
       bio: profile.bio,
       city: profile.city,
       gender: this.gender(profile.gender),

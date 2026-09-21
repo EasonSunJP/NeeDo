@@ -223,7 +223,7 @@ export type CoreSearchListQuery = Omit<CoreServiceListQuery, "keyword" | "catego
 const fallbackServiceImage = "/images/generated/services/service-home-organization.jpg";
 const fallbackStoreImage = "/images/generated/stores/store-cafe-consult.jpg";
 const fallbackTechnicianAvatar = "/images/generated/profiles/ai-profile-01.jpg";
-const fallbackCustomerAvatar = "/images/generated/profiles/ai-profile-30.jpg";
+const fallbackCustomerAvatar = "/images/generated/profiles/dodo-default-avatar.webp";
 
 const categoryCodeToHomeCategoryId: Partial<Record<string, ServiceCategory["id"]>> = {
   appliance: "appliance",

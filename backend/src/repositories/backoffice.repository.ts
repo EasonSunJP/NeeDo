@@ -532,8 +532,6 @@ type TechnicianRecord = Prisma.TechnicianProfileGetPayload<{
       select: {
         needoId: true;
         email: true;
-        avatarUrl: true;
-        avatarBootstrapUrl: true;
         identities: {
           select: {
             publicIdentifier: {
@@ -3246,8 +3244,6 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         select: {
           needoId: true,
           email: true,
-          avatarUrl: true,
-          avatarBootstrapUrl: true,
           identities: {
             where: this.formalTechnicianIdentityWhere(),
             orderBy: { id: "asc" as const },
@@ -3680,7 +3676,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       needoId: technicianNeedoId,
       displayName: technician.displayName,
       email: technician.user.email,
-      avatarUrl: technician.mediaAssets?.[0]?.url ?? technician.user.avatarBootstrapUrl,
+      avatarUrl: technician.mediaAssets?.[0]?.url ?? null,
       shopId: technician.shopId,
       shopName: technician.shop?.name ?? null,
       city: technician.city,

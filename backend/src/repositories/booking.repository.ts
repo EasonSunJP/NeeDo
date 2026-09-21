@@ -1478,8 +1478,6 @@ const orderAssignedTechnicianInclude = {
     select: {
       isActive: true,
       deletedAt: true,
-      avatarUrl: true,
-      avatarBootstrapUrl: true,
       identities: {
         where: {
           deletedAt: null,
@@ -9299,11 +9297,7 @@ export class BookingRepository implements BookingRepositoryPort {
       id: profile.id,
       publicId: publicIdentifier.publicId,
       displayName: profile.displayName,
-      avatarUrl:
-        profile.mediaAssets[0]?.url ??
-        profile.user.avatarUrl ??
-        profile.user.avatarBootstrapUrl ??
-        null,
+      avatarUrl: profile.mediaAssets[0]?.url ?? null,
       city: profile.city,
       bio: profile.bio,
       serviceArea: profile.serviceArea,

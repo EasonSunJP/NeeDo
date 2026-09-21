@@ -86,4 +86,49 @@ describe("merchant technician list identity data", () => {
       })
     );
   });
+
+  it("returns no avatar instead of leaking an account avatar when technician media is absent", async () => {
+    const createdAt = new Date("2026-08-25T00:00:00.000Z");
+    const technician = {
+      id: 31,
+      userId: 41,
+      shopId: 16,
+      displayName: "佐藤 美咲",
+      bio: null,
+      city: "Tokyo",
+      serviceArea: "Shibuya",
+      yearsExperience: 5,
+      employmentType: "FULL_TIME",
+      employmentStartedAt: createdAt,
+      visibility: "public",
+      status: "published",
+      isRecommended: false,
+      verifiedAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+      deletedAt: null,
+      user: {
+        needoId: "u0000000041",
+        email: "sim.technician.001@needo.local",
+        avatarUrl: "/account-avatar.jpg",
+        avatarBootstrapUrl: "/account-bootstrap-avatar.jpg",
+        identities: [{ publicIdentifier: { publicId: "s0000000041", kind: "S" } }]
+      },
+      mediaAssets: [],
+      shop: { name: "Tokyo Relax Shibuya" },
+      reviewSummary: null
+    };
+    const repository = new BackofficeRepository({
+      technicianProfile: {
+        findMany: jest.fn(async () => [technician]),
+        count: jest.fn(async () => 1)
+      },
+      technicianWorkState: { findMany: jest.fn(async () => []) },
+      bookingOrder: { findMany: jest.fn(async () => []) }
+    } as never);
+
+    await expect(
+      repository.listTechnicians({ scope: "merchant", shopId: 16, page: 1, pageSize: 20 })
+    ).resolves.toMatchObject({ list: [{ avatarUrl: null }] });
+  });
 });

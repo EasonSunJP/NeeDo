@@ -184,7 +184,16 @@ describe("shop detail affiliated technician roster", () => {
   });
 
   it("includes active partner technicians with real avatars once alongside primary staff", async () => {
-    const partner = { ...publishedTechnicianWithoutServices, id: 42, displayName: "合作技师", user: { ...publishedTechnicianWithoutServices.user, avatarBootstrapUrl: "/media/partner.jpg" } };
+    const partner = {
+      ...publishedTechnicianWithoutServices,
+      id: 42,
+      displayName: "合作技师",
+      mediaAssets: [{ id: 92, url: "/media/partner.jpg", usageType: "avatar" }],
+      user: {
+        ...publishedTechnicianWithoutServices.user,
+        avatarBootstrapUrl: "/media/account-avatar.jpg"
+      }
+    };
     const findFirst = jest.fn(async () => ({
       ...publishedShopWithoutServices, services: [], technicians: [publishedTechnicianWithoutServices],
       technicianShopAffiliations: [{ technicianProfile: publishedTechnicianWithoutServices }, { technicianProfile: partner }],
@@ -242,7 +251,7 @@ function createRepositoryFixture(shopVisibility?: {
 }
 
 describe("CoreReadRepository multi-entity search", () => {
-  it("never substitutes a non-avatar technician media asset for the identity avatar", async () => {
+  it("never substitutes account or non-avatar media for the technician identity avatar", async () => {
     const findMany = jest.fn(async () => [{
       ...publishedTechnicianWithoutServices,
       mediaAssets: [{
@@ -269,7 +278,7 @@ describe("CoreReadRepository multi-entity search", () => {
       page: 1,
       pageSize: 20
     })).resolves.toMatchObject({
-      list: [{ avatarUrl: "/media/eason-technician-avatar.jpg" }]
+      list: [{ avatarUrl: null }]
     });
   });
 

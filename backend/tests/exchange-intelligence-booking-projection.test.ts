@@ -188,7 +188,7 @@ describe("Exchange Intelligence booking projection", () => {
     );
   });
 
-  it("projects the canonical technician, current affiliation metrics, areas, and languages", async () => {
+  it("projects the canonical technician without falling back to the account avatar", async () => {
     const base = basePost();
     const technicianService = {
       id: 701,
@@ -221,9 +221,7 @@ describe("Exchange Intelligence booking projection", () => {
         status: "published",
         visibility: "public",
         deletedAt: null,
-        mediaAssets: [
-          { url: "https://cdn.example.test/yamada.jpg", usageType: "avatar", sortOrder: 1 }
-        ],
+        mediaAssets: [],
         reviewSummary: {
           ratingAverage: { toString: () => "4.70" },
           reviewCount: 27,
@@ -247,7 +245,7 @@ describe("Exchange Intelligence booking projection", () => {
         user: {
           isActive: true,
           deletedAt: null,
-          avatarBootstrapUrl: null,
+          avatarBootstrapUrl: "/account-avatar-must-not-leak.png",
           identities: [
             {
               type: "technician",
@@ -308,7 +306,7 @@ describe("Exchange Intelligence booking projection", () => {
           type: "technician",
           publicId: "s0000000081",
           displayName: "山田 花子",
-          avatarUrl: "https://cdn.example.test/yamada.jpg",
+          avatarUrl: null,
           shop: { publicId: "shop0000000011", name: "青山ケア" },
           yearsExperience: 9,
           completedOrderCount: 64,

@@ -2627,6 +2627,53 @@ serviceLocation: { source: "SHOP_LOCATION" }
     });
   });
 
+  it("never substitutes the account avatar for an assigned technician identity avatar", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("CONFIRMED"),
+      technicianProfile: {
+        id: 31,
+        userId: 707,
+        displayName: "Eason",
+        city: "东京",
+        bio: "正式担当技师",
+        serviceArea: "港区",
+        languages: ["日本語", "中文"],
+        visibility: "public",
+        status: "published",
+        deletedAt: null,
+        mediaAssets: [],
+        reviewSummary: { ratingAverage: 4.9, reviewCount: 18 },
+        performanceSummary: { completedOrderCount: 42, deletedAt: null },
+        _count: { entityFavorites: 7, entityShareEvents: 5 },
+        user: {
+          isActive: true,
+          deletedAt: null,
+          avatarUrl: "/uploads/users/eason.jpg",
+          avatarBootstrapUrl: "/uploads/users/eason-bootstrap.jpg",
+          identities: [
+            {
+              isActive: true,
+              deletedAt: null,
+              scopeType: "technician_profile",
+              scopeId: 31,
+              publicIdentifier: { kind: "S", publicId: "s0000000031", status: "ACTIVE", deletedAt: null }
+            }
+          ]
+        }
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: { findFirst: jest.fn().mockResolvedValue(order) }
+    } as never);
+
+    await expect(repository.findOrderById(701)).resolves.toMatchObject({
+      assignedTechnician: {
+        id: 31,
+        avatarUrl: null
+      }
+    });
+  });
+
   it("keeps unassigned and non-public assigned technician states distinct", async () => {
     const unassigned = {
       ...makeTransitionOrderRecord("CONFIRMED"),

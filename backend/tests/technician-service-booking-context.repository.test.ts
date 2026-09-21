@@ -64,13 +64,27 @@ const record = () => ({
       }
     ],
     user: {
-      avatarBootstrapUrl: null,
+      avatarBootstrapUrl: null as string | null,
       identities: [{ publicIdentifier: { publicId: "s0000000081" } }]
     }
   }
 });
 
 describe("TechnicianServiceBookingContextRepository", () => {
+  it("never substitutes the account bootstrap avatar for the technician card", async () => {
+    const technicianService = record();
+    technicianService.technicianProfile.mediaAssets = [];
+    technicianService.technicianProfile.user.avatarBootstrapUrl =
+      "https://cdn.example.test/account-avatar.jpg";
+    const repository = new TechnicianServiceBookingContextRepository({
+      technicianService: { findFirst: jest.fn(async () => technicianService) }
+    } as unknown as PrismaClient);
+
+    await expect(repository.findContext(701, now)).resolves.toMatchObject({
+      technicianCard: { avatarUrl: null }
+    });
+  });
+
   it.each([
     [null, "5.00", 0],
     [{ ratingAverage: { toString: () => "4.00" }, reviewCount: 1, deletedAt: null }, "4.50", 1]

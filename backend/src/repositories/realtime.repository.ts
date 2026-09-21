@@ -915,7 +915,16 @@ const socialAuthorSelect = {
     select: { displayName: true, deletedAt: true }
   },
   technicianProfile: {
-    select: { displayName: true, deletedAt: true }
+    select: {
+      displayName: true,
+      deletedAt: true,
+      mediaAssets: {
+        where: { usageType: "avatar", isActive: true, deletedAt: null },
+        orderBy: { id: "desc" },
+        take: 1,
+        select: { url: true }
+      }
+    }
   },
   identities: {
     where: { deletedAt: null, isActive: true },
@@ -967,7 +976,16 @@ const imParticipantUserSelect = {
     select: { displayName: true, deletedAt: true }
   },
   technicianProfile: {
-    select: { displayName: true, deletedAt: true }
+    select: {
+      displayName: true,
+      deletedAt: true,
+      mediaAssets: {
+        where: { usageType: "avatar", isActive: true, deletedAt: null },
+        orderBy: { id: "desc" },
+        take: 1,
+        select: { url: true }
+      }
+    }
   }
 } satisfies Prisma.UserSelect;
 
@@ -980,7 +998,18 @@ const directorySearchUserSelect = {
     select: { displayName: true, visibility: true, isPublic: true, deletedAt: true }
   },
   technicianProfile: {
-    select: { displayName: true, visibility: true, status: true, deletedAt: true }
+    select: {
+      displayName: true,
+      visibility: true,
+      status: true,
+      deletedAt: true,
+      mediaAssets: {
+        where: { usageType: "avatar", isActive: true, deletedAt: null },
+        orderBy: { id: "desc" },
+        take: 1,
+        select: { url: true }
+      }
+    }
   }
 } satisfies Prisma.UserSelect;
 
@@ -3461,6 +3490,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             status: true,
             verifiedAt: true,
             deletedAt: true,
+            mediaAssets: {
+              where: { usageType: "avatar", isActive: true, deletedAt: null },
+              orderBy: { id: "desc" },
+              take: 1,
+              select: { url: true }
+            },
             reviewSummary: {
               select: {
                 ratingAverage: true,
@@ -3518,7 +3553,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const directoryParticipant = this.mapParticipant({
       ...user,
       username: identityCard.displayName,
-      avatarUrl: identityCard.entityType === "account" ? null : user.avatarUrl
+      avatarUrl:
+        identityCard.entityType === "technician"
+          ? (user.technicianProfile?.mediaAssets?.[0]?.url ?? null)
+          : identityCard.entityType === "account"
+            ? null
+            : user.avatarUrl
     });
     if (viewerUserId === targetUserId && viewerIdentityId === resolvedTargetIdentityId) {
       return {
@@ -6123,14 +6163,28 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       userId: user.id,
       needoId: user.needoId,
       username: this.resolveParticipantDisplayName(user, identity),
-      avatarUrl: user.avatarUrl,
+      avatarUrl: this.resolveParticipantAvatarUrl(user, identity),
       ...(role === "owner" || role === "admin" || role === "member" ? { role } : {})
     };
   }
 
+  private resolveParticipantAvatarUrl(
+    user: Pick<ImParticipantUserRecord, "avatarUrl"> &
+      Partial<Pick<ImParticipantUserRecord, "technicianProfile">>,
+    identity?: ImParticipantIdentityRecord | null
+  ): string | null {
+    return identity?.type?.toLowerCase() === "technician" &&
+      user.technicianProfile?.deletedAt === null
+      ? (user.technicianProfile.mediaAssets?.[0]?.url ?? null)
+      : user.avatarUrl;
+  }
+
   private resolveParticipantDisplayName(
-    user: Pick<ImParticipantUserRecord, "username"> &
-      Partial<Pick<ImParticipantUserRecord, "customerProfile" | "technicianProfile">>,
+    user: {
+      username: string;
+      customerProfile?: { displayName: string; deletedAt: Date | null } | null;
+      technicianProfile?: { displayName: string; deletedAt: Date | null } | null;
+    },
     identity?: ImParticipantIdentityRecord | null
   ): string {
     const identityType = identity?.type?.toLowerCase();
@@ -6616,7 +6670,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       identityId: identity?.id ?? author.id,
       username: author.username,
       displayName: this.resolveParticipantDisplayName(author, identity),
-      avatarUrl: author.avatarUrl,
+      avatarUrl: this.resolveParticipantAvatarUrl(author, identity),
       entityType,
       joinedAt: author.createdAt
     };

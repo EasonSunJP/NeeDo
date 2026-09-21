@@ -360,7 +360,7 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
               address: true,
               publicIdentifier: { select: { publicId: true } },
               mediaAssets: {
-                where: { deletedAt: null, isActive: true },
+                where: { usageType: "avatar", deletedAt: null, isActive: true },
                 orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
                 take: 1,
                 select: { url: true }
@@ -453,8 +453,6 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
               },
               user: {
                 select: {
-                  avatarUrl: true,
-                  avatarBootstrapUrl: true,
                   identities: {
                     where: {
                       deletedAt: null,
@@ -521,10 +519,7 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
             kind: "technician",
             name: row.technicianProfile.displayName,
             description: row.technicianProfile.bio,
-            imageUrl:
-              row.technicianProfile.mediaAssets[0]?.url ??
-              row.technicianProfile.user.avatarUrl ??
-              row.technicianProfile.user.avatarBootstrapUrl,
+            imageUrl: row.technicianProfile.mediaAssets[0]?.url ?? null,
             languages: this.stringArray(row.technicianProfile.languages),
             rating:
               row.technicianProfile.reviewSummary?.deletedAt === null

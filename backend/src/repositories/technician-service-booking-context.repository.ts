@@ -43,7 +43,6 @@ const contextInclude = {
       },
       user: {
         select: {
-          avatarBootstrapUrl: true,
           identities: {
             where: {
               isActive: true,
@@ -223,9 +222,7 @@ export class TechnicianServiceBookingContextRepository {
         type: "technician",
         publicId: technicianPublicId,
         displayName: record.technicianProfile.displayName,
-        avatarUrl:
-          this.mediaUrlByUsage(record.technicianProfile.mediaAssets, "avatar") ??
-          record.technicianProfile.user.avatarBootstrapUrl,
+        avatarUrl: this.mediaUrlByUsage(record.technicianProfile.mediaAssets, "avatar"),
         shop: { publicId: shopPublicId, name: record.shop.name },
         status: "published",
         isBookable: true,

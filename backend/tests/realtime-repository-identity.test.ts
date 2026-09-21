@@ -65,6 +65,57 @@ describe("RealtimeRepository formal identity payloads", () => {
     );
   });
 
+  it("uses the technician identity avatar for technician social post authors", async () => {
+    const createdAt = new Date("2026-09-08T00:00:00.000Z");
+    const post = {
+      id: 71238,
+      authorUserId: 249,
+      authorIdentityId: 251,
+      content: "技师动态",
+      media: null,
+      replyToPostId: null,
+      visibility: "PUBLIC",
+      createdAt,
+      updatedAt: createdAt,
+      author: {
+        id: 249,
+        username: "account fallback",
+        avatarUrl: "/account-avatar-must-not-leak.jpg",
+        createdAt,
+        customerProfile: null,
+        technicianProfile: {
+          displayName: "CutGirl Tech",
+          deletedAt: null,
+          mediaAssets: [{ url: "/technician-identity-avatar.jpg" }]
+        },
+        identities: [{ id: 251, type: "technician", displayName: "CutGirl Tech", isDefault: true }]
+      },
+      authorIdentity: {
+        id: 251,
+        type: "technician",
+        displayName: "CutGirl Tech",
+        pinnedSocialPostId: null,
+        merchantIdentityProfile: null
+      },
+      _count: { replies: 0, likes: 0, bookmarks: 0, views: 0, shares: 0 }
+    };
+    const client = {
+      socialPost: { findMany: jest.fn(async () => [post]), count: jest.fn(async () => 1) },
+      follow: { findMany: jest.fn(async () => []) },
+      contact: { findMany: jest.fn(async () => []) },
+      socialPostLike: { findMany: jest.fn(async () => []) },
+      socialPostBookmark: { findMany: jest.fn(async () => []) },
+      socialPostShare: { findMany: jest.fn(async () => []) }
+    } as unknown as PrismaClient;
+
+    const result = await new RealtimeRepository(client).listSocialPosts(1370, {
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(result.list[0]?.author.avatarUrl).toBe("/technician-identity-avatar.jpg");
+  });
+
   it("uses the current customer profile name in direct conversations", async () => {
     const createdAt = new Date("2026-09-08T00:00:00.000Z");
     const client = {
@@ -341,7 +392,8 @@ describe("RealtimeRepository formal identity payloads", () => {
               displayName: "CutGirl Tech",
               visibility: "public",
               status: "published",
-              deletedAt: null
+              deletedAt: null,
+              mediaAssets: [{ url: "/technician-identity-avatar.jpg" }]
             }
           }
         ]),
@@ -357,6 +409,7 @@ describe("RealtimeRepository formal identity payloads", () => {
     });
 
     expect(result.list[0]?.username).toBe("CutGirl Tech");
+    expect(result.list[0]?.avatarUrl).toBe("/technician-identity-avatar.jpg");
     expect(client.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

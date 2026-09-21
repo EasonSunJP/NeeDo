@@ -38,7 +38,7 @@ const record = {
   ],
   mediaAssets: [],
   user: {
-    avatarBootstrapUrl: null,
+    avatarBootstrapUrl: "/account-avatar-must-not-leak.png",
     identities: [
       {
         publicIdentifier: {
@@ -66,6 +66,7 @@ describe("TechnicianProfileRepository", () => {
     const repository = new TechnicianProfileRepository(client);
 
     await expect(repository.findMine(9, 31)).resolves.toMatchObject({
+      avatarUrl: null,
       gender: "female",
       specialTags: [],
       profileTags: [],

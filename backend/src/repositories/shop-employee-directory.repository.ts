@@ -59,6 +59,12 @@ const employeeDirectorySelect = Prisma.validator<Prisma.ShopEmployeeSelect>()({
         select: {
           displayName: true,
           deletedAt: true,
+          mediaAssets: {
+            where: { usageType: "avatar", isActive: true, deletedAt: null },
+            orderBy: { id: "desc" },
+            take: 1,
+            select: { url: true }
+          },
           user: {
             select: {
               identities: {
@@ -264,7 +270,10 @@ export class ShopEmployeeDirectoryRepository implements ShopEmployeeDirectoryRep
         technicianIsCurrent && affiliation
           ? affiliation.technicianProfile.displayName
           : record.user.username,
-      avatarUrl: record.user.avatarUrl,
+      avatarUrl:
+        technicianIsCurrent && affiliation
+          ? (affiliation.technicianProfile.mediaAssets[0]?.url ?? null)
+          : record.user.avatarUrl,
       email: record.user.email,
       phone: record.user.phone,
       status: record.status.toLowerCase() as ShopEmployeeDirectoryStatus,

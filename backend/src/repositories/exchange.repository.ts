@@ -262,7 +262,6 @@ const postInclude = (viewerIdentityId: number, participantIdentityId = viewerIde
                   select: {
                     isActive: true,
                     deletedAt: true,
-                    avatarBootstrapUrl: true,
                     identities: {
                       where: {
                         isActive: true,
@@ -1561,9 +1560,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       type: "technician",
       publicId,
       displayName: profile.displayName,
-      avatarUrl:
-        this.mediaUrlByUsage(profile.mediaAssets, "avatar") ??
-        profile.user.avatarBootstrapUrl,
+      avatarUrl: this.mediaUrlByUsage(profile.mediaAssets, "avatar"),
       shop: { publicId: shopPublicId, name: shop.name },
       status: profile.status,
       isBookable,

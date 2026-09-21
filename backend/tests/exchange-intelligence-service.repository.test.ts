@@ -34,8 +34,9 @@ const technicianService = {
     displayName: "山田 花子",
     serviceArea: "東京23区",
     serviceAreasJson: ["港区", "渋谷区"],
+    mediaAssets: [{ url: "/media/technician-hanako.jpg" }],
     user: {
-      avatarUrl: "/media/hanako.jpg",
+      avatarUrl: "/media/account-hanako.jpg",
       identities: [{ publicIdentifier: { publicId: "s0000000081" } }]
     }
   }
@@ -119,7 +120,7 @@ describe("ExchangeIntelligenceServiceRepository", () => {
         technician: {
           publicId: "s0000000081",
           displayName: "山田 花子",
-          avatarUrl: "/media/hanako.jpg",
+          avatarUrl: "/media/technician-hanako.jpg",
           serviceArea: "東京23区",
           serviceAreas: ["港区", "渋谷区"]
         }
