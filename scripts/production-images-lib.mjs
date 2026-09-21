@@ -157,6 +157,9 @@ export function inspectPngAnimation(bytes) {
   let height = null;
   let frameCount = null;
   let durationSeconds = 0;
+  let partialFrameCount = 0;
+  const blendOps = new Set();
+  const disposeOps = new Set();
   for (let offset = 8; offset + 12 <= bytes.length;) {
     const chunkLength = bytes.readUInt32BE(offset);
     const chunkEnd = offset + 12 + chunkLength;
@@ -169,8 +172,22 @@ export function inspectPngAnimation(bytes) {
     } else if (chunkType === "acTL" && chunkLength === 8) {
       frameCount = bytes.readUInt32BE(offset + 8);
     } else if (chunkType === "fcTL" && chunkLength === 26) {
+      const frameWidth = bytes.readUInt32BE(offset + 12);
+      const frameHeight = bytes.readUInt32BE(offset + 16);
+      const frameX = bytes.readUInt32BE(offset + 20);
+      const frameY = bytes.readUInt32BE(offset + 24);
       const delayNumerator = bytes.readUInt16BE(offset + 28);
       const delayDenominator = bytes.readUInt16BE(offset + 30) || 100;
+      disposeOps.add(bytes[offset + 32]);
+      blendOps.add(bytes[offset + 33]);
+      if (
+        frameWidth !== width ||
+        frameHeight !== height ||
+        frameX !== 0 ||
+        frameY !== 0
+      ) {
+        partialFrameCount += 1;
+      }
       durationSeconds += delayNumerator / delayDenominator;
     }
 
@@ -180,11 +197,14 @@ export function inspectPngAnimation(bytes) {
   return frameCount && frameCount > 1 && width && height
     ? {
         durationMs: Math.round(durationSeconds * 1_000),
+        blendOps: [...blendOps].sort((left, right) => left - right),
+        disposeOps: [...disposeOps].sort((left, right) => left - right),
         frameCount,
         frameRate: durationSeconds > 0
           ? Number((frameCount / durationSeconds).toFixed(3))
           : null,
         height,
+        partialFrameCount,
         width
       }
     : null;

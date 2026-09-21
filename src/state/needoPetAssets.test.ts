@@ -114,7 +114,7 @@ describe("needoPetAssets", () => {
   });
 
   it("restores readiness from the matching local asset version", async () => {
-    const version = "20260921a";
+    const version = "20260921b";
     const localStorage = createStorage({
       "needo.digital-pet.assets.v1": JSON.stringify({ status: "ready", version })
     });
@@ -136,7 +136,7 @@ describe("needoPetAssets", () => {
       "./needoPetAssets"
     );
 
-    expect(xiaobaiPetAssetVersion).toBe("20260921a");
+    expect(xiaobaiPetAssetVersion).toBe("20260921b");
     expect(xiaobaiIdleClips.map((clip) => clip.durationMs)).toEqual([6_667, 3_667, 6_667, 5_000, 5_833, 5_167, 6_333, 5_000]);
     expect(xiaobaiRunningClips.map((clip) => clip.durationMs)).toEqual([6_667, 8_500]);
     expect(xiaobaiOneShotClips).toMatchObject({

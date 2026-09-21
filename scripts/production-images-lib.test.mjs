@@ -169,6 +169,21 @@ test("ships Xiaobai motion clips as compact six-frame-per-second APNGs", async (
     assert.ok(animation, `${asset} must remain animated`);
     assert.equal(animation.frameRate, 6, `${asset} must play at 6 fps`);
     assert.ok(animation.width <= 138 && animation.height <= 162, `${asset} exceeds the existing Xiaobai canvas`);
+    assert.equal(
+      animation.partialFrameCount,
+      0,
+      `${asset} must use self-contained full-canvas frames for reliable WebKit playback`
+    );
+    assert.deepEqual(
+      animation.disposeOps,
+      [0],
+      `${asset} must not depend on APNG disposal history`
+    );
+    assert.deepEqual(
+      animation.blendOps,
+      [0],
+      `${asset} must replace the full canvas on every frame`
+    );
   }
 
   assert.ok(totalBytes <= 5 * 1024 * 1024, `Xiaobai motion clips exceed 5 MiB: ${totalBytes}`);

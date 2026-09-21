@@ -39,7 +39,7 @@ export type NeedoPetAssetReadiness = {
 };
 
 const assetStorageKey = "needo.digital-pet.assets.v1";
-export const xiaobaiPetAssetVersion = "20260921a";
+export const xiaobaiPetAssetVersion = "20260921b";
 
 export function getVersionedNeedoPetAsset(src: string) {
   return `${src}?v=${xiaobaiPetAssetVersion}`;
