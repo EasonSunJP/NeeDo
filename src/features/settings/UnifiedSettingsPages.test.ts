@@ -668,14 +668,27 @@ describe("UnifiedSettingsProfilePage", () => {
     expect(profileRouteSource).toContain("SettingsProfileResourceState");
   });
 
-  it("guards the merchant profile route when its formal entity is absent", () => {
+  it("loads and saves the merchant profile through the authenticated shop API", () => {
     const profileRouteSource = source.slice(
+      source.indexOf("function MerchantProfileSettingsPage"),
+      source.indexOf("function FormalTechnicianProfileSettingsPage")
+    );
+    const profileRouterSource = source.slice(
       source.indexOf("export function UnifiedSettingsProfilePage"),
       source.indexOf("export function UnifiedSettingsVerificationPage")
     );
 
-    expect(profileRouteSource).toContain('if (!store)');
-    expect(profileRouteSource).toContain("SettingsProfileResourceState");
+    expect(profileRouteSource).toContain("backofficeRealDataApi.merchantShop()");
+    expect(profileRouteSource).toContain("backofficeRealDataApi.updateMerchantShop(");
+    expect(profileRouteSource).not.toContain("useEntityStore");
+    expect(profileRouteSource).not.toContain("linkedStoreId");
+    expect(profileRouteSource).not.toContain("updateStoreEntity");
+    expect(profileRouteSource).toContain("ownerKey");
+    expect(profileRouteSource).toContain("session.activeIdentityId");
+    expect(profileRouteSource).toContain("profileQuery.data?.ownerKey === ownerKey");
+    expect(profileRouterSource).toContain("FormalMerchantProfileSettingsPage");
+    expect(profileRouterSource).not.toContain("useEntityStore");
+    expect(profileRouterSource).not.toContain("linkedStoreId");
   });
 });
 
