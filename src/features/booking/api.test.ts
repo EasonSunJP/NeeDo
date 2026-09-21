@@ -321,6 +321,35 @@ describe("bookingApi", () => {
     );
   });
 
+  it("serializes the compact 30-minute availability-start summary query", async () => {
+    setAuthTokens({ accessToken: "viewer-access-token" });
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      code: 0,
+      message: "success",
+      data: { list: [], total: 0, page: 1, page_size: 100 }
+    }));
+
+    await bookingApi.listAvailability({
+      shopId: 12,
+      summaryByStart: true,
+      from: "2026-09-20T15:00:00.000Z",
+      to: "2026-09-21T15:00:00.000Z",
+      page: 1,
+      pageSize: 100
+    });
+
+    const [requestUrl] = vi.mocked(fetch).mock.calls[0]!;
+    const parsedUrl = new URL(String(requestUrl), "http://needo.test");
+    expect(Object.fromEntries(parsedUrl.searchParams.entries())).toEqual({
+      shopId: "12",
+      summaryByStart: "true",
+      from: "2026-09-20T15:00:00.000Z",
+      to: "2026-09-21T15:00:00.000Z",
+      page: "1",
+      pageSize: "100"
+    });
+  });
+
   it("serializes overlapping order windows for the merchant calendar", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { list: [], total: 0, page: 1, page_size: 100 } }));
     await bookingApi.listOrders({ from: "2026-09-06T15:00:00.000Z", to: "2026-09-07T15:00:00.000Z", dateMode: "overlaps" });

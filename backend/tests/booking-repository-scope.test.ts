@@ -1,5 +1,10 @@
 import { readFileSync } from "node:fs";
-import { BookingRepository } from "../src/repositories/booking.repository";
+import {
+  BookingRepository,
+  summarizeAvailableDates,
+  summarizeAvailableStarts,
+  type ScheduleSlotPayload
+} from "../src/repositories/booking.repository";
 
 const availabilityClient = (delegates: Record<string, unknown>) => {
   const client: Record<string, unknown> = {
@@ -113,6 +118,59 @@ const makeTransitionOrderRecord = (
 });
 
 describe("schedule list projection", () => {
+  it("summarizes only bookable 30-minute starts with stable technician service options", () => {
+    const slot = (
+      id: number,
+      startsAt: string,
+      technicianProfileId: number,
+      technicianServiceId: number,
+      status: ScheduleSlotPayload["status"] = "available"
+    ): ScheduleSlotPayload => ({
+      id,
+      serviceId: null,
+      technicianServiceId,
+      shopId: 11,
+      technicianProfileId,
+      startsAt: new Date(startsAt),
+      endsAt: new Date(new Date(startsAt).getTime() + 3_600_000),
+      capacity: 1,
+      bookedCount: status === "available" ? 0 : 1,
+      status,
+      serviceName: `service-${technicianServiceId}`,
+      shopName: "StagingTest",
+      technicianName: `technician-${technicianProfileId}`,
+      priceAmount: "6600.00",
+      currency: "JPY",
+      durationMinutes: 60
+    });
+
+    const candidates = [
+      slot(1, "2026-09-21T00:45:00.000Z", 22, 201), // JST 09:45
+      slot(2, "2026-09-21T01:00:00.000Z", 22, 201), // JST 10:00
+      slot(3, "2026-09-21T01:00:00.000Z", 23, 202),
+      slot(4, "2026-09-21T01:00:00.000Z", 23, 202),
+      slot(5, "2026-09-21T01:00:00.000Z", 24, 203, "blocked"),
+      slot(6, "2026-09-21T01:30:00.000Z", 24, 203)
+    ];
+
+    expect(summarizeAvailableStarts(candidates)).toEqual([
+      {
+        startsAt: new Date("2026-09-21T01:00:00.000Z"),
+        options: [
+          { scheduleSlotId: 2, technicianProfileId: 22, technicianServiceId: 201, serviceId: null },
+          { scheduleSlotId: 3, technicianProfileId: 23, technicianServiceId: 202, serviceId: null }
+        ]
+      },
+      {
+        startsAt: new Date("2026-09-21T01:30:00.000Z"),
+        options: [
+          { scheduleSlotId: 6, technicianProfileId: 24, technicianServiceId: 203, serviceId: null }
+        ]
+      }
+    ]);
+    expect(summarizeAvailableDates(candidates).map((candidate) => candidate.id)).toEqual([2]);
+  });
+
   it("uses dynamic availability for a technician-priced shop query before a service is selected", async () => {
     const repository = new BookingRepository({} as never) as unknown as {
       findDynamicAvailabilityCycle: jest.Mock;

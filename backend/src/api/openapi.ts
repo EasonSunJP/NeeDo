@@ -11758,6 +11758,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           durationMinutes: { type: "integer" }
         }
       },
+      AvailabilityStartSummaryOption: {
+        type: "object",
+        additionalProperties: false,
+        required: ["scheduleSlotId", "technicianProfileId", "technicianServiceId", "serviceId"],
+        properties: {
+          scheduleSlotId: { type: "integer" },
+          technicianProfileId: { type: ["integer", "null"] },
+          technicianServiceId: { type: ["integer", "null"] },
+          serviceId: { type: ["integer", "null"] }
+        }
+      },
+      AvailabilityStartSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["startsAt", "options"],
+        properties: {
+          startsAt: { type: "string", format: "date-time" },
+          options: {
+            type: "array",
+            minItems: 1,
+            items: { $ref: "#/components/schemas/AvailabilityStartSummaryOption" }
+          }
+        }
+      },
       ShopAutoDispatchRuleInput: {
         type: "object",
         additionalProperties: false,
@@ -22969,6 +22993,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             schema: { type: "boolean", default: false }
           },
           {
+            name: "summaryByDate",
+            in: "query",
+            description:
+              "When true, return one representative real bookable slot per Tokyo date. Only customer-facing 30-minute starts are considered.",
+            schema: { type: "boolean", default: false }
+          },
+          {
+            name: "summaryByStart",
+            in: "query",
+            description:
+              "When true, return one row per real bookable 30-minute start with technicianProfileId and technicianServiceId options. This projection always excludes unavailable starts even if includeUnavailable is true, and is mutually exclusive with summaryByDate.",
+            schema: { type: "boolean", default: false }
+          },
+          {
             name: "from",
             in: "query",
             required: true,
@@ -23000,7 +23038,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       properties: {
                         list: {
                           type: "array",
-                          items: { $ref: "#/components/schemas/ScheduleSlot" }
+                          items: {
+                            oneOf: [
+                              { $ref: "#/components/schemas/ScheduleSlot" },
+                              { $ref: "#/components/schemas/AvailabilityStartSummary" }
+                            ]
+                          }
                         },
                         total: { type: "integer" },
                         page: { type: "integer" },

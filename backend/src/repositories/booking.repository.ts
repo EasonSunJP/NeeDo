@@ -263,6 +263,7 @@ export interface AvailabilityListInput extends PaginationInput {
   technicianId?: number;
   includeUnavailable?: boolean;
   summaryByDate?: boolean;
+  summaryByStart?: boolean;
   from: Date;
   to: Date;
 }
@@ -702,6 +703,67 @@ export interface ScheduleSlotPayload {
   currency: string;
   durationMinutes: number;
   availabilitySourceType?: "shop" | "technician" | null;
+}
+
+export interface AvailabilityStartSummaryOptionPayload {
+  scheduleSlotId: number;
+  technicianProfileId: number | null;
+  technicianServiceId: number | null;
+  serviceId: number | null;
+}
+
+export interface AvailabilityStartSummaryPayload {
+  startsAt: Date;
+  options: AvailabilityStartSummaryOptionPayload[];
+}
+
+export type AvailabilityListPayload = ScheduleSlotPayload | AvailabilityStartSummaryPayload;
+
+function isCustomerBookableStart(slot: ScheduleSlotPayload) {
+  return slot.status === "available"
+    && slot.bookedCount < slot.capacity
+    && slot.startsAt.getUTCMinutes() % 30 === 0;
+}
+
+export function summarizeAvailableDates(slots: ScheduleSlotPayload[]): ScheduleSlotPayload[] {
+  const firstAvailableByDate = new Map<string, ScheduleSlotPayload>();
+  for (const slot of slots) {
+    if (!isCustomerBookableStart(slot)) continue;
+    const date = toTokyoCalendarDate(slot.startsAt);
+    if (!firstAvailableByDate.has(date)) firstAvailableByDate.set(date, slot);
+  }
+  return [...firstAvailableByDate.values()];
+}
+
+export function summarizeAvailableStarts(
+  slots: ScheduleSlotPayload[]
+): AvailabilityStartSummaryPayload[] {
+  const summaries = new Map<number, Map<string, AvailabilityStartSummaryOptionPayload>>();
+  for (const slot of slots) {
+    if (!isCustomerBookableStart(slot)) continue;
+    const startsAtMs = slot.startsAt.getTime();
+    const options = summaries.get(startsAtMs) ?? new Map<string, AvailabilityStartSummaryOptionPayload>();
+    const option = {
+      scheduleSlotId: slot.id,
+      technicianProfileId: slot.technicianProfileId,
+      technicianServiceId: slot.technicianServiceId,
+      serviceId: slot.serviceId
+    };
+    const key = `${option.technicianProfileId ?? ""}:${option.technicianServiceId ?? ""}:${option.serviceId ?? ""}`;
+    if (!options.has(key)) options.set(key, option);
+    summaries.set(startsAtMs, options);
+  }
+  return [...summaries.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([startsAtMs, options]) => ({
+      startsAt: new Date(startsAtMs),
+      options: [...options.values()].sort((left, right) =>
+        (left.technicianProfileId ?? Number.MAX_SAFE_INTEGER) - (right.technicianProfileId ?? Number.MAX_SAFE_INTEGER)
+        || (left.technicianServiceId ?? Number.MAX_SAFE_INTEGER) - (right.technicianServiceId ?? Number.MAX_SAFE_INTEGER)
+        || (left.serviceId ?? Number.MAX_SAFE_INTEGER) - (right.serviceId ?? Number.MAX_SAFE_INTEGER)
+        || left.scheduleSlotId - right.scheduleSlotId
+      )
+    }));
 }
 
 export interface OrderStatusHistoryPayload {
@@ -1185,7 +1247,7 @@ export interface BookingRepositoryPort {
     input: AvailabilityListInput,
     shopVisibilityWhere?: Record<string, unknown>,
     customerUserId?: number
-  ) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
+  ) => Promise<PaginatedResponse<AvailabilityListPayload>>;
   listAvailabilityWindows?: (
     input: AvailabilityWindowListInput
   ) => Promise<PaginatedResponse<AvailabilityWindowPayload>>;
@@ -1523,7 +1585,7 @@ export class BookingRepository implements BookingRepositoryPort {
     input: AvailabilityListInput,
     shopVisibilityWhere: Record<string, unknown> = { visibility: "public" },
     customerUserId?: number
-  ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
+  ): Promise<PaginatedResponse<AvailabilityListPayload>> {
     return this.client.$transaction(
       (transaction) => this.readAvailableSlots(transaction, input, shopVisibilityWhere, customerUserId),
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
@@ -1535,7 +1597,7 @@ export class BookingRepository implements BookingRepositoryPort {
     input: AvailabilityListInput,
     shopVisibilityWhere: Record<string, unknown>,
     customerUserId?: number
-  ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
+  ): Promise<PaginatedResponse<AvailabilityListPayload>> {
     const pagination = toPrismaPagination(input);
     const now = new Date();
     let resolvedShopId = input.shopId;
@@ -1708,10 +1770,12 @@ export class BookingRepository implements BookingRepositoryPort {
     const list = await transaction.scheduleSlot.findMany({
         where,
         include: this.slotInclude(),
-        ...(input.summaryByDate ? {} : { skip: pagination.skip, take: pagination.take }),
+        ...(input.summaryByDate || input.summaryByStart
+          ? {}
+          : { skip: pagination.skip, take: pagination.take }),
         orderBy: [{ startsAt: "asc" }, { id: "asc" }]
       });
-    const total = input.summaryByDate
+    const total = input.summaryByDate || input.summaryByStart
       ? 0
       : await transaction.scheduleSlot.count({ where });
 
@@ -1749,14 +1813,16 @@ export class BookingRepository implements BookingRepositoryPort {
           ? { ...pricedPayload, status: "booked" as const }
           : pricedPayload;
       });
+    if (input.summaryByStart) {
+      const summaries = summarizeAvailableStarts(payloads);
+      return buildPaginatedResponse(
+        summaries.slice(pagination.skip, pagination.skip + pagination.take),
+        summaries.length,
+        pagination
+      );
+    }
     if (input.summaryByDate) {
-      const firstAvailableByDate = new Map<string, ScheduleSlotPayload>();
-      for (const payload of payloads) {
-        if (payload.status !== "available" || payload.bookedCount >= payload.capacity) continue;
-        const date = toTokyoCalendarDate(payload.startsAt);
-        if (!firstAvailableByDate.has(date)) firstAvailableByDate.set(date, payload);
-      }
-      const summaries = [...firstAvailableByDate.values()];
+      const summaries = summarizeAvailableDates(payloads);
       return buildPaginatedResponse(
         summaries.slice(pagination.skip, pagination.skip + pagination.take),
         summaries.length,
@@ -1807,7 +1873,7 @@ export class BookingRepository implements BookingRepositoryPort {
     shopVisibilityWhere: Record<string, unknown>,
     cycle: { id: number; ruleSet: Prisma.JsonValue },
     customerUserId?: number
-  ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
+  ): Promise<PaginatedResponse<AvailabilityListPayload>> {
     const pagination = toPrismaPagination(input);
     const now = new Date();
     const [service, technicianService, technicianServices, shop, locationShopIds] = await Promise.all([
@@ -1996,6 +2062,10 @@ export class BookingRepository implements BookingRepositoryPort {
           postBufferMinutes,
           startIntervalMinutes
         })) {
+          if (
+            (input.summaryByDate || input.summaryByStart)
+            && candidate.startsAt.getUTCMinutes() % 30 !== 0
+          ) continue;
           const candidateDate = input.summaryByDate
             ? toTokyoCalendarDate(candidate.startsAt)
             : null;
@@ -2044,6 +2114,14 @@ export class BookingRepository implements BookingRepositoryPort {
     candidates.sort((left, right) =>
       left.startsAt.getTime() - right.startsAt.getTime() || left.id - right.id
     );
+    if (input.summaryByStart) {
+      const summaries = summarizeAvailableStarts(candidates);
+      return buildPaginatedResponse(
+        summaries.slice(pagination.skip, pagination.skip + pagination.take),
+        summaries.length,
+        pagination
+      );
+    }
     const list = candidates.slice(pagination.skip, pagination.skip + pagination.take);
     return buildPaginatedResponse(list, candidates.length, pagination);
   }

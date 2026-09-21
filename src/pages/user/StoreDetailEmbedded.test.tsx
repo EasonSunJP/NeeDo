@@ -6,7 +6,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { StoreDetailExperience, UnifiedFormalStoreDetail } from "./StoreDetailPage";
 import { coreReadApi, type CoreShopDetail } from "../../features/core-read/api";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
-import { bookingApi, type BookingScheduleSlot } from "../../features/booking/api";
+import {
+  bookingApi,
+  type BookingAvailabilityStartSummary,
+  type BookingScheduleSlot
+} from "../../features/booking/api";
 import type { Store, Technician } from "../../types/domain";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -442,6 +446,15 @@ it("builds checkout actions only from an exact future formal slot", async () => 
     currency: "JPY",
     durationMinutes: 60
   };
+  const formalStartSummary: BookingAvailabilityStartSummary = {
+    startsAt: formalSlot.startsAt,
+    options: [{
+      scheduleSlotId: formalSlot.id,
+      technicianProfileId: formalSlot.technicianProfileId,
+      technicianServiceId: formalSlot.technicianServiceId,
+      serviceId: formalSlot.serviceId
+    }]
+  };
   vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-13T03:00:00.000Z").getTime());
   vi.spyOn(coreReadApi, "getShopDetail").mockResolvedValue(shop);
   pricingModeMock.getBookingNavigation.mockResolvedValue({
@@ -456,12 +469,12 @@ it("builds checkout actions only from an exact future formal slot", async () => 
       page_size: 20
     }
   });
-  const listAvailability = vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
-    list: [formalSlot],
+  const listAvailability = vi.spyOn(bookingApi, "listAvailability").mockImplementation(async (query) => ({
+    list: query.summaryByStart ? [formalStartSummary] : [formalSlot],
     total: 1,
     page: 1,
     page_size: 100
-  });
+  }) as never);
 
   await render();
   await waitForText("正式肩颈调理");
@@ -471,9 +484,9 @@ it("builds checkout actions only from an exact future formal slot", async () => 
 
   expect(listAvailability).toHaveBeenCalledWith(expect.objectContaining({
     from: "2026-09-12T15:00:00.000Z",
-    includeUnavailable: true,
     serviceId: 31,
     shopId: 21,
+    summaryByStart: true,
     to: "2026-09-13T15:00:00.000Z"
   }));
   const checkoutHref = container.querySelector<HTMLAnchorElement>('a[href*="scheduleSlotId=902"]')!.getAttribute("href")!;
@@ -490,23 +503,14 @@ it("routes an available technician selection to services using only 30-minute cu
     String(visitDate.getMonth() + 1).padStart(2, "0"),
     String(visitDate.getDate()).padStart(2, "0")
   ].join("-");
-  const makeTechnicianSlot = (id: number, technicianProfileId: number, time: string): BookingScheduleSlot => ({
-    id,
-    serviceId: null,
-    technicianServiceId: 200 + technicianProfileId,
-    shopId: 21,
-    technicianProfileId,
+  const makeTechnicianStart = (scheduleSlotId: number, technicianProfileId: number, time: string): BookingAvailabilityStartSummary => ({
     startsAt: new Date(`${dateKey}T${time}:00+09:00`).toISOString(),
-    endsAt: new Date(new Date(`${dateKey}T${time}:00+09:00`).getTime() + 3_600_000).toISOString(),
-    capacity: 1,
-    bookedCount: 0,
-    status: "available",
-    serviceName: "技师主服务",
-    shopName: "麻布十番超级按摩",
-    technicianName: `技师 ${technicianProfileId}`,
-    priceAmount: "8800",
-    currency: "JPY",
-    durationMinutes: 60
+    options: [{
+      scheduleSlotId,
+      technicianProfileId,
+      technicianServiceId: 200 + technicianProfileId,
+      serviceId: null
+    }]
   });
   pricingModeMock.getBookingNavigation.mockResolvedValue({
     shopId: 21,
@@ -517,10 +521,10 @@ it("routes an available technician selection to services using only 30-minute cu
   });
   vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
     list: [
-      makeTechnicianSlot(951, 501, "09:45"),
-      makeTechnicianSlot(952, 501, "10:00"),
-      makeTechnicianSlot(953, 502, "10:30")
-    ],
+      makeTechnicianStart(951, 501, "09:45"),
+      makeTechnicianStart(952, 501, "10:00"),
+      makeTechnicianStart(953, 502, "10:30")
+    ] as never[],
     total: 3,
     page: 1,
     page_size: 100

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { bookingApi, type BookingOrder, type BookingScheduleSlot } from "./api";
 import {
   loadAvailabilityDateKeys,
+  loadAvailabilityStartSummaries,
   loadCustomerOrderWindow,
   loadTechnicianAvailabilityWindow
 } from "./window-loaders";
@@ -37,6 +38,39 @@ afterEach(() => {
 });
 
 describe("formal booking window loaders", () => {
+  it("loads one compact 30-minute start summary page for a selected day", async () => {
+    const summaries = [{
+      startsAt: "2026-09-21T01:00:00.000Z",
+      options: [{
+        scheduleSlotId: 902,
+        technicianProfileId: 17,
+        technicianServiceId: 701,
+        serviceId: null
+      }]
+    }];
+    const availability = vi.spyOn(bookingApi, "listAvailability").mockResolvedValueOnce({
+      list: summaries as never[],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
+
+    await expect(loadAvailabilityStartSummaries({
+      from: "2026-09-20T15:00:00.000Z",
+      shopId: 16,
+      to: "2026-09-21T15:00:00.000Z"
+    })).resolves.toEqual(summaries);
+    expect(availability).toHaveBeenCalledTimes(1);
+    expect(availability).toHaveBeenCalledWith({
+      from: "2026-09-20T15:00:00.000Z",
+      page: 1,
+      pageSize: 100,
+      shopId: 16,
+      summaryByStart: true,
+      to: "2026-09-21T15:00:00.000Z"
+    });
+  });
+
   it("loads the server-side daily availability index without downloading every start time", async () => {
     const first = makeSlot(1);
     first.startsAt = "2026-09-01T00:00:00.000Z";

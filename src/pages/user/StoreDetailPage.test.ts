@@ -13,9 +13,10 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain('searchParams.get("technician")');
     expect(pageSource).toContain("routedBookingTechnician");
     expect(pageSource).toContain("buildStoreCheckoutRoute");
-    expect(pageSource).toContain("loadAvailabilityWindow");
-    expect(pageSource).toContain("scheduleSlotId: selectedFormalSlot?.id");
-    expect(pageSource).toContain("isCheckoutSlotBookable");
+    expect(pageSource).toContain("loadAvailabilityStartSummaries");
+    expect(pageSource).not.toContain("includeUnavailable: true");
+    expect(pageSource).toContain("scheduleSlotId: selectedFormalOption?.scheduleSlotId");
+    expect(pageSource).toContain("new Date(summary.startsAt).getTime() > formalAvailabilityNowMs");
     expect(pageSource).toContain("指名");
   });
 
@@ -210,15 +211,16 @@ describe("StoreDetailPage routed booking defaults", () => {
 
   it("derives technician-pricing availability from any bookable technician slot on the selected day", () => {
     expect(pageSource).toContain("serviceId: isTechnicianPricingActive ? undefined : formalServiceId ?? undefined");
-    expect(pageSource).toContain("slot.technicianServiceId !== null");
-    expect(pageSource).toContain("getTokyoSlotParts(slot.startsAt)?.time === selectedTime");
-    expect(pageSource).not.toContain("isTechnicianPricingActive || getTokyoSlotParts(slot.startsAt)?.time === selectedTime");
+    expect(pageSource).toContain("(selectedFormalStart?.options ?? [])");
+    expect(pageSource).toContain('String(option.technicianProfileId ?? "")');
+    expect(pageSource).toContain("getTokyoSlotParts(summary.startsAt)?.time === selectedTime");
     expect(pageSource).not.toContain("if (isMerchantEditable || isTechnicianPricingActive)");
   });
 
   it("shows customers only 30-minute starts that exist in formal availability", () => {
-    expect(pageSource).toContain("listAlignedCheckoutStartTimes(formalSelectedDateSlots, 30");
-    expect(pageSource).not.toContain("formalSelectedDateSlots.map((slot) => getTokyoSlotParts(slot.startsAt)?.time)");
+    expect(pageSource).toContain("formalSelectedDateStarts.flatMap((summary) =>");
+    expect(pageSource).toContain("minute % 30 === 0");
+    expect(pageSource).toContain("loadAvailabilityStartSummaries");
   });
 
   it("loads a separate authoritative availability-date index instead of treating one selected day as the whole calendar", () => {
@@ -234,6 +236,13 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain('availabilityLoading={formalAvailabilityLoading}');
     expect(pageSource).toContain('formalAvailabilityLoading ? "正在读取可预约服务…" : "暂无可预约服务"');
     expect(pageSource).toContain('ja: "予約可能なサービスを読み込み中…"');
+  });
+
+  it("returns the selected-day availability UI to loading before changing dates", () => {
+    expect(pageSource).toContain("const selectFormalVisitDate = (date: Date)");
+    expect(pageSource).toContain('setFormalStartSummariesStatus("loading")');
+    expect(pageSource).toContain("onSelectDate={selectFormalVisitDate}");
+    expect(pageSource).toContain("onSelectDay={(day) => selectFormalVisitDate(");
   });
 
   it("keeps technician-tab row right content linked to technician service lists with a service info affordance", () => {

@@ -666,6 +666,28 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
     );
   });
 
+  it("forwards the compact 30-minute start-summary flag for booking availability", async () => {
+    const fixture = await createFixture();
+
+    await request(fixture.app)
+      .get(
+        "/api/v1/schedule/availability?shopId=11&summaryByStart=true&from=2026-05-26T00:00:00.000Z&to=2026-05-27T00:00:00.000Z&page=1&pageSize=100"
+      )
+      .expect(200);
+
+    expect(fixture.bookingRepository.listAvailableSlots).toHaveBeenCalledWith(
+      {
+        shopId: 11,
+        summaryByStart: true,
+        from: new Date("2026-05-26T00:00:00.000Z"),
+        to: new Date("2026-05-27T00:00:00.000Z"),
+        page: 1,
+        pageSize: 100
+      },
+      { visibility: "public" }
+    );
+  });
+
   it("scopes availability conflicts to the authenticated viewer and prevents caching", async () => {
     const fixture = await createFixture();
     const token = await fixture.login();

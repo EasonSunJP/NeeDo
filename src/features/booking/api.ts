@@ -238,6 +238,18 @@ export type BookingScheduleSlot = {
   availabilitySourceType?: "shop" | "technician" | null;
 };
 
+export type BookingAvailabilityStartOption = {
+  scheduleSlotId: number;
+  technicianProfileId: number | null;
+  technicianServiceId: number | null;
+  serviceId: number | null;
+};
+
+export type BookingAvailabilityStartSummary = {
+  startsAt: string;
+  options: BookingAvailabilityStartOption[];
+};
+
 export type AdministrativeRegionReference = {
   code: string;
   name: string;
@@ -336,6 +348,7 @@ export type AvailabilityQuery = {
   technicianServiceId?: number;
   shopId?: number;
   summaryByDate?: boolean;
+  summaryByStart?: boolean;
   technicianId?: number;
   to: string;
 };
@@ -511,8 +524,8 @@ export const bookingApi = {
       }
     );
   },
-  listAvailability(query: AvailabilityQuery) {
-    return httpClient.request<PaginatedBookingData<BookingScheduleSlot>>("/schedule/availability", {
+  listAvailability<TItem extends BookingScheduleSlot | BookingAvailabilityStartSummary = BookingScheduleSlot>(query: AvailabilityQuery) {
+    return httpClient.request<PaginatedBookingData<TItem>>("/schedule/availability", {
       query
     });
   },

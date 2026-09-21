@@ -70,6 +70,17 @@ describe("availabilityListQuerySchema", () => {
     expect(availabilityListQuerySchema.safeParse({ ...base, summaryByDate: "1" }).success).toBe(false);
   });
 
+  it("parses start summaries strictly and rejects combining both summary projections", () => {
+    expect(availabilityListQuerySchema.parse(base)).not.toHaveProperty("summaryByStart");
+    expect(availabilityListQuerySchema.parse({ ...base, summaryByStart: "true" }).summaryByStart).toBe(true);
+    expect(availabilityListQuerySchema.safeParse({ ...base, summaryByStart: "1" }).success).toBe(false);
+    expect(availabilityListQuerySchema.safeParse({
+      ...base,
+      summaryByDate: "true",
+      summaryByStart: "true"
+    }).success).toBe(false);
+  });
+
   it("allows a shop-scoped availability projection for technician-pricing stores", () => {
     expect(availabilityListQuerySchema.safeParse({
       shopId: "11",

@@ -1,6 +1,7 @@
 import {
   bookingApi,
   type AvailabilityQuery,
+  type BookingAvailabilityStartSummary,
   type BookingOrder,
   type BookingScheduleSlot,
   type PaginatedBookingData
@@ -26,8 +27,20 @@ export async function loadAvailabilityWindow(
   }));
 }
 
+export async function loadAvailabilityStartSummaries(
+  query: Omit<AvailabilityQuery, "includeUnavailable" | "page" | "pageSize" | "summaryByDate" | "summaryByStart">
+): Promise<BookingAvailabilityStartSummary[]> {
+  const response = await bookingApi.listAvailability<BookingAvailabilityStartSummary>({
+    ...query,
+    page: 1,
+    pageSize: PAGE_SIZE,
+    summaryByStart: true
+  });
+  return response.list;
+}
+
 export async function loadAvailabilityDateKeys(
-  query: Omit<AvailabilityQuery, "page" | "pageSize" | "summaryByDate">
+  query: Omit<AvailabilityQuery, "page" | "pageSize" | "summaryByDate" | "summaryByStart">
 ): Promise<string[]> {
   const slots = await loadEveryPage((page) => bookingApi.listAvailability({
     ...query,

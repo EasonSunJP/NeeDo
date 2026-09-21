@@ -88,10 +88,18 @@ export const availabilityListQuerySchema = z
     technicianId: z.coerce.number().int().positive().optional(),
     includeUnavailable: strictBooleanQuerySchema.optional(),
     summaryByDate: strictBooleanQuerySchema.optional(),
+    summaryByStart: strictBooleanQuerySchema.optional(),
     from: isoDateSchema,
     to: isoDateSchema
   })
   .superRefine((value, context) => {
+    if (value.summaryByDate && value.summaryByStart) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "summaryByDate and summaryByStart are mutually exclusive",
+        path: ["summaryByStart"]
+      });
+    }
     if (value.serviceId && value.technicianServiceId) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
