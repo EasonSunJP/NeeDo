@@ -34,6 +34,10 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(tasksSource).toContain("<FormalTechnicianOrdersPanel />");
     expect(tasksSource).toContain("loadEveryTechnicianOrder");
     expect(tasksSource).toContain("loadManagedScheduleWindow");
+    expect(tasksSource).toContain("getTokyoDayWindow");
+    expect(tasksSource).toContain("getTokyoSlotParts");
+    expect(tasksSource).toContain('dateMode: "overlaps"');
+    expect(tasksSource).not.toContain("Promise.allSettled");
     expect(tasksSource).toContain("useCoreReadQuery");
     expect(tasksSource).toContain("getAuthenticatedPersistentCacheScope");
     expect(tasksSource).toContain("technician:tasks:");

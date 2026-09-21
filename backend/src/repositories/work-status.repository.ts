@@ -17,10 +17,18 @@ const eventInclude = {
       id: true,
       orderNo: true,
       serviceNameSnapshot: true,
+      technicianProfileId: true,
       customer: { select: { username: true } }
     }
   },
-  incident: { include: { attendanceAffectedOrders: { where: { deletedAt: null } } } }
+  incident: {
+    include: {
+      attendanceAffectedOrders: {
+        where: { deletedAt: null },
+        include: { order: { select: { technicianProfileId: true } } }
+      }
+    }
+  }
 } as const;
 type EventRow = Prisma.TechnicianWorkEventGetPayload<{ include: typeof eventInclude }>;
 export interface Obligation {
@@ -38,11 +46,18 @@ export interface Obligation {
 export function mapWorkEvent(row: EventRow, scope: WorkScope): WorkStatusEvent {
   const incident = row.incident;
   const hide = scope.shopId !== undefined && row.shopId !== scope.shopId;
+  const technicianSelf = scope.userId !== undefined;
+  const orderInCurrentTechnicianScope =
+    row.order?.technicianProfileId === scope.technicianProfileId;
   return {
     affectedOrders: hide
       ? []
       : (incident?.attendanceAffectedOrders ?? [])
-          .filter((o) => scope.shopId === undefined || o.shopId === scope.shopId)
+          .filter(
+            (o) =>
+              (scope.shopId === undefined || o.shopId === scope.shopId) &&
+              (!technicianSelf || o.order.technicianProfileId === scope.technicianProfileId)
+          )
           .map((o) => ({
             id: o.orderId,
             orderNo: o.orderNo,
@@ -67,7 +82,7 @@ export function mapWorkEvent(row: EventRow, scope: WorkScope): WorkStatusEvent {
         : null,
     reason: hide ? null : (row.reason ?? incident?.reason ?? null),
     order:
-      !hide && row.order
+      !hide && row.order && (!technicianSelf || orderInCurrentTechnicianScope)
         ? {
             id: row.order.id,
             orderNo: row.order.orderNo,

@@ -38,6 +38,7 @@ import {
 } from "../../features/pricing-mode/api";
 import { TechnicianServiceCoverField } from "../../features/pricing-mode/TechnicianServiceCoverField";
 import { loadEveryTechnicianOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
+import { getTokyoDayWindow, getTokyoSlotParts } from "../user/formal-checkout/checkoutTimeSlots";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { cn, yen } from "../../lib/utils";
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
@@ -204,36 +205,34 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
   const [tasksPanelTab, setTasksPanelTab] = useState<"schedule" | "orders">("schedule");
   const cacheScope = getAuthenticatedPersistentCacheScope();
   const now = new Date();
-  const todayFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const todayTo = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  const monthFrom = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthTo = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const todayFromIso = todayFrom.toISOString();
-  const todayToIso = todayTo.toISOString();
-  const monthFromIso = monthFrom.toISOString();
-  const monthToIso = monthTo.toISOString();
+  const todayKey = getTokyoSlotParts(now.toISOString())?.date ?? "";
+  const todayWindow = getTokyoDayWindow(todayKey);
+  const tokyoYear = Number(todayKey.slice(0, 4));
+  const tokyoMonth = Number(todayKey.slice(5, 7));
+  const nextMonthYear = tokyoMonth === 12 ? tokyoYear + 1 : tokyoYear;
+  const nextMonth = tokyoMonth === 12 ? 1 : tokyoMonth + 1;
+  const monthFromIso = `${todayKey.slice(0, 7)}-01T00:00:00+09:00`;
+  const monthToIso = `${nextMonthYear}-${String(nextMonth).padStart(2, "0")}-01T00:00:00+09:00`;
   const tasksQuery = useCoreReadQuery(
     async () => {
-      const [orderResult, slotResult] = await Promise.allSettled([
+      if (!todayWindow) throw new Error("error.technician_dashboard.invalid_tokyo_day");
+      const [orders, todayOrders, slots] = await Promise.all([
         loadEveryTechnicianOrder({ from: monthFromIso, to: monthToIso }),
+        loadEveryTechnicianOrder({
+          from: todayWindow.from,
+          to: todayWindow.to,
+          dateMode: "overlaps"
+        }),
         loadManagedScheduleWindow("technician", {
-          from: new Date(todayFromIso),
-          to: new Date(todayToIso)
+          from: new Date(todayWindow.from),
+          to: new Date(todayWindow.to)
         })
       ]);
-      if (orderResult.status === "rejected" && slotResult.status === "rejected") {
-        throw orderResult.reason instanceof Error
-          ? orderResult.reason
-          : new Error("error.technician_dashboard.load_failed");
-      }
-      return {
-        orders: orderResult.status === "fulfilled" ? orderResult.value : [],
-        slots: slotResult.status === "fulfilled" ? slotResult.value : []
-      };
+      return { orders, slots, todayOrders };
     },
-    [profile.id, todayFromIso, todayToIso, monthFromIso, monthToIso],
+    [profile.id, todayWindow?.from, todayWindow?.to, monthFromIso, monthToIso],
     {
-      key: `technician:tasks:${profile.id}:${todayFromIso}`,
+      key: `technician:tasks:${profile.id}:${todayWindow?.from ?? "invalid"}`,
       scope: cacheScope
     }
   );
@@ -249,9 +248,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
   const slots: BookingScheduleSlot[] = tasksQuery.data?.slots ?? [];
   const loading = tasksQuery.loading;
   const loadError = tasksQuery.error ?? "";
-  const todayKey = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const todayOrders = orders
-    .filter((order) => new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(order.startsAt)) === todayKey)
+  const todayOrders = [...(tasksQuery.data?.todayOrders ?? [])]
     .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
   const acceptedOrders = orders.filter((order) => ["confirmed", "inService", "completed"].includes(order.status));
   const decidedOrders = orders.filter((order) => order.status !== "pending");
