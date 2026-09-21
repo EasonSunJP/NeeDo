@@ -649,7 +649,7 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
 
     await request(fixture.app)
       .get(
-        "/api/v1/schedule/availability?shopId=11&summaryByDate=true&from=2026-05-26T00:00:00.000Z&to=2026-08-27T00:00:00.000Z&page=1&pageSize=100"
+        "/api/v1/schedule/availability?shopId=11&summaryByDate=true&from=2026-05-26T00:00:00.000Z&to=2026-06-30T00:00:00.000Z&page=1&pageSize=100"
       )
       .expect(200);
 
@@ -658,7 +658,7 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
         shopId: 11,
         summaryByDate: true,
         from: new Date("2026-05-26T00:00:00.000Z"),
-        to: new Date("2026-08-27T00:00:00.000Z"),
+        to: new Date("2026-06-30T00:00:00.000Z"),
         page: 1,
         pageSize: 100
       },

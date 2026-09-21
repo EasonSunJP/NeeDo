@@ -1113,7 +1113,7 @@ describe("GET /api/v1/openapi.json", () => {
       expect.arrayContaining([
         expect.objectContaining({
           name: "summaryByDate",
-          description: expect.stringMatching(/availableTechnicianCount.*availableStartCount/i)
+          description: expect.stringMatching(/availableTechnicianCount.*availableStartCount.*35 days/i)
         }),
         expect.objectContaining({
           name: "summaryByStart",

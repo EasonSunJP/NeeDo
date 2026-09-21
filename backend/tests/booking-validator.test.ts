@@ -70,6 +70,21 @@ describe("availabilityListQuerySchema", () => {
     expect(availabilityListQuerySchema.safeParse({ ...base, summaryByDate: "1" }).success).toBe(false);
   });
 
+  it("limits daily calendar summaries to one 35-day page", () => {
+    expect(availabilityListQuerySchema.safeParse({
+      ...base,
+      summaryByDate: "true",
+      from: "2026-09-01T00:00:00.000Z",
+      to: "2026-10-06T00:00:00.000Z"
+    }).success).toBe(true);
+    expect(availabilityListQuerySchema.safeParse({
+      ...base,
+      summaryByDate: "true",
+      from: "2026-09-01T00:00:00.000Z",
+      to: "2026-10-06T00:00:00.001Z"
+    }).success).toBe(false);
+  });
+
   it("parses start summaries strictly and rejects combining both summary projections", () => {
     expect(availabilityListQuerySchema.parse(base)).not.toHaveProperty("summaryByStart");
     expect(availabilityListQuerySchema.parse({ ...base, summaryByStart: "true" }).summaryByStart).toBe(true);

@@ -22985,7 +22985,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Paginated available schedule slots",
         security: [{}, { bearerAuth: [] }],
         description:
-          "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. shopId alone returns the shop's eligible slots for technician-pricing availability displays. The from/to window selects slots by start time and must not exceed 93 days, so a late-night service may finish after the window boundary. Results use one uncached database snapshot and filter current service/pricing/affiliation eligibility, future start time, capacity, technician hard locks and Exchange reservations before pagination. An authenticated booking-capable viewer also receives customer-specific overlap checks; ordinary customers' replaceable pending capacity is deducted from the returned bookedCount, while black members retain pending occupancy. This read does not reserve capacity: Booking revalidates inside its locking transaction.",
+          "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. shopId alone returns the shop's eligible slots for technician-pricing availability displays. The from/to window selects slots by start time and must not exceed 93 days, except summaryByDate calendar projections which are limited to one page of 35 days. A late-night service may finish after the window boundary. Results use one uncached database snapshot and filter current service/pricing/affiliation eligibility, future start time, capacity, technician hard locks and Exchange reservations before pagination. An authenticated booking-capable viewer also receives customer-specific overlap checks; ordinary customers' replaceable pending capacity is deducted from the returned bookedCount, while black members retain pending occupancy. This read does not reserve capacity: Booking revalidates inside its locking transaction.",
         parameters: [
           {
             name: "serviceId",
@@ -23006,7 +23006,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "summaryByDate",
             in: "query",
             description:
-              "When true, return one row per Tokyo date with a representative startsAt plus availableTechnicianCount and availableStartCount. Both counts are distinct across real bookable customer-facing 30-minute starts.",
+              "When true, return one row per Tokyo date with a representative startsAt plus availableTechnicianCount and availableStartCount. Both counts are distinct across real bookable customer-facing 30-minute starts. The requested date range must not exceed 35 days.",
             schema: { type: "boolean", default: false }
           },
           {

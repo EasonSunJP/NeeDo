@@ -114,7 +114,14 @@ export const availabilityListQuerySchema = z
         path: ["shopId"]
       });
     }
-    if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
+    const rangeMs = value.to.getTime() - value.from.getTime();
+    if (value.summaryByDate && rangeMs > 35 * 24 * 60 * 60 * 1000) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "daily summary date range must not exceed 35 days",
+        path: ["to"]
+      });
+    } else if (rangeMs > 93 * 24 * 60 * 60 * 1000) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "date range must not exceed 93 days",
