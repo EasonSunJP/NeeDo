@@ -365,7 +365,7 @@ export function MerchantAdminSettingsPage() {
               </div>
             ) : presentationStore ? (
               <div className="bg-[color:var(--client-bg)] p-4 sm:p-5">
-                <StoreDetailExperience embedded scope="merchant" store={presentationStore} />
+                <StoreDetailExperience embedded formalApiOnly scope="merchant" store={presentationStore} />
               </div>
             ) : (
               <p className="m-5 rounded-lg border border-line bg-paper p-4 text-sm font-bold text-ink/55">

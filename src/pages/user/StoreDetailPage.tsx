@@ -3246,7 +3246,6 @@ export function StoreDetailExperience({
   const selectFormalVisitDate = (date: Date) => {
     if (
       formalApiOnly
-      && !isMerchantEditable
       && storeApiId
       && (isTechnicianPricingActive || formalServiceId)
       && formatDateParam(date) !== formatDateParam(selectedVisitDate)
@@ -3258,7 +3257,7 @@ export function StoreDetailExperience({
     setSelectedVisitDate(date);
   };
   useEffect(() => {
-    if (!formalApiOnly || isMerchantEditable || !storeApiId || (!isTechnicianPricingActive && !formalServiceId)) {
+    if (!formalApiOnly || !storeApiId || (!isTechnicianPricingActive && !formalServiceId)) {
       setFormalAvailabilityDateSummaries([]);
       setFormalAvailabilityDateSummariesStatus("idle");
       return;
@@ -3294,7 +3293,7 @@ export function StoreDetailExperience({
     return () => {
       active = false;
     };
-  }, [formalApiOnly, formalAvailabilityViewMonth, formalServiceId, isMerchantEditable, isTechnicianPricingActive, storeApiId]);
+  }, [formalApiOnly, formalAvailabilityViewMonth, formalServiceId, isTechnicianPricingActive, storeApiId]);
 
   const formalAvailableDateKeys = useMemo(
     () => formalAvailabilityDateSummaries
@@ -3314,7 +3313,7 @@ export function StoreDetailExperience({
   );
 
   useEffect(() => {
-    if (!formalApiOnly || isMerchantEditable || !storeApiId || (!isTechnicianPricingActive && !formalServiceId)) {
+    if (!formalApiOnly || !storeApiId || (!isTechnicianPricingActive && !formalServiceId)) {
       setFormalStartSummaries([]);
       setFormalStartSummariesStatus("idle");
       return;
@@ -3349,7 +3348,7 @@ export function StoreDetailExperience({
     return () => {
       active = false;
     };
-  }, [formalApiOnly, formalServiceId, isMerchantEditable, isTechnicianPricingActive, selectedVisitDate, storeApiId]);
+  }, [formalApiOnly, formalServiceId, isTechnicianPricingActive, selectedVisitDate, storeApiId]);
 
   const formalSelectedDateStarts = useMemo(
     () => formalStartSummaries.filter((summary) => (
@@ -3382,12 +3381,13 @@ export function StoreDetailExperience({
   const canLoadFormalAvailability = Boolean(
     storeApiId && (isTechnicianPricingActive || formalServiceId)
   );
-  const formalAvailabilityLoading = Boolean(formalApiOnly) && !isMerchantEditable && (
-    bookingNavigationStatus === "idle"
-    || bookingNavigationStatus === "loading"
+  const formalAvailabilitySourceLoading = isMerchantEditable
+    ? !presentationWorkspace && (presentationSaveState === "idle" || presentationSaveState === "loading")
+    : bookingNavigationStatus === "idle" || bookingNavigationStatus === "loading";
+  const formalAvailabilityLoading = Boolean(formalApiOnly) && (
+    formalAvailabilitySourceLoading
     || (
-      bookingNavigationStatus === "success"
-      && canLoadFormalAvailability
+      canLoadFormalAvailability
       && (
         formalAvailabilityDateSummariesStatus === "idle"
         || formalAvailabilityDateSummariesStatus === "loading"
@@ -3396,12 +3396,10 @@ export function StoreDetailExperience({
       )
     )
   );
-  const formalDateAvailabilityLoading = Boolean(formalApiOnly) && !isMerchantEditable && (
-    bookingNavigationStatus === "idle"
-    || bookingNavigationStatus === "loading"
+  const formalDateAvailabilityLoading = Boolean(formalApiOnly) && (
+    formalAvailabilitySourceLoading
     || (
-      bookingNavigationStatus === "success"
-      && canLoadFormalAvailability
+      canLoadFormalAvailability
       && (
         formalAvailabilityDateSummariesStatus === "idle"
         || formalAvailabilityDateSummariesStatus === "loading"
@@ -3445,10 +3443,6 @@ export function StoreDetailExperience({
     [menuCards, selectedCheckoutTarget]
   );
   const unavailableTechnicianIds = useMemo(() => {
-    if (isMerchantEditable) {
-      return new Set<string>();
-    }
-
     if (formalApiOnly) {
       if (formalAvailabilityLoading) {
         return new Set<string>();
@@ -3473,7 +3467,7 @@ export function StoreDetailExperience({
         )
         .map((technician) => technician.id)
     );
-  }, [formalApiOnly, formalAvailabilityLoading, isMerchantEditable, selectedBookingDurationMinutes, selectedFormalStart, selectedTime, selectedVisitDate, store, storeTechnicians]);
+  }, [formalApiOnly, formalAvailabilityLoading, selectedBookingDurationMinutes, selectedFormalStart, selectedTime, selectedVisitDate, store, storeTechnicians]);
   const selectedBookingTechnician = useMemo(
     () => {
       const selected = displayedTechnicians.find(

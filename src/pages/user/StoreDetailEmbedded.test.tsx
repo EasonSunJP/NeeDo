@@ -52,7 +52,8 @@ async function render() {
 
 async function renderFormalMerchantPreview(
   technicianCount = 1,
-  scope: "merchant" | "user" = "merchant"
+  scope: "merchant" | "user" = "merchant",
+  formalServiceId?: number
 ) {
   const store = {
     id: "21",
@@ -119,7 +120,7 @@ async function renderFormalMerchantPreview(
           offers: [],
           menuCards: [{
             id: "legacy-service",
-            sourceServiceId: "svc-fallback",
+            sourceServiceId: formalServiceId ? String(formalServiceId) : "svc-fallback",
             name: "标准到店服务",
             subtitle: "legacy",
             duration: "60 分钟",
@@ -207,7 +208,8 @@ it("rejects legacy service cards while keeping the formal technician projection 
   await renderFormalMerchantPreview();
 
   expect(container.textContent).toContain("正式技师一号");
-  expect(container.textContent).toContain("暂无可预约服务");
+  expect(container.textContent).toContain("正在读取可预约服务");
+  expect(container.textContent).not.toContain("暂无可预约服务");
   expect(container.textContent).not.toContain("标准到店服务");
   expect(container.textContent).not.toContain("￥0");
   expect(container.querySelector('a[href*="svc-fallback"]')).toBeNull();
@@ -499,6 +501,97 @@ it("builds checkout actions only from an exact future formal slot", async () => 
   expect(checkoutHref).toContain("date=2026-09-13");
   expect(checkoutHref).toContain("time=21%3A00");
   expect(checkoutHref).not.toContain("time=00%3A00");
+});
+
+it("uses the same future server-authoritative availability in merchant previews", async () => {
+  const visitDate = new Date();
+  visitDate.setDate(visitDate.getDate() + 1);
+  const dateKey = [
+    visitDate.getFullYear(),
+    String(visitDate.getMonth() + 1).padStart(2, "0"),
+    String(visitDate.getDate()).padStart(2, "0")
+  ].join("-");
+  const startsAt = new Date(`${dateKey}T15:30:00+09:00`).toISOString();
+  const service = {
+    id: 31,
+    name: "正式肩颈调理",
+    description: "正式服务",
+    priceAmount: "8800",
+    currency: "JPY",
+    durationMinutes: 60,
+    coverMediaAssetPublicId: null
+  };
+  const content = {
+    storeName: "麻布十番超级按摩",
+    description: "正式店铺",
+    address: "港区",
+    area: "東京都",
+    rankLabel: "公开店铺",
+    businessHours: "请以店铺确认为准",
+    subtitle: "",
+    station: "",
+    distance: "",
+    parking: "",
+    routeGuide: "",
+    paymentMethods: [],
+    equipment: [],
+    carousel: [],
+    serviceMenus: [{
+      serviceId: service.id,
+      name: service.name,
+      description: service.description,
+      audience: "",
+      tags: [],
+      highlights: [],
+      coverMediaAssetPublicId: null
+    }]
+  };
+  backofficeMock.merchantShopPresentation.mockResolvedValue({
+    shopId: 21,
+    locales: Object.fromEntries(["ja", "en", "ko", "zh-CN", "zh-TW"].map((code) => [code, {
+      locale: code,
+      lockVersion: 1,
+      content,
+      updatedAt: "2026-09-21T00:00:00.000Z"
+    }])),
+    media: {},
+    services: [service]
+  });
+  const listAvailability = vi.spyOn(bookingApi, "listAvailability").mockImplementation(async (query) => ({
+    list: query.summaryByDate
+      ? [{ startsAt, availableStartCount: 1, availableTechnicianCount: 1 }]
+      : [{
+          startsAt,
+          options: [{
+            scheduleSlotId: 902,
+            technicianProfileId: 501,
+            technicianServiceId: null,
+            serviceId: 31
+          }]
+        }],
+    total: 1,
+    page: 1,
+    page_size: 100
+  }) as never);
+
+  await renderFormalMerchantPreview(1, "merchant", service.id);
+
+  await vi.waitFor(() => {
+    const timeSelect = container.querySelectorAll("select")[1];
+    expect(Array.from(timeSelect?.options ?? []).map((option) => option.value)).toEqual(["15:30"]);
+  });
+  expect(listAvailability).toHaveBeenCalledWith(expect.objectContaining({
+    includeUnavailable: false,
+    serviceId: 31,
+    shopId: 21,
+    summaryByDate: true
+  }));
+  expect(listAvailability).toHaveBeenCalledWith(expect.objectContaining({
+    serviceId: 31,
+    shopId: 21,
+    summaryByStart: true
+  }));
+  expect(container.textContent).not.toContain("暂无可预约时间");
 });
 
 it("routes an available technician selection to services using only 30-minute customer starts", async () => {

@@ -28,7 +28,7 @@ describe("MerchantAdminSettingsPage formal shop profile", () => {
     expect(source).toContain("mapCoreShopToStore(detail)");
     expect(source).toContain("五语言店铺展示");
     expect(source).toContain("店铺前端与店铺后台共用同一套展示数据");
-    expect(source).toContain('<StoreDetailExperience embedded scope="merchant" store={presentationStore} />');
+    expect(source).toContain('<StoreDetailExperience embedded formalApiOnly scope="merchant" store={presentationStore} />');
     expect(source).toContain("与店铺前端同步");
     expect(source).toContain("营业时段尚未启用");
     expect(source).toContain("证照管理尚未启用");
