@@ -653,6 +653,84 @@ describe("formal user order detail", () => {
     await waitFor(() => expect(container.textContent).toContain("提交评价"));
   });
 
+  it("reconciles an uncertain NDP response before showing a payment failure", async () => {
+    const completedCheckout = {
+      ...checkout,
+      status: "completed" as const,
+      paymentMethod: "ndp" as const,
+      paymentEvidence: "ndp_ledger" as const
+    };
+    mocks.getOrder
+      .mockResolvedValueOnce(makeOrder("awaitingCheckout"))
+      .mockResolvedValueOnce(makeOrder("completed"));
+    mocks.getCheckout
+      .mockResolvedValueOnce(checkout)
+      .mockResolvedValueOnce(completedCheckout)
+      .mockResolvedValue(completedCheckout);
+    mocks.payWithNdp.mockRejectedValueOnce(
+      new ApiClientError("error.dependency.redis_unavailable", 50301, 503)
+    );
+
+    await render();
+    await waitFor(() => expect(container.textContent).toContain("NDP 支付"));
+    await click("NDP 支付");
+
+    await waitFor(() => expect(container.textContent).toContain("NDP 账本已结算"));
+    expect(container.textContent).not.toContain("订单服务暂时不可用");
+    expect(mocks.payWithNdp).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the NDP command key when a hidden-order response cannot be reconciled during identity outage", async () => {
+    const completedCheckout = {
+      ...checkout,
+      status: "completed" as const,
+      paymentMethod: "ndp" as const,
+      paymentEvidence: "ndp_ledger" as const
+    };
+    mocks.getOrder
+      .mockResolvedValueOnce(makeOrder("awaitingCheckout"))
+      .mockResolvedValueOnce(makeOrder("completed"));
+    mocks.getCheckout
+      .mockResolvedValueOnce(checkout)
+      .mockRejectedValueOnce(
+        new ApiClientError("error.dependency.redis_unavailable", 50301, 503)
+      )
+      .mockResolvedValue(completedCheckout);
+    mocks.payWithNdp
+      .mockRejectedValueOnce(new ApiClientError("error.order.not_found", 40401, 404))
+      .mockResolvedValueOnce(completedCheckout);
+
+    await render();
+    await waitFor(() => expect(container.textContent).toContain("NDP 支付"));
+    await click("NDP 支付");
+    await waitFor(() => expect(container.textContent).toContain("身份服务暂时不可用"));
+    const firstKey = mocks.payWithNdp.mock.calls[0]?.[1]?.idempotencyKey;
+
+    await click("NDP 支付");
+    await waitFor(() => expect(mocks.payWithNdp).toHaveBeenCalledTimes(2));
+    expect(mocks.payWithNdp.mock.calls[1]?.[1]?.idempotencyKey).toBe(firstKey);
+    await waitFor(() => expect(container.textContent).toContain("NDP 账本已结算"));
+  });
+
+  it("keeps a definitive NDP wallet failure unpaid and starts a fresh command on retry", async () => {
+    mocks.getOrder.mockResolvedValue(makeOrder("awaitingCheckout"));
+    mocks.getCheckout.mockResolvedValue(checkout);
+    mocks.payWithNdp.mockRejectedValue(
+      new ApiClientError("error.wallet.insufficient_available", 40907, 409)
+    );
+
+    await render();
+    await waitFor(() => expect(container.textContent).toContain("NDP 支付"));
+    await click("NDP 支付");
+    await waitFor(() => expect(container.textContent).toContain("NDP 账本状态异常"));
+    const firstKey = mocks.payWithNdp.mock.calls[0]?.[1]?.idempotencyKey;
+
+    await click("NDP 支付");
+    await waitFor(() => expect(mocks.payWithNdp).toHaveBeenCalledTimes(2));
+    expect(mocks.payWithNdp.mock.calls[1]?.[1]?.idempotencyKey).not.toBe(firstKey);
+    expect(container.textContent).toContain("等待结账");
+  });
+
   it("loads review eligibility only after formal evidence and submits the technician direction", async () => {
     mocks.getOrder.mockResolvedValue(makeOrder("completed"));
     mocks.getCheckout.mockResolvedValue({ ...checkout, status: "completed", paymentMethod: "ndp", paymentEvidence: "ndp_ledger" });

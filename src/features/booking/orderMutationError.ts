@@ -22,6 +22,7 @@ type MessageKey =
   | "platformFeeConfirmationConflict"
   | "conflict"
   | "timeout"
+  | "identityUnavailable"
   | "server"
   | "fallback";
 
@@ -47,6 +48,7 @@ const copy: Record<Language, Record<MessageKey, string>> = {
     platformFeeConfirmationConflict: "本次余额不足确认已被其他订单使用，请重新确认",
     conflict: "订单操作发生冲突，请重新加载后重试或联系运营",
     timeout: "网络响应超时，请稍后重试",
+    identityUnavailable: "身份服务暂时不可用，请稍后重试",
     server: "订单服务暂时不可用，请稍后重试",
     fallback: "订单操作失败，请检查网络后重试"
   },
@@ -71,6 +73,7 @@ const copy: Record<Language, Record<MessageKey, string>> = {
     platformFeeConfirmationConflict: "本次餘額不足確認已被其他訂單使用，請重新確認",
     conflict: "訂單操作發生衝突，請重新載入後重試或聯絡營運",
     timeout: "網路回應逾時，請稍後重試",
+    identityUnavailable: "身分服務暫時無法使用，請稍後再試",
     server: "訂單服務暫時無法使用，請稍後重試",
     fallback: "訂單操作失敗，請檢查網路後重試"
   },
@@ -96,6 +99,7 @@ const copy: Record<Language, Record<MessageKey, string>> = {
     platformFeeConfirmationConflict: "この残高不足確認は別の注文で使用されています。もう一度確認してください",
     conflict: "注文操作が競合しました。再読み込み後に再試行するか、運営へ連絡してください",
     timeout: "通信がタイムアウトしました。しばらくしてから再試行してください",
+    identityUnavailable: "認証サービスを一時的に利用できません。しばらくしてから再試行してください",
     server: "注文サービスを一時的に利用できません。しばらくしてから再試行してください",
     fallback: "注文操作に失敗しました。通信状況を確認して再試行してください"
   },
@@ -121,6 +125,7 @@ const copy: Record<Language, Record<MessageKey, string>> = {
     platformFeeConfirmationConflict: "This insufficient-balance confirmation was used by another order. Confirm again",
     conflict: "The order action conflicted. Reload and retry, or contact operations",
     timeout: "The network request timed out. Try again later",
+    identityUnavailable: "The identity service is temporarily unavailable. Try again later",
     server: "The order service is temporarily unavailable. Try again later",
     fallback: "The order action failed. Check your network and try again"
   },
@@ -145,6 +150,7 @@ const copy: Record<Language, Record<MessageKey, string>> = {
     platformFeeConfirmationConflict: "이 잔액 부족 확인이 다른 주문에 사용되었습니다. 다시 확인해 주세요",
     conflict: "주문 작업이 충돌했습니다. 새로고침 후 다시 시도하거나 운영팀에 문의해 주세요",
     timeout: "네트워크 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요",
+    identityUnavailable: "인증 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요",
     server: "주문 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요",
     fallback: "주문 작업에 실패했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요"
   }
@@ -186,6 +192,13 @@ export function describeBookingOrderMutationError(
   if (error.status === 403) return messages.forbidden;
   if (error.status === 404) return messages.notFound;
   if (error.status === 408 || error.message === "error.network.timeout") return messages.timeout;
+  if (
+    error.message === "error.dependency.redis_unavailable" ||
+    error.message === "error.dependency.auth_generation_unavailable" ||
+    error.message === "error.auth.service_unavailable"
+  ) {
+    return messages.identityUnavailable;
+  }
   if (error.status === 409) {
     return messages[conflictMessageKeys[error.message] ?? "conflict"];
   }

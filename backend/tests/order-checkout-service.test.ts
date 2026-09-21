@@ -1181,6 +1181,46 @@ describe("formal checkout repository state", () => {
     );
   });
 
+  it("replays the exact NDP command without a second debit or settlement", async () => {
+    const h = createRepositoryHarness();
+    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    const debit = jest.fn(async () => ({ transactionId: 91 }));
+    const settle = jest.fn(async () => undefined);
+    const settleAffiliate = jest.fn(async () => undefined);
+    const command = { ...customerInput, idempotencyKey: "checkout-pay-exact-replay-1" };
+
+    await expect(
+      h.repository.payCheckoutWithNdp(command, { debit, settle, settleAffiliate })
+    ).resolves.toMatchObject({
+      outcome: "ok",
+      applied: true,
+      checkout: { status: "completed", paymentEvidence: "ndp_ledger" }
+    });
+    await expect(
+      h.repository.payCheckoutWithNdp(command, { debit, settle, settleAffiliate })
+    ).resolves.toMatchObject({
+      outcome: "ok",
+      applied: false,
+      checkout: { status: "completed", paymentEvidence: "ndp_ledger" }
+    });
+
+    expect(debit).toHaveBeenCalledTimes(1);
+    expect(settle).toHaveBeenCalledTimes(1);
+    expect(settleAffiliate).toHaveBeenCalledTimes(1);
+    expect(
+      h.events.filter((event) => event.eventType === "NDP_PAYMENT_APPLIED")
+    ).toHaveLength(1);
+    expect(
+      h.histories.filter((history) => history.toStatus === "COMPLETED")
+    ).toHaveLength(1);
+    expect(h.order).toMatchObject({
+      status: "COMPLETED",
+      paymentMethod: "NDP",
+      paymentStatus: "CONFIRMED",
+      paymentReference: "checkout:9:ledger:91"
+    });
+  });
+
   it("selects cash without completing, then exact technician receipt completes once", async () => {
     const h = createRepositoryHarness();
     await h.repository.getOrCreateCheckout({ ...customerInput, rate });

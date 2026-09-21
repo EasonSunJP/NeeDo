@@ -80,4 +80,13 @@ describe("describeBookingOrderMutationError", () => {
       "订单操作失败，请检查网络后重试"
     );
   });
+
+  it("distinguishes the unavailable identity dependency from the order service", () => {
+    expect(
+      describeBookingOrderMutationError(
+        new ApiClientError("error.dependency.redis_unavailable", 50301, 503),
+        "zh"
+      )
+    ).toBe("身份服务暂时不可用，请稍后重试");
+  });
 });

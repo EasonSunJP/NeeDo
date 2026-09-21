@@ -485,6 +485,41 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     });
   };
 
+  const payWithNdp = async () => {
+    const slot = "payment-ndp";
+    if (pendingAction) return;
+    const key = mutationKeys.current.get(slot) ?? createBookingIdempotencyKey();
+    mutationKeys.current.set(slot, key);
+    setPendingAction(slot);
+    setActionError("");
+    try {
+      const paidCheckout = await bookingApi.payWithNdp(orderId, { idempotencyKey: key });
+      mutationKeys.current.delete(slot);
+      await applyCheckoutMutation(paidCheckout);
+    } catch (paymentError) {
+      try {
+        const authoritativeCheckout = await bookingApi.getCheckout(orderId);
+        mutationKeys.current.delete(slot);
+        if (
+          authoritativeCheckout.status === "completed" &&
+          authoritativeCheckout.paymentMethod === "ndp" &&
+          authoritativeCheckout.paymentEvidence === "ndp_ledger"
+        ) {
+          await applyCheckoutMutation(authoritativeCheckout);
+          return;
+        }
+        setCheckout(authoritativeCheckout);
+        setCheckoutStatus("success");
+        setCheckoutError("");
+        setActionError(describeBookingOrderMutationError(paymentError, language));
+      } catch (reconciliationError) {
+        setActionError(describeBookingOrderMutationError(reconciliationError, language));
+      }
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   const retryOrderProjection = async () => {
     if (projectionPending) return;
     setProjectionPending(true);
@@ -738,7 +773,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           {order.status === "inService" && remaining > 0 ? <button className="h-12 w-full rounded-[20px] bg-red-500 text-sm font-black text-white" disabled={Boolean(pendingAction)} onClick={() => setEndConfirmOpen(true)} type="button">提前结束服务</button> : null}
           {order.status === "inService" && remaining === 0 ? <p className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black">服务时间已到，等待系统完成结算准备</p> : null}
           {canChoosePayment && checkout.availablePaymentMethods.length === 0 ? <p className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black text-[color:var(--client-muted)]">当前暂无可用支付方式</p> : null}
-          {canChoosePayment && checkout.availablePaymentMethods.length > 0 ? <div className="grid grid-cols-2 gap-2">{checkout.availablePaymentMethods.includes("cash") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={selectOfflinePayment} type="button">线下支付</button> : null}{checkout.availablePaymentMethods.includes("ndp") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-primary)] text-xs font-black text-[color:var(--client-primary-contrast)]" disabled={Boolean(pendingAction)} onClick={() => void runMutation("payment-ndp", (idempotencyKey) => bookingApi.payWithNdp(orderId, { idempotencyKey }), applyCheckoutMutation)} type="button">NDP 支付</button> : null}</div> : null}
+          {canChoosePayment && checkout.availablePaymentMethods.length > 0 ? <div className="grid grid-cols-2 gap-2">{checkout.availablePaymentMethods.includes("cash") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={selectOfflinePayment} type="button">线下支付</button> : null}{checkout.availablePaymentMethods.includes("ndp") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-primary)] text-xs font-black text-[color:var(--client-primary-contrast)]" disabled={Boolean(pendingAction)} onClick={() => void payWithNdp()} type="button">NDP 支付</button> : null}</div> : null}
           {exchangeOrderLinked === false && canCancel ? <button className="h-12 w-full rounded-[20px] border border-red-400/40 text-sm font-black text-red-500" disabled={Boolean(pendingAction)} onClick={() => { setActionError(""); setCancelConfirmOpen(true); }} type="button">取消预约</button> : null}
         </>
       ) : null}
