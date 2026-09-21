@@ -183,6 +183,24 @@ export type BookingOrderCustomer = {
   reviewCount: number;
 };
 
+export type BookingOrderAssignedTechnician = {
+  id: number;
+  publicId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  city: string;
+  bio: string | null;
+  serviceArea: string | null;
+  languages: string[];
+  reviewSummary: {
+    ratingAverage: string;
+    reviewCount: number;
+  };
+  completedOrderCount: number;
+  favoriteCount: number;
+  shareCount: number;
+};
+
 export type BookingOrderTimelineEvent =
   | {
       type: "ORDER_COMMENT_ADDED";
@@ -299,6 +317,7 @@ export type BookingOrder = {
   technicianServiceId: number | null;
   shopId: number;
   technicianProfileId: number | null;
+  assignedTechnician?: BookingOrderAssignedTechnician | null;
   scheduleSlotId: number;
   fulfillmentMode: FulfillmentMode;
   serviceName: string;

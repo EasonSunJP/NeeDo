@@ -162,6 +162,21 @@ const order: BookingOrder = {
   statusHistory: []
 };
 
+const assignedTechnician = {
+  id: 28,
+  publicId: "s0000000028",
+  displayName: "订单投影技师",
+  avatarUrl: "/uploads/technicians/28/avatar.jpg",
+  city: "东京都",
+  bio: "正式担当技师",
+  serviceArea: "渋谷区",
+  languages: ["日本語", "中文"],
+  reviewSummary: { ratingAverage: "4.90", reviewCount: 23 },
+  completedOrderCount: 48,
+  favoriteCount: 12,
+  shareCount: 4
+};
+
 describe("formal merchant order detail layout", () => {
   it("keeps the action bar viewport-docked while the safe-area padded detail body scrolls independently", () => {
     expect(formalOrderDetailSource).toContain("<MobileFullscreenPage>");
@@ -304,6 +319,37 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
     expect(container.textContent).not.toContain("服务验证码");
     expect(container.textContent).not.toContain("服务开始");
     expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "追加服务")).toBe(false);
+  });
+
+  it("uses the order-scoped technician projection without a second public-directory lookup", async () => {
+    mocks.getOrder.mockResolvedValue({ ...order, technicianName: assignedTechnician.displayName, assignedTechnician });
+    mocks.getTechnicianDetail.mockRejectedValue(new ApiClientError("error.technician.not_found", 404, 404));
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/merchant/orders/46397"]}><Routes><Route path="/merchant/orders/:orderId" element={<MerchantOrderDetailRoutePage />} /></Routes></MemoryRouter>);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("订单投影技师");
+    expect(mocks.getTechnicianDetail).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("店铺确认担当后将在此显示正式技师资料。");
+  });
+
+  it("keeps a private assigned technician distinct from an unassigned order", async () => {
+    mocks.getOrder.mockResolvedValue({ ...order, technicianName: "私密资料技师", assignedTechnician: null });
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/merchant/orders/46397"]}><Routes><Route path="/merchant/orders/:orderId" element={<MerchantOrderDetailRoutePage />} /></Routes></MemoryRouter>);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("私密资料技师");
+    expect(container.textContent).toContain("担当技师已确认，公开资料暂不可用。");
+    expect(container.textContent).toContain("联系技师");
+    expect(container.textContent).not.toContain("派单");
+    expect(mocks.getTechnicianDetail).not.toHaveBeenCalled();
   });
 
   it("requires the shared red warning before force-cancelling a normal booking", async () => {

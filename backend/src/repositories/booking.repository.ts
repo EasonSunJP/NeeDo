@@ -181,6 +181,24 @@ export interface BookingOrderCustomerPayload {
   reviewCount: number;
 }
 
+export interface BookingOrderAssignedTechnicianPayload {
+  id: number;
+  publicId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  city: string;
+  bio: string | null;
+  serviceArea: string | null;
+  languages: string[];
+  reviewSummary: {
+    ratingAverage: string;
+    reviewCount: number;
+  };
+  completedOrderCount: number;
+  favoriteCount: number;
+  shareCount: number;
+}
+
 const BOOKING_ORDER_STATUS_FROM_DB = {
   [DatabaseBookingOrderStatus.PENDING]: "pending",
   [DatabaseBookingOrderStatus.CONFIRMED]: "confirmed",
@@ -1100,6 +1118,7 @@ export interface BookingOrderPayload {
   technicianServiceId: number | null;
   shopId: number;
   technicianProfileId: number | null;
+  assignedTechnician?: BookingOrderAssignedTechnicianPayload | null;
   scheduleSlotId: number;
   exchangeIntelligencePostId?: number | null;
   fulfillmentMode: BookingFulfillmentMode;
@@ -1435,6 +1454,38 @@ type AvailabilityWindowRecord = Prisma.AvailabilityGetPayload<{
   include: { shop: true };
 }>;
 
+const orderAssignedTechnicianInclude = {
+  mediaAssets: {
+    where: { usageType: "avatar", isActive: true, deletedAt: null },
+    orderBy: { id: "desc" as const },
+    take: 1
+  },
+  reviewSummary: true,
+  performanceSummary: true,
+  _count: {
+    select: {
+      entityFavorites: { where: { deletedAt: null } },
+      entityShareEvents: { where: { deletedAt: null } }
+    }
+  },
+  user: {
+    select: {
+      isActive: true,
+      deletedAt: true,
+      avatarUrl: true,
+      avatarBootstrapUrl: true,
+      identities: {
+        where: {
+          deletedAt: null,
+          isActive: true,
+          type: { in: ["technician", "service", "s"] }
+        },
+        include: { publicIdentifier: true }
+      }
+    }
+  }
+} satisfies Prisma.TechnicianProfileInclude;
+
 type OrderRecord = Prisma.BookingOrderGetPayload<{
   include: {
     customer: {
@@ -1469,7 +1520,7 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
         publicIdentifier: true;
       };
     };
-    technicianProfile: true;
+    technicianProfile: { include: typeof orderAssignedTechnicianInclude };
     serviceItems: {
       orderBy: { position: "asc" };
     };
@@ -8374,7 +8425,9 @@ export class BookingRepository implements BookingRepositoryPort {
           publicIdentifier: true
         }
       },
-      technicianProfile: true,
+      technicianProfile: {
+        include: orderAssignedTechnicianInclude
+      },
       serviceItems: {
         orderBy: { position: "asc" as const }
       },
@@ -8879,6 +8932,7 @@ export class BookingRepository implements BookingRepositoryPort {
       technicianServiceId: order.technicianServiceId,
       shopId: order.shopId,
       technicianProfileId: order.technicianProfileId,
+      assignedTechnician: this.mapOrderAssignedTechnician(order),
       scheduleSlotId: order.scheduleSlotId,
       exchangeIntelligencePostId: order.exchangeIntelligencePostId,
       fulfillmentMode: order.fulfillmentMode === "home" ? "home" : "store",
@@ -9171,6 +9225,63 @@ export class BookingRepository implements BookingRepositoryPort {
       membershipLevel: profile ? resolveEffectiveCustomerMembershipLevel(profile) : "standard",
       ratingAverage: reviewSummary ? this.formatDecimal(reviewSummary.ratingAverage, 2) : "0.00",
       reviewCount: reviewSummary?.reviewCount ?? 0
+    };
+  }
+
+  private mapOrderAssignedTechnician(
+    order: OrderRecord
+  ): BookingOrderAssignedTechnicianPayload | null {
+    const profile = order.technicianProfile;
+    if (
+      !profile ||
+      profile.id !== order.technicianProfileId ||
+      profile.deletedAt !== null ||
+      profile.status !== "published" ||
+      profile.visibility !== "public" ||
+      !profile.user.isActive ||
+      profile.user.deletedAt !== null
+    ) {
+      return null;
+    }
+
+    const publicIdentifier = profile.user.identities.find((identity) =>
+      identity.scopeType === "technician_profile" &&
+      identity.scopeId === profile.id &&
+      identity.publicIdentifier?.kind === "S" &&
+      identity.publicIdentifier.status === "ACTIVE" &&
+      identity.publicIdentifier.deletedAt === null
+    )?.publicIdentifier;
+    if (!publicIdentifier) return null;
+
+    const reviewSummary = profile.reviewSummary;
+    const performanceSummary = profile.performanceSummary?.deletedAt === null
+      ? profile.performanceSummary
+      : null;
+
+    return {
+      id: profile.id,
+      publicId: publicIdentifier.publicId,
+      displayName: profile.displayName,
+      avatarUrl:
+        profile.mediaAssets[0]?.url ??
+        profile.user.avatarUrl ??
+        profile.user.avatarBootstrapUrl ??
+        null,
+      city: profile.city,
+      bio: profile.bio,
+      serviceArea: profile.serviceArea,
+      languages: Array.isArray(profile.languages)
+        ? profile.languages.filter((value): value is string => typeof value === "string")
+        : [],
+      reviewSummary: {
+        ratingAverage: reviewSummary
+          ? this.formatDecimal(reviewSummary.ratingAverage, 2)
+          : "0.00",
+        reviewCount: reviewSummary?.reviewCount ?? 0
+      },
+      completedOrderCount: performanceSummary?.completedOrderCount ?? 0,
+      favoriteCount: profile._count.entityFavorites,
+      shareCount: profile._count.entityShareEvents
     };
   }
 

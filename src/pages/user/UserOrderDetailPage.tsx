@@ -20,6 +20,7 @@ import {
   type OverdueAppointmentBlock,
   type OverdueAppointmentResolutionKind
 } from "../../features/booking/api";
+import { buildFormalOrderPersonCard } from "../../features/booking/formalOrderPersonCard";
 import { OverdueAppointmentResolutionDialog } from "../../features/booking/OverdueAppointmentResolutionDialog";
 import {
   coreReadApi,
@@ -58,6 +59,7 @@ registerTranslationEntries({
   "费用处理": { "zh-Hant": "費用處理", ja: "料金の処理", en: "Payment handling", ko: "비용 처리" },
   "已确认付款将进入退款待处理；如适用取消扣费，以正式财务记录为准。": { "zh-Hant": "已確認付款將進入退款待處理；如適用取消扣費，以正式財務記錄為準。", ja: "確認済みの支払いは返金処理待ちになります。キャンセル料が適用される場合は、正式な財務記録が基準です。", en: "Confirmed payment moves to refund pending. Any cancellation charge follows the formal finance record.", ko: "확인된 결제는 환불 대기로 전환됩니다. 취소 수수료가 적용되는 경우 공식 재무 기록을 기준으로 합니다." },
   "未确认付款；如有已冻结 NDP、预付款或取消费用，将按正式规则处理。": { "zh-Hant": "付款尚未確認；如有已凍結 NDP、預付款或取消費用，將按正式規則處理。", ja: "支払いは未確認です。凍結済みNDP、前払い、またはキャンセル料がある場合は正式ルールに従って処理されます。", en: "Payment is not confirmed. Any frozen NDP, prepayment, or cancellation charge is handled under the formal rules.", ko: "결제가 확인되지 않았습니다. 동결된 NDP, 선결제 또는 취소 비용이 있는 경우 공식 규칙에 따라 처리됩니다." },
+  "担当技师已确认，公开资料暂不可用。": { "zh-Hant": "已確認擔當技師，公開資料暫時無法使用。", ja: "担当者は確定していますが、公開プロフィールは現在利用できません。", en: "The assigned technician is confirmed, but their public profile is currently unavailable.", ko: "담당 기사는 확정되었지만 공개 프로필을 현재 이용할 수 없습니다." },
   "返回": { "zh-Hant": "返回", ja: "戻る", en: "Back", ko: "돌아가기" }
 });
 
@@ -313,7 +315,9 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       const [serviceResult, shopResult, technicianResult] = await Promise.allSettled([
         order.serviceId ? coreReadApi.getServiceDetail(order.serviceId) : Promise.resolve(null),
         coreReadApi.getShopDetail(order.shopId),
-        order.technicianProfileId ? coreReadApi.getTechnicianDetail(order.technicianProfileId) : Promise.resolve(null)
+        order.assignedTechnician === undefined && order.technicianProfileId
+          ? coreReadApi.getTechnicianDetail(order.technicianProfileId)
+          : Promise.resolve(null)
       ]);
       if (!active) return;
       setOrderService(serviceResult.status === "fulfilled" ? serviceResult.value : null);
@@ -605,7 +609,17 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           </OrderDetailSection>
 
           <OrderDetailSection title="技师 / 担当">
-            {displayTechnician ? (
+            {order.assignedTechnician ? (
+              <SocialProfileMiniCard
+                data={buildFormalOrderPersonCard(order.assignedTechnician, "technician")}
+                detailTo={getScopedTechnicianDynamicPath("user", {
+                  id: String(order.assignedTechnician.id),
+                  systemId: order.assignedTechnician.publicId
+                })}
+                showAction={false}
+                topTags={[{ label: "本次担当", tone: "green" }]}
+              />
+            ) : displayTechnician ? (
               <SocialProfileMiniCard
                 detailTo={getScopedTechnicianDynamicPath("user", displayTechnician)}
                 showAction={false}
@@ -615,7 +629,11 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
             ) : (
               <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
                 <p className="text-sm font-black">{order.technicianName ?? "尚未指定担当技师"}</p>
-                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺确认担当后将在此显示正式技师资料。</p>
+                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">
+                  {order.technicianProfileId
+                    ? translateText("担当技师已确认，公开资料暂不可用。", language)
+                    : "店铺确认担当后将在此显示正式技师资料。"}
+                </p>
               </section>
             )}
           </OrderDetailSection>

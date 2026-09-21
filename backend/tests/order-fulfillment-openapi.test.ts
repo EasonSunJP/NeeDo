@@ -296,9 +296,27 @@ describe("formal order fulfillment OpenAPI contract", () => {
         serviceDurationSnapshot: expect.any(Object),
         serviceSnapshot: expect.any(Object),
         rebook: expect.objectContaining({ $ref: "#/components/schemas/BookingOrderRebook" }),
+        assignedTechnician: {
+          anyOf: [
+            { $ref: "#/components/schemas/BookingOrderAssignedTechnician" },
+            { type: "null" }
+          ]
+        },
         serviceSession: expect.any(Object)
       })
     );
+    expect(schemas.BookingOrder.required).toContain("assignedTechnician");
+    expect(schemas.BookingOrderAssignedTechnician).toMatchObject({
+      additionalProperties: false,
+      required: expect.arrayContaining([
+        "id",
+        "publicId",
+        "displayName",
+        "avatarUrl",
+        "reviewSummary",
+        "completedOrderCount"
+      ])
+    });
     expect(schemas.BookingOrder.required).toContain("rebook");
     expect(schemas.BookingOrderRebook.oneOf).toEqual([
       expect.objectContaining({ properties: expect.objectContaining({ action: { type: "string", const: "checkout" } }) }),
