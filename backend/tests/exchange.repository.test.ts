@@ -55,6 +55,71 @@ const demandRow = {
 };
 
 describe("ExchangePostRepository", () => {
+  it("filters Intelligence rows and totals by the linked shop's current audience before pagination", async () => {
+    const findMany = jest.fn(async () => []);
+    const count = jest.fn(async () => 0);
+    const shopWhere = { OR: [{ visibility: "public" }, { id: 11, visibility: "limited" }] };
+    const buildVisibilityWhere = jest.fn(async () => shopWhere);
+    const viewer = { userId: 7, identityId: 17, identityType: "customer", identityScopeType: "customer_profile", identityScopeId: 27 };
+    const repository = Reflect.construct(ExchangePostRepository, [
+      { exchangePost: { findMany, count } },
+      { buildVisibilityWhere }
+    ]) as ExchangePostRepository;
+
+    await repository.listPosts({ type: "intelligence", page: 2, pageSize: 10, viewerIdentityId: 17, now, shopViewer: viewer } as never);
+
+    const visibleService = expect.objectContaining({ shop: expect.objectContaining({ is: expect.objectContaining({
+      ...shopWhere,
+      status: "published",
+      deletedAt: null,
+      publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } }
+    }) }) });
+    const where = expect.objectContaining({
+      intelligence: expect.objectContaining({
+        is: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({ service: expect.objectContaining({ is: visibleService }) }),
+            expect.objectContaining({ technicianService: expect.objectContaining({ is: visibleService }) })
+          ])
+        })
+      })
+    });
+    expect(buildVisibilityWhere).toHaveBeenCalledWith(viewer);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where, skip: 10, take: 10 }));
+    expect(count).toHaveBeenCalledWith(expect.objectContaining({ where }));
+  });
+
+  it("filters a direct Intelligence read by the same linked-shop audience", async () => {
+    const findFirst = jest.fn(async () => null);
+    const shopWhere = { visibility: "public" };
+    const repository = Reflect.construct(ExchangePostRepository, [
+      { exchangePost: { findFirst } },
+      { buildVisibilityWhere: jest.fn(async () => shopWhere) }
+    ]) as ExchangePostRepository;
+
+    await expect(repository.findPostById(41, 17, now)).resolves.toBeNull();
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          expect.objectContaining({ type: "DEMAND" }),
+          expect.objectContaining({
+            type: "INTELLIGENCE",
+            intelligence: expect.objectContaining({ is: expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({ service: expect.objectContaining({ is: expect.objectContaining({
+                  shop: { is: expect.objectContaining(shopWhere) }
+                }) }) }),
+                expect.objectContaining({ technicianService: expect.objectContaining({ is: expect.objectContaining({
+                  shop: { is: expect.objectContaining(shopWhere) }
+                }) }) })
+              ])
+            }) })
+          })
+        ])
+      })
+    }));
+  });
+
   it("resolves a merchant Intelligence service from the active shop authority", async () => {
     const findUnique = jest.fn(async () => ({
       id: 501,
@@ -1114,7 +1179,7 @@ describe("ExchangePostRepository", () => {
     );
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 41, deletedAt: null },
+        where: expect.objectContaining({ id: 41, deletedAt: null }),
         include: expect.any(Object)
       })
     );

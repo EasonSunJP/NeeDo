@@ -32,6 +32,7 @@ import type {
   ExchangeIntelligenceServiceRef
 } from "../types/exchange-intelligence-booking.types";
 import { enforceExchangeRequestAddressPrivacy } from "../domain/exchange-address-privacy";
+import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
 import type { ServicePrepaymentService } from "./service-prepayment.service";
 
 export interface ExchangeActorLookup {
@@ -149,13 +150,15 @@ export interface ExchangeRepositoryPort {
     claimProviderUserId?: number;
     authorIdentityId?: number;
     now: Date;
+    shopViewer?: ShopVisibilityViewer;
   }): Promise<ExchangePostPage>;
   findPostById(
     postId: number,
     viewerIdentityId: number,
     now: Date,
     claimProviderUserId?: number,
-    participantIdentityId?: number
+    participantIdentityId?: number,
+    shopViewer?: ShopVisibilityViewer
   ): Promise<ExchangePostPayload | null>;
   listComments(
     postId: number,
@@ -310,6 +313,7 @@ export class ExchangeService {
         ? { claimProviderUserId: actor.userId }
         : {}),
       ...(privateAuthorIdentityId ? { authorIdentityId: privateAuthorIdentityId } : {}),
+      ...(input.type === "intelligence" ? { shopViewer: this.shopViewer(actor) } : {}),
       now: this.now()
     });
     return {
@@ -330,7 +334,8 @@ export class ExchangeService {
       actor.ownerIdentityId ?? actor.identityId,
       this.now(),
       CLAIM_PROVIDER_IDENTITIES.has(actor.identityType) ? actor.userId : undefined,
-      actor.identityId
+      actor.identityId,
+      this.shopViewer(actor)
     );
     if (!post) throw this.postNotFound();
     this.assertCanReadPost(actor, post);
@@ -986,7 +991,8 @@ export class ExchangeService {
       actor.ownerIdentityId ?? actor.identityId,
       this.now(),
       undefined,
-      actor.identityId
+      actor.identityId,
+      this.shopViewer(actor)
     );
     if (!post) throw this.postNotFound();
     this.assertCanReadPost(actor, post);
@@ -1001,6 +1007,16 @@ export class ExchangeService {
     )
       return;
     throw this.postNotFound();
+  }
+
+  private shopViewer(actor: ExchangeActorRecord): ShopVisibilityViewer {
+    return {
+      userId: actor.userId,
+      identityId: actor.identityId,
+      identityType: actor.identityType,
+      identityScopeType: actor.scopeType,
+      identityScopeId: actor.scopeId
+    };
   }
 
   private decorateClaimCapabilities(

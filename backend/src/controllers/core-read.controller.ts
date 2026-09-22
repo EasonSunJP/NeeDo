@@ -159,9 +159,7 @@ export class CoreReadController {
       const query = coreReadShopDetailQuerySchema.parse(request.query);
       const shopId = this.getShopId(request);
       const viewer = this.shopVisibilityViewer(response);
-      const detail = query.sourcePostId === undefined
-        ? await this.coreReadService.getShopDetail(shopId, query.locale, viewer)
-        : await this.coreReadService.getShopDetail(shopId, query.locale, viewer, query.sourcePostId);
+      const detail = await this.coreReadService.getShopDetail(shopId, query.locale, viewer);
       response
         .status(200)
         .json(successResponse(detail));

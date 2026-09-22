@@ -252,7 +252,8 @@ describe("ExchangeFeedPage", () => {
       expect(markup).toContain(">8<");
       expect(markup).toContain(">6<");
       expect(markup).toContain("東京都中央区銀座3-4-12");
-      expect(markup).toContain(`href="${context === "user" ? "" : `/${context}`}/profiles/shop/shop0000000061?sourcePostId=61"`);
+      expect(markup).toContain(`href="${context === "user" ? "" : `/${context}`}/stores/shop0000000061"`);
+      expect(markup).not.toContain("sourcePostId");
       expect(markup).not.toContain("LifeDance 管理员");
       expect(markup).not.toContain("b0000000001");
       expect(markup).not.toContain("shop0000000061</");
@@ -301,23 +302,28 @@ describe("ExchangeFeedPage", () => {
         <MemoryRouter initialEntries={["/needo"]}>
           <Routes>
             <Route path="/needo" element={<><ExchangeFeedPage context="user" /><Destination /></>} />
-            <Route path="/profiles/shop/:id" element={<Destination />} />
+            <Route path="/stores/:id" element={<Destination />} />
             <Route path="/needo/posts/:id" element={<Destination />} />
           </Routes>
         </MemoryRouter>
       ));
-      const shopLink = container.querySelector<HTMLAnchorElement>('a[href="/profiles/shop/shop0000000061?sourcePostId=61"]');
+      const shopLink = container.querySelector<HTMLAnchorElement>('a[href="/stores/shop0000000061"]');
       expect(shopLink).not.toBeNull();
       await act(async () => shopLink?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
       expect(container.querySelector('[data-testid="destination"]')?.textContent).toBe("/needo");
       await act(async () => shopLink?.click());
       expect(container.querySelector('[data-testid="destination"]')?.textContent).toBe(
-        "/profiles/shop/shop0000000061"
+        "/stores/shop0000000061"
       );
     } finally {
       await act(async () => root.unmount());
       container.remove();
     }
+  });
+
+  it("has a protected technician store homepage for the Intelligence card target", () => {
+    const appSource = readFileSync(`${process.cwd()}/src/App.tsx`, "utf8");
+    expect(appSource).toContain('path="/technician/stores/:id" element={protect("technician", <StoreDetailPage scope="technician" />)}');
   });
 
   it("shows distinct loading, empty, permission, authentication, and unavailable states", () => {

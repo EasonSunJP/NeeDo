@@ -1,4 +1,5 @@
 import type { ContentLocaleCode } from "../constants/content-locales";
+import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
 import type { PaginatedResponse } from "../utils/pagination";
 
 export type ExchangePostType = "demand" | "intelligence";
@@ -214,6 +215,7 @@ export interface ExchangeListInput {
   claimProviderUserId?: number;
   authorIdentityId?: number;
   now: Date;
+  shopViewer?: ShopVisibilityViewer;
 }
 
 export type ExchangePostPage = PaginatedResponse<ExchangePostPayload>;

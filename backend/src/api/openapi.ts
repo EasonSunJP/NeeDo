@@ -2076,7 +2076,7 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
     [base]: {
       get: exchangeOperation("List live demand or intelligence posts", "exchange:posts:list", {
         description:
-          "For type=demand, customers receive only demand posts authored by their active account; merchant and technician identities receive the live demand marketplace. The public Request marketplace resolves the current membership entitlement and current priority_request benefit at read time, then orders active priority posts by tier and chronological fairness. Intelligence posts follow the normal live feed scope.",
+          "For type=demand, customers receive only demand posts authored by their active account; merchant and technician identities receive the live demand marketplace. The public Request marketplace resolves the current membership entitlement and current priority_request benefit at read time, then orders active priority posts by tier and chronological fairness. Intelligence posts require access to the linked shop under its current visibility settings.",
         parameters: [
           {
             name: "type",
@@ -2130,7 +2130,7 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
     [`${base}/{id}`]: {
       get: exchangeOperation("Read one persisted Exchange post", "exchange:posts:detail", {
         description:
-          "Demand posts are readable by their customer owner and by merchant or technician identities; other customers receive 404. Intelligence posts follow the normal live feed scope.",
+          "Demand posts are readable by their customer owner and by merchant or technician identities; other customers receive 404. Intelligence posts require access to the linked shop under its current visibility settings.",
         parameters: [postId],
         responses: {
           "200": jsonDataResponse("Exchange post", {
@@ -22381,7 +22381,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           { name: "locale", in: "query", required: false, schema: { type: "string", enum: ["ja", "en", "ko", "zh-CN", "zh-TW"] } },
-          { name: "sourcePostId", in: "query", required: false, description: "Live published Intelligence post bound to this shop; authenticated readers may open a limited shop detail through this source only.", schema: { type: "integer", minimum: 1 } }
+          { name: "sourcePostId", in: "query", required: false, description: "Legacy link compatibility only; never expands the shop's visibility audience.", schema: { type: "integer", minimum: 1 } }
         ],
         responses: {
           "200": { description: "Shop detail" },

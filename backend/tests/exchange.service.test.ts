@@ -1052,7 +1052,13 @@ describe("ExchangeService", () => {
       authorIdentityId: 17,
       now
     });
-    expect(repository.findPostById).toHaveBeenLastCalledWith(post.id, 17, now, undefined, 18);
+    expect(repository.findPostById).toHaveBeenLastCalledWith(post.id, 17, now, undefined, 18, {
+      userId: 7,
+      identityId: 18,
+      identityType: "scout",
+      identityScopeType: "global",
+      identityScopeId: null
+    });
   });
 
   it.each(["technician", "merchant", "merchant_owner", "merchant_staff"])(

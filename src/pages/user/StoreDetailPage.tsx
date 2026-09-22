@@ -151,7 +151,7 @@ type StoreDetailExperienceProps = {
   pricingControl?: ReactNode;
   pricingMode?: "store" | "technician";
   privacyControl?: ReactNode;
-  scope?: "user" | "merchant";
+  scope?: "user" | "merchant" | "technician";
   serviceCardsOverride?: UnifiedServiceInfoCardData[];
   store: Store;
   techniciansOverride?: Technician[];
@@ -5089,11 +5089,11 @@ function StoreDetailStatus({
   title
 }: {
   description: string;
-  scope: "user" | "merchant";
+  scope: "user" | "merchant" | "technician";
   title: string;
 }) {
   return (
-    <PageScaffold contentClassName="space-y-5 pb-28" navItems={scope === "merchant" ? [] : undefined}>
+    <PageScaffold contentClassName="space-y-5 pb-28" navItems={scope === "user" ? undefined : []}>
       <AppTopBar subtitle="真实 API 数据源" title="店铺详情" />
       <EmptyStatePanel caption={description} title={title} />
     </PageScaffold>
@@ -5157,7 +5157,7 @@ export function UnifiedFormalStoreDetail({
   notice,
   shopId
 }: {
-  scope: "user" | "merchant";
+  scope: "user" | "merchant" | "technician";
   shopId: number | string;
   embedded?: boolean;
   notice?: string;
@@ -5183,7 +5183,7 @@ export function UnifiedFormalStoreDetail({
       />
     );
     return (
-      <PageScaffold contentClassName="space-y-5 pb-28" navItems={scope === "merchant" ? [] : undefined}>
+      <PageScaffold contentClassName="space-y-5 pb-28" navItems={scope === "user" ? undefined : []}>
         <AppTopBar subtitle="真实 API 数据源" title="店铺详情" />
         <EmptyStatePanel
           action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>{translateText("重新加载", language)}</PrimaryButton>}
@@ -5215,7 +5215,7 @@ export function UnifiedFormalStoreDetail({
   );
 }
 
-export function StoreDetailPage({ scope = "user" }: { scope?: "user" | "merchant" } = {}) {
+export function StoreDetailPage({ scope = "user" }: { scope?: "user" | "merchant" | "technician" } = {}) {
   const { id } = useParams();
   const location = useLocation();
   const { language } = useI18n();
