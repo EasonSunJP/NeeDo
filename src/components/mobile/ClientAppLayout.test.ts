@@ -135,7 +135,10 @@ describe("shared client application width", () => {
     expect(userCenterSource.match(/client-app-gutter/g)?.length).toBeGreaterThanOrEqual(3);
     expect(technicianPortalSource).not.toContain('maxWidth="880px"');
     expect(technicianPortalSource).toContain(
-      'className="client-app-gutter space-y-4 pb-32 pt-4"',
+      'cn("client-app-gutter space-y-4 pt-4",',
+    );
+    expect(technicianPortalSource).toContain(
+      'meTab === "info" ? "pb-[calc(132px+env(safe-area-inset-bottom))]" : "pb-32"',
     );
     expect(merchantPortalSource).not.toContain('maxWidth="880px"');
     expect(merchantPortalSource).toContain(
