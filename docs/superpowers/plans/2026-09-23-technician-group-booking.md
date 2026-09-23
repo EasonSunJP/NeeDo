@@ -64,3 +64,10 @@
 - [ ] Run focused backend tests, frontend tests, lint and builds, and the production build audit.
 - [ ] Exercise a local black-diamond multi-guest booking, one guest cancellation, sibling preservation, and free-tier rejection against isolated local data.
 - [ ] Review diff and status, report code commit(s), test results, browser/device gaps and rollback to the parent task.
+
+### Task 7: Post-creation content revision (new requirement, not covered by assignment cancellation)
+
+- [ ] Specify a versioned, idempotent replacement command for one group assignment that can change ordered services or technician while other guest orders remain intact. Define allowed order and payment states, user/provider authority, price-difference approval and rollback.
+- [ ] Add failing isolated-database tests for stale version, concurrent edits, new technician/slot conflict, unchanged sibling orders, lower-price refund, higher-price payment, partial failure rollback and replay.
+- [ ] Extend the existing booking transaction and ledger/audit paths to move old and new reservations atomically, refresh service and compensation snapshots, and record the financial difference. Do not use the merchant price/note edit endpoint as a substitute for changing booked services.
+- [ ] Add an edit action on the group/order pages with a clear old/new preview, financial difference and confirmation. Verify desktop/mobile, five locales, protected provider views and final integrated state before claiming editable orders.
