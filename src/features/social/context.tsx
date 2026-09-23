@@ -308,6 +308,12 @@ function formalEntityType(identityType: string | undefined): SocialProfile["enti
 }
 
 const formalNotificationTranslations: Record<string, Record<Language, string>> = {
+  "identity.application.technician.invited.title": {
+    zh: "技师申请邀请", "zh-Hant": "技師申請邀請", ja: "スタッフ申請への招待", en: "Technician application invitation", ko: "기술자 신청 초대"
+  },
+  "identity.application.technician.invited.body": {
+    zh: "运营已为你创建技师申请草稿，请前往身份申请页面完善资料并提交。", "zh-Hant": "營運已為你建立技師申請草稿，請前往身分申請頁面完善資料並提交。", ja: "運営がスタッフ申請の下書きを作成しました。申請ページで情報を入力して提出してください。", en: "An application draft was created for you. Complete and submit it on the identity application page.", ko: "운영팀이 기술자 신청 초안을 만들었습니다. 신청 페이지에서 정보를 입력하고 제출하세요."
+  },
   "exchange.cancellation.request.title": {
     zh: "收到取消申请",
     "zh-Hant": "收到取消申請",

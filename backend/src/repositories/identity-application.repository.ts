@@ -23,6 +23,7 @@ import type {
 } from "../services/identity-application-policy.service";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
+import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
 
 const identityApplicationInclude = {
   technicianDetail: { include: { targetShop: { select: { name: true, publicIdentifier: { select: { publicId: true } } } } } },
@@ -81,6 +82,13 @@ const asObject = (value: Prisma.JsonValue | null): Record<string, unknown> | nul
 
 export class IdentityApplicationRepository implements IdentityApplicationRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma, private readonly cipher?: SensitiveFieldCipherService) {}
+
+  public async findInvitableUserByNeedoId(needoId: string): Promise<{ id: number; username: string } | null> {
+    return this.client.user.findFirst({
+      where: { needoId, isActive: true, deletedAt: null },
+      select: { id: true, username: true }
+    });
+  }
 
   public async listMine(
     userId: number,
@@ -236,6 +244,61 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
       include: identityApplicationInclude
     });
 
+    return this.mapApplication(row);
+  }
+
+  public async createTechnicianInvitation(
+    input: CreateTechnicianDraftRepositoryInput & { actorUserId: number }
+  ): Promise<IdentityApplicationRecord> {
+    let row: IdentityApplicationRow;
+    try {
+      row = await this.client.$transaction(async (transaction) => {
+        const recipientIdentityId = await resolveCanonicalPersonalIdentityId(transaction, input.userId);
+        const actorIdentityId = await resolveCanonicalPersonalIdentityId(transaction, input.actorUserId);
+        if (!recipientIdentityId || !actorIdentityId) {
+          throw new AppError({ code: ERROR_CODES.IDENTITY_NOT_FOUND, message: "error.auth.identity_not_found", statusCode: 403 });
+        }
+        const application = await transaction.identityApplication.create({
+          data: {
+            userId: input.userId,
+            type: "technician",
+            status: "draft",
+            activeKey: input.activeKey,
+            technicianDetail: { create: this.toTechnicianData(input.detail) }
+          },
+          include: identityApplicationInclude
+        });
+        await transaction.notification.create({
+          data: {
+            recipientUserId: input.userId,
+            recipientIdentityId,
+            actorUserId: input.actorUserId,
+            actorIdentityId,
+            type: "SYSTEM",
+            title: "identity.application.technician.invited.title",
+            body: "identity.application.technician.invited.body",
+            payload: { applicationId: application.id, targetShopId: input.detail.targetShopId, route: "/me/identity/technician/apply" }
+          }
+        });
+        await transaction.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: "identity_application.technician.invited",
+            targetType: "IdentityApplication",
+            targetId: application.id,
+            ip: null,
+            userAgent: null,
+            metadata: { applicantUserId: input.userId, targetShopId: input.detail.targetShopId }
+          }
+        });
+        return application;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new AppError({ code: ERROR_CODES.SAAS_BILLING_CONFLICT, message: "error.identity_application.conflict", statusCode: 409 });
+      }
+      throw error;
+    }
     return this.mapApplication(row);
   }
 

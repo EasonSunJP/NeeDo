@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TechniciansPage } from "./TechniciansPage";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-const api = vi.hoisted(() => ({ shops: vi.fn(), technicians: vi.fn(), technicianSummary: vi.fn() }));
+const api = vi.hoisted(() => ({ shops: vi.fn(), technicians: vi.fn(), technicianSummary: vi.fn(), inviteTechnicianApplicant: vi.fn() }));
 vi.mock("../../api/backofficeRealData", async (original) => ({ ...await original<typeof import("../../api/backofficeRealData")>(), backofficeRealDataApi: api }));
 vi.mock("../../i18n/I18nProvider", () => ({ useOptionalI18n: () => ({ language: "zh" }) }));
 vi.mock("../../components/admin/AdminLayout", () => ({ AdminLayout: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
@@ -22,7 +22,30 @@ beforeEach(() => {
   api.shops.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
   api.technicians.mockImplementation(async (_scope, query: { page: number }) => ({ list: [], total: 137, page: query.page, page_size: 10 }));
   api.technicianSummary.mockResolvedValue({ total: 137, pendingReview: 4, activeToday: 9, date: "2026-09-23", timeZone: "Asia/Tokyo" });
+  api.inviteTechnicianApplicant.mockResolvedValue({ id: 11, status: "draft" });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+});
+
+it("opens a new technician invitation form and submits an existing user and shop", async () => {
+  api.shops.mockResolvedValue({ list: [{ id: 7, name: "东京店", status: "published" }], total: 1, page: 1, page_size: 100 });
+  const router = createMemoryRouter([{ path: "*", element: <TechniciansPage /> }], { initialEntries: ["/admin/technicians"] });
+  await act(async () => root.render(<RouterProvider router={router} />));
+  const button = [...container.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent === "新建技师");
+  expect(button).toBeTruthy();
+  await act(async () => button!.click());
+  expect(container.textContent).toContain("技师申请邀请");
+  const userInput = container.querySelector<HTMLInputElement>('input[name="userNeedoId"]')!;
+  const shopSelect = container.querySelector<HTMLSelectElement>('select[name="targetShopId"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(userInput, "user0000000003");
+    userInput.dispatchEvent(new Event("input", { bubbles: true }));
+    shopSelect.value = "7";
+    shopSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(userInput.value).toBe("user0000000003");
+  await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent === "创建申请草稿")!.click());
+  expect(api.inviteTechnicianApplicant).toHaveBeenCalledWith({ userNeedoId: "user0000000003", targetShopId: 7 });
+  router.dispose();
 });
 afterEach(() => { act(() => root.unmount()); container.remove(); });
 

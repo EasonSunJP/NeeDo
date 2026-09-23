@@ -1846,6 +1846,12 @@ export const backofficeRealDataApi = {
   technicianSummary() {
     return httpClient.request<BackofficeTechnicianSummaryPayload>("/backoffice/technicians/summary");
   },
+  inviteTechnicianApplicant(input: { userNeedoId: string; targetShopId: number }) {
+    return httpClient.request<{ id: number; status: string }>("/backoffice/technician-applications/invite", {
+      body: input,
+      method: "POST"
+    });
+  },
   technicianRankings(query?: TechnicianRankingQuery) {
     return httpClient.request<BackofficeTechnicianRankingPayload>(
       "/backoffice/technician-rankings",

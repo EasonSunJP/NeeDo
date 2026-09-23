@@ -59,6 +59,14 @@ export function TechniciansPage({ embeddedDetail }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [rankingRefreshKey, setRankingRefreshKey] = useState(0);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteUserNeedoId, setInviteUserNeedoId] = useState("");
+  const [inviteShopId, setInviteShopId] = useState("");
+  const [inviteShopSearch, setInviteShopSearch] = useState("");
+  const [inviteShops, setInviteShops] = useState<BackofficeShopPayload[]>([]);
+  const [inviteError, setInviteError] = useState("");
+  const [inviteSuccess, setInviteSuccess] = useState(false);
+  const [inviteBusy, setInviteBusy] = useState(false);
 
   const listRequest = useRef(0);
   const load = useCallback(async (rejectOnError = false) => {
@@ -155,6 +163,48 @@ export function TechniciansPage({ embeddedDetail }: {
   useEffect(() => { void load(); const unsubscribe = subscribeWorkStatusRefresh(() => void load()); return () => { ++listRequest.current; unsubscribe(); }; }, [load]);
 
   const mappedTechnicians = useMemo(() => technicians.map(mapBackofficeTechnician), [technicians]);
+  const openInvite = () => {
+    setInviteUserNeedoId("");
+    setInviteShopId("");
+    setInviteShopSearch("");
+    setInviteShops(shops);
+    setInviteError("");
+    setInviteSuccess(false);
+    setInviteOpen(true);
+  };
+  const searchInviteShops = async () => {
+    setInviteBusy(true);
+    setInviteError("");
+    try {
+      const result = await backofficeRealDataApi.shops("backoffice", { page: 1, pageSize: 100, keyword: inviteShopSearch.trim() || undefined });
+      setInviteShops(result.list);
+      setInviteShopId("");
+    } catch (searchError) {
+      setInviteError(searchError instanceof Error ? searchError.message : String(searchError));
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+  const submitInvite = async () => {
+    if (!inviteUserNeedoId.trim() || !inviteShopId) return;
+    setInviteBusy(true);
+    setInviteError("");
+    try {
+      await backofficeRealDataApi.inviteTechnicianApplicant({ userNeedoId: inviteUserNeedoId.trim(), targetShopId: Number(inviteShopId) });
+      setInviteSuccess(true);
+    } catch (inviteFailure) {
+      const message = inviteFailure instanceof Error ? inviteFailure.message : String(inviteFailure);
+      const knownErrors: Record<string, string> = {
+        "error.user.not_found": "未找到该 NeeDoID 对应的有效用户",
+        "error.identity_application.conflict": "该用户已有进行中的技师申请",
+        "error.identity_application.identity_already_active": "该用户已开通技师身份",
+        "error.identity_application.target_shop_not_found": "目标店铺不可申请，请重新选择"
+      };
+      setInviteError(translate(knownErrors[message] ?? message));
+    } finally {
+      setInviteBusy(false);
+    }
+  };
   const reviewTechnicians = useMemo(() => technicians.filter((item) => item.status === "pending_review"), [technicians]);
   const mappedShops = useMemo(() => shops.map(mapBackofficeStore), [shops]);
 
@@ -265,7 +315,7 @@ export function TechniciansPage({ embeddedDetail }: {
   return (
     <AdminLayout>
       <ModuleShell
-        actions={isReviewMode || isRankingMode ? <></> : undefined}
+        actions={isReviewMode || isRankingMode ? <></> : <Button onClick={openInvite}>{translate("新建技师")}</Button>}
         title={isRankingMode ? translate("技师榜单") : isReviewMode ? "技师资料审核" : "技师管理"}
         description={isRankingMode
           ? translate("按已完成订单核算技师业绩；服务金额包含已记账的加钟金额，同一订单只计一单，至少完成一单计为一个工作日。")
@@ -323,6 +373,23 @@ export function TechniciansPage({ embeddedDetail }: {
       </ModuleShell>
 
       {detailDrawer}
+      <Drawer open={inviteOpen} title={translate("技师申请邀请")} onClose={() => setInviteOpen(false)}>
+        <div className="space-y-5">
+          <p className="text-sm font-bold text-ink/60">{translate("选择已有用户和目标店铺，系统将创建申请草稿并通知用户。用户提交后由店铺审核。")}</p>
+          {inviteError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{inviteError}</p> : null}
+          {inviteSuccess ? <p role="status" className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-700">{translate("申请草稿已创建，用户已收到通知。")}</p> : (
+            <>
+              <label className="block"><span className="mb-2 block text-sm font-black">{translate("用户 NeeDoID")}</span><input name="userNeedoId" className={inputClassName} maxLength={32} onChange={(event) => setInviteUserNeedoId(event.target.value)} value={inviteUserNeedoId} /></label>
+              <div>
+                <label className="block"><span className="mb-2 block text-sm font-black">{translate("搜索目标店铺")}</span><input className={inputClassName} onChange={(event) => setInviteShopSearch(event.target.value)} value={inviteShopSearch} /></label>
+                <Button disabled={inviteBusy} onClick={() => void searchInviteShops()} size="sm" variant="secondary">{translate("搜索店铺")}</Button>
+              </div>
+              <label className="block"><span className="mb-2 block text-sm font-black">{translate("目标店铺")}</span><select name="targetShopId" className={inputClassName} onChange={(event) => setInviteShopId(event.target.value)} value={inviteShopId}><option value="">{translate("请选择店铺")}</option>{inviteShops.filter((shop) => shop.status === "published").map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select></label>
+              <Button disabled={inviteBusy || !inviteUserNeedoId.trim() || !inviteShopId} onClick={() => void submitInvite()}>{translate("创建申请草稿")}</Button>
+            </>
+          )}
+        </div>
+      </Drawer>
     </AdminLayout>
   );
 }

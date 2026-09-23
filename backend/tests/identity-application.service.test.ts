@@ -69,6 +69,7 @@ const application = (
 });
 
 const createRepository = (): jest.Mocked<IdentityApplicationRepositoryPort> => ({
+  findInvitableUserByNeedoId: jest.fn().mockResolvedValue({ id: 3, username: "山本太郎" }),
   listMine: jest.fn().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 }),
   searchEligibleShops: jest.fn().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 }),
   findActiveByUserAndType: jest.fn().mockResolvedValue(null),
@@ -82,6 +83,9 @@ const createRepository = (): jest.Mocked<IdentityApplicationRepositoryPort> => (
       activeKey: input.activeKey,
       technicianDetail: input.detail
     })
+  ),
+  createTechnicianInvitation: jest.fn(async (input) =>
+    application({ userId: input.userId, activeKey: input.activeKey, technicianDetail: input.detail })
   ),
   createMerchantDraft: jest.fn(async (input) =>
     application({
@@ -131,6 +135,33 @@ const createRepository = (): jest.Mocked<IdentityApplicationRepositoryPort> => (
 });
 
 describe("IdentityApplicationService", () => {
+  it("prepares an existing user's technician application for their own submission without activating an identity", async () => {
+    const repository = createRepository();
+    const service = new IdentityApplicationService(repository, applicationEkycPolicy());
+
+    const result = await service.inviteTechnicianApplicant({ actorUserId: 9, userNeedoId: " user0000000003 ", targetShopId: 7 });
+
+    expect(result).toMatchObject({ type: "technician", status: "draft", userId: 3 });
+    expect(repository.createTechnicianInvitation).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: 9,
+      userId: 3,
+      activeKey: "3:technician",
+      detail: expect.objectContaining({ targetShopId: 7, applicantName: "山本太郎" })
+    }));
+    expect(repository.createTechnicianDraft).not.toHaveBeenCalled();
+    expect(repository.findInvitableUserByNeedoId).toHaveBeenCalledWith("user0000000003");
+  });
+
+  it("does not invite an unknown user or an existing technician", async () => {
+    const repository = createRepository();
+    const service = new IdentityApplicationService(repository, applicationEkycPolicy());
+    repository.findInvitableUserByNeedoId.mockResolvedValueOnce(null);
+    await expect(service.inviteTechnicianApplicant({ actorUserId: 9, userNeedoId: "missing", targetShopId: 7 })).rejects.toMatchObject({ statusCode: 404 });
+    repository.hasActiveIdentity.mockResolvedValueOnce(true);
+    await expect(service.inviteTechnicianApplicant({ actorUserId: 9, userNeedoId: "user0000000003", targetShopId: 7 })).rejects.toMatchObject({ statusCode: 409 });
+    expect(repository.createTechnicianInvitation).not.toHaveBeenCalled();
+  });
+
   it("creates one technician draft for an eligible target shop", async () => {
     const repository = createRepository();
     const service = new IdentityApplicationService(repository, applicationEkycPolicy());

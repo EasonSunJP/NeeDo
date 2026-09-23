@@ -9,6 +9,7 @@ import {
   createMerchantApplicationBodySchema,
   bindMerchantBankAccountBodySchema,
   createTechnicianApplicationBodySchema,
+  inviteTechnicianApplicantBodySchema,
   eligibleMerchantSearchQuerySchema,
   identityApplicationIdParamSchema,
   identityApplicationListQuerySchema,
@@ -36,9 +37,18 @@ export const createIdentityApplicationRoutes = (
   );
   const authorize = createAuthorizeMiddleware(IDENTITY_APPLICATION_ROUTE_PERMISSIONS.own);
   const authorizeBank = createAuthorizeMiddleware("bank-account:own");
+  const authorizeTechnicianWrite = createAuthorizeMiddleware("backoffice:technicians:write");
   const controller = new IdentityApplicationController(
     createIdentityApplicationServiceForRoutes(config, dependencies),
     createProtectedBankAccountServiceForRoutes(config, dependencies)
+  );
+
+  router.post(
+    "/backoffice/technician-applications/invite",
+    authenticate(),
+    authorizeTechnicianWrite,
+    validateRequest({ body: inviteTechnicianApplicantBodySchema }),
+    controller.inviteTechnicianApplicant
   );
 
   router.get(

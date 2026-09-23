@@ -7,6 +7,7 @@ import {
   createMerchantApplicationBodySchema,
   bindMerchantBankAccountBodySchema,
   createTechnicianApplicationBodySchema,
+  inviteTechnicianApplicantBodySchema,
   eligibleMerchantSearchQuerySchema,
   identityApplicationIdParamSchema,
   identityApplicationListQuerySchema,
@@ -57,6 +58,13 @@ export class IdentityApplicationController {
           await this.service.createTechnicianDraft({ userId: this.userId(response), ...body })
         )
       );
+  });
+
+  public inviteTechnicianApplicant = this.handle(async (request, response) => {
+    const body = inviteTechnicianApplicantBodySchema.parse(request.body);
+    response.status(201).json(successResponse(await this.service.inviteTechnicianApplicant({
+      actorUserId: this.userId(response), ...body
+    })));
   });
 
   public updateTechnicianDraft = this.handle(async (request, response) => {

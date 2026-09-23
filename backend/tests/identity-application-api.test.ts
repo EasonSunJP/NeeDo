@@ -96,6 +96,7 @@ const createFixture = (permissionCodes = ["identity-application:own", "bank-acco
       page_size: 20
     })),
     createTechnicianDraft: jest.fn(async () => application),
+    inviteTechnicianApplicant: jest.fn(async () => application),
     updateTechnicianDraft: jest.fn(async () => ({ ...application, version: 2 })),
     createMerchantDraft: jest.fn(async () => ({
       ...application,
@@ -147,6 +148,26 @@ const createFixture = (permissionCodes = ["identity-application:own", "bank-acco
 };
 
 describe("identity application applicant HTTP API", () => {
+  it("lets an authorized operator prepare an existing user's technician application", async () => {
+    const allowed = createFixture(["backoffice:technicians:write"]);
+    await request(allowed.app)
+      .post("/api/v1/backoffice/technician-applications/invite")
+      .set("Authorization", `Bearer ${allowed.token}`)
+      .send({ userNeedoId: "user0000000003", targetShopId: 21 })
+      .expect(201);
+    expect(allowed.identityApplicationService.inviteTechnicianApplicant).toHaveBeenCalledWith({
+      actorUserId: 7, userNeedoId: "user0000000003", targetShopId: 21
+    });
+
+    const denied = createFixture(["identity-application:own"]);
+    await request(denied.app)
+      .post("/api/v1/backoffice/technician-applications/invite")
+      .set("Authorization", `Bearer ${denied.token}`)
+      .send({ userNeedoId: "user0000000003", targetShopId: 21 })
+      .expect(403);
+    expect(denied.identityApplicationService.inviteTechnicianApplicant).not.toHaveBeenCalled();
+  });
+
   it("requires authentication and a narrowly scoped own-application permission", async () => {
     const allowed = createFixture();
     await request(allowed.app).get("/api/v1/identity-applications/mine").expect(401);

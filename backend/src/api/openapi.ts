@@ -30036,6 +30036,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       )
     },
+    [`${config.API_PREFIX}/backoffice/technician-applications/invite`]: {
+      post: identityWorkflowOperation("Create a technician application draft for an existing user and notify them; requires backoffice:technicians:write", {
+        requestBody: identityJsonBody({
+          userNeedoId: { type: "string", minLength: 1, maxLength: 32 },
+          targetShopId: { type: "integer", minimum: 1 }
+        }, ["userNeedoId", "targetShopId"])
+      })
+    },
     [`${config.API_PREFIX}/identity-applications/{id}/technician-profile`]: {
       patch: identityWorkflowOperation("Update technician application profile", {
         parameters: [idPathParameter()],
