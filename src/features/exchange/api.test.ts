@@ -23,6 +23,7 @@ import {
   recordExchangeShare,
   selectExchangeMatching,
   unlikeExchangePost,
+  uploadExchangeDemandCover,
   withdrawExchangeClaim,
   withdrawExchangePost
 } from "./api";
@@ -76,6 +77,18 @@ describe("formal Exchange API client", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(httpClient.request).mockResolvedValue(formalPost);
+  });
+
+  it("uploads a cropped demand cover as raw WebP with cancellation", async () => {
+    const blob = new Blob(["image"], { type: "image/webp" });
+    const signal = new AbortController().signal;
+    await uploadExchangeDemandCover(blob, signal);
+    expect(httpClient.request).toHaveBeenCalledWith("/exchange/demand-cover", {
+      body: blob,
+      headers: { "Content-Type": "image/webp" },
+      method: "POST",
+      signal
+    });
   });
 
   it("matches the public post contract without internal actor identifiers", () => {

@@ -2,6 +2,14 @@ import type { Language } from "../../i18n/translations";
 
 const translations = {
   demand: { zh: "需求", "zh-Hant": "需求", ja: "依頼", en: "Requests", ko: "요청" },
+  demandCover: { zh: "需求封面（可选）", "zh-Hant": "需求封面（選填）", ja: "依頼のカバー画像（任意）", en: "Request cover (optional)", ko: "요청 표지(선택)" },
+  demandCoverChoose: { zh: "添加封面", "zh-Hant": "新增封面", ja: "画像を追加", en: "Add cover", ko: "표지 추가" },
+  demandCoverReplace: { zh: "更换封面", "zh-Hant": "更換封面", ja: "画像を変更", en: "Replace cover", ko: "표지 변경" },
+  demandCoverRemove: { zh: "移除封面", "zh-Hant": "移除封面", ja: "画像を削除", en: "Remove cover", ko: "표지 제거" },
+  demandCoverEdit: { zh: "调整需求封面", "zh-Hant": "調整需求封面", ja: "カバー画像を調整", en: "Adjust request cover", ko: "요청 표지 조정" },
+  demandCoverPreviewAlt: { zh: "需求封面预览", "zh-Hant": "需求封面預覽", ja: "依頼カバーのプレビュー", en: "Request cover preview", ko: "요청 표지 미리보기" },
+  demandCoverUploading: { zh: "封面正在上传，请稍候", "zh-Hant": "封面上傳中，請稍候", ja: "画像をアップロード中です", en: "Uploading cover. Please wait.", ko: "표지를 업로드하는 중입니다" },
+  demandCoverFailed: { zh: "封面上传失败，请重试或移除", "zh-Hant": "封面上傳失敗，請重試或移除", ja: "画像をアップロードできませんでした。再試行するか削除してください", en: "Cover upload failed. Retry or remove it.", ko: "표지 업로드에 실패했습니다. 다시 시도하거나 제거해 주세요" },
   intelligence: { zh: "情报", "zh-Hant": "情報", ja: "サービス情報", en: "Service posts", ko: "서비스 정보" },
   myDemand: { zh: "我的需求", "zh-Hant": "我的需求", ja: "自分の依頼", en: "My requests", ko: "내 요청" },
   customerIdentity: { zh: "用户", "zh-Hant": "用戶", ja: "利用者", en: "Customer", ko: "사용자" },

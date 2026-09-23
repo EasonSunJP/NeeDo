@@ -3,6 +3,13 @@ export type ExchangePostStatus = "published" | "withdrawn" | "expired" | "matche
 export type ExchangeServiceMode = "store" | "onsite" | "flexible";
 export type ExchangeDemandServiceMode = "home" | "store";
 export type ExchangeContentLocale = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
+export type ExchangeDemandCoverUpload = {
+  publicId: string;
+  url: string;
+  mimeType: string;
+  width: number;
+  height: number;
+};
 export type ExchangeMatchMode = "quick" | "selective";
 export type ExchangeBudgetMode = "total" | "per_provider";
 export type ExchangePublisherCapacitySource = "customer_membership" | "shop_merchant";
@@ -359,6 +366,7 @@ type ExchangePublishCommon = {
 
 export type PublishExchangeDemandInput = ExchangePublishCommon & {
   type: "demand";
+  coverMediaAssetPublicId?: string;
   serviceMode: ExchangeDemandServiceMode;
   targetProviderCount: number;
   matchMode: ExchangeMatchMode;

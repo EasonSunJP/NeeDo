@@ -10,6 +10,7 @@ import {
   publishExchangePost
 } from "./api";
 import { ExchangeComposerShell, type ExchangeComposerStep } from "./ExchangeComposerShell";
+import { DemandCoverField } from "./DemandCoverField";
 import { ExchangePublicationReview } from "./ExchangePublicationReview";
 import { IntelligenceComposerFields } from "./IntelligenceComposerFields";
 import { RequestComposerFields } from "./RequestComposerFields";
@@ -55,6 +56,7 @@ function contentLocaleLabel(locale: ExchangeContentLocale) {
 function createEmptyRequestDraft(contentLocale: ExchangeContentLocale): RequestComposerDraft {
   return {
     contentLocale,
+    cover: null,
     title: "",
     detail: "",
     serviceStartDate: "",
@@ -355,6 +357,8 @@ export function ExchangeComposer({
   const review = normalizedPayload ? (
     <>
       <ExchangePublicationReview
+        coverUrl={normalizedPayload.type === "demand" ? requestDraft.cover?.uploadedUrl ?? null : null}
+        coverAlt={t("demandCoverPreviewAlt")}
         detail={normalizedPayload.detail}
         rows={[
           { label: t("title"), value: normalizedPayload.title },
@@ -469,12 +473,19 @@ export function ExchangeComposer({
           ) : null}
           {type === "demand" ? (
             requestContextStatus === "ready" && requestContext ? (
-              <RequestComposerFields
-                context={requestContext}
-                draft={requestDraft}
-                language={language}
-                onChange={(patch) => setRequestDraft((current) => ({ ...current, ...patch }))}
-              />
+              <>
+                <DemandCoverField
+                  language={language}
+                  onChange={(cover) => setRequestDraft((current) => ({ ...current, cover }))}
+                  value={requestDraft.cover}
+                />
+                <RequestComposerFields
+                  context={requestContext}
+                  draft={requestDraft}
+                  language={language}
+                  onChange={(patch) => setRequestDraft((current) => ({ ...current, ...patch }))}
+                />
+              </>
             ) : (
               <section className="rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5 text-sm font-bold text-[color:var(--client-muted)] shadow-panel">
                 <p role={requestContextStatus === "error" ? "alert" : undefined}>
