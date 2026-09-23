@@ -63,7 +63,9 @@ const createFixture = async (hasPermission = true, useRealService = false) => {
     }))
   };
   const service = useRealService
-    ? new SocialMediaService(repository, new ContentMediaFileStorage(directory))
+    ? new SocialMediaService(repository, new ContentMediaFileStorage(directory), undefined, {
+        withChecksumLock: async (_checksum, operation) => operation({ create: jest.fn() })
+      })
     : {
         upload: jest.fn(async () => ({
           publicId: "a".repeat(64),

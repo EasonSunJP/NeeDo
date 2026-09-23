@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SocialMediaRepository } from "../src/repositories/social-media.repository";
+import { ContentMediaRepository } from "../src/repositories/content-media.repository";
 import { ContentMediaFileStorage } from "../src/services/content-media.storage";
 import {
   SocialMediaService,
@@ -25,6 +26,9 @@ const actor = {
 };
 const context = { ip: "127.0.0.1", userAgent: "social-media-test" };
 const now = new Date("2026-08-30T02:00:00.000Z");
+const checksumLock = {
+  withChecksumLock: jest.fn(async (_checksum, operation) => operation({ create: jest.fn() }))
+};
 
 describe("SocialMediaService", () => {
   let directory = "";
@@ -35,6 +39,32 @@ describe("SocialMediaService", () => {
 
   afterEach(async () => {
     await rm(directory, { recursive: true, force: true });
+  });
+
+  it.each([false, true])("holds the shared checksum lock through save and persistence or compensation (failure=%s)", async (fail) => {
+    const events: string[] = [];
+    const storage = new ContentMediaFileStorage(directory);
+    const save = storage.save.bind(storage);
+    const remove = storage.delete.bind(storage);
+    jest.spyOn(storage, "save").mockImplementation(async (input) => { events.push("save"); return save(input); });
+    jest.spyOn(storage, "delete").mockImplementation(async (key) => { events.push("delete"); return remove(key); });
+    const lock = jest.spyOn(ContentMediaRepository.prototype, "withChecksumLock").mockImplementation(async (_checksum, operation) => {
+      events.push("lock");
+      try { return await operation({ create: jest.fn() }); } finally { events.push("unlock"); }
+    });
+    const service = new SocialMediaService({
+      createUpload: async (input) => {
+        events.push("persist");
+        if (fail) throw new Error("persistence failed");
+        return { publicId: input.checksumSha256, url: `/media/content/${input.fileKey}`, mimeType: input.mimeType, fileSize: input.fileSize };
+      }
+    }, storage, undefined, new ContentMediaRepository());
+    try {
+      const outcome = service.upload(actor, context, { bytes: validPng, fileName: "cover.png", mimeType: "image/png", now });
+      if (fail) await expect(outcome).rejects.toThrow("persistence failed");
+      else await outcome;
+      expect(events).toEqual(fail ? ["lock", "save", "persist", "delete", "unlock"] : ["lock", "save", "persist", "unlock"]);
+    } finally { lock.mockRestore(); }
   });
 
   it("stores a validated Social image and persists its owner and audit context", async () => {
@@ -54,7 +84,7 @@ describe("SocialMediaService", () => {
         scopeType: "technician_profile",
         scopeId: 17
       }))
-    });
+    }, checksumLock);
 
     const result = await service.upload(actor, context, {
       bytes: validPng,
@@ -96,7 +126,7 @@ describe("SocialMediaService", () => {
         fileSize: input.fileSize
       }))
     };
-    const service = new SocialMediaService(repository, new ContentMediaFileStorage(directory));
+    const service = new SocialMediaService(repository, new ContentMediaFileStorage(directory), undefined, checksumLock);
     const validLargePng = await createValidExcessivePixelPng();
 
     expect(validLargePng.length).toBeLessThanOrEqual(8 * 1024 * 1024);
@@ -126,7 +156,7 @@ describe("SocialMediaService", () => {
       })
     };
     const storage = new ContentMediaFileStorage(directory);
-    const service = new SocialMediaService(repository, storage);
+    const service = new SocialMediaService(repository, storage, undefined, checksumLock);
 
     await expect(
       service.upload(actor, context, {
@@ -145,7 +175,7 @@ describe("SocialMediaService", () => {
     const repository: SocialMediaRepositoryPort = {
       createUpload: jest.fn()
     };
-    const service = new SocialMediaService(repository, new ContentMediaFileStorage(directory));
+    const service = new SocialMediaService(repository, new ContentMediaFileStorage(directory), undefined, checksumLock);
 
     await expect(
       service.upload(actor, context, {

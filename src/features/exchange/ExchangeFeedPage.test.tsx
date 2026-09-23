@@ -5,13 +5,17 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExchangePost } from "./types";
+import { likeExchangePost, recordExchangeShare } from "./api";
+import { shareContent } from "../../lib/share";
+import type { ExchangeInteractionCounts, ExchangePost, ExchangeViewerState } from "./types";
 import { useExchangeFeed } from "./useExchangeFeed";
 import { ExchangeFeedPage, getDefaultExchangePostType } from "./ExchangeFeedPage";
 
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
 vi.mock("../../theme/ClientThemeProvider", () => ({ useClientTheme: () => ({ theme: "dark-green" }) }));
 vi.mock("./useExchangeFeed", () => ({ useExchangeFeed: vi.fn() }));
+vi.mock("./api", () => ({ likeExchangePost: vi.fn(), recordExchangeShare: vi.fn(), unlikeExchangePost: vi.fn() }));
+vi.mock("../../lib/share", () => ({ shareContent: vi.fn() }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const demandPost: ExchangePost = {
@@ -30,6 +34,7 @@ const demandPost: ExchangePost = {
   counts: { comments: 4, likes: 21, shares: 6 },
   viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
   demand: {
+    cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -125,7 +130,48 @@ function renderFeed(overrides: Partial<typeof baseResource> = {}, context: "user
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+async function mountInteractiveDemandFeed() {
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  document.body.appendChild(container);
+  let currentPost = demandPost;
+  const replaceCounts = vi.fn((postId: number, counts: ExchangeInteractionCounts, viewer?: Partial<ExchangeViewerState>) => {
+    if (postId === currentPost.id) currentPost = { ...currentPost, counts, viewer: { ...currentPost.viewer, ...viewer } };
+  });
+  vi.mocked(useExchangeFeed).mockImplementation(() => ({ ...baseResource, posts: [currentPost], replaceCounts }));
+  vi.stubGlobal("crypto", { randomUUID: vi.fn().mockReturnValue("123e4567-e89b-42d3-a456-426614174000") });
+  const render = () => act(async () => root.render(<MemoryRouter><ExchangeFeedPage context="user" /></MemoryRouter>));
+  await render();
+  const buttons = () => container.querySelectorAll<HTMLButtonElement>('[data-post-id="41"] .flex.items-center.justify-between button');
+  expect(buttons()).toHaveLength(3);
+  return {
+    buttons,
+    currentPost: () => currentPost,
+    render,
+    replaceCounts,
+    cleanup: async () => {
+      await act(async () => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    }
+  };
+}
+
 describe("ExchangeFeedPage", () => {
+  it("never renders a demand cover from an inconsistent intelligence payload", () => {
+    const markup = renderFeed({ posts: [{ ...intelligencePost, demand: demandPost.demand }] });
+    expect(markup).not.toContain(demandPost.demand!.cover.url);
+  });
   beforeEach(() => vi.clearAllMocks());
 
   it("shows a private My Requests tab to users and keeps both formal lists for merchant and technician portals", () => {
@@ -152,7 +198,7 @@ describe("ExchangeFeedPage", () => {
   it("restores the original high-fidelity search, tabs, offer card, and interaction bar", () => {
     const markup = renderFeed();
     expect(markup).toContain("搜索需要的服务");
-    expect(markup).toContain("grid-cols-[90px,1fr]");
+    expect(markup).toContain('data-image-layout="wide"');
     expect(markup).toContain("利用条件");
     expect(markup).toContain("适用范围");
     expect(markup).toContain("备注");
@@ -169,6 +215,114 @@ describe("ExchangeFeedPage", () => {
     expect(markup).toContain('data-no-i18n="true"');
     expect(markup).toContain('data-post-id="41"');
     expect(markup).toContain("转发");
+  });
+
+  it("keeps demand likes unchanged until a successful server response", async () => {
+    const failed = deferred<ExchangeInteractionCounts>();
+    const succeeded = deferred<ExchangeInteractionCounts>();
+    vi.mocked(likeExchangePost).mockImplementationOnce(() => failed.promise).mockImplementationOnce(() => succeeded.promise);
+    const feed = await mountInteractiveDemandFeed();
+    try {
+      await act(async () => feed.buttons()[0]?.click());
+      expect(feed.buttons()[0]?.textContent).toContain("21");
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+      await act(async () => { failed.reject(new Error("error.network")); await failed.promise.catch(() => undefined); });
+      expect(feed.currentPost().counts.likes).toBe(21);
+      expect(feed.buttons()[0]?.textContent).toContain("21");
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+
+      await act(async () => feed.buttons()[0]?.click());
+      expect(feed.buttons()[0]?.textContent).toContain("21");
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+      await act(async () => { succeeded.resolve({ comments: 6, likes: 30, shares: 6 }); await succeeded.promise; });
+      expect(feed.replaceCounts).toHaveBeenCalledExactlyOnceWith(41, { comments: 6, likes: 30, shares: 6 }, { liked: true });
+      await feed.render();
+      expect(feed.buttons()[0]?.textContent).toContain("30");
+    } finally {
+      await feed.cleanup();
+    }
+  });
+
+  it("keeps demand shares unchanged until the share record succeeds", async () => {
+    const failed = deferred<ExchangeInteractionCounts>();
+    const succeeded = deferred<ExchangeInteractionCounts>();
+    vi.mocked(shareContent).mockResolvedValue({ status: "copied", url: "https://needo.test/needo/posts/41" });
+    vi.mocked(recordExchangeShare).mockImplementationOnce(() => failed.promise).mockImplementationOnce(() => succeeded.promise);
+    const feed = await mountInteractiveDemandFeed();
+    try {
+      expect(feed.buttons()[2]?.textContent).toBe("转发 6");
+      await act(async () => feed.buttons()[2]?.click());
+      expect(recordExchangeShare).toHaveBeenCalledWith("41", "123e4567-e89b-42d3-a456-426614174000");
+      expect(feed.currentPost().counts.shares).toBe(6);
+      expect(feed.buttons()[0]?.textContent).toContain("21");
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+      await act(async () => { failed.reject(new Error("error.network")); await failed.promise.catch(() => undefined); });
+      expect(feed.currentPost().counts.shares).toBe(6);
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+
+      await act(async () => feed.buttons()[2]?.click());
+      expect(feed.currentPost().counts.shares).toBe(6);
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+      await act(async () => { succeeded.resolve({ comments: 6, likes: 21, shares: 7 }); await succeeded.promise; });
+      expect(feed.replaceCounts).toHaveBeenCalledExactlyOnceWith(41, { comments: 6, likes: 21, shares: 7 }, { liked: false });
+      expect(feed.currentPost().counts.shares).toBe(7);
+      await feed.render();
+      expect(feed.buttons()[2]?.textContent).toBe("转发 7");
+    } finally {
+      await feed.cleanup();
+    }
+  });
+
+  it("opens the matching demand detail from the comment action and does not record cancelled shares", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    document.body.appendChild(container);
+    vi.mocked(useExchangeFeed).mockReturnValue(baseResource);
+    vi.mocked(shareContent).mockResolvedValue({ status: "cancelled", url: "https://needo.test/needo/posts/41" });
+    function Destination() {
+      return <div data-testid="destination">{useLocation().pathname}</div>;
+    }
+
+    try {
+      await act(async () => root.render(
+        <MemoryRouter initialEntries={["/needo"]}>
+          <Routes>
+            <Route path="/needo" element={<ExchangeFeedPage context="user" />} />
+            <Route path="/needo/posts/:id" element={<Destination />} />
+          </Routes>
+        </MemoryRouter>
+      ));
+      const buttons = container.querySelectorAll<HTMLButtonElement>('[data-post-id="41"] .flex.items-center.justify-between button');
+      expect(buttons).toHaveLength(3);
+      await act(async () => buttons[2]?.click());
+      expect(recordExchangeShare).not.toHaveBeenCalled();
+      await act(async () => buttons[1]?.click());
+      expect(container.querySelector('[data-testid="destination"]')?.textContent).toBe("/needo/posts/41");
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  it("renders the projected demand cover in a wide frame without using the publisher avatar", () => {
+    const post: ExchangePost = {
+      ...demandPost,
+      publisher: { ...demandPost.publisher!, avatarUrl: "/people/publisher.jpg" },
+      demand: { ...demandPost.demand!, cover: { url: "/media/content/exchange/aa.webp", isDefault: false } }
+    };
+    const markup = renderFeed({ posts: [post] });
+
+    expect(markup).toContain('src="/media/content/exchange/aa.webp"');
+    expect(markup).toContain('data-image-layout="wide"');
+    expect(markup).toContain("aspect-video w-full");
+    expect(markup).not.toContain("/people/publisher.jpg");
+  });
+
+  it("renders the server-projected default demand cover when there is no uploaded image", () => {
+    const markup = renderFeed({ posts: [demandPost] });
+
+    expect(markup).toContain('src="/images/exchange-demand-default-cover.svg"');
+    expect(markup).toContain('data-image-layout="wide"');
   });
 
   it("renders a provider-visible Request when the server redacts its publisher", () => {

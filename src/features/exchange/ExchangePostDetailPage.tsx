@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
+import { floatingHeaderControlButtonClassName, IconMetricAction } from "../../components/client-ui/AppScaffold";
 import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
@@ -173,15 +173,17 @@ function HeaderActionButton({
 
 function DetailHero({ label, post, publisherAlt }: { label: string; post: ExchangePost; publisherAlt: string }) {
   const shop = post.intelligence?.publisherCard?.type === "shop" ? post.intelligence.publisherCard : null;
-  const image = shop
-    ? shop.coverUrl ?? shop.imageUrls[0] ?? shop.avatarUrl ?? fallbackPublisherImage
-    : post.type === "intelligence" && post.publisher?.identityType !== "technician"
-      ? fallbackPublisherImage
-      : post.publisher?.avatarUrl ?? fallbackPublisherImage;
-  const imageAlt = shop?.name ?? (post.type === "intelligence" ? publisherAlt : post.publisher?.displayName ?? publisherAlt);
+  const image = post.type === "demand"
+    ? post.demand!.cover.url
+    : shop
+      ? shop.coverUrl ?? shop.imageUrls[0] ?? shop.avatarUrl ?? fallbackPublisherImage
+      : post.publisher?.identityType !== "technician"
+        ? fallbackPublisherImage
+        : post.publisher.avatarUrl ?? fallbackPublisherImage;
+  const imageAlt = post.type === "demand" ? post.title : shop?.name ?? publisherAlt;
   return (
     <section
-      className="relative h-[238px] overflow-hidden rounded-[28px] bg-[color:var(--client-surface)] text-white shadow-soft"
+      className={`relative overflow-hidden rounded-[28px] bg-[color:var(--client-surface)] text-white shadow-soft ${post.type === "demand" ? "aspect-video" : "h-[238px]"}`}
       data-no-i18n="true"
       data-testid="exchange-detail-hero"
     >
@@ -468,12 +470,27 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
               name="favorite"
               onClick={() => void toggleLike()}
             />
-            <HeaderActionButton
-              disabled={!active || actionPending !== null}
-              label={t("share")}
-              name="share"
-              onClick={() => void share()}
-            />
+            {post.type === "demand" ? (
+              <div data-action="detail-share">
+                <IconMetricAction
+                  className="!h-11"
+                  count={post.counts.shares}
+                  disabled={!active || actionPending !== null}
+                  icon="share"
+                  iconClassName="h-6 w-6"
+                  label={t("share")}
+                  onClick={() => void share()}
+                  shellClassName={floatingHeaderControlButtonClassName}
+                />
+              </div>
+            ) : (
+              <HeaderActionButton
+                disabled={!active || actionPending !== null}
+                label={t("share")}
+                name="share"
+                onClick={() => void share()}
+              />
+            )}
           </div>
         )}
         info={`${formatTime(post.serviceStartAt, language)}–${formatTime(post.serviceEndAt, language)} · ${post.areaLabel}`}

@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import { logger } from "../config/logger";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
+import type { ContentMediaRepositoryPort } from "./content-media.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { ContentMediaMimeType, ContentMediaStoragePort } from "./content-media.storage";
 import type { PersonalIdentityScopeService } from "./personal-identity-scope.service";
@@ -44,7 +45,8 @@ export class SocialMediaService {
   public constructor(
     private readonly repository: SocialMediaRepositoryPort,
     private readonly storage: ContentMediaStoragePort,
-    private readonly personalIdentityScope?: Pick<PersonalIdentityScopeService, "resolve">
+    private readonly personalIdentityScope: Pick<PersonalIdentityScopeService, "resolve"> | undefined,
+    private readonly checksumLock: ContentMediaRepositoryPort
   ) {}
 
   public async upload(
@@ -55,6 +57,23 @@ export class SocialMediaService {
     const identityScope = this.personalIdentityScope
       ? await this.personalIdentityScope.resolve(actor)
       : { identityId: actor.currentIdentityId ?? actor.userId };
+    let prepared;
+    try {
+      prepared = await this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType, purpose: "social" });
+    } catch (error) {
+      throw this.normalizeStorageError(error);
+    }
+    return this.checksumLock.withChecksumLock(prepared.checksumSha256, () =>
+      this.saveUpload(actor, context, input, identityScope.identityId)
+    );
+  }
+
+  private async saveUpload(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: UploadSocialMediaInput,
+    ownerIdentityId: number
+  ): Promise<SocialMediaProjection> {
     let stored: Awaited<ReturnType<ContentMediaStoragePort["save"]>>;
     try {
       stored = await this.storage.save({
@@ -70,7 +89,7 @@ export class SocialMediaService {
     try {
       return await this.repository.createUpload({
         ownerUserId: actor.userId,
-        ownerIdentityId: identityScope.identityId,
+        ownerIdentityId,
         entityType: "social_post_upload",
         usageType: "social_post_public",
         fileKey: stored.fileKey,

@@ -95,7 +95,7 @@ export function ExchangeInteractions({
     try {
       const created = await createExchangeComment(String(post.id), content, key);
       const isNew = !comments.some((comment) => comment.id === created.id);
-      setComments((current) => current.some((comment) => comment.id === created.id) ? current : [...current, created]);
+      setComments((current) => current.some((comment) => comment.id === created.id) ? current : [created, ...current]);
       const nextCount = isNew ? post.counts.comments + 1 : post.counts.comments;
       setCommentTotal((current) => Math.max(current, nextCount));
       onCountsChange({ ...post.counts, comments: nextCount }, { liked: post.viewer.liked });

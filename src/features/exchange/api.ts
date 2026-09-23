@@ -10,6 +10,7 @@ import type {
   ExchangeCancellation,
   ExchangeCancellationAction,
   ExchangeComment,
+  ExchangeDemandCoverUpload,
   ExchangeInteractionCounts,
   ExchangeIntelligenceServiceOption,
   ExchangeListInput,
@@ -188,6 +189,15 @@ export function withdrawExchangeClaim(claimId: string, key: string): Promise<Exc
 
 export function getRequestPublicationContext(): Promise<ExchangeRequestPublicationContext> {
   return httpClient.request<ExchangeRequestPublicationContext>("/exchange/request-publication-context");
+}
+
+export function uploadExchangeDemandCover(file: Blob, signal?: AbortSignal): Promise<ExchangeDemandCoverUpload> {
+  return httpClient.request<ExchangeDemandCoverUpload>("/exchange/demand-cover", {
+    body: file,
+    headers: { "Content-Type": file.type },
+    method: "POST",
+    signal
+  });
 }
 
 export function listExchangeIntelligenceServiceOptions(

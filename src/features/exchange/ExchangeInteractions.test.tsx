@@ -42,6 +42,7 @@ const post: ExchangePost = {
   counts: { comments: 3, likes: 10, shares: 2 },
   viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
   demand: {
+    cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -149,6 +150,42 @@ describe("ExchangeInteractions", () => {
     expect(createExchangeComment).toHaveBeenNthCalledWith(1, "41", "新评论", "123e4567-e89b-42d3-a456-426614174000");
     expect(createExchangeComment).toHaveBeenNthCalledWith(2, "41", "新评论", "123e4567-e89b-42d3-a456-426614174000");
     expect(onCountsChange).toHaveBeenCalledWith({ comments: 4, likes: 10, shares: 2 }, { liked: false });
+  });
+
+  it("shows the returned comment first and reloads its persisted identity projection", async () => {
+    const created: ExchangeComment = {
+      ...comments[0],
+      id: 9,
+      author: { publicId: "s2433935375", identityType: "technician", displayName: "担当技師", avatarUrl: "https://example.test/technician.jpg" },
+      authorProfilePath: "/moments/users/9?identityId=19",
+      content: "新しい正式コメント"
+    };
+    vi.mocked(createExchangeComment).mockResolvedValue(created);
+    await renderInteractions();
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[name="comment"]');
+    if (!textarea) throw new Error("missing comment textarea");
+    await act(async () => setTextareaValue(textarea, created.content));
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="comment"]')?.click());
+    expect(container.querySelectorAll("article")[0]?.textContent).toContain(created.content);
+    expect(onCountsChange).toHaveBeenCalledWith({ comments: 4, likes: 10, shares: 2 }, { liked: false });
+
+    const reloaded: ExchangeComment = {
+      ...created,
+      content: "服务器保存的评论",
+      author: { ...created.author, displayName: "服务器技师", avatarUrl: "https://example.test/persisted-technician.jpg" }
+    };
+    vi.mocked(listExchangeComments).mockResolvedValue({ list: [...comments, reloaded], total: 4, page: 1, page_size: 20 });
+    const callsBeforeReload = vi.mocked(listExchangeComments).mock.calls.length;
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await renderInteractions({ ...post, counts: { ...post.counts, comments: 4 } });
+    expect(listExchangeComments).toHaveBeenCalledTimes(callsBeforeReload + 1);
+    expect(listExchangeComments).toHaveBeenLastCalledWith("41", expect.objectContaining({ page: 1, pageSize: 20 }));
+    const persistedArticle = [...container.querySelectorAll("article")].find((article) => article.textContent?.includes(reloaded.content));
+    expect(persistedArticle?.textContent).toContain("s2433935375");
+    expect(persistedArticle?.textContent).toContain("服务器技师");
+    expect(persistedArticle?.querySelector('a[href="/moments/users/9?identityId=19"] img')?.getAttribute("src")).toBe("https://example.test/persisted-technician.jpg");
   });
 
   it("uses server counts for like and unlike", async () => {

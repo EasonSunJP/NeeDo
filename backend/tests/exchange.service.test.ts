@@ -8,6 +8,8 @@ import type {
 } from "../src/types/exchange.types";
 import { AppError } from "../src/utils/app-error";
 import { ERROR_CODES } from "../src/constants/error-codes";
+import type { ContentMediaService } from "../src/services/content-media.service";
+import { publishExchangePostSchema } from "../src/validators/exchange.validators";
 
 const now = new Date("2026-08-30T03:00:00.000Z");
 
@@ -73,6 +75,7 @@ const post: ExchangePostPayload = {
     claimUnavailableReason: null
   },
   demand: {
+    cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -226,6 +229,56 @@ const createRepository = () => {
 };
 
 describe("ExchangeService", () => {
+  it("accepts only a valid pending cover checksum on demand publication", () => {
+    expect(publishExchangePostSchema.parse({ ...demandInput, coverMediaAssetPublicId: "a".repeat(64) }))
+      .toMatchObject({ coverMediaAssetPublicId: "a".repeat(64) });
+    for (const checksum of ["", "a".repeat(63), "g".repeat(64), "/media/cover.webp"]) {
+      expect(() => publishExchangePostSchema.parse({ ...demandInput, coverMediaAssetPublicId: checksum })).toThrow();
+    }
+    expect(() => publishExchangePostSchema.parse({
+      type: "intelligence", title: post.title, detail: post.detail, contentLocale: "ja",
+      serviceStartAt: post.serviceStartAt, serviceEndAt: post.serviceEndAt, expiresAt: post.expiresAt,
+      serviceRef: "shop:501", campaignPriceJpy: 1000, coverMediaAssetPublicId: "a".repeat(64)
+    })).toThrow();
+  });
+
+  it("fingerprints the cover and rejects replaying an idempotency key with another cover", async () => {
+    const repository = createRepository();
+    const ledger = createLedgerService();
+    const service = new ExchangeService(repository, () => now, undefined, createFeeService(), ledger);
+    const firstInput = { ...demandInput, coverMediaAssetPublicId: "a".repeat(64) };
+    const secondInput = { ...demandInput, coverMediaAssetPublicId: "b".repeat(64) };
+    await service.publish(access, firstInput, "publish-cover-first");
+    await service.publish(access, secondInput, "publish-cover-other");
+    const first = repository.createPost.mock.calls[0][0].payloadFingerprint;
+    const second = repository.createPost.mock.calls[1][0].payloadFingerprint;
+    expect(first).not.toBe(second);
+    repository.findPostByIdempotencyKey.mockResolvedValue({ ownerIdentityId: 17, payloadFingerprint: first, value: post });
+    await expect(service.publish(access, firstInput, "publish-cover-first")).resolves.toEqual(post);
+    await expect(service.publish(access, secondInput, "publish-cover-first")).rejects.toMatchObject({
+      message: "error.exchange.idempotency_conflict"
+    });
+    expect(repository.createPost).toHaveBeenCalledTimes(2);
+    expect(ledger.freezeExchangeRequestPublication).toHaveBeenCalledTimes(2);
+  });
+
+  it("uploads a pending cover only for the resolved active customer identity", async () => {
+    const repository = createRepository();
+    const media = { upload: jest.fn(async () => ({ publicId: "a".repeat(64), mediaAssetId: 81, url: "/media/content/aa.webp", mimeType: "image/webp", width: 1280, height: 720, checksumSha256: "a".repeat(64) })) };
+    const service = new ExchangeService(repository, () => now, undefined, undefined, undefined, undefined, undefined, undefined, media as unknown as ContentMediaService);
+    const input = { bytes: Buffer.from("valid-image"), mimeType: "image/webp" as const, altText: null };
+    const context = { ip: "127.0.0.1", userAgent: "exchange-cover-test" };
+
+    await expect(service.uploadDemandCover({ ...access, roles: ["customer"] }, context, input)).resolves.toMatchObject({ publicId: "a".repeat(64), width: 1280, height: 720 });
+    expect(media.upload).toHaveBeenCalledWith(expect.objectContaining({ userId: 7, currentIdentityId: 17 }), context,
+      { ...input, now }, { entityType: "exchange_demand_cover_pending", entityId: 17, ownerIdentityId: 17, usageType: "exchange_demand_cover_pending" });
+
+    await expect(service.uploadDemandCover({ ...access, roles: ["technician"] }, context, input)).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
+    repository.resolveActor.mockResolvedValueOnce({ ...actor, identityId: 18 });
+    await expect(service.uploadDemandCover({ ...access, roles: ["customer"] }, context, input)).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
+    expect(media.upload).toHaveBeenCalledTimes(1);
+  });
+
   it("resolves and verifies the active identity for every request", async () => {
     const repository = createRepository();
     const service = new ExchangeService(repository, () => now);
@@ -1260,6 +1313,29 @@ describe("ExchangeService", () => {
         })
       );
     }
+  });
+
+  it("returns repository counts and scopes interaction writes to the resolved active identity", async () => {
+    const repository = createRepository();
+    const service = new ExchangeService(repository, () => now);
+    const technician: ExchangeActorRecord = {
+      ...actor, identityId: 18, identityType: "technician", scopeType: "technician_profile",
+      scopeId: 28, publicId: "s2433935375", displayName: "担当技師",
+      avatarUrl: "https://example.test/technician.jpg", customerMembership: null
+    };
+    const technicianAccess: AuthenticatedAccessContext = {
+      ...access, currentIdentityId: 18, currentIdentityType: "technician",
+      currentIdentityScopeType: "technician_profile", currentIdentityScopeId: 28,
+      currentPublicId: "s2433935375", roles: ["technician"]
+    };
+    repository.resolveActor.mockResolvedValueOnce(technician).mockResolvedValueOnce(technician);
+    repository.setLike.mockResolvedValueOnce({ kind: "success", value: { comments: 6, likes: 30, shares: 6 } });
+    repository.recordShare.mockResolvedValueOnce({ kind: "success", value: { comments: 6, likes: 30, shares: 7 } });
+
+    await expect(service.like(technicianAccess, 41, "like-technician-01")).resolves.toEqual({ comments: 6, likes: 30, shares: 6 });
+    await expect(service.share(technicianAccess, 41, "share-technician-1")).resolves.toEqual({ comments: 6, likes: 30, shares: 7 });
+    expect(repository.setLike).toHaveBeenCalledWith(expect.objectContaining({ actor: technician, postId: 41, liked: true, idempotencyKey: "like-technician-01" }));
+    expect(repository.recordShare).toHaveBeenCalledWith(expect.objectContaining({ actor: technician, postId: 41, idempotencyKey: "share-technician-1" }));
   });
 
   it("captures the full held fee when the owner withdraws", async () => {

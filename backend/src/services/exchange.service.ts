@@ -1,6 +1,8 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
-import type { AuthenticatedAccessContext } from "./auth.service";
+import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import type { ContentMediaMimeType } from "./content-media.storage";
+import type { ContentMediaService } from "./content-media.service";
 import type { PersonalIdentityScopeService } from "./personal-identity-scope.service";
 import type { PlatformMembershipService } from "./platform-membership.service";
 import type {
@@ -63,6 +65,14 @@ export interface ExchangeFeedListInput {
   type: ExchangePostType;
   page: number;
   pageSize: number;
+}
+
+export interface ExchangeDemandCoverUpload {
+  publicId: string;
+  url: string;
+  mimeType: ContentMediaMimeType;
+  width: number;
+  height: number;
 }
 
 export type ExchangeMutationResult<TValue> =
@@ -264,8 +274,31 @@ export class ExchangeService {
       PlatformMembershipService,
       "resolveMembershipAt"
     >,
-    private readonly servicePrepayments?: Pick<ServicePrepaymentService, "releaseForTerminal">
+    private readonly servicePrepayments?: Pick<ServicePrepaymentService, "releaseForTerminal">,
+    private readonly contentMediaService?: Pick<ContentMediaService, "upload">
   ) {}
+
+  public async uploadDemandCover(
+    access: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: { bytes: Buffer; mimeType: ContentMediaMimeType; altText: string | null }
+  ): Promise<ExchangeDemandCoverUpload> {
+    const actor = await this.resolveActor(access);
+    if (actor.identityType !== "customer" || actor.scopeType !== "customer_profile" ||
+      !access.roles.includes("customer") || !this.contentMediaService) {
+      throw this.identityForbidden();
+    }
+    const uploaded = await this.contentMediaService.upload(access, context, { ...input, now: this.now() }, {
+      entityType: "exchange_demand_cover_pending",
+      entityId: actor.identityId,
+      ownerIdentityId: actor.identityId,
+      usageType: "exchange_demand_cover_pending"
+    });
+    if (!uploaded.width || !uploaded.height) {
+      throw new AppError({ code: ERROR_CODES.VALIDATION, message: "error.exchange.demand_cover_invalid", statusCode: 400 });
+    }
+    return { publicId: uploaded.publicId, url: uploaded.url, mimeType: input.mimeType, width: uploaded.width, height: uploaded.height };
+  }
 
   public async getRequestPublicationContext(
     access: AuthenticatedAccessContext
@@ -820,6 +853,9 @@ export class ExchangeService {
       input.type === "demand"
         ? {
             ...common,
+            ...(input.coverMediaAssetPublicId
+              ? { coverMediaAssetPublicId: input.coverMediaAssetPublicId }
+              : {}),
             targetProviderCount: input.targetProviderCount,
             matchMode: input.matchMode,
             budgetMode: input.budgetMode,

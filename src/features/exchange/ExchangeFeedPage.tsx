@@ -16,8 +16,6 @@ import { exchangeText } from "./i18n";
 import type { ExchangeInteractionCounts, ExchangePost, ExchangePostType } from "./types";
 import { useExchangeFeed, type ExchangeFeedError } from "./useExchangeFeed";
 
-const fallbackPublisherImage = "/icons/needo-nav-button-dark.png";
-
 export function getDefaultExchangePostType(context: MessageCenterContext): ExchangePostType {
   return context === "technician" ? "demand" : "intelligence";
 }
@@ -134,7 +132,6 @@ function PostCard({
   const [pending, setPending] = useState<"like" | "share" | null>(null);
   const [actionError, setActionError] = useState(false);
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
-  const publisherName = post.publisher?.displayName ?? t("publisherHidden");
   const detailPath = `${exchangeBasePath(context)}/posts/${post.id}`;
   const openDetail = () => navigate(detailPath);
 
@@ -209,7 +206,7 @@ function PostCard({
           <div onClick={(event) => event.stopPropagation()}>
             <MomentActionBar
               bordered={false}
-              forwardLabel={t("shares")}
+              forwardLabel={post.type === "demand" ? `${t("shares")} ${post.counts.shares}` : t("shares")}
               likeCount={post.counts.likes}
               liked={post.viewer.liked}
               onForward={() => void share()}
@@ -223,9 +220,10 @@ function PostCard({
             ) : null}
           </div>
         }
-        image={post.type === "demand" ? post.publisher?.avatarUrl || fallbackPublisherImage : undefined}
-        imageAlt={post.type === "demand" ? publisherName : undefined}
+        image={post.type === "demand" ? post.demand?.cover.url : undefined}
+        imageAlt={post.type === "demand" ? post.title : undefined}
         imageLabel={t(post.type)}
+        imageLayout={post.type === "demand" ? "wide" : "thumbnail"}
         noteLabel={t("note")}
         noteValue={<span data-no-i18n="true">{post.detail}</span>}
         supplementaryContent={post.type === "intelligence" ? <ExchangeIntelligenceShopCard context={context} language={language} post={post} /> : undefined}

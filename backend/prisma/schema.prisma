@@ -3862,6 +3862,7 @@ model MediaAsset {
   carouselSlideTranslations CarouselSlideTranslation[] @relation("CarouselSlideTranslationMedia")
   platformSettingLoginLogos PlatformSettingVersion[]   @relation("PlatformSettingLoginLogo")
   platformSettingRequests   PlatformSettingVersion[]   @relation("PlatformSettingRequestButton")
+  exchangeDemandCover       ExchangeDemand?            @relation("ExchangeDemandCover")
 
   @@index([entityType, entityId])
   @@index([categoryId])
@@ -6249,6 +6250,7 @@ model ExchangePost {
 model ExchangeDemand {
   id                          Int                             @id @default(autoincrement())
   postId                      Int                             @unique @map("post_id")
+  coverMediaAssetId           Int?                            @unique @map("cover_media_asset_id")
   targetProviderCount         Int                             @default(1) @map("target_provider_count")
   targetProviderLimitSnapshot Int                             @default(1) @map("target_provider_limit_snapshot")
   publisherCapacitySource     ExchangePublisherCapacitySource @default(CUSTOMER_MEMBERSHIP) @map("publisher_capacity_source")
@@ -6269,6 +6271,7 @@ model ExchangeDemand {
   deletedAt                   DateTime?                       @map("deleted_at")
 
   post ExchangePost @relation(fields: [postId], references: [id], onDelete: Restrict)
+  coverMediaAsset MediaAsset? @relation("ExchangeDemandCover", fields: [coverMediaAssetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([serviceMode, deletedAt])
   @@index([deletedAt])

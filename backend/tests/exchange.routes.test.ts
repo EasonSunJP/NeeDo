@@ -94,6 +94,7 @@ const post: ExchangePostPayload = {
     claimUnavailableReason: null
   },
   demand: {
+    cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -233,6 +234,7 @@ const createFixture = async (exchangeServiceOverride?: ExchangeService) => {
       publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 3 }
     })),
     getPost: jest.fn(async () => post),
+    uploadDemandCover: jest.fn(async () => ({ publicId: "a".repeat(64), url: "/media/content/aa.webp", mimeType: "image/webp", width: 1280, height: 720 })),
     publish: jest.fn(async () => post),
     withdraw: jest.fn(async () => ({ ...post, status: "withdrawn" as const })),
     listComments: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
@@ -278,6 +280,38 @@ const createFixture = async (exchangeServiceOverride?: ExchangeService) => {
 };
 
 describe("formal Exchange routes", () => {
+  it("protects raw pending-cover uploads and returns the public cover contract", async () => {
+    const { app, login, service } = await createFixture();
+    const token = await login("customer@example.test");
+    const technicianToken = await login("technician@example.test");
+
+    await request(app).post("/api/v1/exchange/demand-cover")
+      .set("Content-Type", "image/webp").send(Buffer.from("valid-image")).expect(401);
+    await request(app).post("/api/v1/exchange/demand-cover")
+      .set("Authorization", `Bearer ${technicianToken}`)
+      .set("Content-Type", "image/webp").send(Buffer.from("valid-image")).expect(403);
+    await request(app).post("/api/v1/exchange/demand-cover")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ image: "not raw bytes" }).expect(415)
+      .expect(({ body }) => expect(body.message).toBe("error.exchange.demand_cover_invalid"));
+    expect(service.uploadDemandCover).not.toHaveBeenCalled();
+    await request(app).post("/api/v1/exchange/demand-cover")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Content-Type", "image/webp")
+      .send(Buffer.alloc(8 * 1024 * 1024 + 1)).expect(413)
+      .expect(({ body }) => expect(body.message).toBe("error.exchange.demand_cover_too_large"));
+    expect(service.uploadDemandCover).not.toHaveBeenCalled();
+    await request(app).post("/api/v1/exchange/demand-cover?alt_text=Cover")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Content-Type", "image/webp").send(Buffer.from("valid-image")).expect(201)
+      .expect(({ body }) => expect(body.data).toEqual({ publicId: "a".repeat(64), url: "/media/content/aa.webp", mimeType: "image/webp", width: 1280, height: 720 }));
+    expect(service.uploadDemandCover).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, currentIdentityId: 17 }),
+      expect.objectContaining({ ip: expect.any(String) }),
+      { bytes: Buffer.from("valid-image"), mimeType: "image/webp", altText: "Cover" }
+    );
+  });
+
   it("requires authentication and the per-route read permission", async () => {
     const { app } = await createFixture();
 
@@ -413,12 +447,13 @@ describe("formal Exchange routes", () => {
       .post("/api/v1/exchange/posts")
       .set("Authorization", `Bearer ${customerToken}`)
       .set("Idempotency-Key", "publish-demand-0001")
-      .send(demandBody)
+      .send({ ...demandBody, coverMediaAssetPublicId: "a".repeat(64) })
       .expect(201);
     expect(service.publish).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 7 }),
       expect.objectContaining({
         type: "demand",
+        coverMediaAssetPublicId: "a".repeat(64),
         serviceStartAt: new Date("2026-08-31T00:00:00.000Z")
       }),
       "publish-demand-0001"
@@ -449,6 +484,12 @@ describe("formal Exchange routes", () => {
       .send(demandBody)
       .expect(400);
     expect(service.publish).toHaveBeenCalledTimes(2);
+    for (const method of ["patch", "put", "delete"] as const) {
+      await request(app)[method]("/api/v1/exchange/posts/41/cover")
+        .set("Authorization", `Bearer ${customerToken}`)
+        .send({ coverMediaAssetPublicId: "b".repeat(64) })
+        .expect(404);
+    }
   });
 
   it("requires a formal service reference before publishing Intelligence", async () => {
@@ -541,16 +582,23 @@ describe("formal Exchange routes", () => {
     const token = await login("customer@example.test");
     const auth = { Authorization: `Bearer ${token}`, "Idempotency-Key": "interaction-key-001" };
 
-    await request(app).get("/api/v1/exchange/posts/41/comments").set(auth).expect(200);
-    await request(app)
+    const listed = await request(app).get("/api/v1/exchange/posts/41/comments").set(auth).expect(200);
+    const created = await request(app)
       .post("/api/v1/exchange/posts/41/comments")
       .set(auth)
       .send({ content: "詳細を教えてください。" })
       .expect(201);
-    await request(app).put("/api/v1/exchange/posts/41/like").set(auth).expect(200);
-    await request(app).delete("/api/v1/exchange/posts/41/like").set(auth).expect(200);
-    await request(app).post("/api/v1/exchange/posts/41/shares").set(auth).expect(200);
+    const liked = await request(app).put("/api/v1/exchange/posts/41/like").set(auth).expect(200);
+    const unliked = await request(app).delete("/api/v1/exchange/posts/41/like").set(auth).expect(200);
+    const shared = await request(app).post("/api/v1/exchange/posts/41/shares").set(auth).expect(200);
     await request(app).post("/api/v1/exchange/posts/41/withdraw").set(auth).expect(200);
+
+    expect(listed.body.data).toMatchObject({ list: [], total: 0 });
+    expect(created.body.data).toMatchObject({ id: 301, postId: 41, content: "詳細を教えてください。", author: { publicId: "NC12345678", identityType: "customer" } });
+    expect(liked.body.data).toEqual({ comments: 4, likes: 22, shares: 5 });
+    expect(unliked.body.data).toEqual({ comments: 4, likes: 21, shares: 5 });
+    expect(shared.body.data).toEqual({ comments: 4, likes: 21, shares: 6 });
+    expect(service.comment).toHaveBeenCalledWith(expect.objectContaining({ userId: 7, currentIdentityId: 17 }), 41, { content: "詳細を教えてください。" }, "interaction-key-001");
 
     expect(service.comment).toHaveBeenCalledTimes(1);
     expect(service.like).toHaveBeenCalledTimes(1);

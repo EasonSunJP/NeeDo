@@ -33,6 +33,34 @@ const document = (): ExchangeOpenApiDocument =>
   createOpenApiDocument(env) as unknown as ExchangeOpenApiDocument;
 
 describe("formal Exchange OpenAPI contract", () => {
+  it("documents pending binary uploads and the immutable demand cover contract", () => {
+    const api = document();
+    expect(api.paths["/api/v1/exchange/demand-cover"]?.post).toMatchObject({
+      "x-required-permission": "exchange:posts:create-demand",
+      requestBody: { required: true, content: {
+        "image/jpeg": { schema: { type: "string", format: "binary" } },
+        "image/png": { schema: { type: "string", format: "binary" } },
+        "image/webp": { schema: { type: "string", format: "binary" } }
+      } }
+    });
+    const schemas = api.components.schemas;
+    expect(schemas.ExchangeDemandPublishRequest.properties.coverMediaAssetPublicId).toMatchObject({ type: "string", pattern: "^[a-f0-9]{64}$" });
+    expect(schemas.ExchangeDemandPublishRequest.required).not.toContain("coverMediaAssetPublicId");
+    expect(schemas.ExchangeIntelligencePublishRequest.properties).not.toHaveProperty("coverMediaAssetPublicId");
+    expect(schemas.ExchangeDemand.required).toContain("cover");
+    expect(schemas.ExchangeDemand.properties.cover).toMatchObject({ type: "object", required: ["url", "isDefault"],
+      properties: { url: { type: "string" }, isDefault: { type: "boolean" } } });
+    expect(JSON.stringify(schemas.ExchangeDemand.properties.cover)).toContain("/images/exchange-demand-default-cover.svg");
+    expect(api.paths["/api/v1/exchange/posts"].post.responses["403"].description).toContain("error.exchange.demand_cover_not_owned");
+    for (const [path, methods] of Object.entries(api.paths)) {
+      if (path.startsWith("/api/v1/exchange/") && path.includes("cover")) {
+        expect(methods).not.toHaveProperty("patch");
+        expect(methods).not.toHaveProperty("put");
+        expect(methods).not.toHaveProperty("delete");
+      }
+    }
+  });
+
   it("documents the enabled Exchange publication and fee routes", () => {
     const paths = document().paths;
     const expected = [

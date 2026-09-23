@@ -9,6 +9,7 @@ import {
   publishExchangePost
 } from "./api";
 import { ExchangeComposer, getExchangeComposerMode } from "./ExchangeComposer";
+import { normalizeRequestDraft, type RequestComposerDraft } from "./exchange-composer-model";
 import { exchangeText } from "./i18n";
 import type { ExchangePost } from "./types";
 
@@ -48,6 +49,7 @@ const publishedPost: ExchangePost = {
   counts: { comments: 0, likes: 0, shares: 0 },
   viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
   demand: {
+    cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -68,6 +70,43 @@ const publishedPost: ExchangePost = {
   },
   intelligence: null
 };
+
+const validDemandDraft: RequestComposerDraft = {
+  contentLocale: "ja", title: "A demand", detail: "Details", cover: null,
+  serviceStartDate: "2026-08-31", serviceStartTime: "13:00",
+  serviceEndDate: "2026-08-31", serviceEndTime: "14:00",
+  expiresDate: "2026-08-31", expiresTime: "14:01",
+  targetProviderCount: "1", serviceMode: "store", matchMode: "quick", budgetMode: "total",
+  budgetMinJpy: "5000", budgetMaxJpy: "8000", addressLine1: "新宿区", addressLine2: "", addressLine3: "",
+  addressLine2Public: false, addressLine3Public: false, publisherIdentityPublic: false
+};
+const validDemandContext = {
+  canPublish: true as const, capacitySource: "customer_membership" as const,
+  membershipLevel: "standard" as const, maxTargetProviderCount: 1,
+  publicationFee: { amountNdp: 1000, currency: "TEST_NDP" as const, ruleSetVersion: 1 }
+};
+
+describe("demand cover publication normalization", () => {
+  it("omits the cover ID when no image is selected", () => {
+    const result = normalizeRequestDraft(validDemandDraft, validDemandContext);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).not.toHaveProperty("coverMediaAssetPublicId");
+  });
+
+  it.each(["uploading", "failed"] as const)("rejects a %s cover", (status) => {
+    expect(normalizeRequestDraft({
+      ...validDemandDraft,
+      cover: { previewUrl: "blob:x", publicId: null, status, uploadedUrl: null }
+    }, validDemandContext)).toEqual({ ok: false, errorKey: status === "uploading" ? "demandCoverUploading" : "demandCoverFailed" });
+  });
+
+  it("publishes the completed cover ID", () => {
+    expect(normalizeRequestDraft({
+      ...validDemandDraft,
+      cover: { previewUrl: "/cover.webp", publicId: "a".repeat(64), status: "ready", uploadedUrl: "/cover.webp" }
+    }, validDemandContext)).toMatchObject({ ok: true, value: { coverMediaAssetPublicId: "a".repeat(64) } });
+  });
+});
 
 describe("ExchangeComposer identity boundary", () => {
   it("offers only the subtype allowed by the protected portal context", () => {

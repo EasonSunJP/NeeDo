@@ -14,6 +14,7 @@ import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-r
 import { ShopMembershipCardAdjustmentRepository } from "./repositories/shop-membership-card-adjustment.repository";
 import { ExchangeClaimRepository } from "./repositories/exchange-claim.repository";
 import { ExchangePostRepository } from "./repositories/exchange.repository";
+import { ContentMediaRepository } from "./repositories/content-media.repository";
 import { ExchangeRequestFeeRepository } from "./repositories/exchange-request-fee.repository";
 import { AuthRepository } from "./repositories/auth.repository";
 import { CarouselPublicationRepository } from "./repositories/carousel-publication.repository";
@@ -46,6 +47,10 @@ import { MerchantShopAuditOutboxService } from "./services/merchant-shop-audit-o
 import { OrderServiceExpiryService } from "./services/order-service-expiry.service";
 import { ExchangeClaimService } from "./services/exchange-claim.service";
 import { ExchangeService } from "./services/exchange.service";
+import { ContentMediaFileStorage } from "./services/content-media.storage";
+import { ContentMediaService } from "./services/content-media.service";
+import { ContentMediaPurgeService } from "./services/content-media-purge.service";
+import { ContentMediaPurgeWorker } from "./workers/content-media-purge.worker";
 import { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
 import { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
@@ -122,6 +127,14 @@ const exchangeLedgerService = new LedgerService(
   undefined,
   userExperienceService
 );
+const contentMediaRepository = new ContentMediaRepository();
+const contentMediaStorage = new ContentMediaFileStorage(env.CONTENT_MEDIA_STORAGE_DIR, {
+    identityStorageDirectory: env.IDENTITY_APPLICATION_MEDIA_STORAGE_DIR
+  });
+const contentMediaService = new ContentMediaService(contentMediaRepository, contentMediaStorage);
+const contentMediaPurgeWorker = new ContentMediaPurgeWorker(
+  new ContentMediaPurgeService(contentMediaRepository, contentMediaStorage), logger
+);
 const exchangeService = new ExchangeService(
   new ExchangePostRepository(),
   undefined,
@@ -129,7 +142,9 @@ const exchangeService = new ExchangeService(
   exchangeRequestFeeService,
   exchangeLedgerService,
   userPolicyEnforcementService,
-  platformMembershipResolver
+  platformMembershipResolver,
+  undefined,
+  contentMediaService
 );
 const exchangeClaimService = new ExchangeClaimService(
   new ExchangeClaimRepository(),
@@ -200,6 +215,7 @@ const app = createApp(env, {
   liveDashboardCache,
   liveDashboardEventGateway,
   exchangeService,
+  contentMediaService,
   exchangeClaimService,
   technicianRequestAutomationProcessor,
   exchangeRequestFeeService,
@@ -341,6 +357,7 @@ const server = app.listen(env.PORT, () => {
   }
   affiliateAllianceInvitationExpiryWorker.start();
   contentPublicationWorker.start();
+  contentMediaPurgeWorker.start();
   officialNoticeWorker.start();
   imPrivacyExpiryWorker.start();
   imServerRetentionWorker.start();
@@ -380,7 +397,7 @@ const shutdown = createShutdownHandler({
     identityApplicationPurgeWorker.stop();
     imPrivacyExpiryWorker.stop();
     imServerRetentionWorker.stop();
-    await Promise.all([merchantShopAuditOutboxWorker.stop(), officialNoticeWorker.stopAndDrain()]);
+    await Promise.all([merchantShopAuditOutboxWorker.stop(), officialNoticeWorker.stopAndDrain(), contentMediaPurgeWorker.stop()]);
     await workStatusWorker.stop();
   }
 });

@@ -309,6 +309,94 @@ describe("ContentMediaFileStorage", () => {
 });
 
 describe("ContentMediaService", () => {
+  it.each([
+    [validJpeg, "image/png" as const],
+    [validPng, "image/webp" as const],
+    [validWebp, "image/jpeg" as const]
+  ])("rejects valid Exchange image bytes declared as another accepted MIME type", async (bytes, mimeType) => {
+    const create = jest.fn();
+    const storage = new ContentMediaFileStorage("/unused");
+    const save = jest.spyOn(storage, "save");
+    const service = new ContentMediaService(repositoryWithCreate(create), storage);
+    await expect(service.upload(
+      { ...actor, currentIdentityId: 17, currentIdentityType: "customer", roles: ["customer"] },
+      context,
+      { bytes, mimeType, altText: null, now },
+      { entityType: "exchange_demand_cover_pending", entityId: 17, ownerIdentityId: 17, usageType: "exchange_demand_cover_pending" }
+    )).rejects.toMatchObject({ message: "error.exchange.demand_cover_invalid", statusCode: 400 });
+    expect(create).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
+  it("stores an Exchange demand cover through the shared media pipeline with exact ownership", async () => {
+    const create = jest.fn(async (input) => ({
+      publicId: input.checksumSha256,
+      mediaAssetId: 81,
+      url: input.url,
+      mimeType: input.mimeType,
+      width: input.width,
+      height: input.height,
+      checksumSha256: input.checksumSha256
+    }));
+    const storage = {
+      prepare: jest.fn(async () => ({ fileKey: "aa.webp", checksumSha256: "a".repeat(64), mimeType: "image/webp" as const, width: 1280, height: 720 })),
+      save: jest.fn(async () => ({ fileKey: "aa.webp", checksumSha256: "a".repeat(64), mimeType: "image/webp" as const, width: 1280, height: 720, created: true })),
+      read: jest.fn(),
+      delete: jest.fn()
+    };
+    const service = new ContentMediaService(repositoryWithCreate(create), storage);
+    const customer = { ...actor, currentIdentityId: 17, currentIdentityType: "customer", roles: ["customer"] };
+
+    await expect(service.upload(customer, context, { bytes: validWebp, mimeType: "image/webp", altText: null, now }, {
+      entityType: "exchange_demand_cover_pending", entityId: 17, ownerIdentityId: 17, usageType: "exchange_demand_cover_pending"
+    })).resolves.toMatchObject({ publicId: "a".repeat(64), width: 1280, height: 720 });
+    expect(storage.prepare).toHaveBeenCalledWith(expect.objectContaining({ purpose: "social" }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: "exchange_demand_cover_pending", entityId: 17, ownerUserId: 7,
+      ownerIdentityId: 17, usageType: "exchange_demand_cover_pending"
+    }));
+  });
+
+  it("rejects non-16:9 Exchange covers before saving or creating a media row", async () => {
+    const create = jest.fn();
+    const storage = {
+      prepare: jest.fn(async () => ({ fileKey: "aa.webp", checksumSha256: "a".repeat(64), mimeType: "image/webp" as const, width: 1280, height: 800 })),
+      save: jest.fn(), read: jest.fn(), delete: jest.fn()
+    };
+    const service = new ContentMediaService(repositoryWithCreate(create), storage);
+    const customer = { ...actor, currentIdentityId: 17, currentIdentityType: "customer", roles: ["customer"] };
+
+    await expect(service.upload(customer, context, { bytes: validWebp, mimeType: "image/webp", altText: null, now }, {
+      entityType: "exchange_demand_cover_pending", entityId: 17, ownerIdentityId: 17, usageType: "exchange_demand_cover_pending"
+    })).rejects.toMatchObject({ message: "error.exchange.demand_cover_invalid", statusCode: 400 });
+    expect(storage.save).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a pending-cover scope for another identity before reading image bytes", async () => {
+    const create = jest.fn();
+    const storage = { prepare: jest.fn(), save: jest.fn(), read: jest.fn(), delete: jest.fn() };
+    const service = new ContentMediaService(repositoryWithCreate(create), storage);
+    const customer = { ...actor, currentIdentityId: 17, currentIdentityType: "customer", roles: ["customer"] };
+    await expect(service.upload(customer, context, { bytes: validWebp, mimeType: "image/webp", altText: null, now }, {
+      entityType: "exchange_demand_cover_pending", entityId: 18, ownerIdentityId: 18, usageType: "exchange_demand_cover_pending"
+    })).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
+    expect(storage.prepare).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["corrupt bytes", Buffer.from("not-a-webp"), "error.exchange.demand_cover_invalid", 400],
+    ["over-limit bytes", Buffer.concat([validWebp, Buffer.alloc(3_000_001)]), "error.exchange.demand_cover_too_large", 413]
+  ])("rejects %s without a pending media row", async (_caseName, bytes, message, statusCode) => {
+    const create = jest.fn();
+    const service = new ContentMediaService(repositoryWithCreate(create), new ContentMediaFileStorage("/unused"));
+    const customer = { ...actor, currentIdentityId: 17, currentIdentityType: "customer", roles: ["customer"] };
+    await expect(service.upload(customer, context, { bytes, mimeType: "image/webp", altText: null, now }, {
+      entityType: "exchange_demand_cover_pending", entityId: 17, ownerIdentityId: 17, usageType: "exchange_demand_cover_pending"
+    })).rejects.toMatchObject({ message, statusCode });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("creates a distinct owner-scoped MediaAsset row for an upload", async () => {
     const create = jest.fn(async (input) => ({
       publicId: input.checksumSha256,

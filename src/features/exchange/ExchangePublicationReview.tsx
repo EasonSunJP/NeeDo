@@ -2,11 +2,15 @@ export function ExchangePublicationReview({
   typeLabel,
   rows,
   detail,
+  coverUrl,
+  coverAlt,
   publicationFee
 }: {
   typeLabel: string;
   rows: Array<{ label: string; value: string }>;
   detail: string;
+  coverUrl?: string | null;
+  coverAlt?: string;
   publicationFee?: {
     amountNdp: number;
     currency: "NDP" | "TEST_NDP";
@@ -20,6 +24,7 @@ export function ExchangePublicationReview({
       data-testid="exchange-publication-review"
     >
       <h2 className="text-xl font-black text-[color:var(--client-text)]">{typeLabel}</h2>
+      {coverUrl ? <img alt={coverAlt} className="mt-4 aspect-video w-full rounded-2xl object-cover" src={coverUrl} /> : null}
       <dl className="mt-4 grid grid-cols-2 gap-3">
         {rows.map((row) => (
           <div className="rounded-xl bg-[color:var(--client-bg-soft)] p-3" key={row.label}>

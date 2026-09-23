@@ -18,7 +18,9 @@ export type ExchangeComposerErrorKey =
   | "requestNotAllowed"
   | "ekycRequired"
   | "insufficientFunds"
-  | "publishFailed";
+  | "publishFailed"
+  | "demandCoverUploading"
+  | "demandCoverFailed";
 
 export function combineLocalDateTime(date: string, time: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return null;
@@ -44,8 +46,16 @@ export function optionalMoney(value: string): { valid: true; value: number | nul
   return amount === null ? { valid: false } : { valid: true, value: amount };
 }
 
+export type DemandCoverDraft = {
+  previewUrl: string;
+  publicId: string | null;
+  status: "ready" | "uploading" | "failed";
+  uploadedUrl: string | null;
+};
+
 export type RequestComposerDraft = {
   contentLocale: ExchangeContentLocale;
+  cover: DemandCoverDraft | null;
   title: string;
   detail: string;
   serviceStartDate: string;
@@ -72,6 +82,12 @@ export function normalizeRequestDraft(
   draft: RequestComposerDraft,
   context: ExchangeRequestPublicationContext
 ): { ok: true; value: PublishExchangeDemandInput } | { ok: false; errorKey: ExchangeComposerErrorKey } {
+  if (draft.cover?.status === "uploading") return { ok: false, errorKey: "demandCoverUploading" };
+  if (draft.cover && (
+    draft.cover.status !== "ready"
+    || !draft.cover.uploadedUrl
+    || !/^[a-f0-9]{64}$/u.test(draft.cover.publicId ?? "")
+  )) return { ok: false, errorKey: "demandCoverFailed" };
   const targetProviderCount = Number(draft.targetProviderCount);
   const budgetMinimum = optionalMoney(draft.budgetMinJpy);
   const budgetMaxJpy = requiredMoney(draft.budgetMaxJpy);
@@ -110,6 +126,7 @@ export function normalizeRequestDraft(
     ok: true,
     value: {
       type: "demand",
+      ...(draft.cover ? { coverMediaAssetPublicId: draft.cover.publicId! } : {}),
       title: draft.title.trim(),
       detail: draft.detail.trim(),
       contentLocale: draft.contentLocale,

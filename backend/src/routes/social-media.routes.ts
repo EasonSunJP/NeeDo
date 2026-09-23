@@ -10,6 +10,7 @@ import {
 } from "../middlewares/content-image-upload.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { SocialMediaRepository } from "../repositories/social-media.repository";
+import { ContentMediaRepository } from "../repositories/content-media.repository";
 import { ContentMediaFileStorage } from "../services/content-media.storage";
 import { SocialMediaService } from "../services/social-media.service";
 import { socialMediaUploadQuerySchema } from "../validators/social-media.validator";
@@ -33,7 +34,8 @@ export const createSocialMediaRoutes = (
     new SocialMediaService(
       dependencies.socialMediaRepository ?? new SocialMediaRepository(),
       storage,
-      dependencies.personalIdentityScopeService
+      dependencies.personalIdentityScopeService,
+      dependencies.contentMediaRepository ?? new ContentMediaRepository()
     );
   const controller = new SocialMediaController(service);
 
