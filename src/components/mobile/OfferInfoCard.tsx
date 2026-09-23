@@ -251,6 +251,7 @@ export function OfferInfoCard({
   image,
   imageAlt,
   imageLabel,
+  imageLayout = "thumbnail",
   eyebrow,
   tone = "default",
   titlePrefix,
@@ -275,6 +276,7 @@ export function OfferInfoCard({
   image?: string;
   imageAlt?: string;
   imageLabel?: ReactNode;
+  imageLayout?: "thumbnail" | "wide";
   eyebrow?: ReactNode;
   tone?: "default" | "demand";
   titlePrefix?: ReactNode;
@@ -356,12 +358,23 @@ export function OfferInfoCard({
         </div>
       ) : null}
 
+      {image && imageLayout === "wide" ? (
+        <div className="relative aspect-video w-full overflow-hidden rounded-[22px]" data-image-layout="wide">
+          <img alt={imageAlt ?? ""} className="h-full w-full object-cover" src={image} />
+          {imageLabel ? (
+            <span className={cn("absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-black backdrop-blur-sm", toneClasses.imageLabel)}>
+              {imageLabel}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       <div
-        className={image ? "grid grid-cols-[90px,1fr] gap-3" : "block"}
+        className={image && imageLayout === "thumbnail" ? "grid grid-cols-[90px,1fr] gap-3" : "block"}
         data-has-image={image ? "true" : "false"}
         data-testid="offer-info-header"
       >
-        {image ? (
+        {image && imageLayout === "thumbnail" ? (
           <div className="relative h-[90px] w-[90px] overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)]">
             <img alt={imageAlt ?? ""} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(image)} />
             {imageLabel ? (

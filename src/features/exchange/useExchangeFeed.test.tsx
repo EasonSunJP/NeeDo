@@ -27,6 +27,7 @@ const demandPost: ExchangePost = {
   counts: { comments: 3, likes: 10, shares: 2 },
   viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
   demand: {
+    cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,

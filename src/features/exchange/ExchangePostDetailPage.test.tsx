@@ -87,6 +87,7 @@ const demandPost: ExchangePost = {
   counts: { comments: 4, likes: 21, shares: 6 },
   viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
   demand: {
+    cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -307,6 +308,31 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("¥8,000–¥12,000");
     expect(document.body.querySelector('[data-testid="formal-interactions"]')).not.toBeNull();
     expect(document.body.innerHTML).toContain('data-no-i18n="true"');
+  });
+
+  it("renders the projected demand cover in a 16:9 hero without using the publisher avatar", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      publisher: { ...demandPost.publisher!, avatarUrl: "/people/publisher.jpg" },
+      demand: { ...demandPost.demand!, cover: { url: "/media/content/exchange/aa.webp", isDefault: false } }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain(demandPost.title));
+
+    const hero = document.body.querySelector('[data-testid="exchange-detail-hero"]');
+    expect(hero?.className).toContain("aspect-video");
+    expect(hero?.querySelector("img")?.getAttribute("src")).toBe("/media/content/exchange/aa.webp");
+    expect(hero?.querySelector("img")?.className).toContain("object-cover");
+    expect(hero?.innerHTML).not.toContain("/people/publisher.jpg");
+  });
+
+  it("renders the server-projected default demand cover in the hero", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(demandPost);
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain(demandPost.title));
+
+    expect(document.body.querySelector('[data-testid="exchange-detail-hero"] img')?.getAttribute("src"))
+      .toBe("/images/exchange-demand-default-cover.svg");
   });
 
   it("keeps every owner budget summary aligned with the current matching budget", async () => {

@@ -173,15 +173,17 @@ function HeaderActionButton({
 
 function DetailHero({ label, post, publisherAlt }: { label: string; post: ExchangePost; publisherAlt: string }) {
   const shop = post.intelligence?.publisherCard?.type === "shop" ? post.intelligence.publisherCard : null;
-  const image = shop
-    ? shop.coverUrl ?? shop.imageUrls[0] ?? shop.avatarUrl ?? fallbackPublisherImage
-    : post.type === "intelligence" && post.publisher?.identityType !== "technician"
-      ? fallbackPublisherImage
-      : post.publisher?.avatarUrl ?? fallbackPublisherImage;
-  const imageAlt = shop?.name ?? (post.type === "intelligence" ? publisherAlt : post.publisher?.displayName ?? publisherAlt);
+  const image = post.type === "demand"
+    ? post.demand!.cover.url
+    : shop
+      ? shop.coverUrl ?? shop.imageUrls[0] ?? shop.avatarUrl ?? fallbackPublisherImage
+      : post.publisher?.identityType !== "technician"
+        ? fallbackPublisherImage
+        : post.publisher.avatarUrl ?? fallbackPublisherImage;
+  const imageAlt = post.type === "demand" ? post.title : shop?.name ?? publisherAlt;
   return (
     <section
-      className="relative h-[238px] overflow-hidden rounded-[28px] bg-[color:var(--client-surface)] text-white shadow-soft"
+      className={`relative overflow-hidden rounded-[28px] bg-[color:var(--client-surface)] text-white shadow-soft ${post.type === "demand" ? "aspect-video" : "h-[238px]"}`}
       data-no-i18n="true"
       data-testid="exchange-detail-hero"
     >

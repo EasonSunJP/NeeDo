@@ -232,6 +232,7 @@ export type ExchangePriority = {
 };
 
 export type ExchangeDemand = {
+  cover: { url: string; isDefault: boolean };
   serviceMode: ExchangeDemandServiceMode;
   targetProviderCount: number;
   targetProviderLimitSnapshot: number;

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-hidden="true">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#15392f"/>
+      <stop offset="1" stop-color="#2f7d54"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#e7f5e9"/>
+      <stop offset="1" stop-color="#cdebd3"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#background)"/>
+  <circle cx="1350" cy="130" r="390" fill="#85c79a" opacity=".12"/>
+  <circle cx="170" cy="770" r="370" fill="#9bd8a9" opacity=".12"/>
+  <rect x="400" y="150" width="800" height="600" rx="72" fill="#092b20" opacity=".18"/>
+  <rect x="380" y="130" width="800" height="600" rx="72" fill="url(#panel)"/>
+  <rect x="480" y="225" width="600" height="112" rx="32" fill="#a4d6ae"/>
+  <rect x="480" y="383" width="370" height="38" rx="19" fill="#86bf94"/>
+  <rect x="480" y="451" width="540" height="38" rx="19" fill="#a4d6ae"/>
+  <circle cx="1005" cy="572" r="77" fill="#2f7d54"/>
+  <path d="m972 572 22 23 45-50" fill="none" stroke="#f5fff6" stroke-linecap="round" stroke-linejoin="round" stroke-width="22"/>
+</svg>

@@ -52,6 +52,7 @@ const formalPost = {
   counts: { comments: 4, likes: 21, shares: 6 },
   viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true },
   demand: {
+    cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,

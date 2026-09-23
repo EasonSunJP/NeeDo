@@ -30,6 +30,7 @@ const demandPost: ExchangePost = {
   counts: { comments: 4, likes: 21, shares: 6 },
   viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
   demand: {
+    cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -152,7 +153,7 @@ describe("ExchangeFeedPage", () => {
   it("restores the original high-fidelity search, tabs, offer card, and interaction bar", () => {
     const markup = renderFeed();
     expect(markup).toContain("搜索需要的服务");
-    expect(markup).toContain("grid-cols-[90px,1fr]");
+    expect(markup).toContain('data-image-layout="wide"');
     expect(markup).toContain("利用条件");
     expect(markup).toContain("适用范围");
     expect(markup).toContain("备注");
@@ -169,6 +170,27 @@ describe("ExchangeFeedPage", () => {
     expect(markup).toContain('data-no-i18n="true"');
     expect(markup).toContain('data-post-id="41"');
     expect(markup).toContain("转发");
+  });
+
+  it("renders the projected demand cover in a wide frame without using the publisher avatar", () => {
+    const post: ExchangePost = {
+      ...demandPost,
+      publisher: { ...demandPost.publisher!, avatarUrl: "/people/publisher.jpg" },
+      demand: { ...demandPost.demand!, cover: { url: "/media/content/exchange/aa.webp", isDefault: false } }
+    };
+    const markup = renderFeed({ posts: [post] });
+
+    expect(markup).toContain('src="/media/content/exchange/aa.webp"');
+    expect(markup).toContain('data-image-layout="wide"');
+    expect(markup).toContain("aspect-video w-full");
+    expect(markup).not.toContain("/people/publisher.jpg");
+  });
+
+  it("renders the server-projected default demand cover when there is no uploaded image", () => {
+    const markup = renderFeed({ posts: [demandPost] });
+
+    expect(markup).toContain('src="/images/exchange-demand-default-cover.svg"');
+    expect(markup).toContain('data-image-layout="wide"');
   });
 
   it("renders a provider-visible Request when the server redacts its publisher", () => {
