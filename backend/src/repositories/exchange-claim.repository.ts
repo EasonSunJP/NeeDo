@@ -13,6 +13,8 @@ import {
   type PrismaClient
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
+import { decodeDynamicAvailabilityId } from "../domain/dynamic-booking-window";
+import { BookingRepository, type ScheduleSlotPayload } from "./booking.repository";
 import type {
   ExchangeClaimOptionPage,
   ExchangeClaimOptionPayload,
@@ -35,6 +37,9 @@ import {
 } from "./exchange-matching.repository";
 import type { ExchangeMatchingPayload } from "../types/exchange-matching.types";
 
+const MAX_DYNAMIC_CLAIM_SOURCES = 128;
+const MAX_DYNAMIC_CLAIM_OPTIONS = 100_000;
+
 export type ExchangeClaimProviderScope =
   | { kind: "merchant"; shopId: number }
   | { kind: "technician"; technicianProfileId: number };
@@ -45,6 +50,7 @@ export interface ExchangeClaimOptionListInput {
   page: number;
   pageSize: number;
   now: Date;
+  latestStartAt?: Date;
   shopId?: number;
   technicianProfileId?: number;
   serviceRef?: ExchangeClaimServiceRef;
@@ -70,6 +76,7 @@ export interface ExchangeClaimLockedOption {
   scheduleSlotId: number;
   shopId: number;
   technicianProfileId: number;
+  technicianUserId: number;
   serviceId: number | null;
   technicianServiceId: number | null;
   serviceName: string;
@@ -122,6 +129,17 @@ interface ExchangeClaimOptionRow {
 interface CountRow {
   total: number | bigint;
 }
+
+type ExchangeClaimOptionKeyRow = Pick<ExchangeClaimOptionRow,
+  "shopId" | "technicianProfileId" | "serviceId" | "technicianServiceId" | "startsAt" | "endsAt">;
+
+export const exchangeClaimOptionBusinessKey = (
+  shopId: number,
+  technicianProfileId: number,
+  serviceRef: ExchangeClaimServiceRef,
+  startsAt: string,
+  endsAt: string
+): string => `${shopId}|${technicianProfileId}|${serviceRef}|${startsAt}|${endsAt}`;
 
 type ExchangeClaimPrismaClient = PrismaClient | Prisma.TransactionClient;
 
@@ -204,6 +222,7 @@ export class ExchangeClaimRepository {
       Prisma.sql`slot.\`status\` = 'available'`,
       Prisma.sql`slot.\`booked_count\` < slot.\`capacity\``,
       Prisma.sql`slot.\`technician_profile_id\` IS NOT NULL`,
+      Prisma.sql`slot.\`starts_at\` > ${input.now}`,
       Prisma.sql`slot.\`starts_at\` >= post.\`service_start_at\``,
       Prisma.sql`slot.\`ends_at\` <= post.\`service_end_at\``,
       Prisma.sql`slot.\`deleted_at\` IS NULL`,
@@ -332,6 +351,28 @@ export class ExchangeClaimRepository {
     `;
     const where = Prisma.sql`WHERE ${Prisma.join(filters, " AND ")}`;
 
+    const dynamic = await this.listDynamicOptions(input, pagination.skip + pagination.take,
+      undefined, undefined, async () => {
+        const persisted = await this.client.$queryRaw<ExchangeClaimOptionKeyRow[]>(Prisma.sql`
+          SELECT DISTINCT
+            slot.\`shop_id\` AS shopId,
+            slot.\`technician_profile_id\` AS technicianProfileId,
+            slot.\`service_id\` AS serviceId,
+            slot.\`technician_service_id\` AS technicianServiceId,
+            slot.\`starts_at\` AS startsAt,
+            slot.\`ends_at\` AS endsAt
+          ${from}
+          ${where}
+        `);
+        return new Set(persisted.map((row) => exchangeClaimOptionBusinessKey(
+          Number(row.shopId), Number(row.technicianProfileId),
+          row.serviceId !== null
+            ? `shop:${Number(row.serviceId)}`
+            : `technician:${Number(row.technicianServiceId)}`,
+          row.startsAt.toISOString(), row.endsAt.toISOString()
+        )));
+      });
+
     const [countRows, rows] = await Promise.all([
       this.client.$queryRaw<CountRow[]>(Prisma.sql`
         SELECT COUNT(*) AS total
@@ -355,15 +396,264 @@ export class ExchangeClaimRepository {
         ${from}
         ${where}
         ORDER BY slot.\`starts_at\` ASC, slot.\`id\` ASC
-        LIMIT ${pagination.take} OFFSET ${pagination.skip}
+        LIMIT ${dynamic.total ? pagination.skip + pagination.take : pagination.take}
+        OFFSET ${dynamic.total ? 0 : pagination.skip}
       `)
     ]);
 
+    const options = [...rows.map((row) => this.mapOption(row)), ...dynamic.list];
+    options.sort((left, right) =>
+      left.startsAt.localeCompare(right.startsAt) ||
+      left.scheduleSlotId - right.scheduleSlotId ||
+      left.service.ref.localeCompare(right.service.ref)
+    );
     return buildPaginatedResponse(
-      rows.map((row) => this.mapOption(row)),
-      Number(countRows[0]?.total ?? 0),
+      dynamic.total ? options.slice(pagination.skip, pagination.skip + pagination.take) : options,
+      Number(countRows[0]?.total ?? 0) + dynamic.total,
       pagination
     );
+  }
+
+  public async listDynamicOptions(
+    input: ExchangeClaimOptionListInput,
+    take: number,
+    technicianProfileIds?: number[],
+    visit?: (option: ExchangeClaimOptionPayload) => void,
+    loadPersistedKeys?: () => Promise<ReadonlySet<string>>
+  ): Promise<{ list: ExchangeClaimOptionPayload[]; total: number }> {
+    const shopIds = input.scope.kind === "merchant"
+      ? [input.scope.shopId]
+      : (await this.client.availability.findMany({
+          where: {
+            technicianProfileId: input.scope.technicianProfileId,
+            isScheduleControlWindow: true,
+            isActive: true,
+            deletedAt: null,
+            endsAt: { gt: input.now }
+          },
+          select: { shopId: true },
+          distinct: ["shopId"]
+        })).map((window) => window.shopId);
+    const scopedShopIds = input.shopId
+      ? shopIds.filter((shopId) => shopId === input.shopId)
+      : shopIds;
+    if (scopedShopIds.length === 0) return { list: [], total: 0 };
+    const cycles = await this.client.scheduleCycle.findMany({
+      where: {
+        shopId: { in: scopedShopIds },
+        status: { in: ["CONFIRMED", "ACTIVE"] },
+        periodEnd: { gt: input.now },
+        deletedAt: null
+      },
+      select: { shopId: true, periodStart: true, periodEnd: true, ruleSet: true }
+    });
+    if (cycles.length === 0) return { list: [], total: 0 };
+    const [request, matching] = await Promise.all([
+      this.findRequest(input.postId),
+      this.client.exchangeRequestMatching.findUnique({
+        where: { exchangePostId: input.postId },
+        select: { status: true, deletedAt: true, effectiveTargetProviderCount: true }
+      })
+    ]);
+    if (!request || request.type !== "demand" || !request.demand || request.status !== "published"
+      || request.expiresAt <= input.now || request.serviceEndAt <= input.now
+      || matching?.status !== DatabaseExchangeMatchingStatus.OPEN || matching.deletedAt) {
+      return { list: [], total: 0 };
+    }
+    if (request.demand?.matchMode === "quick") {
+      const activeCount = await this.client.exchangeClaim.count({
+        where: { exchangePostId: input.postId, status: DatabaseExchangeClaimStatus.ACTIVE, deletedAt: null }
+      });
+      if (activeCount >= matching.effectiveTargetProviderCount) return { list: [], total: 0 };
+    }
+    const dayMs = 24 * 60 * 60_000;
+    const dynamicShopIds = [...new Set(cycles
+      .filter((cycle) => cycle.periodStart <= new Date(request.serviceEndAt.getTime() + dayMs)
+        && cycle.periodEnd >= new Date(request.serviceStartAt.getTime() - dayMs)
+        && cycle.ruleSet && typeof cycle.ruleSet === "object"
+        && !Array.isArray(cycle.ruleSet)
+        && (cycle.ruleSet as Record<string, unknown>).dynamicAvailability === true)
+      .map((cycle) => cycle.shopId))];
+    if (dynamicShopIds.length === 0) return { list: [], total: 0 };
+    const [services, technicianServices] = await Promise.all([
+      this.client.service.findMany({
+        where: {
+          shopId: { in: dynamicShopIds },
+          status: "published",
+          deletedAt: null,
+          category: { is: { isActive: true, deletedAt: null } },
+          shop: { is: { pricingMode: "MERCHANT", status: "published", deletedAt: null } },
+          ...(input.serviceRef?.startsWith("shop:")
+            ? { id: Number(input.serviceRef.slice(5)) }
+            : input.serviceRef ? { id: -1 } : {})
+        },
+        select: { id: true, shopId: true, durationMinutes: true }
+      }),
+      this.client.technicianService.findMany({
+        where: {
+          shopId: { in: dynamicShopIds },
+          isActive: true,
+          isBookable: true,
+          reviewStatus: TechnicianServiceReviewStatus.APPROVED,
+          deletedAt: null,
+          shop: { is: { pricingMode: "TECHNICIAN", status: "published", deletedAt: null } },
+          ...(input.scope.kind === "technician"
+            ? { technicianId: input.scope.technicianProfileId } : {}),
+          ...(input.technicianProfileId ? { technicianId: input.technicianProfileId } : {}),
+          ...(technicianProfileIds ? { technicianId: { in: technicianProfileIds } } : {}),
+          ...(input.serviceRef?.startsWith("technician:")
+            ? { id: Number(input.serviceRef.slice(11)) }
+            : input.serviceRef ? { id: -1 } : {})
+        },
+        select: { id: true, shopId: true, durationMinutes: true }
+      })
+    ]);
+    const sources = [
+      ...services.map((service) => ({ ...service, shopId: service.shopId!, kind: "shop" as const })),
+      ...technicianServices.map((service) => ({ ...service, shopId: service.shopId!, kind: "technician" as const }))
+    ];
+    if (sources.length > MAX_DYNAMIC_CLAIM_SOURCES) {
+      throw new Error("dynamic Claim availability scan exceeds service source limit");
+    }
+    const persistedKeys = loadPersistedKeys ? await loadPersistedKeys() : new Set<string>();
+    const seenDynamicKeys = new Set<string>();
+    const booking = new BookingRepository(this.client as PrismaClient);
+    const windows = await this.client.availability.findMany({
+      where: {
+        shopId: { in: dynamicShopIds },
+        isScheduleControlWindow: true,
+        isActive: true,
+        deletedAt: null,
+        startsAt: { lt: request.serviceEndAt },
+        endsAt: { gt: request.serviceStartAt },
+        ...(technicianProfileIds ? { technicianProfileId: { in: technicianProfileIds } } :
+          input.scope.kind === "technician"
+            ? { technicianProfileId: input.scope.technicianProfileId }
+            : input.technicianProfileId
+              ? { technicianProfileId: input.technicianProfileId } : {})
+      },
+      select: { technicianProfileId: true },
+      distinct: ["technicianProfileId"]
+    });
+    const knownTechnicianIds = windows.flatMap((window) =>
+      window.technicianProfileId ? [window.technicianProfileId] : []);
+    if (knownTechnicianIds.length === 0) return { list: [], total: 0 };
+    const [identities, activeClaims] = await Promise.all([
+      this.client.userIdentity.findMany({
+        where: {
+          type: "technician", scopeType: "technician_profile",
+          scopeId: { in: knownTechnicianIds }, isActive: true, deletedAt: null,
+          publicIdentifier: { is: { kind: "S", status: "ACTIVE", deletedAt: null } }
+        },
+        select: { scopeId: true, publicIdentifier: { select: { publicId: true } } },
+        orderBy: [{ isDefault: "desc" }, { id: "asc" }]
+      }),
+      this.client.exchangeClaim.findMany({
+        where: {
+          technicianProfileId: { in: knownTechnicianIds },
+          status: DatabaseExchangeClaimStatus.ACTIVE, deletedAt: null,
+          scheduleSlot: { is: {
+            startsAt: { lt: request.serviceEndAt },
+            endsAt: { gt: request.serviceStartAt }
+          } }
+        },
+        select: { technicianProfileId: true,
+          scheduleSlot: { select: { startsAt: true, endsAt: true } } }
+      })
+    ]);
+    const publicIds = new Map<number, string>();
+    const activeClaimsByTechnician = new Map<number, Array<{ startsAt: Date; endsAt: Date }>>();
+    for (const identity of identities) {
+      if (identity.scopeId && identity.publicIdentifier && !publicIds.has(identity.scopeId)) {
+        publicIds.set(identity.scopeId, identity.publicIdentifier.publicId);
+      }
+    }
+    for (const claim of activeClaims) {
+      const claims = activeClaimsByTechnician.get(claim.technicianProfileId) ?? [];
+      claims.push(claim.scheduleSlot);
+      activeClaimsByTechnician.set(claim.technicianProfileId, claims);
+    }
+    const list: ExchangeClaimOptionPayload[] = [];
+    let scannedOptions = 0;
+    let total = 0;
+    const compare = (left: ExchangeClaimOptionPayload, right: ExchangeClaimOptionPayload) =>
+      left.startsAt.localeCompare(right.startsAt) ||
+      left.scheduleSlotId - right.scheduleSlotId ||
+      left.service.ref.localeCompare(right.service.ref);
+    for (let index = 0; index < sources.length; index += 4) {
+      const batch = await Promise.allSettled(sources.slice(index, index + 4).map(async (source) => {
+        const from = new Date(Math.max(request.serviceStartAt.getTime(), input.now.getTime() + 1));
+        const to = new Date(Math.min(
+          request.serviceEndAt.getTime() - source.durationMinutes * 60_000 + 1,
+          input.latestStartAt ? input.latestStartAt.getTime() + 1 : Number.POSITIVE_INFINITY
+        ));
+        if (from >= to) return;
+        const acceptSlot = (slot: ScheduleSlotPayload) => {
+          scannedOptions += 1;
+          if (scannedOptions > MAX_DYNAMIC_CLAIM_OPTIONS) {
+            throw new Error("dynamic Claim availability scan exceeds option limit");
+          }
+          if (slot.id >= 0 || !slot.technicianProfileId || slot.status !== "available"
+            || slot.startsAt <= input.now || slot.endsAt > request.serviceEndAt
+            || (input.scope.kind === "merchant" && slot.shopId !== input.scope.shopId)
+            || (input.scope.kind === "technician"
+              && slot.technicianProfileId !== input.scope.technicianProfileId)
+            || (input.technicianProfileId && slot.technicianProfileId !== input.technicianProfileId)
+            || activeClaimsByTechnician.get(slot.technicianProfileId)?.some((claim) =>
+              claim.startsAt < slot.endsAt && claim.endsAt > slot.startsAt)) return;
+          const publicId = publicIds.get(slot.technicianProfileId);
+          if (!publicId) return;
+          const serviceRef: ExchangeClaimServiceRef = slot.serviceId
+            ? `shop:${slot.serviceId}` : `technician:${slot.technicianServiceId!}`;
+          const option: ExchangeClaimOptionPayload = {
+            scheduleSlotId: slot.id,
+            shop: { id: slot.shopId, name: slot.shopName },
+            technician: {
+              profileId: slot.technicianProfileId,
+              publicId,
+              displayName: slot.technicianName ?? ""
+            },
+            service: { ref: serviceRef, name: slot.serviceName, durationMinutes: slot.durationMinutes },
+            startsAt: slot.startsAt.toISOString(),
+            endsAt: slot.endsAt.toISOString()
+          };
+          const key = exchangeClaimOptionBusinessKey(
+            option.shop.id, option.technician.profileId, option.service.ref,
+            option.startsAt, option.endsAt
+          );
+          if (persistedKeys.has(key) || seenDynamicKeys.has(key)) return;
+          seenDynamicKeys.add(key);
+          total += 1;
+          if (visit) {
+            visit(option);
+          } else if (take > 0) {
+            let low = 0;
+            let high = list.length;
+            while (low < high) {
+              const middle = (low + high) >>> 1;
+              if (compare(list[middle], option) <= 0) low = middle + 1;
+              else high = middle;
+            }
+            if (low < take) {
+              list.splice(low, 0, option);
+              if (list.length > take) list.pop();
+            }
+          }
+        };
+        await booking.listDynamicClaimSlots({
+          shopId: source.shopId,
+          ...(source.kind === "shop" ? { serviceId: source.id } : { technicianServiceId: source.id }),
+          ...(input.scope.kind === "technician"
+            ? { technicianId: input.scope.technicianProfileId }
+            : input.technicianProfileId ? { technicianId: input.technicianProfileId } : {}),
+          from,
+          to
+        }, technicianProfileIds, acceptSlot);
+      }));
+      const failure = batch.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
+    }
+    return { list, total };
   }
 
   public async lockRequest(postId: number): Promise<ExchangeClaimRequestRecord | null> {
@@ -391,7 +681,7 @@ export class ExchangeClaimRepository {
         serviceEndAt: true,
         expiresAt: true,
         demand: {
-          select: { matchMode: true, budgetMinJpy: true, budgetMaxJpy: true }
+          select: { matchMode: true, budgetMinJpy: true, budgetMaxJpy: true, deletedAt: true }
         }
       }
     });
@@ -410,7 +700,7 @@ export class ExchangeClaimRepository {
       serviceStartAt: row.serviceStartAt,
       serviceEndAt: row.serviceEndAt,
       expiresAt: row.expiresAt,
-      demand: row.demand
+      demand: row.demand && !row.demand.deletedAt
         ? {
             matchMode:
               row.demand.matchMode === DatabaseExchangeMatchMode.SELECTIVE ? "selective" : "quick",
@@ -506,6 +796,24 @@ export class ExchangeClaimRepository {
     scheduleSlotId: number,
     scope: ExchangeClaimProviderScope
   ): Promise<{ technicianProfileId: number } | null> {
+    const dynamic = decodeDynamicAvailabilityId(scheduleSlotId);
+    if (dynamic) {
+      const window = await this.client.availability.findFirst({
+        where: {
+          id: dynamic.availabilityId,
+          isScheduleControlWindow: true,
+          isActive: true,
+          deletedAt: null,
+          ...(scope.kind === "merchant"
+            ? { shopId: scope.shopId, technicianProfileId: { not: null } }
+            : { technicianProfileId: scope.technicianProfileId })
+        },
+        select: { technicianProfileId: true }
+      });
+      return window?.technicianProfileId
+        ? { technicianProfileId: window.technicianProfileId }
+        : null;
+    }
     const row = await this.client.scheduleSlot.findFirst({
       where: {
         id: scheduleSlotId,
@@ -571,8 +879,25 @@ export class ExchangeClaimRepository {
   public async lockOption(
     scheduleSlotId: number,
     scope: ExchangeClaimProviderScope,
-    now: Date = new Date()
+    now: Date = new Date(),
+    serviceRef?: ExchangeClaimServiceRef
   ): Promise<ExchangeClaimLockedOption | null> {
+    const dynamic = decodeDynamicAvailabilityId(scheduleSlotId);
+    if (dynamic) {
+      if (!serviceRef) return null;
+      const [kind, rawId] = serviceRef.split(":") as ["shop" | "technician", string];
+      const serviceId = Number(rawId);
+      if (!Number.isSafeInteger(serviceId) || serviceId <= 0) return null;
+      const materialized = await new BookingRepository(this.client as PrismaClient)
+        .materializeDynamicSlotForClaim({
+          scheduleSlotId,
+          ...(kind === "shop" ? { serviceId } : { technicianServiceId: serviceId }),
+          nominatedTechnicianProfileId:
+            scope.kind === "technician" ? scope.technicianProfileId : undefined
+        });
+      if (!materialized) return null;
+      scheduleSlotId = materialized;
+    }
     const locked = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
       SELECT id
       FROM \`schedule_slots\`
@@ -653,6 +978,7 @@ export class ExchangeClaimRepository {
         },
         technicianProfile: {
           select: {
+            userId: true,
             technicianShopAffiliations: {
               where: {
                 workStatus: TechnicianShopWorkStatus.ACTIVE,
@@ -677,6 +1003,10 @@ export class ExchangeClaimRepository {
     }
     const selectedService = row.service ?? row.technicianService;
     if (!selectedService) return null;
+    if (row.startsAt <= now) return null;
+    if (serviceRef && serviceRef !== (row.serviceId
+      ? `shop:${row.serviceId}`
+      : `technician:${row.technicianServiceId}`)) return null;
     if (
       !row.technicianProfile.technicianShopAffiliations.some(
         (affiliation) => affiliation.shopId === row.shopId
@@ -696,6 +1026,7 @@ export class ExchangeClaimRepository {
       scheduleSlotId: row.id,
       shopId: row.shopId,
       technicianProfileId: row.technicianProfileId,
+      technicianUserId: row.technicianProfile.userId,
       serviceId: row.serviceId,
       technicianServiceId: row.technicianServiceId,
       serviceName: selectedService.name,

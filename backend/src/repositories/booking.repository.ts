@@ -77,6 +77,8 @@ const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
 const HOME_ONLY_SERVICE_MODES = ["home", "home_visit", "onsite"] as const;
 const SERVICE_HASH_DOMAIN = "needo:order-service:verification-hash:v1\u0000";
 const SERVICE_START_EARLY_ALLOWANCE_MS = 30 * 60_000;
+const MAX_DYNAMIC_CLAIM_STARTS_PER_SOURCE = 10_000;
+class DynamicClaimScanLimitError extends Error {}
 const SUPPLEMENTARY_TECHNICIAN_SERVICE_NAME_PATTERN =
   /(?:^|[\s|｜:：])(施術)?延長(?:[\s|｜:：]|$)|(?:^|[\s|｜:：])(オプション|追加|附加|加钟|加鐘|add[ -]?on|extension)(?:[\s|｜:：]|$)/iu;
 
@@ -1693,6 +1695,28 @@ export class BookingRepository implements BookingRepositoryPort {
     );
   }
 
+  public async listDynamicClaimSlots(
+    input: AvailabilityListInput & { shopId: number },
+    technicianProfileIds?: number[],
+    visit?: (slot: ScheduleSlotPayload) => void
+  ): Promise<ScheduleSlotPayload[]> {
+    const result = await this.client.$transaction(async (transaction) => {
+      const cycle = await this.findDynamicAvailabilityCycle(transaction, input.shopId, input.from, input.to);
+      if (!cycle) return [];
+      try {
+        const page = await this.readDynamicAvailableSlots(
+          transaction, input, {}, cycle, undefined, true, technicianProfileIds, visit
+        );
+        return page.list.filter((slot): slot is ScheduleSlotPayload => "id" in slot && slot.id < 0);
+      } catch (error) {
+        if (error instanceof DynamicClaimScanLimitError) return null;
+        throw error;
+      }
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    if (result === null) throw new DynamicClaimScanLimitError("dynamic Claim availability scan exceeds source limit");
+    return result;
+  }
+
   private async readAvailableSlots(
     transaction: Prisma.TransactionClient,
     input: AvailabilityListInput,
@@ -1973,7 +1997,10 @@ export class BookingRepository implements BookingRepositoryPort {
     input: AvailabilityListInput & { shopId: number },
     shopVisibilityWhere: Record<string, unknown>,
     cycle: { id: number; ruleSet: Prisma.JsonValue },
-    customerUserId?: number
+    customerUserId?: number,
+    allForClaim = false,
+    claimTechnicianProfileIds?: number[],
+    visitClaimSlot?: (slot: ScheduleSlotPayload) => void
   ): Promise<PaginatedResponse<AvailabilityListPayload>> {
     const pagination = toPrismaPagination(input);
     const now = new Date();
@@ -2078,7 +2105,8 @@ export class BookingRepository implements BookingRepositoryPort {
         endsAt: { gt: input.from },
         technicianProfileId: technicianService
           ? technicianService.technicianId
-          : input.technicianId,
+          : input.technicianId ?? (claimTechnicianProfileIds
+            ? { in: claimTechnicianProfileIds } : undefined),
         technicianProfile: {
           is: {
             ...publicTechnicianProfileWhere(),
@@ -2135,14 +2163,18 @@ export class BookingRepository implements BookingRepositoryPort {
             select: { membershipLevel: true }
           })
         : null,
-      Promise.all(technicianIds.map(async (technicianProfileId) => [
-        technicianProfileId,
-        await this.resolveNominationFeeJpy(transaction, input.shopId, technicianProfileId, now)
-      ] as const))
+      allForClaim
+        ? Promise.resolve([] as Array<readonly [number, number]>)
+        : Promise.all(technicianIds.map(async (technicianProfileId) => [
+            technicianProfileId,
+            await this.resolveNominationFeeJpy(transaction, input.shopId, technicianProfileId, now)
+          ] as const))
     ]);
     const releasesOwnPending = customer?.membershipLevel.toLowerCase() !== "black";
     const nominationFees = new Map(nominationFeeEntries);
     const candidates: ScheduleSlotPayload[] = [];
+    let claimSlotCount = 0;
+    let scannedClaimStarts = 0;
     const dateSummaries = input.summaryByDate
       ? new AvailabilityDateSummaryCollector()
       : null;
@@ -2155,6 +2187,23 @@ export class BookingRepository implements BookingRepositoryPort {
             (source) => source.technicianId === window.technicianProfileId
           );
       for (const source of sources) {
+        if (allForClaim) {
+          const minuteMs = 60_000;
+          const first = Math.max(
+            window.startsAt.getTime() + preBufferMinutes * minuteMs,
+            input.from.getTime()
+          );
+          const lastExclusive = Math.min(
+            input.to.getTime(),
+            window.endsAt.getTime() - (source.durationMinutes + postBufferMinutes) * minuteMs + 1
+          );
+          scannedClaimStarts += Math.max(0,
+            Math.ceil((lastExclusive - first) / (startIntervalMinutes * minuteMs)) + 1
+          );
+          if (scannedClaimStarts > MAX_DYNAMIC_CLAIM_STARTS_PER_SOURCE) {
+            throw new DynamicClaimScanLimitError("dynamic Claim availability scan exceeds source limit");
+          }
+        }
         for (const candidate of enumerateDynamicBookingStarts({
           windowStartsAt: window.startsAt,
           windowEndsAt: window.endsAt,
@@ -2196,7 +2245,7 @@ export class BookingRepository implements BookingRepositoryPort {
             });
             continue;
           }
-          candidates.push({
+          const slot: ScheduleSlotPayload = {
             id: encodeDynamicAvailabilityId(window.id, candidate.offsetMinutes),
             serviceId: service?.id ?? null,
             technicianServiceId: service ? null : source.id,
@@ -2215,7 +2264,13 @@ export class BookingRepository implements BookingRepositoryPort {
             durationMinutes: source.durationMinutes,
             nominationFeeJpy,
             availabilitySourceType: window.sourceType === "SHOP" ? "shop" : "technician"
-          });
+          };
+          if (allForClaim && visitClaimSlot) {
+            visitClaimSlot(slot);
+            claimSlotCount += 1;
+          } else {
+            candidates.push(slot);
+          }
         }
       }
     }
@@ -2227,6 +2282,7 @@ export class BookingRepository implements BookingRepositoryPort {
         pagination
       );
     }
+    if (allForClaim && visitClaimSlot) return buildPaginatedResponse([], claimSlotCount, pagination);
     candidates.sort((left, right) =>
       left.startsAt.getTime() - right.startsAt.getTime() || left.id - right.id
     );
@@ -2238,7 +2294,9 @@ export class BookingRepository implements BookingRepositoryPort {
         pagination
       );
     }
-    const list = candidates.slice(pagination.skip, pagination.skip + pagination.take);
+    const list = allForClaim
+      ? candidates
+      : candidates.slice(pagination.skip, pagination.skip + pagination.take);
     return buildPaginatedResponse(list, candidates.length, pagination);
   }
 
@@ -2935,9 +2993,18 @@ export class BookingRepository implements BookingRepositoryPort {
     );
   }
 
+  public materializeDynamicSlotForClaim(
+    input: Pick<BookingCreateRepositoryInput,
+      "scheduleSlotId" | "scheduleSlotIds" | "serviceId" | "technicianServiceId" | "technicianServiceIds" | "nominatedTechnicianProfileId">
+  ): Promise<number | null> {
+    return this.materializeDynamicScheduleSlot(this.client as Prisma.TransactionClient, input);
+  }
+
   private async materializeDynamicScheduleSlot(
     transaction: Prisma.TransactionClient,
-    input: BookingCreateRepositoryInput
+    input: Pick<BookingCreateRepositoryInput,
+      "scheduleSlotId" | "scheduleSlotIds" | "serviceId" | "technicianServiceId" | "technicianServiceIds" | "nominatedTechnicianProfileId"> &
+      { customerUserId?: number }
   ): Promise<number | null> {
     const selector = decodeDynamicAvailabilityId(input.scheduleSlotId);
     if (!selector || Boolean(input.serviceId) === Boolean(input.technicianServiceId)) return null;
@@ -3028,7 +3095,9 @@ export class BookingRepository implements BookingRepositoryPort {
           technicianProfileId: availability.technicianProfileId,
           OR: [
             { status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] } },
-            { status: "PENDING", customerUserId: { not: input.customerUserId } }
+            { status: "PENDING", ...(input.customerUserId
+              ? { customerUserId: { not: input.customerUserId } }
+              : {}) }
           ],
           deletedAt: null,
           scheduleSlot: {

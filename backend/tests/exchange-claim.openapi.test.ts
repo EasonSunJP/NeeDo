@@ -73,6 +73,13 @@ describe("Exchange selective claim OpenAPI", () => {
   });
 
   it("documents exact claim payloads and every stable service error", () => {
+    expect(document.components.schemas.ExchangeClaimOption.properties).toEqual(expect.objectContaining({
+      scheduleSlotId: { type: "integer", not: { const: 0 } }
+    }));
+    expect(document.components.schemas.ExchangeClaimCreateRequest.properties).toEqual(expect.objectContaining({
+      scheduleSlotId: { type: "integer", not: { const: 0 } },
+      serviceRef: { type: "string", pattern: "^(?:shop|technician):[1-9]\\d*$" }
+    }));
     expect(document.components.schemas).toEqual(
       expect.objectContaining({
         ExchangeClaim: expect.any(Object),

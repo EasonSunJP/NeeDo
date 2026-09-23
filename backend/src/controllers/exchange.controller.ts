@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { logger } from "../config/logger";
 import { ERROR_CODES } from "../constants/error-codes";
 import type { ContentMediaMimeType } from "../services/content-media.storage";
 import type { ExchangeService } from "../services/exchange.service";
@@ -77,7 +78,9 @@ export class ExchangeController {
       this.idempotencyKey(response)
     );
     if (input.type === "demand") {
-      await this.automationProcessor?.processRequest(created.id).catch(() => undefined);
+      await this.automationProcessor?.processRequest(created.id).catch((error: unknown) => {
+        logger.error({ error, exchangePostId: created.id }, "Request automation failed after publication");
+      });
     }
     response.status(201).json(successResponse(created));
   });

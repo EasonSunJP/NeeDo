@@ -1,5 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { ExchangeClaimRepository } from "../src/repositories/exchange-claim.repository";
+import { encodeDynamicAvailabilityId } from "../src/domain/dynamic-booking-window";
+import { BookingRepository } from "../src/repositories/booking.repository";
 
 type SqlQuery = { sql?: string; strings?: readonly string[]; values?: unknown[] };
 
@@ -77,7 +79,9 @@ describe("ExchangeClaimRepository option projection", () => {
       query.sql?.includes("SELECT COUNT(*) AS total") ? [{ total: 1n }] : [optionRow]
     );
     const repository = new ExchangeClaimRepository({
-      $queryRaw: queryRaw
+      $queryRaw: queryRaw,
+      scheduleCycle: { findMany: jest.fn(async () => []) },
+      availability: { findMany: jest.fn(async () => []) }
     } as unknown as PrismaClient);
 
     await expect(
@@ -120,6 +124,7 @@ describe("ExchangeClaimRepository option projection", () => {
     expect(sql).toContain("slot.`booked_count` < slot.`capacity`");
     expect(sql).toContain("affiliation.`work_status` = 'active'");
     expect(sql).toContain("slot.`starts_at` >= post.`service_start_at`");
+    expect(sql).toMatch(/slot\.`starts_at` > \?/u);
     expect(sql).toContain("slot.`ends_at` <= post.`service_end_at`");
     expect(sql).toContain("shop_service.`shop_id` = slot.`shop_id`");
     expect(sql).toContain("technician_service.`shop_id` = slot.`shop_id`");
@@ -140,7 +145,9 @@ describe("ExchangeClaimRepository option projection", () => {
         : [{ ...optionRow, serviceId: null, technicianServiceId: 701 }]
     );
     const repository = new ExchangeClaimRepository({
-      $queryRaw: queryRaw
+      $queryRaw: queryRaw,
+      scheduleCycle: { findMany: jest.fn(async () => []) },
+      availability: { findMany: jest.fn(async () => []) }
     } as unknown as PrismaClient);
 
     const result = await repository.listOptions({
@@ -163,9 +170,426 @@ describe("ExchangeClaimRepository option projection", () => {
     expect(sql).toContain("LIMIT");
     expect(sql).toContain("OFFSET");
   });
+
+  it("lists current dynamic Booking options with their distinct service references", async () => {
+    const dynamicId = encodeDynamicAvailabilityId(81, 30);
+    const cycleFindMany = jest.fn(async () => [{
+      shopId: 11,
+      periodStart: new Date("2026-09-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-09-03T00:00:00.000Z"),
+      ruleSet: { dynamicAvailability: true }
+    }]);
+    const bookingOptions = jest.spyOn(BookingRepository.prototype, "listDynamicClaimSlots")
+      .mockImplementation(async (input, _technicianIds, visit) => {
+        visit?.({ id: dynamicId, shopId: 11, shopName: "Aoyama Care", technicianProfileId: 81,
+          technicianName: "山田 花子", serviceId: input.serviceId ?? null, technicianServiceId: null,
+          serviceName: input.serviceId === 501 ? "Shop service" : "Second service",
+          durationMinutes: 60, startsAt: new Date("2026-09-02T01:00:00.000Z"),
+          endsAt: new Date("2026-09-02T02:00:00.000Z"), status: "available" } as never);
+        return [];
+      });
+    try {
+      const repository = new ExchangeClaimRepository({
+        $queryRaw: jest.fn(async (query: SqlQuery) =>
+          query.sql?.includes("SELECT COUNT(*) AS total") ? [{ total: 0n }] : []),
+        availability: { findMany: jest.fn(async () => [{ technicianProfileId: 81 }]) },
+        scheduleCycle: { findMany: cycleFindMany },
+        exchangePost: { findFirst: jest.fn(async () => ({
+          id: 41, authorUserId: 99, ownerIdentityId: 98, type: "DEMAND",
+          status: "PUBLISHED", serviceStartAt: new Date("2026-09-02T00:00:00.000Z"),
+          serviceEndAt: new Date("2026-09-02T03:00:00.000Z"),
+          expiresAt: new Date("2026-09-03T00:00:00.000Z"),
+          demand: { matchMode: "SELECTIVE", budgetMinJpy: null, budgetMaxJpy: 30000 }
+        })) },
+        exchangeRequestMatching: { findUnique: jest.fn(async () => ({
+          status: "OPEN", effectiveTargetProviderCount: 1
+        })) },
+        service: { findMany: jest.fn(async () => [
+          { id: 501, shopId: 11, durationMinutes: 60 },
+          { id: 502, shopId: 11, durationMinutes: 60 }
+        ]) },
+        technicianService: { findMany: jest.fn(async () => []) },
+        userIdentity: { findMany: jest.fn(async () => [{
+          scopeId: 81, publicIdentifier: { publicId: "S000000081" }
+        }]) },
+        exchangeClaim: { findMany: jest.fn(async () => []) }
+      } as unknown as PrismaClient);
+      const result = await repository.listOptions({
+        postId: 41, scope: { kind: "merchant", shopId: 11 }, page: 1, pageSize: 20, now
+      });
+      expect(result.total).toBe(2);
+      expect(result.list.map((option) => option.service.ref)).toEqual(["shop:501", "shop:502"]);
+      expect(result.list.map((option) => option.scheduleSlotId)).toEqual([dynamicId, dynamicId]);
+      expect(bookingOptions).toHaveBeenCalledWith(expect.objectContaining({
+        shopId: 11, from: expect.any(Date), to: expect.any(Date)
+      }), undefined, expect.any(Function));
+      cycleFindMany.mockResolvedValueOnce([{
+        shopId: 11,
+        periodStart: new Date("2026-10-01T00:00:00.000Z"),
+        periodEnd: new Date("2026-10-03T00:00:00.000Z"),
+        ruleSet: { dynamicAvailability: true }
+      }]);
+      bookingOptions.mockClear();
+      await expect(repository.listOptions({
+        postId: 41, scope: { kind: "merchant", shopId: 11 }, page: 1, pageSize: 20, now
+      })).resolves.toMatchObject({ list: [], total: 0 });
+      expect(bookingOptions).not.toHaveBeenCalled();
+    } finally {
+      bookingOptions.mockRestore();
+    }
+  });
+
+  it("counts a materialized slot once and removes its dynamic twin across pages", async () => {
+    const dynamicId = encodeDynamicAvailabilityId(81, 30);
+    const bookingOptions = jest.spyOn(BookingRepository.prototype, "listDynamicClaimSlots")
+      .mockImplementation(async (input, _technicianIds, visit) => {
+        visit?.({
+          id: dynamicId, shopId: 11, shopName: "Aoyama Care", technicianProfileId: 81,
+          technicianName: "山田 花子", serviceId: input.serviceId ?? null,
+          technicianServiceId: null, serviceName: input.serviceId === 501 ? "ヘアセット" : "Second service",
+          durationMinutes: 60, startsAt: new Date("2026-09-02T01:00:00.000Z"),
+          endsAt: new Date("2026-09-02T02:00:00.000Z"), status: "available"
+        } as never);
+        return [];
+      });
+    try {
+      const repository = new ExchangeClaimRepository({
+        $queryRaw: jest.fn(async (query: SqlQuery) =>
+          query.sql?.includes("SELECT COUNT(*) AS total") ? [{ total: 1n }] : [optionRow]),
+        availability: { findMany: jest.fn(async () => [{ technicianProfileId: 81 }]) },
+        scheduleCycle: { findMany: jest.fn(async () => [{
+          shopId: 11, periodStart: new Date("2026-09-01T00:00:00.000Z"),
+          periodEnd: new Date("2026-09-03T00:00:00.000Z"),
+          ruleSet: { dynamicAvailability: true }
+        }]) },
+        exchangePost: { findFirst: jest.fn(async () => ({
+          id: 41, authorUserId: 99, ownerIdentityId: 98, type: "DEMAND", status: "PUBLISHED",
+          serviceStartAt: new Date("2026-09-02T00:00:00.000Z"),
+          serviceEndAt: new Date("2026-09-02T03:00:00.000Z"),
+          expiresAt: new Date("2026-09-03T00:00:00.000Z"),
+          demand: { matchMode: "SELECTIVE", budgetMinJpy: null, budgetMaxJpy: 30_000 }
+        })) },
+        exchangeRequestMatching: { findUnique: jest.fn(async () => ({ status: "OPEN" })) },
+        service: { findMany: jest.fn(async () => [
+          { id: 501, shopId: 11, durationMinutes: 60 },
+          { id: 502, shopId: 11, durationMinutes: 60 }
+        ]) },
+        technicianService: { findMany: jest.fn(async () => []) },
+        userIdentity: { findMany: jest.fn(async () => [{
+          scopeId: 81, publicIdentifier: { publicId: "S000000081" }
+        }]) },
+        exchangeClaim: { findMany: jest.fn(async () => []) }
+      } as unknown as PrismaClient);
+      const input = { postId: 41, scope: { kind: "merchant" as const, shopId: 11 },
+        pageSize: 1, now };
+      const first = await repository.listOptions({ ...input, page: 1 });
+      const second = await repository.listOptions({ ...input, page: 2 });
+      expect(first.total).toBe(2);
+      expect(second.total).toBe(2);
+      expect(first.list.map((option) => [option.scheduleSlotId, option.service.ref]))
+        .toEqual([[dynamicId, "shop:502"]]);
+      expect(second.list.map((option) => [option.scheduleSlotId, option.service.ref]))
+        .toEqual([[91, "shop:501"]]);
+    } finally {
+      bookingOptions.mockRestore();
+    }
+  });
+
+  it("counts only claimable dynamic options after Booking and identity filters", async () => {
+    const dynamicId = encodeDynamicAvailabilityId(81, 30);
+    const activeClaims = jest.fn(async () => [] as Array<{
+      technicianProfileId: number;
+      scheduleSlot: { startsAt: Date; endsAt: Date };
+    }>);
+    const bookingOptions = jest.spyOn(BookingRepository.prototype, "listDynamicClaimSlots")
+      .mockImplementation(async (_input, _technicianIds, visit) => {
+        for (const slot of [
+        { id: dynamicId, shopId: 11, shopName: "Shop", technicianProfileId: 81,
+          technicianName: "Technician", serviceId: 501, technicianServiceId: null,
+          serviceName: "Service", durationMinutes: 60,
+          startsAt: new Date("2026-09-02T01:00:00.000Z"),
+          endsAt: new Date("2026-09-02T02:00:00.000Z"), status: "available" },
+        { id: encodeDynamicAvailabilityId(81, 35), shopId: 11, shopName: "Shop",
+          technicianProfileId: 81, technicianName: "Technician", serviceId: 501,
+          technicianServiceId: null, serviceName: "Service", durationMinutes: 60,
+          startsAt: new Date("2026-09-02T01:00:00.000Z"),
+          endsAt: new Date("2026-09-02T02:00:00.000Z"), status: "available" },
+        { id: 91, shopId: 11, shopName: "Shop", technicianProfileId: 81,
+          technicianName: "Technician", serviceId: 501, technicianServiceId: null,
+          serviceName: "Service", durationMinutes: 60,
+          startsAt: new Date("2026-09-02T01:00:00.000Z"),
+          endsAt: new Date("2026-09-02T02:00:00.000Z"), status: "available" },
+        { id: encodeDynamicAvailabilityId(82, 30), shopId: 11, shopName: "Shop",
+          technicianProfileId: 82, technicianName: "Other", serviceId: 501,
+          technicianServiceId: null, serviceName: "Service", durationMinutes: 60,
+          startsAt: new Date("2026-09-02T01:00:00.000Z"),
+          endsAt: new Date("2026-09-02T02:00:00.000Z"), status: "available" }
+        ]) visit?.(slot as never);
+        return [];
+      });
+    try {
+      const repository = new ExchangeClaimRepository({
+        $queryRaw: jest.fn(async (query: SqlQuery) =>
+          query.sql?.includes("SELECT COUNT(*) AS total") ? [{ total: 0n }] : []),
+        availability: { findMany: jest.fn(async () => [{ technicianProfileId: 81 }, { technicianProfileId: 82 }]) },
+        scheduleCycle: { findMany: jest.fn(async () => [{
+          shopId: 11, periodStart: new Date("2026-09-01T00:00:00.000Z"),
+          periodEnd: new Date("2026-09-03T00:00:00.000Z"),
+          ruleSet: { dynamicAvailability: true }
+        }]) },
+        exchangePost: { findFirst: jest.fn(async () => ({
+          id: 41, authorUserId: 99, type: "DEMAND", status: "PUBLISHED",
+          serviceStartAt: new Date("2026-09-02T00:00:00.000Z"),
+          serviceEndAt: new Date("2026-09-02T03:00:00.000Z"),
+          expiresAt: new Date("2026-09-03T00:00:00.000Z"),
+          demand: { matchMode: "SELECTIVE" }
+        })) },
+        exchangeRequestMatching: { findUnique: jest.fn(async () => ({ status: "OPEN" })) },
+        service: { findMany: jest.fn(async () => [{ id: 501, shopId: 11, durationMinutes: 60 }]) },
+        technicianService: { findMany: jest.fn(async () => []) },
+        userIdentity: { findMany: jest.fn(async () => [{
+          scopeId: 81, publicIdentifier: { publicId: "S000000081" }
+        }]) },
+        exchangeClaim: { findMany: activeClaims }
+      } as unknown as PrismaClient);
+      const result = await repository.listOptions({
+        postId: 41, scope: { kind: "merchant", shopId: 11 }, page: 2, pageSize: 1, now
+      });
+      expect(result).toMatchObject({ list: [], total: 1 });
+      activeClaims.mockResolvedValueOnce([{
+        technicianProfileId: 81,
+        scheduleSlot: {
+          startsAt: new Date("2026-09-02T01:00:00.000Z"),
+          endsAt: new Date("2026-09-02T02:00:00.000Z")
+        }
+      }]);
+      await expect(repository.listOptions({
+        postId: 41, scope: { kind: "merchant", shopId: 11 }, page: 1, pageSize: 20, now
+      })).resolves.toMatchObject({ list: [], total: 0 });
+    } finally {
+      bookingOptions.mockRestore();
+    }
+  });
+
+  it("enumerates each of 52 shop services once without a per-page Booking replay", async () => {
+    const bookingOptions = jest.spyOn(BookingRepository.prototype, "listDynamicClaimSlots")
+      .mockResolvedValue([]);
+    const serviceFindMany = jest.fn(async () => Array.from({ length: 52 }, (_, index) => ({
+      id: 501 + index, shopId: 11, durationMinutes: 60
+    })));
+    try {
+      const repository = new ExchangeClaimRepository({
+        availability: { findMany: jest.fn(async () => Array.from({ length: 26 }, (_, index) => ({ technicianProfileId: 31 + index }))) },
+        userIdentity: { findMany: jest.fn(async () => []) },
+        exchangeClaim: { findMany: jest.fn(async () => []) },
+        scheduleCycle: { findMany: jest.fn(async () => [{
+          shopId: 11, periodStart: new Date("2026-09-01T00:00:00.000Z"),
+          periodEnd: new Date("2026-09-03T00:00:00.000Z"),
+          ruleSet: { dynamicAvailability: true }
+        }]) },
+        exchangePost: { findFirst: jest.fn(async () => ({
+          id: 41, type: "DEMAND", status: "PUBLISHED",
+          serviceStartAt: new Date("2026-09-02T00:00:00.000Z"),
+          serviceEndAt: new Date("2026-09-02T03:00:00.000Z"),
+          expiresAt: new Date("2026-09-03T00:00:00.000Z"),
+          demand: { matchMode: "SELECTIVE" }
+        })) },
+        exchangeRequestMatching: { findUnique: jest.fn(async () => ({ status: "OPEN" })) },
+        service: { findMany: serviceFindMany },
+        technicianService: { findMany: jest.fn(async () => []) }
+      } as unknown as PrismaClient);
+      await expect(repository.listDynamicOptions({
+        postId: 41, scope: { kind: "merchant", shopId: 11 }, page: 1, pageSize: 20,
+        now, latestStartAt: new Date("2026-09-02T01:00:00.000Z")
+      }, Number.MAX_SAFE_INTEGER, Array.from({ length: 26 }, (_, index) => 31 + index)))
+        .resolves.toEqual({ list: [], total: 0 });
+      expect(bookingOptions).toHaveBeenCalledTimes(52);
+      expect(bookingOptions).toHaveBeenNthCalledWith(1, expect.objectContaining({
+        to: new Date("2026-09-02T01:00:00.001Z")
+      }),
+        Array.from({ length: 26 }, (_, index) => 31 + index), expect.any(Function));
+      bookingOptions.mockClear();
+      serviceFindMany.mockResolvedValueOnce(Array.from({ length: 129 }, (_, index) => ({
+        id: 501 + index, shopId: 11, durationMinutes: 60
+      })));
+      await expect(repository.listDynamicOptions({
+        postId: 41, scope: { kind: "merchant", shopId: 11 }, page: 1, pageSize: 20, now
+      }, Number.MAX_SAFE_INTEGER)).rejects.toThrow("service source limit");
+      expect(bookingOptions).not.toHaveBeenCalled();
+    } finally {
+      bookingOptions.mockRestore();
+    }
+  });
+
+  it("counts 26 by 52 three-hour Claim options while retaining only the requested page", async () => {
+    const bookingOptions = jest.spyOn(BookingRepository.prototype, "listDynamicClaimSlots")
+      .mockImplementation(async (input, _technicianIds, visit) => {
+        for (let technician = 0; technician < 26; technician += 1) {
+          for (let offset = 0; offset < 25; offset += 1) {
+            const startsAt = new Date(Date.UTC(2026, 8, 2, 0, offset * 5));
+            visit?.({
+              id: encodeDynamicAvailabilityId(31 + technician, offset * 5),
+              shopId: 11, shopName: "Shop", technicianProfileId: 31 + technician,
+              technicianName: "Technician", serviceId: input.serviceId ?? null,
+              technicianServiceId: null, serviceName: "Service", durationMinutes: 60,
+              startsAt, endsAt: new Date(startsAt.getTime() + 60 * 60_000),
+              status: "available"
+            } as never);
+          }
+        }
+        return [];
+      });
+    try {
+      const repository = new ExchangeClaimRepository({
+        $queryRaw: jest.fn(async (query: SqlQuery) =>
+          query.sql?.includes("SELECT COUNT(*) AS total") ? [{ total: 0n }] : []),
+        availability: { findMany: jest.fn(async () => Array.from({ length: 26 }, (_, index) =>
+          ({ technicianProfileId: 31 + index }))) },
+        scheduleCycle: { findMany: jest.fn(async () => [{
+          shopId: 11, periodStart: new Date("2026-09-01T00:00:00.000Z"),
+          periodEnd: new Date("2026-09-03T00:00:00.000Z"),
+          ruleSet: { dynamicAvailability: true }
+        }]) },
+        exchangePost: { findFirst: jest.fn(async () => ({
+          id: 41, type: "DEMAND", status: "PUBLISHED",
+          serviceStartAt: new Date("2026-09-02T00:00:00.000Z"),
+          serviceEndAt: new Date("2026-09-02T03:00:00.000Z"),
+          expiresAt: new Date("2026-09-03T00:00:00.000Z"),
+          demand: { matchMode: "SELECTIVE" }
+        })) },
+        exchangeRequestMatching: { findUnique: jest.fn(async () => ({ status: "OPEN" })) },
+        service: { findMany: jest.fn(async () => Array.from({ length: 52 }, (_, index) =>
+          ({ id: 501 + index, shopId: 11, durationMinutes: 60 }))) },
+        technicianService: { findMany: jest.fn(async () => []) },
+        userIdentity: { findMany: jest.fn(async () => Array.from({ length: 26 }, (_, index) =>
+          ({ scopeId: 31 + index, publicIdentifier: { publicId: `S${31 + index}` } }))) },
+        exchangeClaim: { findMany: jest.fn(async () => []) }
+      } as unknown as PrismaClient);
+      const page = await repository.listOptions({
+        postId: 41, scope: { kind: "merchant", shopId: 11 }, page: 2, pageSize: 20, now
+      });
+      expect(page.total).toBe(33_800);
+      expect(page.list).toHaveLength(20);
+      expect(page.list[0]?.startsAt).toBe("2026-09-02T00:00:00.000Z");
+      expect(page.list[0]?.service.ref).toBe("shop:521");
+      expect(bookingOptions).toHaveBeenCalledTimes(52);
+    } finally {
+      bookingOptions.mockRestore();
+    }
+  });
+
+  it("lists a technician-priced self-scheduled option only for its technician identity", async () => {
+    const dynamicId = encodeDynamicAvailabilityId(82, 60);
+    const bookingOptions = jest.spyOn(BookingRepository.prototype, "listDynamicClaimSlots")
+      .mockImplementation(async (_input, _technicianIds, visit) => {
+        visit?.({
+        id: dynamicId, shopId: 11, shopName: "Shop", technicianProfileId: 81,
+        technicianName: "Technician", serviceId: null, technicianServiceId: 701,
+        serviceName: "Tech service", durationMinutes: 60,
+        startsAt: new Date("2026-09-02T01:00:00.000Z"),
+        endsAt: new Date("2026-09-02T02:00:00.000Z"), status: "available",
+        availabilitySourceType: "technician"
+        } as never);
+        return [];
+      });
+    try {
+      const repository = new ExchangeClaimRepository({
+        $queryRaw: jest.fn(async (query: SqlQuery) =>
+          query.sql?.includes("SELECT COUNT(*) AS total") ? [{ total: 0n }] : []),
+        availability: { findMany: jest.fn(async () => [{ shopId: 11, technicianProfileId: 81 }]) },
+        scheduleCycle: { findMany: jest.fn(async () => [{
+          shopId: 11,
+          periodStart: new Date("2026-09-01T00:00:00.000Z"),
+          periodEnd: new Date("2026-09-03T00:00:00.000Z"),
+          ruleSet: { dynamicAvailability: true }
+        }]) },
+        exchangePost: { findFirst: jest.fn(async () => ({
+          id: 41, authorUserId: 99, ownerIdentityId: 98, type: "DEMAND", status: "PUBLISHED",
+          serviceStartAt: new Date("2026-09-02T00:00:00.000Z"),
+          serviceEndAt: new Date("2026-09-02T03:00:00.000Z"),
+          expiresAt: new Date("2026-09-03T00:00:00.000Z"),
+          demand: { matchMode: "SELECTIVE", budgetMinJpy: null, budgetMaxJpy: 30000 }
+        })) },
+        exchangeRequestMatching: { findUnique: jest.fn(async () => ({ status: "OPEN" })) },
+        service: { findMany: jest.fn(async () => []) },
+        technicianService: { findMany: jest.fn(async () => [{ id: 701, shopId: 11, durationMinutes: 60 }]) },
+        userIdentity: { findMany: jest.fn(async () => [{ scopeId: 81, publicIdentifier: { publicId: "S000000081" } }]) },
+        exchangeClaim: { findMany: jest.fn(async () => []) }
+      } as unknown as PrismaClient);
+      const result = await repository.listOptions({
+        postId: 41, scope: { kind: "technician", technicianProfileId: 81 },
+        page: 1, pageSize: 20, now
+      });
+      expect(result.list).toEqual([expect.objectContaining({
+        scheduleSlotId: dynamicId,
+        service: expect.objectContaining({ ref: "technician:701" })
+      })]);
+      expect(bookingOptions).toHaveBeenCalledWith(expect.objectContaining({
+        technicianId: 81, technicianServiceId: 701
+      }), undefined, expect.any(Function));
+    } finally {
+      bookingOptions.mockRestore();
+    }
+  });
 });
 
 describe("ExchangeClaimRepository mutation primitives", () => {
+  it("resolves a dynamic control window only inside the provider scope", async () => {
+    const id = encodeDynamicAvailabilityId(81, 30);
+    const findFirst = jest.fn(async ({ where }: { where: Record<string, unknown> }) =>
+      where.shopId === 11 || where.technicianProfileId === 81
+        ? { technicianProfileId: 81 }
+        : null
+    );
+    const repository = new ExchangeClaimRepository({
+      availability: { findFirst }
+    } as unknown as PrismaClient);
+
+    await expect(repository.findOptionCandidate(id, { kind: "merchant", shopId: 11 }))
+      .resolves.toEqual({ technicianProfileId: 81 });
+    await expect(repository.findOptionCandidate(id, { kind: "merchant", shopId: 12 }))
+      .resolves.toBeNull();
+    await expect(repository.findOptionCandidate(id, { kind: "technician", technicianProfileId: 82 }))
+      .resolves.toBeNull();
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ isScheduleControlWindow: true, isActive: true, deletedAt: null })
+    }));
+  });
+
+  it("materializes a dynamic option inside the claim transaction before locking its persisted slot", async () => {
+    const dynamicId = encodeDynamicAvailabilityId(81, 30);
+    const materialize = jest.spyOn(BookingRepository.prototype, "materializeDynamicSlotForClaim")
+      .mockResolvedValue(91);
+    const findFirst = jest.fn(async () => ({
+      id: 91, shopId: 11, technicianProfileId: 81,
+      serviceId: 501, technicianServiceId: null,
+      startsAt: new Date("2026-09-02T01:00:00.000Z"),
+      endsAt: new Date("2026-09-02T02:00:00.000Z"),
+      capacity: 1, bookedCount: 0,
+      service: { id: 501, name: "Service", durationMinutes: 60, shopId: 11 },
+      technicianService: null,
+      technicianProfile: { technicianShopAffiliations: [{ shopId: 11 }] }
+    }));
+    try {
+      const repository = new ExchangeClaimRepository({
+        $queryRaw: jest.fn(async () => [{ id: 91 }]),
+        scheduleSlot: { findFirst }
+      } as unknown as PrismaClient);
+      await expect(repository.lockOption(
+        dynamicId, { kind: "merchant", shopId: 11 }, now, "shop:501"
+      )).resolves.toMatchObject({ scheduleSlotId: 91, serviceId: 501 });
+      await expect(repository.lockOption(
+        dynamicId, { kind: "merchant", shopId: 11 }, now, "shop:502"
+      )).resolves.toBeNull();
+      expect(materialize).toHaveBeenCalledWith({
+        scheduleSlotId: dynamicId,
+        serviceId: 501,
+        nominatedTechnicianProfileId: undefined
+      });
+    } finally {
+      materialize.mockRestore();
+    }
+  });
   it("locks and advances the matching version with one append-only claim event", async () => {
     const updateMany = jest.fn(async () => ({ count: 1 }));
     const eventCreate = jest.fn(async () => ({ id: 81 }));
@@ -341,7 +765,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
       const option = await lockedRepository.lockOption(91, {
         kind: "merchant",
         shopId: 11
-      });
+      }, now);
       expect(option).toMatchObject({
         scheduleSlotId: 91,
         shopId: 11,
@@ -422,6 +846,24 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     await expect(
       repository.lockOption(91, { kind: "merchant", shopId: 11 }, now)
     ).resolves.toBeNull();
+  });
+
+  it("rejects a persisted option whose start has passed", async () => {
+    const repository = new ExchangeClaimRepository({
+      $queryRaw: jest.fn(async () => [{ id: 91 }]),
+      scheduleSlot: { findFirst: jest.fn(async () => ({
+        id: 91, shopId: 11, technicianProfileId: 81, serviceId: 501,
+        technicianServiceId: null,
+        startsAt: new Date(now.getTime() - 60_000),
+        endsAt: new Date(now.getTime() + 3_540_000),
+        capacity: 1, bookedCount: 0,
+        service: { name: "Service", durationMinutes: 60, shopId: 11 },
+        technicianService: null,
+        technicianProfile: { technicianShopAffiliations: [{ shopId: 11 }] }
+      })) }
+    } as unknown as PrismaClient);
+    await expect(repository.lockOption(91, { kind: "merchant", shopId: 11 }, now))
+      .resolves.toBeNull();
   });
 
   it("rejects a technician slot when only another shop affiliation remains active", async () => {

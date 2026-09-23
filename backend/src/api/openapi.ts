@@ -5770,7 +5770,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["scheduleSlotId", "shop", "technician", "service", "startsAt", "endsAt"],
         properties: {
-          scheduleSlotId: { type: "integer", minimum: 1 },
+          scheduleSlotId: { type: "integer", not: { const: 0 } },
           shop: { $ref: "#/components/schemas/ExchangeClaimShop" },
           technician: { $ref: "#/components/schemas/ExchangeClaimTechnician" },
           service: { $ref: "#/components/schemas/ExchangeClaimService" },
@@ -5875,8 +5875,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: ["scheduleSlotId", "quoteAmountJpy"],
+        oneOf: [
+          { properties: { scheduleSlotId: { minimum: 1 } } },
+          { required: ["serviceRef"], properties: { scheduleSlotId: { maximum: -1 } } }
+        ],
         properties: {
-          scheduleSlotId: { type: "integer", minimum: 1 },
+          scheduleSlotId: { type: "integer", not: { const: 0 } },
+          serviceRef: { type: "string", pattern: "^(?:shop|technician):[1-9]\\d*$" },
           quoteAmountJpy: { type: "integer", minimum: 1, maximum: 1000000000 },
           message: { type: ["string", "null"], maxLength: 1000, default: null }
         }

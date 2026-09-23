@@ -61,7 +61,8 @@ export interface ExchangeClaimRepositoryPort extends ExchangeQuickMatchingReposi
   lockOption(
     scheduleSlotId: number,
     scope: ExchangeClaimProviderScope,
-    now?: Date
+    now?: Date,
+    serviceRef?: ExchangeClaimServiceRef
   ): Promise<ExchangeClaimLockedOption | null>;
   hasActiveClaimForRequestTechnician(
     exchangePostId: number,
@@ -174,6 +175,7 @@ export class ExchangeClaimService {
       },
       postId,
       scheduleSlotId: input.scheduleSlotId,
+      ...(input.serviceRef ? { serviceRef: input.serviceRef } : {}),
       quoteAmountJpy: input.quoteAmountJpy,
       message: input.message
     });
@@ -192,7 +194,12 @@ export class ExchangeClaimService {
         if (!(await repository.lockTechnician(candidate.technicianProfileId))) {
           throw this.scheduleUnavailable();
         }
-        const option = await repository.lockOption(input.scheduleSlotId, scope, at);
+        const option = await repository.lockOption(
+          input.scheduleSlotId,
+          scope,
+          at,
+          input.serviceRef as ExchangeClaimServiceRef | undefined
+        );
         if (!option || option.technicianProfileId !== candidate.technicianProfileId) {
           throw this.scheduleUnavailable();
         }
@@ -475,6 +482,7 @@ export class ExchangeClaimService {
     request: ExchangeClaimRequestRecord,
     option: ExchangeClaimLockedOption
   ): void {
+    if (option.technicianUserId === request.authorUserId) throw this.notAllowed();
     if (
       option.startsAt < request.serviceStartAt ||
       option.endsAt > request.serviceEndAt ||
