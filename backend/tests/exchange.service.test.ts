@@ -8,6 +8,7 @@ import type {
 } from "../src/types/exchange.types";
 import { AppError } from "../src/utils/app-error";
 import { ERROR_CODES } from "../src/constants/error-codes";
+import type { ContentMediaService } from "../src/services/content-media.service";
 
 const now = new Date("2026-08-30T03:00:00.000Z");
 
@@ -226,6 +227,23 @@ const createRepository = () => {
 };
 
 describe("ExchangeService", () => {
+  it("uploads a pending cover only for the resolved active customer identity", async () => {
+    const repository = createRepository();
+    const media = { upload: jest.fn(async () => ({ publicId: "a".repeat(64), mediaAssetId: 81, url: "/media/content/aa.webp", mimeType: "image/webp", width: 1280, height: 720, checksumSha256: "a".repeat(64) })) };
+    const service = new ExchangeService(repository, () => now, undefined, undefined, undefined, undefined, undefined, undefined, media as unknown as ContentMediaService);
+    const input = { bytes: Buffer.from("valid-image"), mimeType: "image/webp" as const, altText: null };
+    const context = { ip: "127.0.0.1", userAgent: "exchange-cover-test" };
+
+    await expect(service.uploadDemandCover({ ...access, roles: ["customer"] }, context, input)).resolves.toMatchObject({ publicId: "a".repeat(64), width: 1280, height: 720 });
+    expect(media.upload).toHaveBeenCalledWith(expect.objectContaining({ userId: 7, currentIdentityId: 17 }), context,
+      { ...input, now }, { entityType: "exchange_demand_cover_pending", entityId: 17, ownerIdentityId: 17, usageType: "exchange_demand_cover_pending" });
+
+    await expect(service.uploadDemandCover({ ...access, roles: ["technician"] }, context, input)).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
+    repository.resolveActor.mockResolvedValueOnce({ ...actor, identityId: 18 });
+    await expect(service.uploadDemandCover({ ...access, roles: ["customer"] }, context, input)).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
+    expect(media.upload).toHaveBeenCalledTimes(1);
+  });
+
   it("resolves and verifies the active identity for every request", async () => {
     const repository = createRepository();
     const service = new ExchangeService(repository, () => now);

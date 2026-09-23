@@ -53,6 +53,34 @@ const fakeConnection = (
 ): ContentMediaAdvisoryLockConnection => ({ query, end, destroy });
 
 describe("ContentMediaRepository dedicated MariaDB advisory lock", () => {
+  it("persists pending Exchange cover ownership and its upload audit action", async () => {
+    const transaction = {
+      mediaAsset: { create: jest.fn(async () => ({ id: 201 })) },
+      auditLog: { create: jest.fn(async () => ({ id: 301 })) }
+    };
+    const client = { $transaction: jest.fn(async (operation) => operation(transaction)) };
+    const connection = fakeConnection(jest.fn(async (sql: string) =>
+      sql.includes("GET_LOCK") ? [{ acquired: 1 }] : [{ released: 1 }]
+    ));
+    const repository = new ContentMediaRepository(client as never, async () => connection, 3);
+
+    await repository.withChecksumLock(checksum, (locked) => locked.create({
+      ...createInput,
+      entityType: "exchange_demand_cover_pending",
+      entityId: 17,
+      ownerIdentityId: 17,
+      usageType: "exchange_demand_cover_pending"
+    }));
+
+    expect(transaction.mediaAsset.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      entityType: "exchange_demand_cover_pending", entityId: 17, ownerUserId: 7,
+      ownerIdentityId: 17, usageType: "exchange_demand_cover_pending"
+    }) });
+    expect(transaction.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      action: "exchange.demand_cover.uploaded", targetType: "MediaAsset", targetId: 201
+    }) });
+  });
+
   it("creates a dedicated driver connection from the validated database configuration", async () => {
     const connection = fakeConnection(jest.fn());
     jest.mocked(createConnection).mockResolvedValueOnce(connection as never);

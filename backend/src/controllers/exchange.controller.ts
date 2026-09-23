@@ -1,10 +1,14 @@
 import type { NextFunction, Request, Response } from "express";
+import { ERROR_CODES } from "../constants/error-codes";
+import type { ContentMediaMimeType } from "../services/content-media.storage";
 import type { ExchangeService } from "../services/exchange.service";
 import type { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 import { successResponse } from "../utils/api-response";
-import { getAuthenticatedAccess } from "../utils/request-context";
+import { AppError } from "../utils/app-error";
+import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
   createExchangeCommentSchema,
+  exchangeDemandCoverQuerySchema,
   exchangeCommentListQuerySchema,
   exchangeListQuerySchema,
   exchangePostIdParamSchema,
@@ -16,6 +20,24 @@ export class ExchangeController {
     private readonly service: ExchangeService,
     private readonly automationProcessor?: Pick<TechnicianAutomationProcessor, "processRequest">
   ) {}
+
+  public uploadDemandCover = this.handle(async (request, response) => {
+    const mimeType = request.headers["content-type"]?.split(";", 1)[0]?.trim();
+    if (mimeType !== "image/jpeg" && mimeType !== "image/png" && mimeType !== "image/webp") {
+      throw new AppError({ code: ERROR_CODES.VALIDATION, message: "error.exchange.demand_cover_invalid", statusCode: 415 });
+    }
+    if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
+      throw new AppError({ code: ERROR_CODES.VALIDATION, message: "error.exchange.demand_cover_invalid", statusCode: 400 });
+    }
+    const query = exchangeDemandCoverQuerySchema.parse(request.query);
+    response.status(201).json(successResponse(await this.service.uploadDemandCover(
+      getAuthenticatedAccess(response), getRequestContext(request), {
+        bytes: request.body,
+        mimeType: mimeType as ContentMediaMimeType,
+        altText: query.alt_text ?? null
+      }
+    )));
+  });
 
   public getRequestPublicationContext = this.handle(async (_request, response) => {
     response

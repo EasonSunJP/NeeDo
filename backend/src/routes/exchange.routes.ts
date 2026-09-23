@@ -8,8 +8,10 @@ import { ExchangeController } from "../controllers/exchange.controller";
 import { ServicePrepaymentController } from "../controllers/service-prepayment.controller";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
+import { createContentImageBodyErrorHandler, createContentImageBodyParser } from "../middlewares/content-image-upload.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { ExchangePostRepository } from "../repositories/exchange.repository";
+import { ContentMediaRepository } from "../repositories/content-media.repository";
 import { ExchangeClaimRepository } from "../repositories/exchange-claim.repository";
 import { TechnicianAutomationRepository } from "../repositories/technician-automation.repository";
 import { ExchangeRequestFeeRepository } from "../repositories/exchange-request-fee.repository";
@@ -19,6 +21,8 @@ import { NdpExchangeRateRepository } from "../repositories/ndp-exchange-rate.rep
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { ExchangeRequestFeeService } from "../services/exchange-request-fee.service";
 import { ExchangeService } from "../services/exchange.service";
+import { ContentMediaFileStorage } from "../services/content-media.storage";
+import { ContentMediaService } from "../services/content-media.service";
 import { ExchangeClaimService } from "../services/exchange-claim.service";
 import { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 import { LedgerService } from "../services/ledger.service";
@@ -28,6 +32,7 @@ import { AuditLogService } from "../services/audit-log.service";
 import { AppError } from "../utils/app-error";
 import {
   createExchangeCommentSchema,
+  exchangeDemandCoverQuerySchema,
   exchangeCommentListQuerySchema,
   exchangeIdempotencyKeySchema,
   exchangeListQuerySchema,
@@ -137,6 +142,12 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
       new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
     )
   );
+  const media = dependencies.contentMediaService ?? new ContentMediaService(
+    dependencies.contentMediaRepository ?? new ContentMediaRepository(),
+    dependencies.contentMediaStorage ?? new ContentMediaFileStorage(config.CONTENT_MEDIA_STORAGE_DIR, {
+      identityStorageDirectory: config.IDENTITY_APPLICATION_MEDIA_STORAGE_DIR
+    })
+  );
   const service =
     dependencies.exchangeService ??
     new ExchangeService(
@@ -148,7 +159,8 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
       prepaymentLedger,
       dependencies.userPolicyEnforcementService,
         dependencies.platformMembershipResolverService,
-        servicePrepaymentService
+        servicePrepaymentService,
+        media
       );
   const actorRepository = new ExchangePostRepository();
   const claimService =
@@ -163,6 +175,19 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
   const prepaymentController = new ServicePrepaymentController(
     servicePrepaymentService,
     automationProcessor
+  );
+
+  router.post(
+    "/exchange/demand-cover",
+    authenticate(),
+    createAuthorizeMiddleware(EXCHANGE_PERMISSIONS.createDemand),
+    validateRequest({ query: exchangeDemandCoverQuerySchema }),
+    createContentImageBodyParser(),
+    createContentImageBodyErrorHandler({
+      invalid: "error.exchange.demand_cover_invalid",
+      tooLarge: "error.exchange.demand_cover_too_large"
+    }),
+    controller.uploadDemandCover
   );
 
   router.get(

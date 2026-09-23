@@ -5,6 +5,9 @@ import type { ExchangeIntelligenceServiceRef } from "../types/exchange-intellige
 const MAX_MONEY_JPY = 1_000_000_000;
 
 const authoredText = (maximum: number) => z.string().trim().min(1).max(maximum);
+export const exchangeDemandCoverQuerySchema = z.object({
+  alt_text: authoredText(255).optional()
+}).strict();
 const moneyJpy = z.coerce.number().int().nonnegative().max(MAX_MONEY_JPY);
 const explicitOffsetDate = z
   .union([z.date(), z.string().datetime({ offset: true })])

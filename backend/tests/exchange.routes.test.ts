@@ -233,6 +233,7 @@ const createFixture = async (exchangeServiceOverride?: ExchangeService) => {
       publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 3 }
     })),
     getPost: jest.fn(async () => post),
+    uploadDemandCover: jest.fn(async () => ({ publicId: "a".repeat(64), url: "/media/content/aa.webp", mimeType: "image/webp", width: 1280, height: 720 })),
     publish: jest.fn(async () => post),
     withdraw: jest.fn(async () => ({ ...post, status: "withdrawn" as const })),
     listComments: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
@@ -278,6 +279,38 @@ const createFixture = async (exchangeServiceOverride?: ExchangeService) => {
 };
 
 describe("formal Exchange routes", () => {
+  it("protects raw pending-cover uploads and returns the public cover contract", async () => {
+    const { app, login, service } = await createFixture();
+    const token = await login("customer@example.test");
+    const technicianToken = await login("technician@example.test");
+
+    await request(app).post("/api/v1/exchange/demand-cover")
+      .set("Content-Type", "image/webp").send(Buffer.from("valid-image")).expect(401);
+    await request(app).post("/api/v1/exchange/demand-cover")
+      .set("Authorization", `Bearer ${technicianToken}`)
+      .set("Content-Type", "image/webp").send(Buffer.from("valid-image")).expect(403);
+    await request(app).post("/api/v1/exchange/demand-cover")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ image: "not raw bytes" }).expect(415)
+      .expect(({ body }) => expect(body.message).toBe("error.exchange.demand_cover_invalid"));
+    expect(service.uploadDemandCover).not.toHaveBeenCalled();
+    await request(app).post("/api/v1/exchange/demand-cover")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Content-Type", "image/webp")
+      .send(Buffer.alloc(8 * 1024 * 1024 + 1)).expect(413)
+      .expect(({ body }) => expect(body.message).toBe("error.exchange.demand_cover_too_large"));
+    expect(service.uploadDemandCover).not.toHaveBeenCalled();
+    await request(app).post("/api/v1/exchange/demand-cover?alt_text=Cover")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Content-Type", "image/webp").send(Buffer.from("valid-image")).expect(201)
+      .expect(({ body }) => expect(body.data).toEqual({ publicId: "a".repeat(64), url: "/media/content/aa.webp", mimeType: "image/webp", width: 1280, height: 720 }));
+    expect(service.uploadDemandCover).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, currentIdentityId: 17 }),
+      expect.objectContaining({ ip: expect.any(String) }),
+      { bytes: Buffer.from("valid-image"), mimeType: "image/webp", altText: "Cover" }
+    );
+  });
+
   it("requires authentication and the per-route read permission", async () => {
     const { app } = await createFixture();
 

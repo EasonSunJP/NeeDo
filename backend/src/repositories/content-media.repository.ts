@@ -165,6 +165,8 @@ export class ContentMediaRepository implements ContentMediaRepositoryPort {
         action:
           input.entityType === "official_notice_upload"
             ? "official_notice.media_uploaded"
+            : input.entityType === "exchange_demand_cover_pending"
+              ? "exchange.demand_cover.uploaded"
             : input.entityType === "shop_presentation_upload"
               ? "merchant_admin.shop_presentation.media_uploaded"
               : "content.media.uploaded",
