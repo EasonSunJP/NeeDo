@@ -170,11 +170,22 @@ describe("ExchangeInteractions", () => {
     expect(container.querySelectorAll("article")[0]?.textContent).toContain(created.content);
     expect(onCountsChange).toHaveBeenCalledWith({ comments: 4, likes: 10, shares: 2 }, { liked: false });
 
-    vi.mocked(listExchangeComments).mockResolvedValue({ list: [created, ...comments], total: 4, page: 1, page_size: 20 });
-    await renderInteractions({ ...post, id: 42, counts: { ...post.counts, comments: 4 } });
-    await renderInteractions(post);
-    expect(container.querySelectorAll("article")[0]?.textContent).toContain("s2433935375");
-    expect(container.querySelector('a[href="/moments/users/9?identityId=19"] img')?.getAttribute("src")).toBe("https://example.test/technician.jpg");
+    const reloaded: ExchangeComment = {
+      ...created,
+      content: "服务器保存的评论",
+      author: { ...created.author, displayName: "服务器技师", avatarUrl: "https://example.test/persisted-technician.jpg" }
+    };
+    vi.mocked(listExchangeComments).mockResolvedValue({ list: [...comments, reloaded], total: 4, page: 1, page_size: 20 });
+    const callsBeforeReload = vi.mocked(listExchangeComments).mock.calls.length;
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await renderInteractions({ ...post, counts: { ...post.counts, comments: 4 } });
+    expect(listExchangeComments).toHaveBeenCalledTimes(callsBeforeReload + 1);
+    expect(listExchangeComments).toHaveBeenLastCalledWith("41", expect.objectContaining({ page: 1, pageSize: 20 }));
+    const persistedArticle = [...container.querySelectorAll("article")].find((article) => article.textContent?.includes(reloaded.content));
+    expect(persistedArticle?.textContent).toContain("s2433935375");
+    expect(persistedArticle?.textContent).toContain("服务器技师");
+    expect(persistedArticle?.querySelector('a[href="/moments/users/9?identityId=19"] img')?.getAttribute("src")).toBe("https://example.test/persisted-technician.jpg");
   });
 
   it("uses server counts for like and unlike", async () => {

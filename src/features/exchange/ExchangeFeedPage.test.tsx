@@ -130,6 +130,43 @@ function renderFeed(overrides: Partial<typeof baseResource> = {}, context: "user
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+async function mountInteractiveDemandFeed() {
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  document.body.appendChild(container);
+  let currentPost = demandPost;
+  const replaceCounts = vi.fn((postId: number, counts: ExchangeInteractionCounts, viewer?: Partial<ExchangeViewerState>) => {
+    if (postId === currentPost.id) currentPost = { ...currentPost, counts, viewer: { ...currentPost.viewer, ...viewer } };
+  });
+  vi.mocked(useExchangeFeed).mockImplementation(() => ({ ...baseResource, posts: [currentPost], replaceCounts }));
+  vi.stubGlobal("crypto", { randomUUID: vi.fn().mockReturnValue("123e4567-e89b-42d3-a456-426614174000") });
+  const render = () => act(async () => root.render(<MemoryRouter><ExchangeFeedPage context="user" /></MemoryRouter>));
+  await render();
+  const buttons = () => container.querySelectorAll<HTMLButtonElement>('[data-post-id="41"] .flex.items-center.justify-between button');
+  expect(buttons()).toHaveLength(3);
+  return {
+    buttons,
+    currentPost: () => currentPost,
+    render,
+    replaceCounts,
+    cleanup: async () => {
+      await act(async () => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    }
+  };
+}
+
 describe("ExchangeFeedPage", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -176,34 +213,56 @@ describe("ExchangeFeedPage", () => {
     expect(markup).toContain("转发");
   });
 
-  it("passes persisted like and share counts from the demand card to the feed", async () => {
-    const container = document.createElement("div");
-    const root = createRoot(container);
-    document.body.appendChild(container);
-    let currentPost = demandPost;
-    const replaceCounts = vi.fn((postId: number, counts: ExchangeInteractionCounts, viewer?: Partial<ExchangeViewerState>) => {
-      if (postId === currentPost.id) currentPost = { ...currentPost, counts, viewer: { ...currentPost.viewer, ...viewer } };
-    });
-    vi.mocked(useExchangeFeed).mockImplementation(() => ({ ...baseResource, posts: [currentPost], replaceCounts }));
-    vi.mocked(likeExchangePost).mockResolvedValue({ comments: 6, likes: 30, shares: 6 });
-    vi.mocked(shareContent).mockResolvedValue({ status: "copied", url: "https://needo.test/needo/posts/41" });
-    vi.mocked(recordExchangeShare).mockResolvedValue({ comments: 6, likes: 30, shares: 7 });
-    vi.stubGlobal("crypto", { randomUUID: vi.fn().mockReturnValue("123e4567-e89b-42d3-a456-426614174000") });
-
+  it("keeps demand likes unchanged until a successful server response", async () => {
+    const failed = deferred<ExchangeInteractionCounts>();
+    const succeeded = deferred<ExchangeInteractionCounts>();
+    vi.mocked(likeExchangePost).mockImplementationOnce(() => failed.promise).mockImplementationOnce(() => succeeded.promise);
+    const feed = await mountInteractiveDemandFeed();
     try {
-      await act(async () => root.render(<MemoryRouter><ExchangeFeedPage context="user" /></MemoryRouter>));
-      const buttons = container.querySelectorAll<HTMLButtonElement>('[data-post-id="41"] .flex.items-center.justify-between button');
-      expect(buttons).toHaveLength(3);
-      await act(async () => buttons[0]?.click());
-      expect(replaceCounts).toHaveBeenCalledWith(41, { comments: 6, likes: 30, shares: 6 }, { liked: true });
-      await act(async () => root.render(<MemoryRouter><ExchangeFeedPage context="user" /></MemoryRouter>));
-      await act(async () => buttons[2]?.click());
-      expect(recordExchangeShare).toHaveBeenCalledWith("41", "123e4567-e89b-42d3-a456-426614174000");
-      expect(replaceCounts).toHaveBeenCalledWith(41, { comments: 6, likes: 30, shares: 7 }, { liked: true });
+      await act(async () => feed.buttons()[0]?.click());
+      expect(feed.buttons()[0]?.textContent).toContain("21");
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+      await act(async () => { failed.reject(new Error("error.network")); await failed.promise.catch(() => undefined); });
+      expect(feed.currentPost().counts.likes).toBe(21);
+      expect(feed.buttons()[0]?.textContent).toContain("21");
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+
+      await act(async () => feed.buttons()[0]?.click());
+      expect(feed.buttons()[0]?.textContent).toContain("21");
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+      await act(async () => { succeeded.resolve({ comments: 6, likes: 30, shares: 6 }); await succeeded.promise; });
+      expect(feed.replaceCounts).toHaveBeenCalledExactlyOnceWith(41, { comments: 6, likes: 30, shares: 6 }, { liked: true });
+      await feed.render();
+      expect(feed.buttons()[0]?.textContent).toContain("30");
     } finally {
-      await act(async () => root.unmount());
-      container.remove();
-      vi.unstubAllGlobals();
+      await feed.cleanup();
+    }
+  });
+
+  it("keeps demand shares unchanged until the share record succeeds", async () => {
+    const failed = deferred<ExchangeInteractionCounts>();
+    const succeeded = deferred<ExchangeInteractionCounts>();
+    vi.mocked(shareContent).mockResolvedValue({ status: "copied", url: "https://needo.test/needo/posts/41" });
+    vi.mocked(recordExchangeShare).mockImplementationOnce(() => failed.promise).mockImplementationOnce(() => succeeded.promise);
+    const feed = await mountInteractiveDemandFeed();
+    try {
+      await act(async () => feed.buttons()[2]?.click());
+      expect(recordExchangeShare).toHaveBeenCalledWith("41", "123e4567-e89b-42d3-a456-426614174000");
+      expect(feed.currentPost().counts.shares).toBe(6);
+      expect(feed.buttons()[0]?.textContent).toContain("21");
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+      await act(async () => { failed.reject(new Error("error.network")); await failed.promise.catch(() => undefined); });
+      expect(feed.currentPost().counts.shares).toBe(6);
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+
+      await act(async () => feed.buttons()[2]?.click());
+      expect(feed.currentPost().counts.shares).toBe(6);
+      expect(feed.replaceCounts).not.toHaveBeenCalled();
+      await act(async () => { succeeded.resolve({ comments: 6, likes: 21, shares: 7 }); await succeeded.promise; });
+      expect(feed.replaceCounts).toHaveBeenCalledExactlyOnceWith(41, { comments: 6, likes: 21, shares: 7 }, { liked: false });
+      expect(feed.currentPost().counts.shares).toBe(7);
+    } finally {
+      await feed.cleanup();
     }
   });
 
