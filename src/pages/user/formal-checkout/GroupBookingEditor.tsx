@@ -10,11 +10,12 @@ import { useCheckoutText } from "./i18n";
 
 type CatalogService = { id: number; name: string; priceAmount: number; durationMinutes: number };
 type Technician = { id: number; name: string };
+const NO_OWNED_SLOTS = new Set<number>();
 export type ReadyGroupBooking = CreateBookingGroupInput & { totalPriceAmountJpy: number };
 
 export function GroupBookingEditor({
   shopId, startsAt, initialGuestCount, initialTechnicianId, initialServiceIds, catalog,
-  onChange
+  onChange, singleAssignment = false, ownedSlotIds = NO_OWNED_SLOTS
 }: {
   shopId: number;
   startsAt: string;
@@ -23,6 +24,8 @@ export function GroupBookingEditor({
   initialServiceIds: number[];
   catalog: "shop_service" | "technician_service";
   onChange: (ready: ReadyGroupBooking | null) => void;
+  singleAssignment?: boolean;
+  ownedSlotIds?: ReadonlySet<number>;
 }) {
   const { t } = useCheckoutText();
   const [tier, setTier] = useState<MyPlatformMembership["tierCode"] | null>(null);
@@ -122,6 +125,7 @@ export function GroupBookingEditor({
         const batch = await Promise.all(slotQueries.slice(index, index + 5).map(({ technicianId, serviceId, from }) =>
           loadAvailabilityWindow({
             shopId, technicianId, from, to: new Date(Date.parse(from) + 1).toISOString(),
+            ...(singleAssignment ? { includeUnavailable: true } : {}),
             ...(catalog === "shop_service" ? { serviceId } : { technicianServiceId: serviceId })
           })
         ));
@@ -133,12 +137,12 @@ export function GroupBookingEditor({
       .catch(() => { if (active) setLoadFailed(true); })
       .finally(() => { if (active) setSlotsLoading(false); });
     return () => { active = false; };
-  }, [catalog, shopId, slotQueryKey]);
+  }, [catalog, shopId, singleAssignment, slotQueryKey]);
 
   const ready = useMemo(() => tier && !loadFailed && !slotsLoading &&
     (tier === "black_diamond" || guests.length === 1)
-    ? resolveGroupBookingDraft({ shopId, startsAt, catalog, guests }, slots)
-    : null, [catalog, guests, loadFailed, shopId, slots, slotsLoading, startsAt, tier]);
+    ? resolveGroupBookingDraft({ shopId, startsAt, catalog, guests }, slots, ownedSlotIds)
+    : null, [catalog, guests, loadFailed, ownedSlotIds, shopId, slots, slotsLoading, startsAt, tier]);
   useEffect(() => onChange(ready), [onChange, ready]);
 
   const updateGuest = (guestIndex: number, update: (guest: GroupGuestDraft) => GroupGuestDraft) => {
@@ -162,9 +166,9 @@ export function GroupBookingEditor({
         <div className="space-y-3 rounded-2xl border border-[color:var(--client-line)] p-3" key={guestIndex}>
           <div className="flex items-center gap-2">
             <label className="min-w-0 flex-1 text-xs font-bold">{t("groupBookingGuest", { count: String(guestIndex + 1) })}
-              <input className="mt-1 h-10 w-full rounded-lg border border-[color:var(--client-line)] bg-transparent px-3 text-sm" maxLength={60} value={guest.label} onChange={(event) => updateGuest(guestIndex, (current) => ({ ...current, label: event.target.value }))} />
+              <input className="mt-1 h-10 w-full rounded-lg border border-[color:var(--client-line)] bg-transparent px-3 text-sm" maxLength={60} value={guest.label} disabled={singleAssignment} onChange={(event) => updateGuest(guestIndex, (current) => ({ ...current, label: event.target.value }))} />
             </label>
-            {guests.length > 1 ? <button type="button" className="text-xs font-bold text-red-500" onClick={() => setGuests((current) => current.filter((_, index) => index !== guestIndex))}>{t("groupBookingRemoveGuest")}</button> : null}
+            {!singleAssignment && guests.length > 1 ? <button type="button" className="text-xs font-bold text-red-500" onClick={() => setGuests((current) => current.filter((_, index) => index !== guestIndex))}>{t("groupBookingRemoveGuest")}</button> : null}
           </div>
           {guest.assignments.map((assignment, assignmentIndex) => {
             const availableServices = catalog === "shop_service" ? shopServices : technicianServices[assignment.technicianProfileId ?? 0] ?? [];
@@ -194,10 +198,10 @@ export function GroupBookingEditor({
               </div>
             );
           })}
-          {selectedTechnicianIds.length < 10 && technicians.length > selectedTechnicianIds.length ? <button type="button" className="text-xs font-bold text-[color:var(--client-primary)]" onClick={() => updateGuest(guestIndex, (current) => ({ ...current, assignments: [...current.assignments, { technicianProfileId: null, serviceIds: [] }] }))}>{t("groupBookingAddTechnician")}</button> : null}
+          {!singleAssignment && selectedTechnicianIds.length < 10 && technicians.length > selectedTechnicianIds.length ? <button type="button" className="text-xs font-bold text-[color:var(--client-primary)]" onClick={() => updateGuest(guestIndex, (current) => ({ ...current, assignments: [...current.assignments, { technicianProfileId: null, serviceIds: [] }] }))}>{t("groupBookingAddTechnician")}</button> : null}
         </div>
       ))}
-      {tier === "black_diamond" && guests.length < maxGuests ? <button type="button" className="text-sm font-black text-[color:var(--client-primary)]" onClick={() => setGuests((current) => [...current, { label: t("groupBookingGuest", { count: String(current.length + 1) }), assignments: [{ technicianProfileId: null, serviceIds: [] }] }])}>{t("groupBookingAddGuest")}</button> : null}
+      {!singleAssignment && tier === "black_diamond" && guests.length < maxGuests ? <button type="button" className="text-sm font-black text-[color:var(--client-primary)]" onClick={() => setGuests((current) => [...current, { label: t("groupBookingGuest", { count: String(current.length + 1) }), assignments: [{ technicianProfileId: null, serviceIds: [] }] }])}>{t("groupBookingAddGuest")}</button> : null}
       {slotsLoading ? <p className="text-xs text-[color:var(--client-muted)]">{t("groupBookingChecking")}</p> : !ready && !loadFailed ? <p className="text-xs text-amber-700">{t("groupBookingIncomplete")}</p> : null}
     </section>
   );

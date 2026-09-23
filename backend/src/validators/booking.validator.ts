@@ -295,6 +295,20 @@ export const bookingGroupCreateBodySchema = z.object({
   }
 });
 
+export const bookingGroupRevisionBodySchema = z.object({
+  expectedUpdatedAt: z.string().datetime({ offset: true }),
+  assignment: groupAssignmentSchema
+}).strict();
+
+export const bookingGroupGuestRemovalBodySchema = z.object({
+  expectedOrders: z.array(z.object({
+    id: z.number().int().positive(),
+    updatedAt: z.string().datetime({ offset: true })
+  }).strict()).min(1).max(10)
+}).strict().refine((value) => new Set(value.expectedOrders.map((order) => order.id)).size === value.expectedOrders.length, {
+  message: "Order ids must be distinct", path: ["expectedOrders"]
+});
+
 export const technicianManualBookingBodySchema = z.object({
   customerIdentityId: z.coerce.number().int().positive(),
   expectedPriceAmountJpy: z.coerce.number().int().nonnegative(),
@@ -321,6 +335,14 @@ export const orderIdParamSchema = z.object({
 export const bookingGroupPublicIdParamSchema = z.object({
   publicId: z.string().uuid()
 }).strict();
+
+export const bookingGroupOrderParamSchema = bookingGroupPublicIdParamSchema.extend({
+  orderId: z.coerce.number().int().positive()
+});
+
+export const bookingGroupGuestParamSchema = bookingGroupPublicIdParamSchema.extend({
+  guestId: z.coerce.number().int().positive()
+});
 
 export const orderAssignTechnicianBodySchema = z.object({
   technicianProfileId: z.coerce.number().int().positive()

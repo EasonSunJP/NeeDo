@@ -468,6 +468,8 @@ export type BookingGroup = {
   guests: Array<{ id: number; position: number; label: string; orders: BookingOrder[] }>;
 };
 
+export type BookingGroupMutationResult = { group: BookingGroup; replay: boolean };
+
 export type CreateTechnicianManualBookingInput = {
   customerIdentityId: number;
   expectedPriceAmountJpy: number;
@@ -600,6 +602,21 @@ export const bookingApi = {
   },
   getGroupBooking(publicId: string) {
     return httpClient.request<BookingGroup>(`/bookings/groups/${encodeURIComponent(publicId)}`);
+  },
+  reviseGroupOrder(publicId: string, orderId: number, input: {
+    expectedUpdatedAt: string;
+    assignment: CreateBookingGroupInput["guests"][number]["assignments"][number];
+  }, idempotencyKey: string) {
+    return httpClient.request<BookingGroupMutationResult>(
+      `/bookings/groups/${encodeURIComponent(publicId)}/orders/${orderId}`,
+      { method: "PATCH", body: input, headers: { "Idempotency-Key": idempotencyKey } }
+    );
+  },
+  removeGroupGuest(publicId: string, guestId: number, expectedOrders: Array<{ id: number; updatedAt: string }>, idempotencyKey: string) {
+    return httpClient.request<BookingGroupMutationResult>(
+      `/bookings/groups/${encodeURIComponent(publicId)}/guests/${guestId}/remove`,
+      { method: "POST", body: { expectedOrders }, headers: { "Idempotency-Key": idempotencyKey } }
+    );
   },
   createTechnicianManualBooking(input: CreateTechnicianManualBookingInput, idempotencyKey: string) {
     return httpClient.request<BookingOrder>("/technician/manual-bookings", {

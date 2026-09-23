@@ -58,3 +58,14 @@ it("keeps submission unavailable until every guest has a distinct technician and
   const last = onChange.mock.lastCall?.[0];
   expect(last?.guests.map((guest) => guest.assignments[0]?.technicianProfileId)).toEqual([11, 12]);
 });
+
+it("limits a post-booking revision to one guest and one technician assignment", async () => {
+  await act(async () => root.render(<GroupBookingEditor
+    catalog="shop_service" initialGuestCount={1} initialServiceIds={[101]}
+    initialTechnicianId={11} onChange={vi.fn()} shopId={5} startsAt={start}
+    singleAssignment
+  />));
+  expect(container.textContent).not.toContain("groupBookingAddGuest");
+  expect(container.textContent).not.toContain("groupBookingAddTechnician");
+  expect(container.textContent).toContain("groupBookingAddService");
+});

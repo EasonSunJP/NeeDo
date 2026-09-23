@@ -6,6 +6,7 @@ import {
   orderListQuerySchema,
   startServiceBodySchema
 } from "../src/validators/booking.validator";
+import * as bookingValidators from "../src/validators/booking.validator";
 
 describe("bookingGroupCreateBodySchema", () => {
   const assignment = {
@@ -48,6 +49,30 @@ describe("bookingGroupCreateBodySchema", () => {
   it("rejects blank guest labels and invalid expected prices", () => {
     expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: [{ label: " ", assignments: [assignment] }] }).success).toBe(false);
     expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: [{ label: "客人 1", assignments: [{ ...assignment, expectedPriceAmountJpy: -1 }] }] }).success).toBe(false);
+  });
+});
+
+describe("group mutation validators", () => {
+  it("requires a version and one valid replacement assignment", () => {
+    const schema = (bookingValidators as unknown as { bookingGroupRevisionBodySchema: {
+      safeParse: (value: unknown) => { success: boolean }
+    } }).bookingGroupRevisionBodySchema;
+    const body = { expectedUpdatedAt: "2026-10-01T00:00:00.000Z", assignment: {
+      technicianProfileId: 1, serviceIds: [2], scheduleSlotIds: [3], expectedPriceAmountJpy: 1000
+    } };
+    expect(schema.safeParse(body).success).toBe(true);
+    expect(schema.safeParse({ ...body, expectedUpdatedAt: "today" }).success).toBe(false);
+    expect(schema.safeParse({ ...body, assignment: { ...body.assignment, scheduleSlotIds: [] } }).success).toBe(false);
+  });
+
+  it("requires distinct versioned order ids for guest removal", () => {
+    const schema = (bookingValidators as unknown as { bookingGroupGuestRemovalBodySchema: {
+      safeParse: (value: unknown) => { success: boolean }
+    } }).bookingGroupGuestRemovalBodySchema;
+    const order = { id: 1, updatedAt: "2026-10-01T00:00:00.000Z" };
+    expect(schema.safeParse({ expectedOrders: [order] }).success).toBe(true);
+    expect(schema.safeParse({ expectedOrders: [order, order] }).success).toBe(false);
+    expect(schema.safeParse({ expectedOrders: [] }).success).toBe(false);
   });
 });
 

@@ -461,6 +461,23 @@ export interface BookingGroupCreateRepositoryInput extends GroupBookingRequest {
   note?: string;
 }
 
+export interface BookingGroupRevisionInput {
+  customerUserId: number;
+  groupPublicId: string;
+  orderId: number;
+  expectedUpdatedAt: Date;
+  idempotencyKey: string;
+  assignment: GroupBookingRequest["guests"][number]["assignments"][number];
+}
+
+export interface BookingGroupGuestRemovalInput {
+  customerUserId: number;
+  groupPublicId: string;
+  guestId: number;
+  expectedOrders: Array<{ id: number; updatedAt: Date }>;
+  idempotencyKey: string;
+}
+
 export interface BookingGroupPayload {
   id: number;
   publicId: string;
@@ -1335,6 +1352,8 @@ export type OrderTransitionGuardedResult =
 export interface BookingRepositoryPort {
   createGroupBooking?: (input: BookingGroupCreateRepositoryInput) => Promise<BookingGroupPayload>;
   findGroupBooking?: (publicId: string) => Promise<BookingGroupPayload | null>;
+  reviseGroupOrder?: (input: BookingGroupRevisionInput) => Promise<{ group: BookingGroupPayload; replay: boolean }>;
+  removeGroupGuest?: (input: BookingGroupGuestRemovalInput) => Promise<{ group: BookingGroupPayload; replay: boolean }>;
   findActiveCustomerUserIdByIdentityId?: (identityId: number) => Promise<number | null>;
   listAvailableSlots: (
     input: AvailabilityListInput,
@@ -3873,7 +3892,8 @@ export class BookingRepository implements BookingRepositoryPort {
       customerUserId: group.customerUserId,
       shopId: group.shopId,
       startsAt: group.startsAt,
-      totalPriceAmountJpy: guests.reduce((sum, guest) => sum + guest.orders.reduce((total, order) => total + Number(order.priceAmount), 0), 0),
+      totalPriceAmountJpy: guests.reduce((sum, guest) => sum + guest.orders.reduce((total, order) =>
+        total + (order.status === "cancelled" ? 0 : Number(order.priceAmount)), 0), 0),
       guests
     };
   }
@@ -4121,6 +4141,310 @@ export class BookingRepository implements BookingRepositoryPort {
       const result = await this.loadGroupBooking(tx, group.id);
       if (!result) throw new Error("group_unavailable");
       return result;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30_000 }));
+  }
+
+  public async reviseGroupOrder(input: BookingGroupRevisionInput): Promise<{ group: BookingGroupPayload; replay: boolean }> {
+    const fingerprint = createHash("sha256").update(JSON.stringify({
+      orderId: input.orderId,
+      expectedUpdatedAt: input.expectedUpdatedAt.toISOString(),
+      assignment: input.assignment
+    })).digest("hex");
+    return runWithTransactionConflictRetry(() => this.client.$transaction(async (tx) => {
+      if (!(await this.lockCustomerUser(tx, input.customerUserId))) throw new Error("group_unavailable");
+      const group = await tx.bookingGroup.findFirst({
+        where: { publicId: input.groupPublicId, customerUserId: input.customerUserId },
+        select: { id: true, shopId: true, startsAt: true }
+      });
+      if (!group) throw new Error("group_unavailable");
+      const replay = await tx.bookingGroupMutation.findUnique({
+        where: { bookingGroupId_idempotencyKey: { bookingGroupId: group.id, idempotencyKey: input.idempotencyKey } }
+      });
+      if (replay) {
+        if (replay.requestFingerprint !== fingerprint) throw new Error("idempotency_conflict");
+        const projection = await this.loadGroupBooking(tx, group.id);
+        if (!projection) throw new Error("group_unavailable");
+        return { group: projection, replay: true };
+      }
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM booking_orders WHERE id = ${input.orderId} FOR UPDATE`);
+      const current = await tx.bookingOrder.findFirst({
+        where: { id: input.orderId, bookingGroupGuest: { bookingGroupId: group.id }, deletedAt: null },
+        include: {
+          serviceItems: { orderBy: { position: "asc" } },
+          financial: true, walletHolds: true, checkout: true, servicePrepayment: true,
+          addOns: true, affiliateAttributions: true, refundCases: true,
+          membershipCardRedemption: true, serviceSession: true, exchangeMatchParticipant: true
+        }
+      });
+      if (!current) throw new Error("group_unavailable");
+      if (current.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) throw new Error("revision_conflict");
+      if (current.status !== "PENDING" || current.paymentStatus !== "PENDING" ||
+          current.paymentConfirmedAt || current.paymentRefundedAt || current.paymentReference ||
+          current.financial || current.walletHolds.length || current.checkout || current.servicePrepayment ||
+          current.addOns.length || current.affiliateAttributions.length || current.refundCases.length ||
+          current.membershipCardRedemption || current.serviceSession || current.exchangeMatchParticipant) {
+        throw new Error("revision_financial_unavailable");
+      }
+      const shop = await tx.shop.findFirst({
+        where: { id: group.shopId, status: "published", deletedAt: null,
+          entitySuspensions: { none: { activeKey: { not: null }, status: "active", deletedAt: null } } },
+        select: { pricingMode: true }
+      });
+      if (!shop) throw new Error("shop_unavailable");
+      const oldSlotIds = new Set(current.serviceItems.length
+        ? current.serviceItems.map((item) => item.scheduleSlotId) : [current.scheduleSlotId]);
+      for (const technicianProfileId of [...new Set([
+        current.technicianProfileId, input.assignment.technicianProfileId
+      ].filter((id): id is number => id !== null))].sort((a, b) => a - b)) {
+        await this.lockScheduleOwner(tx, group.shopId, technicianProfileId);
+      }
+      if (!(await this.hasActiveScheduleAffiliation(tx, group.shopId, input.assignment.technicianProfileId, { requirePublic: true }))) {
+        throw new Error("slot_unavailable");
+      }
+      const selectedServices = input.assignment.serviceIds ?? input.assignment.technicianServiceIds;
+      if (!selectedServices || selectedServices.length !== input.assignment.scheduleSlotIds.length) throw new Error("slot_unavailable");
+      const selectedSlotIds: number[] = [];
+      for (const [position, selector] of input.assignment.scheduleSlotIds.entries()) {
+        const catalogId = selectedServices[position]!;
+        const resolved = decodeDynamicAvailabilityId(selector)
+          ? await this.materializeDynamicScheduleSlot(tx, {
+              customerUserId: input.customerUserId, scheduleSlotId: selector,
+              ...(input.assignment.serviceIds ? { serviceId: catalogId } : { technicianServiceId: catalogId }),
+              nominatedTechnicianProfileId: input.assignment.technicianProfileId,
+              fulfillmentMode: "store", serviceLocation: { source: "SHOP_LOCATION" }
+            }) : selector;
+        if (!resolved) throw new Error("slot_unavailable");
+        selectedSlotIds.push(resolved);
+      }
+      const now = new Date();
+      const slots = await tx.scheduleSlot.findMany({
+        where: { id: { in: selectedSlotIds }, shopId: group.shopId, technicianProfileId: { not: null },
+          deletedAt: null, startsAt: { gt: now }, status: { in: ["AVAILABLE", "BOOKED"] },
+          ...currentBookableScheduleSlotSourcesWhere() },
+        include: this.slotInclude()
+      });
+      if (slots.length !== selectedSlotIds.length || slots.some((slot) =>
+        (!oldSlotIds.has(slot.id) && slot.status !== "AVAILABLE") ||
+        (slot.serviceId ? shop.pricingMode !== "MERCHANT" || !slot.service ||
+          HOME_ONLY_SERVICE_MODES.includes(slot.service.serviceMode as typeof HOME_ONLY_SERVICE_MODES[number])
+          : shop.pricingMode !== "TECHNICIAN" || !slot.technicianService ||
+            slot.technicianService.shopId !== group.shopId || slot.technicianService.technicianId !== slot.technicianProfileId)
+      )) throw new Error("slot_unavailable");
+      const nominationFees = await this.resolveNominationFeesForSlots(tx, slots, now);
+      const plan = planGroupBooking({ shopId: group.shopId, startsAt: group.startsAt, guests: [{
+        label: "revision", assignments: [{ ...input.assignment, scheduleSlotIds: selectedSlotIds }]
+      }] }, slots.map((slot) => ({
+        id: slot.id, shopId: slot.shopId, technicianProfileId: slot.technicianProfileId,
+        serviceId: slot.serviceId, technicianServiceId: slot.technicianServiceId,
+        startsAt: slot.startsAt, endsAt: slot.endsAt,
+        occupiedStartsAt: slot.occupiedStartsAt, occupiedEndsAt: slot.occupiedEndsAt,
+        bookedCount: slot.bookedCount - (oldSlotIds.has(slot.id) ? 1 : 0), capacity: slot.capacity,
+        priceAmountJpy: Math.round(Number((slot.service?.priceAmount ?? slot.technicianService?.priceAmount)!.toString())),
+        currency: (slot.service?.currency ?? slot.technicianService?.currency)!,
+        durationMinutes: (slot.service?.durationMinutes ?? slot.technicianService?.durationMinutes)!,
+        nominationFeeJpy: nominationFees.get(`${slot.shopId}:${slot.technicianProfileId}`) ?? 0
+      })), "free");
+      const orderPlan = plan.orders[0]!;
+      const slotById = new Map(slots.map((slot) => [slot.id, slot]));
+      const first = slotById.get(selectedSlotIds[0]!)!;
+      const last = slotById.get(selectedSlotIds[selectedSlotIds.length - 1]!)!;
+      const occupiedStart = first.occupiedStartsAt ?? first.startsAt;
+      const occupiedEnd = last.occupiedEndsAt ?? last.endsAt;
+      const siblingIds = (await tx.bookingOrder.findMany({
+        where: { bookingGroupGuest: { bookingGroupId: group.id } }, select: { id: true }
+      })).map((order) => order.id);
+      const customerConflict = await tx.bookingOrder.findFirst({
+        where: { id: { notIn: siblingIds }, customerUserId: input.customerUserId,
+          status: { in: [...ACTIVE_ORDER_DB_STATUSES] }, deletedAt: null,
+          startsAt: { lt: occupiedEnd }, endsAt: { gt: occupiedStart } }, select: { id: true }
+      });
+      const technicianConflict = await tx.bookingOrder.findFirst({
+        where: { id: { not: current.id }, technicianProfileId: orderPlan.technicianProfileId,
+          status: { in: [...ACTIVE_ORDER_DB_STATUSES] }, deletedAt: null,
+          OR: [
+            { startsAt: { lt: occupiedEnd }, endsAt: { gt: occupiedStart } },
+            { scheduleSlot: { is: { OR: [
+              { occupiedStartsAt: { lt: occupiedEnd }, occupiedEndsAt: { gt: occupiedStart } },
+              { occupiedStartsAt: null, startsAt: { lt: occupiedEnd }, endsAt: { gt: occupiedStart } }
+            ] } } }
+          ] }, select: { id: true }
+      });
+      if (customerConflict || technicianConflict ||
+          await this.hasExchangeMatchParticipantOverlap(tx, orderPlan.technicianProfileId, occupiedStart, occupiedEnd)) {
+        throw new Error("slot_unavailable");
+      }
+      for (const slot of slots.filter((item) => !oldSlotIds.has(item.id)).sort((a, b) => a.id - b.id)) {
+        const reserved = await tx.scheduleSlot.updateMany({
+          where: { id: slot.id, status: "AVAILABLE", startsAt: { gt: new Date() }, deletedAt: null,
+            bookedCount: { lt: slot.capacity } },
+          data: { bookedCount: { increment: 1 }, status: slot.bookedCount + 1 >= slot.capacity ? "BOOKED" : "AVAILABLE" }
+        });
+        if (reserved.count !== 1) throw new Error("slot_unavailable");
+      }
+      const source = first.serviceId
+        ? this.createShopServiceSource(first, first.serviceId)
+        : this.createTechnicianServiceSource(first, first.technicianServiceId ?? undefined);
+      if (!source) throw new Error("slot_unavailable");
+      const compensationBasisVersion = await this.resolveCompensationBasisVersion(tx, group.shopId, orderPlan.technicianProfileId);
+      const serviceLocation = await this.resolveBookingServiceLocation(tx, first, {
+        customerUserId: input.customerUserId, serviceId: first.serviceId ?? undefined,
+        technicianServiceId: first.technicianServiceId ?? undefined, scheduleSlotId: first.id,
+        nominatedTechnicianProfileId: orderPlan.technicianProfileId,
+        fulfillmentMode: "store", serviceLocation: { source: "SHOP_LOCATION" }
+      });
+      const serviceItems = selectedSlotIds.map((id, position) => {
+        const slot = slotById.get(id)!;
+        return { position, serviceId: slot.serviceId, technicianServiceId: slot.technicianServiceId,
+          scheduleSlotId: id, serviceNameSnapshot: (slot.service?.name ?? slot.technicianService?.name)!,
+          priceAmountJpy: Math.round(Number((slot.service?.priceAmount ?? slot.technicianService?.priceAmount)!.toString())),
+          currency: (slot.service?.currency ?? slot.technicianService?.currency)!,
+          durationMinutes: (slot.service?.durationMinutes ?? slot.technicianService?.durationMinutes)!,
+          startsAt: slot.startsAt, endsAt: slot.endsAt };
+      });
+      const updatedAt = new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1));
+      const updated = await tx.bookingOrder.updateMany({
+        where: { id: current.id, updatedAt: current.updatedAt, status: "PENDING", paymentStatus: "PENDING" },
+        data: {
+          serviceId: first.serviceId, technicianServiceId: first.technicianServiceId,
+          technicianProfileId: orderPlan.technicianProfileId, scheduleSlotId: first.id,
+          priceAmount: orderPlan.priceAmountJpy, paymentAmountJpy: orderPlan.priceAmountJpy,
+          serviceOwnerType: source.ownerType === "technician" ? "TECHNICIAN" : "SHOP",
+          serviceOwnerId: source.ownerId,
+          serviceNameSnapshot: serviceItems.map((item) => item.serviceNameSnapshot).join(" + ").slice(0, 160),
+          servicePriceSnapshot: orderPlan.servicePriceAmountJpy,
+          serviceDurationSnapshot: serviceItems.reduce((sum, item) => sum + item.durationMinutes, 0),
+          serviceSnapshotJson: appendCompensationBasis({ ...source.snapshot,
+            bundle: serviceItems.map((item) => ({ serviceId: item.serviceId,
+              technicianServiceId: item.technicianServiceId, scheduleSlotId: item.scheduleSlotId,
+              name: item.serviceNameSnapshot, priceAmountJpy: item.priceAmountJpy,
+              durationMinutes: item.durationMinutes, startsAt: item.startsAt.toISOString(),
+              endsAt: item.endsAt.toISOString() })),
+            wasTechnicianNominated: true, nominationChargeAmountJpy: orderPlan.nominationFeeJpy
+          }, compensationBasisVersion) as Prisma.InputJsonValue,
+          startsAt: orderPlan.startsAt, endsAt: orderPlan.endsAt, updatedAt
+        }
+      });
+      if (updated.count !== 1) throw new Error("revision_conflict");
+      await tx.bookingOrderServiceItem.deleteMany({ where: { bookingOrderId: current.id } });
+      await tx.bookingOrderServiceItem.createMany({ data: serviceItems.map((item) => ({ ...item, bookingOrderId: current.id })) });
+      await tx.bookingServiceLocation.update({ where: { bookingOrderId: current.id }, data: {
+        countryCode: serviceLocation.countryCode, admin1RegionCode: serviceLocation.admin1Code,
+        admin1Name: serviceLocation.admin1NameJa, admin2RegionCode: serviceLocation.admin2Code,
+        admin2Name: serviceLocation.admin2NameJa, datasetVersion: serviceLocation.datasetVersion,
+        resolvedAt: updatedAt
+      } });
+      for (const id of [...oldSlotIds].filter((slotId) => !selectedSlotIds.includes(slotId))) {
+        const released = await tx.scheduleSlot.updateMany({
+          where: { id, bookedCount: { gt: 0 } },
+          data: { bookedCount: { decrement: 1 }, status: "AVAILABLE" }
+        });
+        if (released.count !== 1) throw new Error("slot_unavailable");
+      }
+      await tx.bookingGroupMutation.create({ data: { bookingGroupId: group.id,
+        idempotencyKey: input.idempotencyKey, requestFingerprint: fingerprint,
+        action: "REVISE_ORDER", orderId: current.id } });
+      await tx.auditLog.create({ data: toAuditLogCreateData({
+        actorId: input.customerUserId, action: "booking.group.order_revise", targetType: "booking_order", targetId: current.id,
+        metadata: { groupId: group.id, oldTechnicianProfileId: current.technicianProfileId,
+          newTechnicianProfileId: orderPlan.technicianProfileId, oldSlotIds: [...oldSlotIds],
+          newSlotIds: selectedSlotIds, oldPriceAmountJpy: Number(current.priceAmount),
+          newPriceAmountJpy: orderPlan.priceAmountJpy }
+      }) });
+      const projection = await this.loadGroupBooking(tx, group.id);
+      if (!projection) throw new Error("group_unavailable");
+      return { group: projection, replay: false };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30_000 }));
+  }
+
+  public async removeGroupGuest(input: BookingGroupGuestRemovalInput): Promise<{ group: BookingGroupPayload; replay: boolean }> {
+    const fingerprint = createHash("sha256").update(JSON.stringify({
+      guestId: input.guestId,
+      expectedOrders: [...input.expectedOrders].sort((a, b) => a.id - b.id)
+        .map((order) => ({ id: order.id, updatedAt: order.updatedAt.toISOString() }))
+    })).digest("hex");
+    return runWithTransactionConflictRetry(() => this.client.$transaction(async (tx) => {
+      if (!(await this.lockCustomerUser(tx, input.customerUserId))) throw new Error("group_unavailable");
+      const group = await tx.bookingGroup.findFirst({
+        where: { publicId: input.groupPublicId, customerUserId: input.customerUserId }, select: { id: true }
+      });
+      if (!group) throw new Error("group_unavailable");
+      const replay = await tx.bookingGroupMutation.findUnique({
+        where: { bookingGroupId_idempotencyKey: { bookingGroupId: group.id, idempotencyKey: input.idempotencyKey } }
+      });
+      if (replay) {
+        if (replay.requestFingerprint !== fingerprint) throw new Error("idempotency_conflict");
+        const projection = await this.loadGroupBooking(tx, group.id);
+        if (!projection) throw new Error("group_unavailable");
+        return { group: projection, replay: true };
+      }
+      const guest = await tx.bookingGroupGuest.findFirst({
+        where: { id: input.guestId, bookingGroupId: group.id }, select: { id: true }
+      });
+      if (!guest) throw new Error("group_unavailable");
+      const currentIds = (await tx.bookingOrder.findMany({
+        where: { bookingGroupGuestId: guest.id, deletedAt: null, status: { not: "CANCELLED" } },
+        orderBy: { id: "asc" }, select: { id: true }
+      })).map((order) => order.id);
+      if (!currentIds.length) throw new Error("revision_conflict");
+      if (currentIds.length !== input.expectedOrders.length ||
+          currentIds.some((id) => !input.expectedOrders.some((order) => order.id === id))) {
+        throw new Error("revision_conflict");
+      }
+      for (const id of currentIds) {
+        await tx.$queryRaw(Prisma.sql`SELECT id FROM booking_orders WHERE id = ${id} FOR UPDATE`);
+      }
+      const orders = await tx.bookingOrder.findMany({
+        where: { id: { in: currentIds }, bookingGroupGuestId: guest.id, deletedAt: null },
+        orderBy: { id: "asc" },
+        include: { serviceItems: true, financial: true, walletHolds: true, checkout: true,
+          servicePrepayment: true, addOns: true, affiliateAttributions: true, refundCases: true,
+          membershipCardRedemption: true, serviceSession: true, exchangeMatchParticipant: true }
+      });
+      if (orders.length !== currentIds.length) throw new Error("revision_conflict");
+      for (const order of orders) {
+        if (order.updatedAt.getTime() !== input.expectedOrders.find((item) => item.id === order.id)?.updatedAt.getTime()) {
+          throw new Error("revision_conflict");
+        }
+        if (order.status !== "PENDING" || order.paymentStatus !== "PENDING" ||
+            order.paymentConfirmedAt || order.paymentRefundedAt || order.paymentReference ||
+            order.financial || order.walletHolds.length || order.checkout || order.servicePrepayment ||
+            order.addOns.length || order.affiliateAttributions.length || order.refundCases.length ||
+            order.membershipCardRedemption || order.serviceSession || order.exchangeMatchParticipant) {
+          throw new Error("revision_financial_unavailable");
+        }
+      }
+      for (const order of orders) {
+        const updated = await tx.bookingOrder.updateMany({
+          where: { id: order.id, status: "PENDING", paymentStatus: "PENDING", updatedAt: order.updatedAt },
+          data: { status: "CANCELLED", cancelReason: "Group guest removed",
+            updatedAt: new Date(Math.max(Date.now(), order.updatedAt.getTime() + 1)) }
+        });
+        if (updated.count !== 1) throw new Error("revision_conflict");
+        for (const id of [...new Set(order.serviceItems.length
+          ? order.serviceItems.map((item) => item.scheduleSlotId) : [order.scheduleSlotId])]) {
+          const released = await tx.scheduleSlot.updateMany({
+            where: { id, bookedCount: { gt: 0 } },
+            data: { bookedCount: { decrement: 1 }, status: "AVAILABLE" }
+          });
+          if (released.count !== 1) throw new Error("slot_unavailable");
+        }
+        await tx.orderStatusHistory.create({ data: {
+          bookingOrderId: order.id, fromStatus: "PENDING", toStatus: "CANCELLED",
+          actorUserId: input.customerUserId, reason: "Group guest removed"
+        } });
+        await tx.auditLog.create({ data: toAuditLogCreateData({
+          actorId: input.customerUserId, action: "booking.group.guest_remove_order",
+          targetType: "booking_order", targetId: order.id,
+          metadata: { groupId: group.id, guestId: guest.id, priceAmountJpy: Number(order.priceAmount) }
+        }) });
+      }
+      await tx.bookingGroupMutation.create({ data: {
+        bookingGroupId: group.id, idempotencyKey: input.idempotencyKey,
+        requestFingerprint: fingerprint, action: "REMOVE_GUEST"
+      } });
+      const projection = await this.loadGroupBooking(tx, group.id);
+      if (!projection) throw new Error("group_unavailable");
+      return { group: projection, replay: false };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30_000 }));
   }
 

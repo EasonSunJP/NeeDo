@@ -36,3 +36,16 @@ it("rejects duplicate technicians, gaps, occupied slots, and non-JPY service slo
   expect(resolveGroupBookingDraft(draft, [slots[0]!, { ...slots[1]!, currency: "USD" }, slots[2]!])).toBeNull();
   expect(resolveGroupBookingDraft({ ...draft, guests: [draft.guests[0]!, { label: "B", assignments: [{ technicianProfileId: 11, serviceIds: [101] }] }] }, slots)).toBeNull();
 });
+
+it("reuses only the editing order's occupied slot when adding another service", () => {
+  const draft = { shopId: 5, startsAt: start, catalog: "shop_service" as const,
+    guests: [{ label: "A", assignments: [{ technicianProfileId: 11, serviceIds: [101, 103] }] }] };
+  const owned = { ...slot(201, 11, 101), bookedCount: 1, status: "booked" as const };
+  const available = slot(203, 11, 103, 60);
+  expect(resolveGroupBookingDraft(draft, [owned, available])).toBeNull();
+  expect(resolveGroupBookingDraft(draft, [owned, available], new Set([201]))?.guests[0]?.assignments[0]?.scheduleSlotIds)
+    .toEqual([201, 203]);
+  expect(resolveGroupBookingDraft(draft, [{ ...owned, status: "blocked" }, available], new Set([201]))?.guests[0]?.assignments[0]?.scheduleSlotIds)
+    .toEqual([201, 203]);
+  expect(resolveGroupBookingDraft(draft, [owned, available], new Set([203]))).toBeNull();
+});

@@ -4497,10 +4497,26 @@ model BookingGroup {
   customer           User                @relation("BookingGroupCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
   shop               Shop                @relation(fields: [shopId], references: [id], onDelete: Restrict)
   guests             BookingGroupGuest[]
+  mutations          BookingGroupMutation[]
 
   @@unique([customerUserId, idempotencyKey], map: "booking_groups_customer_idempotency_key")
   @@index([shopId, startsAt], map: "booking_groups_shop_start_idx")
   @@map("booking_groups")
+}
+
+model BookingGroupMutation {
+  id                 Int          @id @default(autoincrement())
+  bookingGroupId     Int          @map("booking_group_id")
+  idempotencyKey     String       @map("idempotency_key") @db.VarChar(191)
+  requestFingerprint String       @map("request_fingerprint") @db.Char(64)
+  action             String       @db.VarChar(32)
+  orderId            Int?         @map("order_id")
+  createdAt          DateTime     @default(now()) @map("created_at")
+
+  group              BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Restrict)
+
+  @@unique([bookingGroupId, idempotencyKey], map: "booking_group_mutations_group_key")
+  @@map("booking_group_mutations")
 }
 
 model BookingGroupGuest {

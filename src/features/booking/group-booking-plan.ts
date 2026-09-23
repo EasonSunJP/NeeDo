@@ -11,7 +11,8 @@ export type GroupBookingDraft = {
 
 export function resolveGroupBookingDraft(
   draft: GroupBookingDraft,
-  slots: readonly BookingScheduleSlot[]
+  slots: readonly BookingScheduleSlot[],
+  ownedSlotIds: ReadonlySet<number> = new Set()
 ): (CreateBookingGroupInput & { totalPriceAmountJpy: number }) | null {
   if (!draft.guests.length || draft.guests.length > 10) return null;
   const usedTechnicians = new Set<number>();
@@ -34,8 +35,9 @@ export function resolveGroupBookingDraft(
         const slot = slots.find((candidate) =>
           candidate.shopId === draft.shopId && candidate.technicianProfileId === technicianProfileId &&
           (draft.catalog === "shop_service" ? candidate.serviceId : candidate.technicianServiceId) === serviceId &&
-          candidate.startsAt === nextStart && candidate.status === "available" &&
-          candidate.bookedCount < candidate.capacity && !usedSlots.has(candidate.id)
+          candidate.startsAt === nextStart && !usedSlots.has(candidate.id) &&
+          ((candidate.status === "available" && candidate.bookedCount < candidate.capacity) ||
+            (ownedSlotIds.has(candidate.id) && candidate.bookedCount <= candidate.capacity))
         );
         if (!slot || slot.currency !== "JPY" || Date.parse(slot.endsAt) - Date.parse(slot.startsAt) !== slot.durationMinutes * 60_000) return null;
         const price = Number(slot.priceAmount);

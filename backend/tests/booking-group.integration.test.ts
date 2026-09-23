@@ -85,6 +85,157 @@ integration("atomic technician group booking on an isolated local database", () 
     expect([first.paymentStatus, second.paymentStatus]).toEqual(["REFUND_PENDING", "PENDING"]);
     expect((await client.scheduleSlot.findUniqueOrThrow({ where: { id: base.participantSlotIds[0]! } })).bookedCount).toBe(0);
     expect((await client.scheduleSlot.findUniqueOrThrow({ where: { id: base.participantSlotIds[1]! } })).bookedCount).toBe(1);
+    expect((await repository.findGroupBooking(created.publicId))?.totalPriceAmountJpy).toBe(12_000);
+  });
+
+  it("revises one unpaid assignment atomically, recalculates its price, and leaves its sibling untouched", async () => {
+    const { base, input } = await fixture();
+    const created = await repository.createGroupBooking(input);
+    const original = created.guests[0]!.orders[0]!;
+    const sibling = created.guests[1]!.orders[0]!;
+    const service = await client.service.findUniqueOrThrow({ where: { id: base.serviceId } });
+    const replacementService = await client.service.create({ data: {
+      categoryId: service.categoryId, shopId: base.shopId, name: `${input.idempotencyKey} revised`,
+      city: "Tokyo", priceAmount: 15_000, durationMinutes: 60, status: "published"
+    } });
+    const replacementSlot = await client.scheduleSlot.create({ data: {
+      shopId: base.shopId, serviceId: replacementService.id,
+      technicianProfileId: base.technicianProfileIds[0]!, startsAt: base.startsAt,
+      endsAt: new Date(base.startsAt.getTime() + 60 * 60_000), capacity: 1,
+      bookedCount: 0, status: "AVAILABLE"
+    } });
+    const request = {
+      customerUserId: base.ownerUserId, groupPublicId: created.publicId, orderId: original.id,
+      expectedUpdatedAt: original.updatedAt, idempotencyKey: `${input.idempotencyKey}:revise`,
+      assignment: { technicianProfileId: base.technicianProfileIds[0]!, serviceIds: [replacementService.id],
+        scheduleSlotIds: [replacementSlot.id], expectedPriceAmountJpy: 15_000 }
+    };
+    const revision = (repository as unknown as { reviseGroupOrder: (value: typeof request) => Promise<{ group: typeof created; replay: boolean }> }).reviseGroupOrder;
+    const result = await revision.call(repository, request);
+    expect(result.replay).toBe(false);
+    expect(result.group.totalPriceAmountJpy).toBe(27_000);
+    expect(result.group.guests[1]!.orders[0]!.id).toBe(sibling.id);
+    expect((await client.bookingOrder.findUniqueOrThrow({ where: { id: original.id } })).serviceId).toBe(replacementService.id);
+    expect((await client.scheduleSlot.findUniqueOrThrow({ where: { id: base.participantSlotIds[0]! } })).bookedCount).toBe(0);
+    expect((await client.scheduleSlot.findUniqueOrThrow({ where: { id: replacementSlot.id } })).bookedCount).toBe(1);
+    expect((await revision.call(repository, request)).replay).toBe(true);
+    await expect(revision.call(repository, { ...request, idempotencyKey: `${request.idempotencyKey}:stale` })).rejects.toThrow("revision_conflict");
+    await expect(revision.call(repository, { ...request, assignment: { ...request.assignment, expectedPriceAmountJpy: 14_000 } })).rejects.toThrow("idempotency_conflict");
+  });
+
+  it("rejects paid assignment revisions and sibling technician conflicts without moving reservations", async () => {
+    const { base, input } = await fixture();
+    const created = await repository.createGroupBooking(input);
+    const first = created.guests[0]!.orders[0]!;
+    const revision = {
+      customerUserId: base.ownerUserId, groupPublicId: created.publicId, orderId: first.id,
+      expectedUpdatedAt: first.updatedAt, idempotencyKey: `${input.idempotencyKey}:paid`,
+      assignment: { technicianProfileId: base.technicianProfileIds[1]!, serviceIds: [base.serviceId],
+        scheduleSlotIds: [base.participantSlotIds[1]!], expectedPriceAmountJpy: 12_000 }
+    };
+    await expect(repository.reviseGroupOrder(revision)).rejects.toThrow("slot_unavailable");
+    await client.bookingOrder.update({ where: { id: first.id }, data: {
+      paymentStatus: "CONFIRMED", paymentConfirmedAt: new Date(), paymentConfirmedById: base.ownerUserId
+    } });
+    await expect(repository.reviseGroupOrder({ ...revision, idempotencyKey: `${revision.idempotencyKey}:2` }))
+      .rejects.toThrow("revision_conflict");
+    const paid = await client.bookingOrder.findUniqueOrThrow({ where: { id: first.id } });
+    await expect(repository.reviseGroupOrder({ ...revision, expectedUpdatedAt: paid.updatedAt,
+      idempotencyKey: `${revision.idempotencyKey}:3` })).rejects.toThrow("revision_financial_unavailable");
+    expect((await client.scheduleSlot.findUniqueOrThrow({ where: { id: base.participantSlotIds[0]! } })).bookedCount).toBe(1);
+    expect((await client.scheduleSlot.findUniqueOrThrow({ where: { id: base.participantSlotIds[1]! } })).bookedCount).toBe(1);
+  });
+
+  it("removes every unpaid assignment of one guest in one mutation and keeps other guests", async () => {
+    const { base, input } = await fixture();
+    const created = await repository.createGroupBooking(input);
+    const first = created.guests[0]!.orders[0]!;
+    const remove = (repository as unknown as { removeGroupGuest: (value: {
+      customerUserId: number; groupPublicId: string; guestId: number;
+      expectedOrders: Array<{ id: number; updatedAt: Date }>; idempotencyKey: string
+    }) => Promise<{ group: typeof created; replay: boolean }> }).removeGroupGuest;
+    const request = { customerUserId: base.ownerUserId, groupPublicId: created.publicId,
+      guestId: created.guests[0]!.id, expectedOrders: [{ id: first.id, updatedAt: first.updatedAt }],
+      idempotencyKey: `${input.idempotencyKey}:remove` };
+    const result = await remove.call(repository, request);
+    expect(result.group.totalPriceAmountJpy).toBe(12_000);
+    expect(result.group.guests[0]!.orders[0]!.status).toBe("cancelled");
+    expect(result.group.guests[1]!.orders[0]!.status).toBe("pending");
+    expect((await client.scheduleSlot.findUniqueOrThrow({ where: { id: base.participantSlotIds[0]! } })).bookedCount).toBe(0);
+    expect((await remove.call(repository, request)).replay).toBe(true);
+  });
+
+  it("rolls back a revision after new slot reservation when the final mutation write fails", async () => {
+    const { base, input } = await fixture();
+    const created = await repository.createGroupBooking(input);
+    const original = created.guests[0]!.orders[0]!;
+    const replacementSlot = await client.scheduleSlot.create({ data: {
+      shopId: base.shopId, serviceId: base.serviceId,
+      technicianProfileId: base.technicianProfileIds[0]!, startsAt: base.startsAt,
+      endsAt: new Date(base.startsAt.getTime() + 60 * 60_000), capacity: 1,
+      bookedCount: 0, status: "AVAILABLE"
+    } });
+    const mysql = await import("mysql2/promise");
+    const connection = await mysql.createConnection({ host: "127.0.0.1", port: 3308, user: "root", database: "needo_group_booking_test" });
+    await connection.query("CREATE TRIGGER booking_group_revision_abort BEFORE INSERT ON booking_group_mutations FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'forced revision failure'");
+    try {
+      await expect(repository.reviseGroupOrder({
+        customerUserId: base.ownerUserId, groupPublicId: created.publicId, orderId: original.id,
+        expectedUpdatedAt: original.updatedAt, idempotencyKey: `${input.idempotencyKey}:rollback`,
+        assignment: { technicianProfileId: base.technicianProfileIds[0]!, serviceIds: [base.serviceId],
+          scheduleSlotIds: [replacementSlot.id], expectedPriceAmountJpy: 12_000 }
+      })).rejects.toThrow();
+    } finally {
+      await connection.query("DROP TRIGGER booking_group_revision_abort");
+      await connection.end();
+    }
+    expect((await client.bookingOrder.findUniqueOrThrow({ where: { id: original.id } })).scheduleSlotId).toBe(base.participantSlotIds[0]);
+    expect((await client.scheduleSlot.findUniqueOrThrow({ where: { id: base.participantSlotIds[0]! } })).bookedCount).toBe(1);
+    expect((await client.scheduleSlot.findUniqueOrThrow({ where: { id: replacementSlot.id } })).bookedCount).toBe(0);
+  });
+
+  it("serializes competing revisions and rejects a stale expected price", async () => {
+    const { base, input } = await fixture();
+    const created = await repository.createGroupBooking(input);
+    const original = created.guests[0]!.orders[0]!;
+    const candidates = await Promise.all([0, 1].map(() => client.scheduleSlot.create({ data: {
+      shopId: base.shopId, serviceId: base.serviceId,
+      technicianProfileId: base.technicianProfileIds[0]!, startsAt: base.startsAt,
+      endsAt: new Date(base.startsAt.getTime() + 60 * 60_000), capacity: 1,
+      bookedCount: 0, status: "AVAILABLE"
+    } })));
+    const request = { customerUserId: base.ownerUserId, groupPublicId: created.publicId,
+      orderId: original.id, expectedUpdatedAt: original.updatedAt,
+      assignment: { technicianProfileId: base.technicianProfileIds[0]!, serviceIds: [base.serviceId],
+        scheduleSlotIds: [candidates[0]!.id], expectedPriceAmountJpy: 11_999 },
+      idempotencyKey: `${input.idempotencyKey}:wrong-price` };
+    await expect(repository.reviseGroupOrder(request)).rejects.toThrow("price_changed");
+    const outcomes = await Promise.allSettled(candidates.map((candidate, index) =>
+      repository.reviseGroupOrder({ ...request,
+        assignment: { ...request.assignment, scheduleSlotIds: [candidate.id], expectedPriceAmountJpy: 12_000 },
+        idempotencyKey: `${input.idempotencyKey}:race:${index}` })));
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+    expect((outcomes.find((outcome) => outcome.status === "rejected") as PromiseRejectedResult).reason.message).toBe("revision_conflict");
+    expect((await client.scheduleSlot.findMany({ where: { id: { in: candidates.map((candidate) => candidate.id) } } }))
+      .reduce((sum, slot) => sum + slot.bookedCount, 0)).toBe(1);
+  });
+
+  it("removes both technician assignments of a single guest atomically", async () => {
+    const { base, input } = await fixture();
+    const created = await repository.createGroupBooking({ ...input,
+      guests: [{ label: "One guest", assignments: input.guests.flatMap((guest) => guest.assignments) }] });
+    const orders = created.guests[0]!.orders;
+    expect(orders).toHaveLength(2);
+    const result = await repository.removeGroupGuest({ customerUserId: base.ownerUserId,
+      groupPublicId: created.publicId, guestId: created.guests[0]!.id,
+      expectedOrders: orders.map((order) => ({ id: order.id, updatedAt: order.updatedAt })),
+      idempotencyKey: `${input.idempotencyKey}:remove-all` });
+    expect(result.group.totalPriceAmountJpy).toBe(0);
+    expect(result.group.guests[0]!.orders.map((order) => order.status)).toEqual(["cancelled", "cancelled"]);
+    for (const id of base.participantSlotIds) {
+      expect((await client.scheduleSlot.findUniqueOrThrow({ where: { id } })).bookedCount).toBe(0);
+    }
   });
 
   it("rolls back every reservation and group row when a late database write fails", async () => {

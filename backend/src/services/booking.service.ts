@@ -11,7 +11,9 @@ import type {
   BookingCreateRepositoryOptions,
   BookingCreateRepositoryInput,
   BookingGroupCreateRepositoryInput,
+  BookingGroupGuestRemovalInput,
   BookingGroupPayload,
+  BookingGroupRevisionInput,
   BookingOrderPayload,
   BookingOrderStatusPayload,
   BookingRepositoryPort,
@@ -113,6 +115,11 @@ export type BookingGroupCreateInput = Omit<
   BookingGroupCreateRepositoryInput,
   "customerUserId" | "idempotencyKey" | "startsAt"
 > & { startsAt: string };
+
+export type BookingGroupRevisionBody = Omit<BookingGroupRevisionInput, "customerUserId" | "groupPublicId" | "orderId" | "idempotencyKey" | "expectedUpdatedAt"> & { expectedUpdatedAt: string };
+export type BookingGroupGuestRemovalBody = Omit<BookingGroupGuestRemovalInput, "customerUserId" | "groupPublicId" | "guestId" | "idempotencyKey" | "expectedOrders"> & {
+  expectedOrders: Array<{ id: number; updatedAt: string }>;
+};
 
 export type TechnicianManualBookingInput = {
   customerIdentityId: number;
@@ -477,8 +484,86 @@ export class BookingService {
     return {
       ...group,
       guests,
-      totalPriceAmountJpy: guests.reduce((sum, guest) => sum + guest.orders.reduce((total, order) => total + Number(order.priceAmount), 0), 0)
+      totalPriceAmountJpy: guests.reduce((sum, guest) => sum + guest.orders.reduce((total, order) =>
+        total + (order.status === "cancelled" ? 0 : Number(order.priceAmount)), 0), 0)
     };
+  }
+
+  public async reviseGroupOrder(
+    actor: AuthenticatedBookingActor, publicId: string, orderId: number,
+    body: BookingGroupRevisionBody, rawIdempotencyKey: string
+  ): Promise<{ group: BookingGroupPayload; replay: boolean }> {
+    if (!this.isCustomerSharedIdentity(actor)) {
+      throw new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.auth.identity_forbidden", statusCode: 403 });
+    }
+    const key = exchangeIdempotencyKeySchema.safeParse(rawIdempotencyKey);
+    if (!key.success) throw new AppError({ code: ERROR_CODES.VALIDATION, message: "error.validation", statusCode: 400 });
+    if (!this.repository.reviseGroupOrder) throw this.dependencyUnavailableError();
+    const previousRecipients = await this.repository.findOrderRealtimeRecipients?.(orderId);
+    try {
+      const result = await this.repository.reviseGroupOrder({
+        customerUserId: actor.userId, groupPublicId: publicId, orderId,
+        expectedUpdatedAt: new Date(body.expectedUpdatedAt), assignment: body.assignment,
+        idempotencyKey: key.data
+      });
+      if (!result.replay) {
+        const order = result.group.guests.flatMap((guest) => guest.orders).find((item) => item.id === orderId);
+        if (order) await this.notifyOrderChangedBestEffort(actor, order, "assignment", previousRecipients);
+        await this.publishLiveDashboardChangesBestEffort([orderId]);
+      }
+      return result;
+    } catch (error) { throw this.mapGroupMutationError(error); }
+  }
+
+  public async removeGroupGuest(
+    actor: AuthenticatedBookingActor, publicId: string, guestId: number,
+    body: BookingGroupGuestRemovalBody, rawIdempotencyKey: string
+  ): Promise<{ group: BookingGroupPayload; replay: boolean }> {
+    if (!this.isCustomerSharedIdentity(actor)) {
+      throw new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.auth.identity_forbidden", statusCode: 403 });
+    }
+    const key = exchangeIdempotencyKeySchema.safeParse(rawIdempotencyKey);
+    if (!key.success) throw new AppError({ code: ERROR_CODES.VALIDATION, message: "error.validation", statusCode: 400 });
+    if (!this.repository.removeGroupGuest) throw this.dependencyUnavailableError();
+    try {
+      const result = await this.repository.removeGroupGuest({
+        customerUserId: actor.userId, groupPublicId: publicId, guestId,
+        expectedOrders: body.expectedOrders.map((order) => ({ id: order.id, updatedAt: new Date(order.updatedAt) })),
+        idempotencyKey: key.data
+      });
+      if (!result.replay) {
+        const orders = result.group.guests.find((guest) => guest.id === guestId)?.orders ?? [];
+        for (const order of orders.filter((item) => body.expectedOrders.some((expected) => expected.id === item.id))) {
+          const recipients = await this.repository.findOrderRealtimeRecipients?.(order.id);
+          await this.notifyOrderStatusChangedBestEffort({
+            actorUserId: actor.userId, orderId: order.id, orderNo: order.orderNo,
+            fromStatus: "pending", toStatus: "cancelled", serviceName: order.serviceName,
+            recipientUserIds: recipients?.map((recipient) => recipient.userId) ?? [actor.userId]
+          });
+        }
+        await this.publishLiveDashboardChangesBestEffort(body.expectedOrders.map((order) => order.id));
+      }
+      return result;
+    } catch (error) { throw this.mapGroupMutationError(error); }
+  }
+
+  private mapGroupMutationError(error: unknown): Error {
+    if (!(error instanceof Error)) return new Error("group_mutation_failed");
+    if (error.message === "group_unavailable") return this.notFoundError();
+    if (error.message === "slot_unavailable" || error.message === "shop_unavailable") return this.slotUnavailableError();
+    if (error.message === "price_changed") return new AppError({
+      code: ERROR_CODES.BOOKING_PRICE_CHANGED, message: "error.booking.price_changed", statusCode: 409
+    });
+    if (error.message === "idempotency_conflict") return new AppError({
+      code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED, message: "error.booking.idempotency_conflict", statusCode: 409
+    });
+    if (error.message === "revision_conflict") return new AppError({
+      code: ERROR_CODES.ORDER_INVALID_TRANSITION, message: "error.booking.group_revision_conflict", statusCode: 409
+    });
+    if (error.message === "revision_financial_unavailable") return new AppError({
+      code: ERROR_CODES.PAYMENT_CONFLICT, message: "error.booking.group_revision_financial_unavailable", statusCode: 409
+    });
+    return error;
   }
 
   public async createBooking(
@@ -1958,7 +2043,8 @@ export class BookingService {
   private async notifyOrderChangedBestEffort(
     actor: AuthenticatedBookingActor,
     order: BookingOrderPayload,
-    changeType: OrderRealtimeChangeType
+    changeType: OrderRealtimeChangeType,
+    previousRecipients: Array<{ identityId: number; userId: number }> = []
   ): Promise<void> {
     if (
       !this.notificationService?.notifyOrderChanged ||
@@ -1968,13 +2054,15 @@ export class BookingService {
     }
     try {
       const recipients = await this.repository.findOrderRealtimeRecipients(order.id);
+      const uniqueRecipients = Array.from(new Map([...previousRecipients, ...recipients]
+        .map((recipient) => [recipient.identityId, recipient])).values());
       await this.notificationService.notifyOrderChanged({
         actorIdentityId: actor.currentIdentityId,
         actorUserId: actor.userId,
         changeType,
         orderId: order.id,
         orderNo: order.orderNo,
-        recipients
+        recipients: uniqueRecipients
       });
     } catch (error) {
       logger.error(
