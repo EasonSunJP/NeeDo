@@ -179,6 +179,23 @@ describe("FormalAccountSecurityPanel", () => {
     expect(accountSecurityMocks.getGoogleLinkStatus).toHaveBeenCalledTimes(2);
   });
 
+  it("shows account status without offering Google binding when Google login is disabled", async () => {
+    accountSecurityMocks.getGoogleLinkStatus.mockResolvedValue({
+      canUnlink: false,
+      googleEnabled: false,
+      hasPassword: true,
+      linked: false,
+      maskedEmail: null
+    });
+
+    await renderAccountSecurity();
+    await waitForAccount(() => expect(accountContainer?.textContent).toContain("Google 登录服务暂时不可用"));
+    expect(accountContainer?.textContent).not.toContain("账户安全状态读取失败");
+    expect(accountContainer?.textContent).toContain("u0000000042");
+    expect(Array.from(accountContainer?.querySelectorAll("button") ?? []).some((button) => button.textContent?.includes("绑定 Google 账号"))).toBe(false);
+    expect(accountSecurityMocks.initializeGoogleLink).not.toHaveBeenCalled();
+  });
+
   it("links a different Google email while verifying the NeeDo email", async () => {
     accountSecurityMocks.initializeGoogleLink.mockResolvedValue({
       clientId: "client.apps.googleusercontent.com",

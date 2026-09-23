@@ -1027,6 +1027,7 @@ export function FormalAccountSecurityPanel({ autoFocus, language, onSessionRefre
 
   const hasPassword = status?.hasPassword ?? false;
   const googleLinked = status?.linked ?? false;
+  const googleEnabled = status?.googleEnabled !== false;
 
   return (
     <div ref={sectionRef}>
@@ -1066,7 +1067,13 @@ export function FormalAccountSecurityPanel({ autoFocus, language, onSessionRefre
               <span className="shrink-0 rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]">{t(googleLinked ? "已绑定" : "未绑定")}</span>
             </div>
 
-            {!googleLinked ? (
+            {!googleEnabled ? (
+              <p className="rounded-[16px] border border-[color:var(--client-line)] px-4 py-3 text-sm font-bold text-[color:var(--client-muted)]">
+                {t("Google 登录服务暂时不可用，请稍后重试。")}
+              </p>
+            ) : null}
+
+            {!googleLinked && googleEnabled ? (
               <div className="space-y-3">
                 <p className="text-xs font-bold leading-5 text-[color:var(--client-muted)]">{t("可以选择与 NeeDo 邮箱不同的 Google 账号；验证码仍发送到你的 NeeDo 邮箱。")}</p>
                 <button className="focus-ring h-12 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-55" disabled={Boolean(busyAction)} onClick={() => void startVerification("google-link")} type="button">
@@ -1099,7 +1106,7 @@ export function FormalAccountSecurityPanel({ autoFocus, language, onSessionRefre
               <div className="rounded-[16px] border border-[color:var(--client-line)] px-4 py-3 text-sm font-bold text-[color:var(--client-muted)]">{t("邮箱或 NeeDo ID 加密码登录已启用。")}</div>
             ) : null}
 
-            {googleLinked ? (
+            {googleLinked && googleEnabled ? (
               <div className="space-y-2 border-t border-[color:var(--client-line)] pt-4">
                 <p className="text-xs font-bold leading-5 text-[color:var(--client-muted)]">{t(hasPassword ? "解除后会退出所有设备，需要使用邮箱或 NeeDo ID 加密码重新登录。" : "先设置密码后才能解除 Google 绑定。")}</p>
                 <button className="focus-ring h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-accent)_45%,var(--client-line))] px-5 text-sm font-black text-[color:var(--client-accent)] disabled:opacity-45" disabled={Boolean(busyAction) || !status?.canUnlink} onClick={() => void startVerification("google-unlink")} type="button">

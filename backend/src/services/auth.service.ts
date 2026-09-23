@@ -209,6 +209,7 @@ export interface GoogleLinkStatusPayload {
   maskedEmail: string | null;
   hasPassword: boolean;
   canUnlink: boolean;
+  googleEnabled: boolean;
 }
 
 export type GoogleAccountSecurityChallengePayload = RegistrationChallengePayload;
@@ -270,14 +271,14 @@ export class AuthService {
   public async getGoogleLinkStatus(
     auth: AuthenticatedAccessContext
   ): Promise<GoogleLinkStatusPayload> {
-    this.assertGoogleAuthEnabled();
     const user = await this.getActiveAccountSecurityUser(auth);
     const status = await this.accountSecurityRepository().getGoogleBindingStatus(user.id);
     return {
       linked: status.linked,
       maskedEmail: status.providerEmail ? this.maskEmail(status.providerEmail) : null,
       hasPassword: Boolean(user.passwordHash),
-      canUnlink: status.linked && Boolean(user.passwordHash)
+      canUnlink: this.config.AUTH_GOOGLE_ENABLED && status.linked && Boolean(user.passwordHash),
+      googleEnabled: this.config.AUTH_GOOGLE_ENABLED
     };
   }
 

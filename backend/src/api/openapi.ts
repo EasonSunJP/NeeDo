@@ -7655,12 +7655,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       GoogleLinkStatus: {
         type: "object",
         additionalProperties: false,
-        required: ["linked", "maskedEmail", "hasPassword", "canUnlink"],
+        required: ["linked", "maskedEmail", "hasPassword", "canUnlink", "googleEnabled"],
         properties: {
           linked: { type: "boolean" },
           maskedEmail: { type: ["string", "null"], maxLength: 255 },
           hasPassword: { type: "boolean" },
-          canUnlink: { type: "boolean" }
+          canUnlink: { type: "boolean" },
+          googleEnabled: { type: "boolean" }
         }
       },
       RegisteredAccount: {

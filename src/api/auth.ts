@@ -73,6 +73,7 @@ export type GoogleLinkStatus = {
   maskedEmail: string | null;
   hasPassword: boolean;
   canUnlink: boolean;
+  googleEnabled: boolean;
 };
 
 export type GoogleLinkVerifiedPayload = {

@@ -358,7 +358,7 @@ const createFixture = () => {
     }))
   };
   const service = new AuthService(
-    process.env as never,
+    { ...process.env, AUTH_GOOGLE_ENABLED: true } as never,
     repository as never,
     sessions,
     { sendOtp: async (email, otp) => void sent.push({ email, otp }) },
@@ -387,7 +387,8 @@ describe("authenticated Google account security", () => {
       linked: true,
       maskedEmail: "l****d@example.com",
       hasPassword: false,
-      canUnlink: false
+      canUnlink: false,
+      googleEnabled: true
     });
   });
 
