@@ -134,6 +134,19 @@ describe("portal identity switching boundaries", () => {
 });
 
 describe("route-level loading boundaries", () => {
+  it("keeps portal art visible while authentication, shop access, or a lazy route is pending", () => {
+    const portalAuth = sliceBetween(appSource, "function RequirePortalAuth", "function RequireTechnicianShopStay");
+    const technicianStay = sliceBetween(appSource, "function RequireTechnicianShopStay", "function LegacyBusinessRedirect");
+    expect(portalAuth).not.toContain("return null;");
+    expect(technicianStay).not.toContain('if (status === "loading") return null;');
+    expect(appSource).not.toContain("<Suspense fallback={null}>\n                <Routes>");
+  });
+
+  it("does not keep the cold-start splash delay when changing portals", () => {
+    expect(appSource).toContain("portalTransition ? 80 : reducedPerformance ? 140 : 920");
+    expect(appSource).toContain("portalTransition ? 80 : reducedPerformance ? 80 : 620");
+  });
+
   it("keeps settings and legal workspaces out of the initial portal bundle", () => {
     expect(appSource).not.toContain(
       'from "./pages/user/UserSettingsPages";'

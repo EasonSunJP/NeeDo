@@ -175,6 +175,7 @@ import {
   loginBgUrl,
   managementBgUrl
 } from "./assets/runtime/images";
+import { preloadSplashImage } from "./assets/runtime/splashImageCache";
 
 function lazyNamed<TModule, TName extends keyof TModule>(
   loader: () => Promise<TModule>,
@@ -730,7 +731,21 @@ function getSplashThemeClassName(portal: SplashPortal, clientTheme: ReturnType<t
   ].join(" ");
 }
 
-function SplashScreen({ onDone, portal, reducedPerformance }: { onDone: () => void; portal: SplashPortal; reducedPerformance: boolean }) {
+function PortalSplashAssetPreloader() {
+  const { session } = useAuth();
+
+  useEffect(() => {
+    for (const portal of ["user", "technician", "merchant"] as const) {
+      if (session?.allowedPortals.includes(portal)) {
+        void preloadSplashImage(splashImages[portal]);
+      }
+    }
+  }, [session]);
+
+  return null;
+}
+
+function SplashScreen({ onDone, portal, portalTransition = false, reducedPerformance }: { onDone?: () => void; portal: SplashPortal; portalTransition?: boolean; reducedPerformance: boolean }) {
   const { theme } = useClientTheme();
   const splashImage = splashImages[portal];
   const copy = splashCopy[portal];
@@ -742,7 +757,6 @@ function SplashScreen({ onDone, portal, reducedPerformance }: { onDone: () => vo
     setImageReady(false);
     setMinimumElapsed(false);
 
-    const preload = new Image();
     let active = true;
 
     const markReady = () => {
@@ -751,41 +765,33 @@ function SplashScreen({ onDone, portal, reducedPerformance }: { onDone: () => vo
       }
     };
 
-    preload.onload = markReady;
-    preload.onerror = markReady;
-    preload.src = splashImage;
-
-    if (preload.complete) {
-      markReady();
-    }
+    void preloadSplashImage(splashImage).then(markReady);
 
     const timer = window.setTimeout(() => {
       if (active) {
         setMinimumElapsed(true);
       }
-    }, reducedPerformance ? 140 : 920);
+    }, portalTransition ? 80 : reducedPerformance ? 140 : 920);
 
     return () => {
       active = false;
-      preload.onload = null;
-      preload.onerror = null;
       window.clearTimeout(timer);
     };
-  }, [reducedPerformance, splashImage]);
+  }, [portalTransition, reducedPerformance, splashImage]);
 
   useEffect(() => {
-    if (!imageReady || !minimumElapsed) {
+    if (!onDone || !imageReady || !minimumElapsed) {
       return;
     }
 
-    const timer = window.setTimeout(onDone, reducedPerformance ? 80 : 620);
+    const timer = window.setTimeout(onDone, portalTransition ? 80 : reducedPerformance ? 80 : 620);
 
     return () => window.clearTimeout(timer);
-  }, [imageReady, minimumElapsed, onDone, reducedPerformance]);
+  }, [imageReady, minimumElapsed, onDone, portalTransition, reducedPerformance]);
 
   return (
     <div
-      className="fixed inset-0 z-[999] overflow-hidden bg-[#090806]"
+      className="fixed inset-0 z-[999] overflow-hidden bg-[#0d424b]"
       data-needo-splash-version={splashVersionLabel}
       style={{
         backgroundImage: reducedPerformance ? undefined : `url('${splashImage}')`,
@@ -961,7 +967,7 @@ function RequirePortalAuth({
   }
 
   if (isRestoring || isPortalRestorePending || (shouldSwitchPortal && !portalAlignmentFailed)) {
-    return null;
+    return <SplashScreen portal={getSplashPortal(location.pathname) ?? "user"} reducedPerformance={isReducedClientPerformanceProfile()} />;
   }
 
   if (!isAuthenticated || !hasAccess || portalAlignmentFailed) {
@@ -1028,7 +1034,7 @@ function RequireTechnicianShopStay({ children }: { children: ReactElement }) {
       />
     );
   }
-  if (status === "loading") return null;
+  if (status === "loading") return <SplashScreen portal="technician" reducedPerformance={isReducedClientPerformanceProfile()} />;
   return (
     <main className="grid min-h-screen place-items-center bg-paper px-6 text-center text-ink">
       <section className="max-w-md rounded-lg border border-line bg-white p-6 shadow-panel">
@@ -1151,6 +1157,9 @@ export default function App() {
   const reducedPerformance = isReducedClientPerformanceProfile();
   const [splashPortal, setSplashPortal] = useState<SplashPortal | null>(currentPortal);
   const [lastPortal, setLastPortal] = useState<SplashPortal | null>(null);
+  const [isTransitionSplash, setIsTransitionSplash] = useState(false);
+  const visibleSplashPortal = currentPortal !== lastPortal ? currentPortal : splashPortal;
+  const portalTransition = Boolean(lastPortal && currentPortal && currentPortal !== lastPortal) || isTransitionSplash;
   const protect = (portal: PortalScope, element: ReactElement) => (
     <RequirePortalAuth portal={portal}>
       {portal === "technician" ? <RequireTechnicianShopStay>{element}</RequireTechnicianShopStay> : element}
@@ -1183,10 +1192,12 @@ export default function App() {
     if (!currentPortal) {
       setSplashPortal(null);
       setLastPortal(null);
+      setIsTransitionSplash(false);
       return;
     }
 
     if (currentPortal !== lastPortal) {
+      setIsTransitionSplash(lastPortal !== null);
       setSplashPortal(currentPortal);
       setLastPortal(currentPortal);
     }
@@ -1194,12 +1205,14 @@ export default function App() {
 
   const completeSplash = () => {
     setSplashPortal(null);
+    setIsTransitionSplash(false);
   };
 
   return (
     <RootErrorBoundary>
       <PlatformSettingsProvider>
       <AuthProvider>
+        <PortalSplashAssetPreloader />
         <FormalSchedulePreloadBootstrap />
         <RealtimeNotificationSound />
         <RealtimeUnreadCountsProvider>
@@ -1210,12 +1223,12 @@ export default function App() {
               <EntityStoreBootstrap />
               <NeedoPetAssetBootstrap disabled={reducedPerformance} />
               <SocialProvider>
-                {splashPortal ? <SplashScreen onDone={completeSplash} portal={splashPortal} reducedPerformance={reducedPerformance} /> : null}
+                {visibleSplashPortal ? <SplashScreen onDone={completeSplash} portal={visibleSplashPortal} portalTransition={portalTransition} reducedPerformance={reducedPerformance} /> : null}
                 <RouteScrollReset />
                 <ShareFeedbackViewport />
-                <NeedoPet disabled={Boolean(splashPortal) || reducedPerformance} />
+                <NeedoPet disabled={Boolean(visibleSplashPortal) || reducedPerformance} />
                 <AccountComplianceGate>
-                <Suspense fallback={null}>
+                <Suspense fallback={<SplashScreen portal={currentPortal ?? "user"} reducedPerformance={reducedPerformance} />}>
                 <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/login/admin" element={<AdminLoginPage portal="admin" />} />
