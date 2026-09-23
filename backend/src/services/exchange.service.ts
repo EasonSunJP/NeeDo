@@ -853,6 +853,9 @@ export class ExchangeService {
       input.type === "demand"
         ? {
             ...common,
+            ...(input.coverMediaAssetPublicId
+              ? { coverMediaAssetPublicId: input.coverMediaAssetPublicId }
+              : {}),
             targetProviderCount: input.targetProviderCount,
             matchMode: input.matchMode,
             budgetMode: input.budgetMode,

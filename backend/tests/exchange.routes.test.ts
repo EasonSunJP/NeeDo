@@ -94,6 +94,7 @@ const post: ExchangePostPayload = {
     claimUnavailableReason: null
   },
   demand: {
+    cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -446,12 +447,13 @@ describe("formal Exchange routes", () => {
       .post("/api/v1/exchange/posts")
       .set("Authorization", `Bearer ${customerToken}`)
       .set("Idempotency-Key", "publish-demand-0001")
-      .send(demandBody)
+      .send({ ...demandBody, coverMediaAssetPublicId: "a".repeat(64) })
       .expect(201);
     expect(service.publish).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 7 }),
       expect.objectContaining({
         type: "demand",
+        coverMediaAssetPublicId: "a".repeat(64),
         serviceStartAt: new Date("2026-08-31T00:00:00.000Z")
       }),
       "publish-demand-0001"
@@ -482,6 +484,12 @@ describe("formal Exchange routes", () => {
       .send(demandBody)
       .expect(400);
     expect(service.publish).toHaveBeenCalledTimes(2);
+    for (const method of ["patch", "put", "delete"] as const) {
+      await request(app)[method]("/api/v1/exchange/posts/41/cover")
+        .set("Authorization", `Bearer ${customerToken}`)
+        .send({ coverMediaAssetPublicId: "b".repeat(64) })
+        .expect(404);
+    }
   });
 
   it("requires a formal service reference before publishing Intelligence", async () => {

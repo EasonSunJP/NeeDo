@@ -2033,6 +2033,27 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
   ];
 
   return {
+    [`${config.API_PREFIX}/exchange/demand-cover`]: {
+      post: exchangeOperation("Upload a pending demand cover", "exchange:posts:create-demand", {
+        description: "Uploads an image for the exact active customer identity. Pass the returned publicId as coverMediaAssetPublicId when publishing a demand. The cover is immutable after publication.",
+        parameters: [{ name: "alt_text", in: "query", schema: { type: "string", minLength: 1, maxLength: 255 } }],
+        requestBody: {
+          required: true,
+          content: {
+            "image/jpeg": { schema: { type: "string", format: "binary" } },
+            "image/png": { schema: { type: "string", format: "binary" } },
+            "image/webp": { schema: { type: "string", format: "binary" } }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Pending demand cover", { $ref: "#/components/schemas/ExchangeDemandCoverUpload" }),
+          "400": { description: "error.exchange.demand_cover_invalid — invalid image bytes, MIME type, or dimensions" },
+          "413": { description: "error.exchange.demand_cover_too_large — image exceeds the upload limit" },
+          "401": exchangeErrorResponses["401"],
+          "403": { description: "error.forbidden or error.identity.forbidden — requires demand publication permission and the active customer identity" }
+        }
+      })
+    },
     [technicianServiceContextBase]: {
       get: exchangeOperation(
         "Read a public technician-service checkout context",
@@ -2106,7 +2127,7 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
             ...exchangeErrorResponses,
             "403": {
               description:
-                "error.forbidden, error.identity.forbidden, error.user_policy.ekyc_required, or error.exchange.intelligence_service_forbidden — denied permission, identity, eKYC policy, or service ownership"
+                "error.forbidden, error.identity.forbidden, error.user_policy.ekyc_required, error.exchange.demand_cover_not_owned, or error.exchange.intelligence_service_forbidden — denied permission, identity, eKYC policy, or media/service ownership"
             },
             "404": {
               description:
@@ -5035,10 +5056,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      ExchangeDemandCoverUpload: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "url", "mimeType", "width", "height"],
+        properties: {
+          publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          url: { type: "string" },
+          mimeType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
+          width: { type: "integer", minimum: 1 },
+          height: { type: "integer", minimum: 1 }
+        }
+      },
       ExchangeDemand: {
         type: "object",
         additionalProperties: false,
         required: [
+          "cover",
           "serviceMode",
           "targetProviderCount",
           "targetProviderLimitSnapshot",
@@ -5051,6 +5085,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "address"
         ],
         properties: {
+          cover: {
+            type: "object",
+            additionalProperties: false,
+            required: ["url", "isDefault"],
+            description: "Immutable published cover. Historical demands and publications without a cover return /images/exchange-demand-default-cover.svg with isDefault=true.",
+            properties: {
+              url: { type: "string" },
+              isDefault: { type: "boolean" }
+            }
+          },
           serviceMode: { type: "string", enum: ["home", "store"] },
           targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
           targetProviderLimitSnapshot: { type: "integer", minimum: 1, maximum: 20 },
@@ -6208,6 +6252,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           type: { type: "string", enum: ["demand"] },
+          coverMediaAssetPublicId: {
+            type: "string",
+            pattern: "^[a-f0-9]{64}$",
+            description: "Pending image checksum returned by the demand-cover upload for the exact active user and identity. Bound atomically on publication and immutable thereafter. Omit to use the default cover."
+          },
           title: {
             type: "string",
             minLength: 1,

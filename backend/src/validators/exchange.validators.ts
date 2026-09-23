@@ -26,6 +26,7 @@ const demandPostSchema = z
   .object({
     type: z.literal("demand"),
     ...commonPostShape,
+    coverMediaAssetPublicId: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
     serviceMode: z.enum(["home", "store"]),
     targetProviderCount: z.coerce.number().int().min(1).max(20),
     matchMode: z.enum(["quick", "selective"]),

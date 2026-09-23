@@ -54,6 +54,8 @@ import type {
 } from "../types/exchange-intelligence-booking.types";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import { toAuditLogCreateData } from "./audit-log.repository";
+import { AppError } from "../utils/app-error";
+import { ERROR_CODES } from "../constants/error-codes";
 import { projectExchangeRequestAddress } from "../domain/exchange-address-privacy";
 import { ShopVisibilityRepository, type ShopVisibilityViewer } from "./shop-visibility.repository";
 
@@ -227,7 +229,10 @@ const intelligenceShopInclude = {
 
 const postInclude = (viewerIdentityId: number, participantIdentityId = viewerIdentityId) =>
   ({
-    demand: { where: { deletedAt: null } },
+    demand: {
+      where: { deletedAt: null },
+      include: { coverMediaAsset: { select: { url: true } } }
+    },
     authorIdentity: {
       select: {
         type: true,
@@ -936,6 +941,28 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     }
     const publisher =
       input.input.type === "intelligence" ? intelligenceService!.publisher : input.actor;
+    const coverPublicId = input.input.type === "demand" ? input.input.coverMediaAssetPublicId : undefined;
+    const coverMediaAsset = coverPublicId
+      ? await this.client.mediaAsset.findFirst({
+          where: {
+            checksumSha256: coverPublicId,
+            ownerUserId: input.actor.userId,
+            ownerIdentityId: input.actor.identityId,
+            entityType: "exchange_demand_cover_pending",
+            usageType: "exchange_demand_cover_pending",
+            isActive: true,
+            deletedAt: null
+          },
+          select: { id: true }
+        })
+      : null;
+    if (coverPublicId && !coverMediaAsset) {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.exchange.demand_cover_not_owned",
+        statusCode: 403
+      });
+    }
     const created = await this.client.exchangePost.create({
       data: {
         authorUserId: input.actor.userId,
@@ -965,6 +992,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           ? {
               demand: {
                 create: {
+                  coverMediaAssetId: coverMediaAsset?.id ?? null,
                   targetProviderCount: input.input.targetProviderCount,
                   targetProviderLimitSnapshot: capacity!.targetProviderLimit,
                   publisherCapacitySource: capacitySourceToDatabase[capacity!.source],
@@ -1030,10 +1058,21 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
               }
             })
       },
-      select: { id: true }
+      select: { id: true, demand: { select: { id: true } } }
     });
 
-    return created;
+    if (coverMediaAsset) {
+      await this.client.mediaAsset.update({
+        where: { id: coverMediaAsset.id },
+        data: {
+          entityType: "exchange_demand",
+          entityId: created.demand!.id,
+          purgeAt: null,
+          updatedAt: input.now
+        }
+      });
+    }
+    return { id: created.id };
   }
 
   private shopAvailable(shop: {
@@ -1886,6 +1925,9 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       : null;
     const demand = row.demand
       ? {
+          cover: row.demand.coverMediaAsset
+            ? { url: row.demand.coverMediaAsset.url, isDefault: false }
+            : { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
           serviceMode: demandServiceModeFromDatabase[row.demand.serviceMode],
           targetProviderCount: row.demand.targetProviderCount,
           targetProviderLimitSnapshot: row.demand.targetProviderLimitSnapshot,

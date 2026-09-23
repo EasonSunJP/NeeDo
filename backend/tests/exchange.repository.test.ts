@@ -1,4 +1,5 @@
 import { ExchangePostRepository } from "../src/repositories/exchange.repository";
+import type { ExchangePublishRepositoryInput } from "../src/services/exchange.service";
 
 const now = new Date("2026-08-30T03:00:00.000Z");
 
@@ -27,6 +28,7 @@ const demandRow = {
   updatedAt: new Date("2026-08-30T02:00:00.000Z"),
   deletedAt: null,
   demand: {
+    coverMediaAsset: null,
     serviceMode: "STORE",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -55,6 +57,72 @@ const demandRow = {
 };
 
 describe("ExchangePostRepository", () => {
+  const coverPublication = (): ExchangePublishRepositoryInput => ({
+    actor: {
+      userId: 7, identityId: 17, ownerIdentityId: 99, identityType: "customer",
+      scopeType: "customer_profile", scopeId: 27, publicId: "NC12345678",
+      displayName: "佐藤 美咲", avatarUrl: null, isTestAccount: true,
+      customerMembership: null, shopScope: null
+    },
+    input: {
+      type: "demand", serviceMode: "store", title: demandRow.title, detail: demandRow.detail,
+      contentLocale: "ja", serviceStartAt: demandRow.serviceStartAt, serviceEndAt: demandRow.serviceEndAt,
+      expiresAt: demandRow.expiresAt, targetProviderCount: 1, matchMode: "quick", budgetMode: "total",
+      budgetMinJpy: null, budgetMaxJpy: 12000, addressLine1: "渋谷区", addressLine2: null,
+      addressLine3: null, addressLine2Public: false, addressLine3Public: false,
+      publisherIdentityPublic: false, coverMediaAssetPublicId: "a".repeat(64)
+    },
+    capacity: { source: "customer_membership", membershipLevel: "standard", targetProviderLimit: 1,
+      payerOwnerType: "user", payerOwnerId: 7, currency: "TEST_NDP" },
+    idempotencyKey: "publish-cover-0001", payloadFingerprint: "c".repeat(64), now
+  });
+
+  it("binds the exact actor's pending cover in the publication transaction", async () => {
+    const transaction = {
+      mediaAsset: { findFirst: jest.fn(async () => ({ id: 81 })), update: jest.fn(async () => ({ id: 81 })) },
+      exchangePost: { create: jest.fn(async () => ({ id: 41, demand: { id: 51 } })) }
+    };
+    const client = { $transaction: jest.fn(async (handler: (tx: typeof transaction) => Promise<unknown>) => handler(transaction)) };
+    const repository = new ExchangePostRepository(client as never);
+    await repository.runInTransaction((tx) => tx.createPost(coverPublication()));
+    expect(transaction.mediaAsset.findFirst).toHaveBeenCalledWith({
+      where: { checksumSha256: "a".repeat(64), ownerUserId: 7, ownerIdentityId: 17,
+        entityType: "exchange_demand_cover_pending", usageType: "exchange_demand_cover_pending", isActive: true, deletedAt: null },
+      select: { id: true }
+    });
+    expect(transaction.exchangePost.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ demand: { create: expect.objectContaining({ coverMediaAssetId: 81 }) } })
+    }));
+    expect(transaction.mediaAsset.update).toHaveBeenCalledWith({ where: { id: 81 },
+      data: { entityType: "exchange_demand", entityId: 51, purgeAt: null, updatedAt: now } });
+  });
+
+  it("rejects a checksum outside the active owned pending scope before creating a post", async () => {
+    const client = { mediaAsset: { findFirst: jest.fn(async () => null), update: jest.fn() },
+      exchangePost: { create: jest.fn(async () => ({ id: 41 })) } };
+    await expect(new ExchangePostRepository(client as never).createPost(coverPublication())).rejects.toMatchObject({
+      message: "error.exchange.demand_cover_not_owned", statusCode: 403
+    });
+    expect(client.exchangePost.create).not.toHaveBeenCalled();
+    expect(client.mediaAsset.update).not.toHaveBeenCalled();
+  });
+
+  it.each([null, { url: "/media/content/exchange/aa.webp" }])("projects the same cover in list and detail: %j", async (coverMediaAsset) => {
+    const row = { ...demandRow, demand: { ...demandRow.demand, coverMediaAsset } };
+    const findMany = jest.fn(async () => [row]);
+    const findFirst = jest.fn(async () => row);
+    const repository = new ExchangePostRepository({ exchangePost: { findMany, findFirst, count: jest.fn(async () => 1) } } as never);
+    const list = await repository.listPosts({ type: "demand", page: 1, pageSize: 20, viewerIdentityId: 17, authorIdentityId: 17, now });
+    const detail = await repository.findPostById(41, 17, now);
+    const expected = coverMediaAsset ? { url: coverMediaAsset.url, isDefault: false }
+      : { url: "/images/exchange-demand-default-cover.svg", isDefault: true };
+    expect(list.list[0].demand).toMatchObject({ cover: expected });
+    expect(detail?.demand).toMatchObject({ cover: expected });
+    for (const query of [findMany, findFirst]) expect(query).toHaveBeenCalledWith(expect.objectContaining({
+      include: expect.objectContaining({ demand: expect.objectContaining({ include: { coverMediaAsset: { select: { url: true } } } }) })
+    }));
+  });
+
   it("filters Intelligence rows and totals by the linked shop's current audience before pagination", async () => {
     const findMany = jest.fn(async () => []);
     const count = jest.fn(async () => 0);
@@ -371,7 +439,7 @@ describe("ExchangePostRepository", () => {
           }
         }
       }),
-      select: { id: true }
+      select: { id: true, demand: { select: { id: true } } }
     });
   });
 
@@ -734,6 +802,7 @@ describe("ExchangePostRepository", () => {
             claimUnavailableReason: null
           },
           demand: {
+            cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
             serviceMode: "store",
             targetProviderCount: 1,
             targetProviderLimitSnapshot: 1,
@@ -774,7 +843,10 @@ describe("ExchangePostRepository", () => {
         skip: 10,
         take: 10,
         include: expect.objectContaining({
-          demand: { where: { deletedAt: null } },
+          demand: {
+            where: { deletedAt: null },
+            include: { coverMediaAsset: { select: { url: true } } }
+          },
             intelligence: expect.objectContaining({
               where: { deletedAt: null },
               include: expect.any(Object)
@@ -1457,6 +1529,7 @@ describe("ExchangePostRepository", () => {
           payloadFingerprint: "a".repeat(64),
           demand: {
             create: {
+              coverMediaAssetId: null,
               serviceMode: "STORE",
               targetProviderCount: 1,
               targetProviderLimitSnapshot: 1,
@@ -1500,7 +1573,7 @@ describe("ExchangePostRepository", () => {
             }
           }
         }),
-        select: { id: true }
+        select: { id: true, demand: { select: { id: true } } }
       })
     );
     expect(transaction.auditLog.create).toHaveBeenCalledWith({

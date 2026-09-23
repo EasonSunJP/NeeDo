@@ -40,6 +40,7 @@ export interface ExchangePriorityPayload {
 }
 
 export interface ExchangeDemandPayload {
+  cover: { url: string; isDefault: boolean };
   serviceMode: ExchangeDemandServiceMode;
   targetProviderCount: number;
   targetProviderLimitSnapshot: number;

@@ -9,6 +9,7 @@ import type {
 import { AppError } from "../src/utils/app-error";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import type { ContentMediaService } from "../src/services/content-media.service";
+import { publishExchangePostSchema } from "../src/validators/exchange.validators";
 
 const now = new Date("2026-08-30T03:00:00.000Z");
 
@@ -74,6 +75,7 @@ const post: ExchangePostPayload = {
     claimUnavailableReason: null
   },
   demand: {
+    cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -227,6 +229,39 @@ const createRepository = () => {
 };
 
 describe("ExchangeService", () => {
+  it("accepts only a valid pending cover checksum on demand publication", () => {
+    expect(publishExchangePostSchema.parse({ ...demandInput, coverMediaAssetPublicId: "a".repeat(64) }))
+      .toMatchObject({ coverMediaAssetPublicId: "a".repeat(64) });
+    for (const checksum of ["", "a".repeat(63), "g".repeat(64), "/media/cover.webp"]) {
+      expect(() => publishExchangePostSchema.parse({ ...demandInput, coverMediaAssetPublicId: checksum })).toThrow();
+    }
+    expect(() => publishExchangePostSchema.parse({
+      type: "intelligence", title: post.title, detail: post.detail, contentLocale: "ja",
+      serviceStartAt: post.serviceStartAt, serviceEndAt: post.serviceEndAt, expiresAt: post.expiresAt,
+      serviceRef: "shop:501", campaignPriceJpy: 1000, coverMediaAssetPublicId: "a".repeat(64)
+    })).toThrow();
+  });
+
+  it("fingerprints the cover and rejects replaying an idempotency key with another cover", async () => {
+    const repository = createRepository();
+    const ledger = createLedgerService();
+    const service = new ExchangeService(repository, () => now, undefined, createFeeService(), ledger);
+    const firstInput = { ...demandInput, coverMediaAssetPublicId: "a".repeat(64) };
+    const secondInput = { ...demandInput, coverMediaAssetPublicId: "b".repeat(64) };
+    await service.publish(access, firstInput, "publish-cover-first");
+    await service.publish(access, secondInput, "publish-cover-other");
+    const first = repository.createPost.mock.calls[0][0].payloadFingerprint;
+    const second = repository.createPost.mock.calls[1][0].payloadFingerprint;
+    expect(first).not.toBe(second);
+    repository.findPostByIdempotencyKey.mockResolvedValue({ ownerIdentityId: 17, payloadFingerprint: first, value: post });
+    await expect(service.publish(access, firstInput, "publish-cover-first")).resolves.toEqual(post);
+    await expect(service.publish(access, secondInput, "publish-cover-first")).rejects.toMatchObject({
+      message: "error.exchange.idempotency_conflict"
+    });
+    expect(repository.createPost).toHaveBeenCalledTimes(2);
+    expect(ledger.freezeExchangeRequestPublication).toHaveBeenCalledTimes(2);
+  });
+
   it("uploads a pending cover only for the resolved active customer identity", async () => {
     const repository = createRepository();
     const media = { upload: jest.fn(async () => ({ publicId: "a".repeat(64), mediaAssetId: 81, url: "/media/content/aa.webp", mimeType: "image/webp", width: 1280, height: 720, checksumSha256: "a".repeat(64) })) };
