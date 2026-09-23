@@ -299,6 +299,40 @@ export class StagingTestChibaShopProvisioner {
       update: { endsAt: null, removedReason: null, removedById: null, deletedAt: null }
     });
 
+    const merchantOrganizationIdentity = await tx.userIdentity.upsert({
+      where: { activeKey: `staging-test-chiba:${owner.id}:merchant_organization:${merchantAccount.id}` },
+      create: {
+        userId: owner.id,
+        type: "merchant_organization",
+        scopeType: "merchant_account",
+        scopeId: merchantAccount.id,
+        displayName: merchantAccount.name,
+        isDefault: false,
+        isActive: true,
+        activeKey: `staging-test-chiba:${owner.id}:merchant_organization:${merchantAccount.id}`
+      },
+      update: { displayName: merchantAccount.name, isActive: true, deletedAt: null },
+      include: { publicIdentifier: true }
+    });
+    if (!merchantOrganizationIdentity.publicIdentifier) {
+      await new IdentifierAllocator(new PublicIdentifierRepository(tx)).registerPersonAlias({
+        kind: "O",
+        userIdentityId: merchantOrganizationIdentity.id
+      });
+    } else {
+      assert(merchantOrganizationIdentity.publicIdentifier.kind === "O", "STAGING_TEST_CHIBA_OWNER_ALIAS_INVALID");
+    }
+    await tx.merchantIdentityProfile.upsert({
+      where: { identityId: merchantOrganizationIdentity.id },
+      create: {
+        userId: owner.id,
+        identityId: merchantOrganizationIdentity.id,
+        displayName: merchantAccount.name,
+        languages: ["ja"]
+      },
+      update: { displayName: merchantAccount.name, languages: ["ja"], deletedAt: null }
+    });
+
     const merchantStaffIdentity = await tx.userIdentity.upsert({
       where: { activeKey: `staging-test-chiba:${owner.id}:merchant_staff:${shop.id}` },
       create: {

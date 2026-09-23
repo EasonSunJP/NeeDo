@@ -127,4 +127,15 @@ describe("StagingTest Chiba shop provisioning gate", () => {
     expect(source).toContain("technicianAutomationSetting.upsert");
     expect(source).toContain("enabled: true");
   });
+
+  it("gives the Chiba owner a selectable merchant-account identity", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/staging/staging-test-chiba-shop-provisioning.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain('type: "merchant_organization"');
+    expect(source).toContain('scopeType: "merchant_account"');
+    expect(source).toContain('kind: "O"');
+  });
 });
