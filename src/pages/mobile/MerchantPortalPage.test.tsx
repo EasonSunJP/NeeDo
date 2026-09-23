@@ -15,14 +15,14 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("coreReadApi.getShopDetail(storeApiId)");
     expect(dataGateSource).toContain("loadEveryMerchantTechnicianPage()");
     expect(dataGateSource).toContain("getAuthenticatedPersistentCacheScope()");
-    expect(dataGateSource).toContain("session?.activeIdentityId");
+    expect(dataGateSource).toContain("session.activeIdentityId");
     expect(dataGateSource).toContain("technician.shopId === storeApiId");
-    expect(dataGateSource).toContain("merchant:technician-roster:v2:");
+    expect(dataGateSource).toContain("merchant:technician-roster:v3:");
     expect(dataGateSource).toContain("scope: persistentCacheScope");
     expect(dataGateSource).toContain("force: true");
     expect(merchantSource).toContain("mapCoreShopToStore(formalStoreQuery.data)");
     expect(dataGateSource).not.toContain("formalStoreQuery.data.technicians.map");
-    expect(merchantSource).toContain("[storeApiId, activeView]");
+    expect(dataGateSource).toContain("[merchantShopOwnerKey, session?.portal]");
     expect(merchantSource).toContain("storeServices={formalStoreQuery.data.services}");
     expect(merchantSource).toContain("<MerchantPortalContent");
     expect(merchantSource).toContain("technicians={technicians}");
@@ -222,7 +222,7 @@ describe("MerchantPortalPage store privacy control", () => {
   it("keeps the personal-center status panel inside the same mobile content inset", () => {
     const statusPanelSource = merchantSource.slice(
       merchantSource.indexOf('{activeView === "dashboard" ? (', merchantSource.indexOf("{selectedContact && (")),
-      merchantSource.indexOf("</MobileShell>")
+      merchantSource.indexOf("</MobileShell>", merchantSource.indexOf('{activeView === "dashboard" ? (', merchantSource.indexOf("{selectedContact && (")))
     );
 
     expect(statusPanelSource).toContain('className={activeView === "me" ? "client-app-margin !w-auto" : undefined}');

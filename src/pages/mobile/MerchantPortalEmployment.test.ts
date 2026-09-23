@@ -54,7 +54,7 @@ vi.mock("../../features/social/context", () => ({
 }));
 
 vi.mock("../../components/mobile/MobileShell", () => ({
-  MobileShell: ({ children }: { children: React.ReactNode }) => createElement("main", null, children)
+  MobileShell: ({ children }: { children: React.ReactNode }) => createElement("main", { className: "client-shell" }, children)
 }));
 
 vi.mock("../../components/client-ui/AppScaffold", async () => {
@@ -276,6 +276,27 @@ describe("MerchantPortal formal employment data", () => {
       await act(async () => root.unmount());
       container.remove();
       vi.restoreAllMocks();
+    });
+
+    it("shows the themed merchant loading state while the active shop request is pending", async () => {
+      vi.spyOn(backofficeRealDataApi, "merchantShop").mockReturnValue(new Promise(() => {}));
+
+      await renderDataGate("/merchant/me");
+
+      const loading = container.querySelector('[data-testid="merchant-loading-state"]');
+      expect(loading).not.toBeNull();
+      expect(loading?.closest(".client-shell")).not.toBeNull();
+    });
+
+    it("starts loading formal staff without waiting for the active shop request", async () => {
+      vi.spyOn(backofficeRealDataApi, "merchantShop").mockReturnValue(new Promise(() => {}));
+
+      await renderDataGate("/merchant/me");
+
+      expect(backofficeRealDataApi.technicians).toHaveBeenCalledWith(
+        "merchant-admin",
+        expect.objectContaining({ page: 1, status: "published" })
+      );
     });
 
     it("renders five role sections as direct siblings with inline counts and an independent form", async () => {

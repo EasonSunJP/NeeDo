@@ -132,6 +132,20 @@ describe("MerchantIdentityInfoCard", () => {
     expect(mocks.updateMine).toHaveBeenCalledWith(expect.objectContaining({ avatarDataUrl: "data:image/jpeg;base64,AAAA" }));
   });
 
+  it("anchors the edit save button to the screen bottom without an outer panel", async () => {
+    await act(async () => root.render(<MerchantIdentityInfoCard />));
+    await waitFor(() => expect(container.textContent).toContain("佐藤 美咲"));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="编辑资料"]')?.click());
+
+    const button = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((item) => item.textContent === "保存并退出编辑模式");
+    const dock = button?.parentElement;
+    expect(dock?.className).toContain("fixed");
+    expect(dock?.className).toContain("bottom-0");
+    expect(dock?.className).not.toContain("client-bottom-action-shell");
+    expect(dock?.children).toHaveLength(1);
+  });
+
   it("copies the formal merchant ID through the PWA-safe clipboard helper", async () => {
     await act(async () => root.render(<MerchantIdentityInfoCard />));
     await waitFor(() => expect(container.textContent).toContain("ID b0000000109"));

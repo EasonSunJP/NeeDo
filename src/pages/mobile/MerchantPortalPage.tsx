@@ -1823,9 +1823,7 @@ export function MerchantPortalPage() {
 }
 
 function MerchantPortalDataGate() {
-  const { view } = useParams();
   const { session } = useAuth();
-  const activeView = getMerchantView(view);
   const persistentCacheScope = getAuthenticatedPersistentCacheScope();
   const merchantShopOwnerKey = session
     ? JSON.stringify([session.id, session.activeIdentityId, session.merchantShopPublicId ?? ""])
@@ -1835,7 +1833,7 @@ function MerchantPortalDataGate() {
       ? backofficeRealDataApi.merchantShop()
           .then((page) => ({ ownerKey: merchantShopOwnerKey, page }))
       : null,
-    [merchantShopOwnerKey, activeView]
+    [merchantShopOwnerKey]
   );
   const merchantShopPage = merchantShopQuery.data?.ownerKey === merchantShopOwnerKey
     ? merchantShopQuery.data.page
@@ -1843,7 +1841,7 @@ function MerchantPortalDataGate() {
   const storeApiId = getMerchantStoreApiId(merchantShopPage?.list[0]?.id);
   const formalStoreQuery = useCoreReadQuery(
     () => storeApiId ? coreReadApi.getShopDetail(storeApiId) : null,
-    [storeApiId, activeView],
+    [storeApiId],
     {
       enabled: Boolean(storeApiId),
       force: true,
@@ -1851,12 +1849,12 @@ function MerchantPortalDataGate() {
     }
   );
   const formalStaffQuery = useCoreReadQuery(
-    () => storeApiId && session?.portal === "merchant" ? loadEveryMerchantTechnicianPage() : null,
-    [storeApiId, session?.activeIdentityId, activeView],
+    () => session?.portal === "merchant" ? loadEveryMerchantTechnicianPage() : null,
+    [merchantShopOwnerKey, session?.portal],
     {
-      enabled: Boolean(storeApiId && session?.portal === "merchant"),
+      enabled: session?.portal === "merchant",
       force: true,
-      key: `merchant:technician-roster:v2:${storeApiId ?? "missing"}:identity:${session?.activeIdentityId ?? "missing"}`,
+      key: `merchant:technician-roster:v3:${merchantShopOwnerKey ?? "missing"}`,
       scope: persistentCacheScope
     }
   );
@@ -1873,14 +1871,16 @@ function MerchantPortalDataGate() {
     );
     const failed = merchantShopFailed || formalStoreFailed || formalStaffFailed;
     return (
-      <main className="grid min-h-dvh place-items-center bg-[color:var(--client-bg)] px-6 text-center text-[color:var(--client-text)]">
-        <div>
-          <h1 className="text-xl font-black">{failed ? "店铺资料加载失败" : "正在加载店铺资料"}</h1>
-          <p className="mt-2 text-sm font-semibold text-[color:var(--client-muted)]">
-            {failed ? "请稍后重试，或切换回其他身份。" : "正在同步当前店铺与正式员工资料，请稍候。"}
-          </p>
-        </div>
-      </main>
+      <MobileShell navItems={merchantNavItems} showBottomNav={false}>
+        <section className="client-app-gutter grid min-h-[75dvh] place-items-center py-12" data-testid="merchant-loading-state">
+          <div aria-live="polite" className="w-full max-w-md rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-6 py-8 text-center text-[color:var(--client-text)] shadow-[var(--client-shadow)]" role={failed ? "alert" : "status"}>
+            <h1 className="text-xl font-black">{failed ? "店铺资料加载失败" : "正在加载店铺资料"}</h1>
+            <p className="mt-2 text-sm font-semibold text-[color:var(--client-muted)]">
+              {failed ? "请稍后重试，或切换回其他身份。" : "正在同步当前店铺与正式员工资料，请稍候。"}
+            </p>
+          </div>
+        </section>
+      </MobileShell>
     );
   }
 

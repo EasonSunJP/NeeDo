@@ -12,7 +12,7 @@ import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
 import { formatWalletAmount, hasTestNdpWallet } from "../../features/wallet/presentation";
-import { IconButton, StickyBottomBar } from "../client-ui/AppScaffold";
+import { IconButton } from "../client-ui/AppScaffold";
 import { AvatarImage } from "../ui/AvatarImage";
 import { AvatarCropEditor, createCroppedAvatarDataUrl, type AvatarCropState } from "../ui/AvatarCropEditor";
 import { KycVerifiedBadge } from "../ui/KycVerifiedBadge";
@@ -292,7 +292,7 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
         {error ? <p className="mt-3 text-sm font-black text-red-500" role="alert">{error}</p> : null}
       </section>
       {avatarCrop ? <AvatarCropEditor crop={avatarCrop} onApply={() => void applyAvatarCrop()} onCancel={() => setAvatarCrop(null)} onChange={setAvatarCrop} /> : null}
-      {editing ? <StickyBottomBar><button className="w-full rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-60" disabled={saving || readingAvatar || Boolean(avatarCrop)} onClick={() => void save()} type="button">{saving ? "正在保存资料" : "保存并退出编辑模式"}</button></StickyBottomBar> : null}
+      {editing ? <div className="client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-[80] pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8"><button className="pointer-events-auto block w-full rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60" disabled={saving || readingAvatar || Boolean(avatarCrop)} onClick={() => void save()} type="button">{saving ? "正在保存资料" : "保存并退出编辑模式"}</button></div> : null}
     </>
   );
 }

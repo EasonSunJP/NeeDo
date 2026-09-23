@@ -49,6 +49,7 @@ import { walletApi, type WalletSummary } from "../../features/wallet/api";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { LocalizedTextEditor } from "../../shared/localized-content/LocalizedTextEditor";
+import { PROFILE_LANGUAGE_OPTIONS, normalizeProfileLanguageLabels } from "../../shared/profile-card/profileLanguages";
 import {
   mapTechnicianServiceToUnifiedData as fromTechnicianServicePayload,
   UnifiedServiceInfoCard
@@ -110,10 +111,6 @@ function parseNullableNumber(value: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function splitList(value: string) {
-  return Array.from(new Set(value.split(/[,，、\n]/).map((item) => item.trim()).filter(Boolean)));
-}
-
 function profileAvatarSrc(profile: TechnicianSelfProfile) {
   return resolveAvatarUrl(profile.avatarUrl);
 }
@@ -123,7 +120,7 @@ function profileDraft(profile: TechnicianSelfProfile) {
     gender: profile.gender,
     age: profile.age,
     heightCm: profile.heightCm,
-    languagesText: profile.languages.join("、"),
+    languages: normalizeProfileLanguageLabels(profile.languages),
     visibility: profile.visibility,
     avatarDataUrl: undefined as string | undefined
   };
@@ -447,7 +444,7 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
         gender: draft.gender,
         age: draft.age,
         heightCm: draft.heightCm,
-        languages: splitList(draft.languagesText),
+        languages: draft.languages,
         visibility: draft.visibility,
         ...(draft.avatarDataUrl ? { avatarDataUrl: draft.avatarDataUrl } : {})
       };
@@ -545,7 +542,27 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
               <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>年龄</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, age: parseNullableNumber(event.target.value) }))} value={draft.age ?? ""} /></label>
               <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>身高</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, heightCm: parseNullableNumber(event.target.value) }))} value={draft.heightCm ?? ""} /></label>
             </div>
-            <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>语言能力</span><textarea className="mt-2 min-h-16 w-full bg-transparent text-sm font-bold outline-none" onChange={(event) => setDraft((current) => ({ ...current, languagesText: event.target.value }))} value={draft.languagesText} /></label>
+            <div className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-profile-language-ability">
+              <p className={cn(surface.muted, "text-xs font-bold")}>语言能力</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {PROFILE_LANGUAGE_OPTIONS.map((language) => (
+                  <button
+                    aria-pressed={draft.languages.includes(language)}
+                    className={cn("rounded-full border px-2.5 py-1 text-xs font-black", draft.languages.includes(language) ? surface.chip : surface.metric)}
+                    data-no-i18n
+                    disabled={saving || readingAvatar}
+                    key={language}
+                    onClick={() => setDraft((current) => {
+                      const languages = current.languages.includes(language)
+                        ? current.languages.filter((item) => item !== language)
+                        : [...current.languages, language];
+                      return { ...current, languages: languages.length > 0 ? languages : [language] };
+                    })}
+                    type="button"
+                  >{language}</button>
+                ))}
+              </div>
+            </div>
             <TechnicianReviewTagSummaryView model={editModel} />
             <section className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-profile-privacy-control">
               <div className="flex items-center justify-between gap-3">

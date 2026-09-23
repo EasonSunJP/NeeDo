@@ -10,6 +10,7 @@ import { pricingModeApi, type TechnicianServicePayload } from "../../features/pr
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
 import * as imageUpload from "../../lib/imageUpload";
 import { TechnicianProfileInfoView, fromTechnicianSelfProfile } from "../../shared/technician-profile";
+import { PROFILE_LANGUAGE_OPTIONS } from "../../shared/profile-card/profileLanguages";
 import { TechnicianPortalPage } from "./TechnicianPortalPage";
 import source from "./TechnicianPortalPage.tsx?raw";
 
@@ -402,20 +403,27 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(container.querySelectorAll('[data-testid="localized-text-editor"] textarea')).toHaveLength(1);
     expect(Array.from(container.querySelectorAll('textarea')).filter((textarea) => textarea.value === "预约前请联系。")).toHaveLength(0);
 
-    const languageDraft = Array.from(container.querySelectorAll<HTMLTextAreaElement>("textarea"))
-      .find((textarea) => textarea.value === "日本語、中文");
-    expect(languageDraft).toBeDefined();
-    await act(async () => languageDraft && setTextareaValue(languageDraft, "QA-DRAFT-NOT-SAVED"));
-    expect(container.textContent).toContain("QA-DRAFT-NOT-SAVED");
+    const languageAbility = container.querySelector<HTMLElement>('[data-testid="technician-profile-language-ability"]');
+    expect(languageAbility).not.toBeNull();
+    expect(languageAbility?.querySelectorAll("textarea")).toHaveLength(0);
+    expect(Array.from(languageAbility?.querySelectorAll("button") ?? []).map((button) => button.textContent))
+      .toEqual([...PROFILE_LANGUAGE_OPTIONS]);
+    const englishButton = Array.from(languageAbility?.querySelectorAll<HTMLButtonElement>("button") ?? [])
+      .find((button) => button.textContent === "English");
+    expect(englishButton?.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => englishButton?.click());
+    expect(englishButton?.getAttribute("aria-pressed")).toBe("true");
 
     const closeButton = container.querySelector<HTMLButtonElement>('button[aria-label="取消编辑"]');
     expect(closeButton).not.toBeNull();
     await act(async () => closeButton?.click());
-    expect(container.textContent).not.toContain("QA-DRAFT-NOT-SAVED");
     expect(container.textContent).toContain("语言能力日本語中文");
     expect(updateRequest).not.toHaveBeenCalled();
 
     await act(async () => editButton?.click());
+    expect(container.querySelector('[data-testid="technician-profile-language-ability"] button[aria-pressed="true"]')?.textContent).toBe("日本語");
+    await act(async () => Array.from(container.querySelectorAll<HTMLButtonElement>('[data-testid="technician-profile-language-ability"] button'))
+      .find((button) => button.textContent === "English")?.click());
     const saveButton = container.querySelector<HTMLButtonElement>('[data-testid="technician-profile-save-action"]');
     expect(saveButton?.textContent).toContain("保存并退出编辑模式");
     const saveBar = saveButton?.closest<HTMLElement>(".client-bottom-action-shell");
@@ -431,7 +439,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
       gender: "female",
       age: 29,
       heightCm: 168,
-      languages: ["日本語", "中文"],
+      languages: ["日本語", "中文", "English"],
       visibility: "limited"
     });
     expect(container.querySelector('[data-testid="technician-profile-save-action"]')).toBeNull();
