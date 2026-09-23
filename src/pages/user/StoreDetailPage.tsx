@@ -222,9 +222,9 @@ type StoreMapDetailCopy = {
 
 const baseBookingDate = new Date(2026, 3, 22);
 const storeBookingCtaButtonClassName = "h-[52px] min-w-[176px] justify-center gap-2 px-7 text-center text-sm";
-const storeBottomActionRowClassName = "client-app-frame client-app-gutter flex items-center gap-3 pb-2";
-const storeBottomSecondaryButtonClassName = "h-[52px] shrink-0 gap-2 px-5 shadow-[0_12px_26px_rgba(0,0,0,0.20)] backdrop-blur-xl";
-const storeBottomPrimaryButtonClassName = "h-[52px] flex-1 gap-2 px-5 text-sm shadow-[0_12px_30px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]";
+const storeBottomActionRowClassName = "client-app-frame client-app-gutter flex items-center gap-2 pb-2 sm:gap-3";
+const storeBottomSecondaryButtonClassName = "h-[52px] min-w-0 flex-1 gap-1.5 px-2 text-center text-xs leading-tight shadow-[0_12px_26px_rgba(0,0,0,0.20)] backdrop-blur-xl sm:flex-none sm:gap-2 sm:px-5 sm:text-sm";
+const storeBottomPrimaryButtonClassName = "h-[52px] min-w-0 flex-1 gap-1.5 px-2 text-center text-xs leading-tight shadow-[0_12px_30px_color-mix(in_srgb,var(--client-primary)_20%,transparent)] sm:gap-2 sm:px-5 sm:text-sm";
 const merchantScheduleEditorHref = "/merchant/schedule?tab=planning";
 const storeDisplayEditorBottomBarStyle = { "--client-main-nav-action-offset": "0px" } as CSSProperties;
 const storeDisplayEditorBottomMaskStyle = {
@@ -3565,7 +3565,7 @@ export function StoreDetailExperience({
     hasBookableCheckoutTarget ? (
       <PrimaryButton className={className} to={bookingHref}>
         <AppIcon className="h-4 w-4" name="calendar" />
-        <span>{label}</span>
+        <span className="min-w-0 text-center leading-tight">{label}</span>
       </PrimaryButton>
     ) : (
       <div
@@ -3577,7 +3577,7 @@ export function StoreDetailExperience({
         role="button"
       >
         <AppIcon className="h-4 w-4" name="calendar" />
-        <span>{translateText(bookingActionStatusLabel, language)}</span>
+        <span className="min-w-0 text-center leading-tight">{translateText(bookingActionStatusLabel, language)}</span>
       </div>
     );
   const canForwardOfferToNeedo = session?.portal === "merchant" && session.linkedStoreId === store.id && !isMerchantEditable;
@@ -3946,7 +3946,7 @@ export function StoreDetailExperience({
   const presentationLocaleRail = isMerchantEditable && activeEditor && activeTab !== "moments" && activeTab !== "offers" ? (
     <aside
       aria-label="店铺展示语言"
-      className="fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom,0px)+8px)] z-[70] mx-auto flex w-fit max-w-[calc(100vw-16px)] items-center gap-1 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur sm:inset-x-auto sm:bottom-auto sm:right-2 sm:top-1/2 sm:mx-0 sm:-translate-y-1/2 sm:flex-col sm:gap-1.5"
+      className="relative z-[70] mx-auto my-3 flex w-fit max-w-full items-center gap-1 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur sm:fixed sm:right-2 sm:top-1/2 sm:my-0 sm:-translate-y-1/2 sm:flex-col sm:gap-1.5"
       data-testid="shop-presentation-locale-rail"
     >
       {shopPresentationLocales.map((locale) => (
@@ -3964,7 +3964,7 @@ export function StoreDetailExperience({
           title={locale.label}
           type="button"
         >
-          {locale.shortLabel}
+          <span data-no-i18n>{locale.shortLabel}</span>
         </button>
       ))}
       <div className="mx-0.5 h-6 w-px bg-[color:var(--client-line)] sm:my-0.5 sm:h-px sm:w-6" />
@@ -4214,6 +4214,7 @@ export function StoreDetailExperience({
 
   const tabSwitcher = (
     <FeatureSegmentedTabs
+      className={embedded ? undefined : "min-w-[480px] sm:min-w-0"}
       items={tabs}
       onChange={changeStoreTab}
       value={activeTab}
@@ -4941,7 +4942,7 @@ export function StoreDetailExperience({
     const hasMerchantControls = Boolean(pricingControl || privacyControl);
 
     return (
-      <div className={cn("space-y-4 pb-6", presentationLocaleRail && "pb-20 sm:pb-6")}>
+      <div className="space-y-4 pb-6">
         <section className="relative z-50 space-y-3 overflow-visible">
           {activeTab !== "moments" && activeTab !== "offers"
             ? renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")
@@ -4964,8 +4965,8 @@ export function StoreDetailExperience({
           <div className="min-w-0">{tabSwitcher}</div>
           {renderActiveInlineEditor("basic-card")}
         </section>
-        <div className="relative z-0">{content}</div>
         {presentationLocaleRail}
+        <div className="relative z-0">{content}</div>
         {lightbox}
         {fullscreenEditor}
         {storeImageEditor}
@@ -5024,7 +5025,7 @@ export function StoreDetailExperience({
                 />
               </div>
             </div>
-            <div className="mt-2">{tabSwitcher}</div>
+            <div className="mt-2 overflow-x-auto">{tabSwitcher}</div>
           </div>
         </div>
       </FloatingHomeHeader>
@@ -5034,8 +5035,8 @@ export function StoreDetailExperience({
           {translateText(notice, language)}
         </section>
       ) : null}
-      <div className="space-y-3">{content}</div>
       {presentationLocaleRail}
+      <div className="space-y-3">{content}</div>
 
       <div
         aria-hidden="true"
@@ -5045,7 +5046,7 @@ export function StoreDetailExperience({
         <div className={storeBottomActionRowClassName}>
           <SecondaryButton className={storeBottomSecondaryButtonClassName} to="/messages">
             <AppIcon className="h-4 w-4" name="chat" />
-            <span>聊天咨询</span>
+            <span className="min-w-0 text-center leading-tight">聊天咨询</span>
           </SecondaryButton>
           {renderBookingAction(storeBottomPrimaryButtonClassName, bookingCtaCopy(store.openStatus))}
         </div>

@@ -57,6 +57,7 @@ describe("UnifiedServiceInfoCard", () => {
     }, -1);
     expect(text).not.toMatch(/利用次数|距离你|收藏|分享/u);
     expect(markup).toContain('data-app-icon="completed"');
+    expect(markup).toContain('class="sm:hidden" aria-hidden="true">✓</span>');
     expect(markup).not.toContain('data-app-icon="moments"');
   });
 
@@ -66,6 +67,15 @@ describe("UnifiedServiceInfoCard", () => {
     })));
     expect(markup).toContain('data-testid="unified-card-detail-arrow"');
     expect(markup).toContain('data-icon="chevron-right"');
+  });
+
+  it("keeps the unavailable state readable on narrow cards and in accessibility labels", () => {
+    const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, {
+      data: { ...formalService, isBookable: false }, language: "en"
+    })));
+    expect(markup).toContain('aria-label="Not bookable"');
+    expect(markup).toContain('class="sm:hidden" aria-hidden="true">×</span>');
+    expect(markup).toContain('class="sr-only sm:hidden">Not bookable</span>');
   });
 
   it("restores the duration and price overlays on the service image", () => {
