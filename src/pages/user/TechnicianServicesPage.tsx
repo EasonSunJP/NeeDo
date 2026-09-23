@@ -5,7 +5,7 @@ import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActio
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { coreReadApi } from "../../features/core-read/api";
+import { coreReadApi, coreReadIdFromRoute, coreReadShopIdFromRoute } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type TechnicianServicePayload } from "../../features/pricing-mode/api";
 import { socialPaths } from "../../features/social/paths";
@@ -14,13 +14,6 @@ import { cn } from "../../lib/utils";
 import { mapTechnicianServiceToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
 import { useEntityStore } from "../../state/entityStore";
 import { buildTechnicianServiceCheckoutRoute, getTechnicianServiceDetailPath } from "./formal-checkout/checkoutServiceRoute";
-
-function routeEntityIdToApiId(value: string | undefined) {
-  if (!value) return null;
-  if (/^[1-9]\d*$/.test(value)) return Number(value);
-  const suffix = value.match(/(\d+)$/)?.[1];
-  return suffix ? Number(suffix) : null;
-}
 
 const supplementaryServicePattern = /(?:^|[\s|｜:：])(施術)?延長(?:[\s|｜:：]|$)|(?:^|[\s|｜:：])(オプション|追加|附加|加钟|加鐘|add[ -]?on|extension)(?:[\s|｜:：]|$)/iu;
 
@@ -75,8 +68,9 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const apiShopId = routeEntityIdToApiId(shopId);
-  const apiTechnicianId = routeEntityIdToApiId(technicianId);
+  const apiShopId = coreReadShopIdFromRoute(shopId);
+  const apiTechnicianId = coreReadIdFromRoute(technicianId)
+    ?? (technicianId && /^s\d{10}$/.test(technicianId) ? technicianId : null);
   const { stores, technicians } = useEntityStore();
   const store = stores.find((item) => item.id === shopId) ?? stores[0];
   const technician = technicians.find((item) => item.id === technicianId) ?? technicians[0];
@@ -95,15 +89,23 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
     let mounted = true;
     setLoading(true);
     setFailed(false);
-    pricingModeApi
-      .listPublicTechnicianServices(apiShopId, apiTechnicianId, { page: 1, pageSize: 20 })
-      .then((result) => {
-        if (!mounted) return;
+    setServices([]);
+    setSelectedServiceIds([]);
+    const loadServices = async () => {
+      const [shopApiId, technicianApiId] = await Promise.all([
+        typeof apiShopId === "number" ? apiShopId : coreReadApi.getShopDetail(apiShopId).then((shop) => shop.id),
+        typeof apiTechnicianId === "number" ? apiTechnicianId : coreReadApi.getTechnicianDetail(apiTechnicianId).then((technician) => technician.id)
+      ]);
+      if (!mounted) return;
+      const result = await pricingModeApi.listPublicTechnicianServices(shopApiId, technicianApiId, { page: 1, pageSize: 20 });
+      if (mounted) {
         setServices(result.list);
         const primaryService = findPrimaryTechnicianService(result.list);
         if (primaryService) setSelectedServiceIds([primaryService.id]);
         else setSelectedServiceIds([]);
-      })
+      }
+    };
+    void loadServices()
       .catch(() => {
         if (mounted) setFailed(true);
       })
