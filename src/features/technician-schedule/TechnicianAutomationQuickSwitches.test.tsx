@@ -36,7 +36,7 @@ const rules: TechnicianAutomationRules = {
   customerType: "all",
   partyTypes: ["single"],
   serviceModes: ["store", "home"],
-  paymentMethods: ["onsite", "card", "ndp", "bank_transfer", "other"],
+  paymentMethods: ["onsite", "card", "ndp", "other"],
   serviceIds: [],
   minimumPrepaymentPercent: 0,
   onlyOnline: false,

@@ -876,7 +876,7 @@ describe("formal technician order detail route", () => {
     expect(container.textContent).toContain("Aroma 60");
     expect(container.textContent).toContain("正式店铺");
     expect(container.textContent).toContain("10:00–11:00");
-    expect(container.textContent).toContain("现场支付");
+    expect(container.textContent).toContain("现金支付");
     expect(container.textContent).toContain("请准备无香精用品");
     expect(container.textContent).toContain("预约待确认");
     expect(container.textContent).toContain("预约已确认");

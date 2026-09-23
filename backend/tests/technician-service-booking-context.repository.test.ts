@@ -19,6 +19,7 @@ const record = () => ({
   sourceShopService: { serviceMode: "store" },
   category: { name: "着付け" },
   shop: {
+    id: 11,
     name: "青山ケア",
     address: "港区青山1-1",
     status: "published",
@@ -140,6 +141,7 @@ describe("TechnicianServiceBookingContextRepository", () => {
       },
       shopCard: {
         type: "shop",
+        id: 11,
         publicId: "shop0000000011",
         name: "青山ケア",
         coverUrl: "https://cdn.example.test/shop-cover.jpg",

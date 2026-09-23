@@ -232,6 +232,7 @@ export type UpdateConversationTagsOptions = {
 
 export type Conversation = {
   id: string;
+  businessContextType?: string | null;
   type: ImConversationType;
   title: string;
   avatar: string;

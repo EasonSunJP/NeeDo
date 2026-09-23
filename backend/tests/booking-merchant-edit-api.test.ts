@@ -89,7 +89,7 @@ describe("merchant order edit API state boundary", () => {
 
     await request(app)
       .patch("/api/v1/orders/24418/merchant-edit")
-      .send({ priceAmountJpy: 13_000, paymentMethod: "bank_transfer", note: "late edit" })
+      .send({ priceAmountJpy: 13_000, paymentMethod: "onsite", note: "late edit" })
       .expect(409, {
         code: ERROR_CODES.ORDER_INVALID_TRANSITION,
         message: "error.order.invalid_transition",

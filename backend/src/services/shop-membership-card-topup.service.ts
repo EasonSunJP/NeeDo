@@ -112,7 +112,6 @@ const validPaymentMethods = new Set<ShopMembershipCardTopUpPaymentMethodPayload>
   "cash",
   "card",
   "paypay",
-  "bank_transfer",
   "other"
 ]);
 

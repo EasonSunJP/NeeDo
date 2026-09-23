@@ -85,7 +85,7 @@ function formatOrderPaymentSummary(order: Order) {
   if (order.paymentChannel === "bank_transfer") return "银行转账";
   if (order.paymentChannel === "cash") return "现金";
   if (order.paymentChannel === "other") return order.otherPaymentMethodLabel ?? "其他方式";
-  if (order.paymentChannel === "onsite") return "现场支付";
+  if (order.paymentChannel === "onsite") return "现金支付";
   return null;
 }
 

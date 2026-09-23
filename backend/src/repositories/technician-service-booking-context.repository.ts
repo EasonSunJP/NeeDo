@@ -209,6 +209,7 @@ export class TechnicianServiceBookingContextRepository {
       },
       shopCard: {
         type: "shop",
+        id: record.shop.id,
         publicId: shopPublicId,
         name: record.shop.name,
         coverUrl: this.mediaUrlByUsage(record.shop.mediaAssets, "cover"),

@@ -134,7 +134,8 @@ async function convertFixture(client: any, fixture: ExchangeBookingFixture): Pro
 
 const noSettlement: ExchangeCancellationSettlementOptions = {
   capturePublicationFee: async () => undefined,
-  releaseBookingHold: async () => undefined
+  releaseBookingHold: async () => undefined,
+  releaseServicePrepayment: async () => undefined
 };
 
 type FinanceClient = PrismaClient | Prisma.TransactionClient;
@@ -360,7 +361,8 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
                   },
                   releaseBookingHold: async () => {
                     throw new Error("pending order has no booking hold");
-                  }
+                  },
+                  releaseServicePrepayment: async () => undefined
                 }
               );
             },
@@ -485,7 +487,8 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
             { ...input, orderType: "request" },
             { transactionClient: input.transactionClient }
           );
-        }
+        },
+        releaseServicePrepayment: async () => undefined
       };
       await repository.command(
         cancellationInput(fixture, customer, orderId!, "request", 0, "race-request"),
@@ -654,7 +657,8 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
               );
               throw settlementFailure;
             },
-            releaseBookingHold: async () => undefined
+            releaseBookingHold: async () => undefined,
+            releaseServicePrepayment: async () => undefined
           }
         )
       ).rejects.toBe(settlementFailure);
@@ -730,7 +734,8 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
             },
             releaseBookingHold: async () => {
               throw new Error("pending Request order must not release a booking hold");
-            }
+            },
+            releaseServicePrepayment: async () => undefined
           };
           const financeSnapshot = async () => ({
             conservation: await financeEvidence(transaction, fixture),
@@ -936,7 +941,8 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
                 { ...input, orderType: "request" },
                 { transactionClient: input.transactionClient }
               );
-            }
+            },
+            releaseServicePrepayment: async () => undefined
           };
           const repository = new ExchangeCancellationRepository(transaction, () => fixture.now);
           await repository.command(

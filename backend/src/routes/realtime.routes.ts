@@ -48,6 +48,8 @@ import {
   socialPostUpdateBodySchema,
   socialActivityStatusQuerySchema,
   socialUserIdParamSchema,
+  shopBookingContactBodySchema,
+  shopBookingContactParamSchema,
   technicianBusinessConversationParamSchema
 } from "../validators/realtime.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
@@ -129,6 +131,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.createConversation),
     validateRequest({ params: technicianBusinessConversationParamSchema }),
     controller.ensureTechnicianBusinessConversation
+  );
+  router.post(
+    "/im/business-conversations/shops/:shopId",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.createConversation),
+    validateRequest({ params: shopBookingContactParamSchema, body: shopBookingContactBodySchema }),
+    controller.ensureShopBookingContactConversation
   );
   router.get(
     "/im/conversations/:conversationId/messages",

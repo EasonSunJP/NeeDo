@@ -85,11 +85,11 @@ function fillValidIntelligenceDraft() {
   const values = {
     title: "今晚 22 点后可预约",
     detail: "支持平台内确认后到店或预约。",
-    serviceStartDate: "2026-08-30",
+    serviceStartDate: "2027-08-30",
     serviceStartTime: "22:00",
-    serviceEndDate: "2026-08-31",
+    serviceEndDate: "2027-08-31",
     serviceEndTime: "01:00",
-    expiresDate: "2026-08-31",
+    expiresDate: "2027-08-31",
     expiresTime: "01:01"
   };
   Object.entries(values).forEach(([name, value]) => {

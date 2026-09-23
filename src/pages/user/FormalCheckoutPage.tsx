@@ -88,6 +88,7 @@ type CheckoutServiceContext = {
   serviceDetailPath: string;
   serviceMode: string;
   shop: {
+    id: number | null;
     name: string;
     city: string;
     address: string;
@@ -259,6 +260,7 @@ function technicianBookingContextToCheckoutService(
     serviceDetailPath: bookingContext.serviceCard.detailPath,
     serviceMode: bookingContext.serviceCard.serviceMode,
     shop: {
+      id: bookingContext.shopCard.id,
       name: bookingContext.shopCard.name,
       city: "",
       address: bookingContext.shopCard.address,
@@ -310,6 +312,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
   const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>("store");
   const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>("onsite");
+  const [paymentUnavailable, setPaymentUnavailable] = useState(false);
   const [homeAddress, setHomeAddress] = useState<JapaneseRouteAddress>(emptyHomeAddress);
   const [estimate, setEstimate] = useState<RouteEstimate | null>(null);
   const [estimateStatus, setEstimateStatus] = useState<EstimateStatus>("idle");
@@ -413,6 +416,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
             serviceDetailPath: `/services/${serviceDetail.id}`,
             serviceMode: serviceDetail.serviceMode,
             shop: {
+              id: serviceDetail.shop.id,
               name: serviceDetail.shop.name,
               city: serviceDetail.shop.city,
               address: serviceDetail.shop.address,
@@ -469,6 +473,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               serviceDetailPath: `/stores/${shop.publicId}/technicians/${technician.publicId}/services`,
               serviceMode: "store",
               shop: {
+                id: shop.id,
                 name: shop.name,
                 city: shop.city,
                 address: shop.address,
@@ -755,16 +760,16 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
 
   const openContactConversation = async () => {
     if (!service) return;
-    if (!contactTechnicianPublicId) {
-      navigate(service.shop.contactPath);
-      return;
-    }
     setContactingTechnician(true);
     setContactError(false);
     try {
-      const conversation = await realtimeApi.ensureTechnicianBusinessConversation(
-        contactTechnicianPublicId
-      );
+      const shopId = selectedSlot?.shopId ?? service.shop.id;
+      const conversation = shopId
+        ? await realtimeApi.ensureShopBookingContactConversation(shopId, selectedTechnicianProfileId)
+        : contactTechnicianPublicId
+          ? await realtimeApi.ensureTechnicianBusinessConversation(contactTechnicianPublicId)
+          : null;
+      if (!conversation) throw new Error("contact_unavailable");
       navigate(`/messages/${conversation.conversationId}`);
     } catch {
       setContactError(true);
@@ -1516,24 +1521,21 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                   {fulfillmentMode === "home" ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("serviceAndTravelFee")}</span> : null}
                 </div>
                 <div className="flex max-w-[54vw] flex-wrap justify-end gap-2">
-                  {(["onsite", "bank_transfer"] as const).map((method) => (
-                    <button
-                      aria-pressed={paymentMethod === method}
-                      className={cn(
-                        "rounded-full border px-2.5 py-1 text-[10px] font-black backdrop-blur",
-                        paymentMethod === method
-                          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
-                          : "border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-[color:var(--client-text)]"
-                      )}
-                      key={method}
-                      onClick={() => setPaymentMethod(method)}
-                      type="button"
-                    >
-                      <span data-no-i18n>{method === "onsite" ? t("payOnArrival") : t("bankTransfer")}</span>
-                    </button>
-                  ))}
+                  <button
+                    aria-pressed={paymentMethod === "onsite"}
+                    className="rounded-full border border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-primary)]"
+                    onClick={() => { setPaymentMethod("onsite"); setPaymentUnavailable(false); }}
+                    type="button"
+                  ><span data-no-i18n>{t("payOnArrival")}</span></button>
                 </div>
               </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                {(["PayPay", "PayPal"] as const).map((label) => (
+                  <button aria-disabled="true" className="rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-muted)] opacity-60" key={label} onClick={() => setPaymentUnavailable(true)} type="button">{label}</button>
+                ))}
+                <button aria-disabled="true" className="rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-muted)] opacity-60" onClick={() => setPaymentUnavailable(true)} type="button"><span data-no-i18n>{t("onlinePayment")}</span></button>
+              </div>
+              {paymentUnavailable ? <p className="text-right text-xs font-bold text-[color:var(--client-muted)]" data-no-i18n role="status">{t("paymentUnavailable")}</p> : null}
               {contactError ? <p className="text-xs font-bold text-red-500" data-no-i18n role="alert">{t("contactChatFailed")}</p> : null}
               <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2.5">
                 <SecondaryButton className={cn("w-full", contactingTechnician && "pointer-events-none opacity-50")} onClick={() => contactingTechnician ? undefined : void openContactConversation()}><span data-no-i18n>{t("contact")}</span></SecondaryButton>

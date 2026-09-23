@@ -376,12 +376,22 @@ export const backofficeShopCreateBodySchema = z
   .strict()
   .superRefine(requireCompleteVerifiedServiceLocation);
 
+const bookingContactSettingSchema = z.object({
+  target: z.enum(["owner", "employee", "selected_technician"]),
+  employeeNeedoId: z.string().regex(/^u[0-9]{10}$/u).nullable()
+}).strict().superRefine((value, context) => {
+  if ((value.target === "employee") !== (value.employeeNeedoId !== null)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["employeeNeedoId"], message: "Employee identifier must match target" });
+  }
+});
+
 const merchantShopUpdateFields = {
   name: z.string().trim().min(1).max(160).optional(),
   description: z.string().trim().max(5000).nullable().optional(),
   city: z.string().trim().min(1).max(100).optional(),
   address: z.string().trim().min(1).max(255).optional(),
   phone: z.string().trim().min(5).max(32).nullable().optional(),
+  bookingContact: bookingContactSettingSchema.optional(),
   avatarDataUrl: z
     .string()
     .regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/)

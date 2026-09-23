@@ -21,7 +21,6 @@ const paymentMethods = new Set<ShopMembershipCardTopUpPaymentMethod>([
   "cash",
   "card",
   "paypay",
-  "bank_transfer",
   "other"
 ]);
 

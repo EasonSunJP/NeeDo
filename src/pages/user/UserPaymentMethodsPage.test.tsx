@@ -98,8 +98,13 @@ describe("UserPaymentMethodsPage", () => {
       const row = host.querySelector(`[data-testid="payment-method-${code}"]`);
       expect(row?.textContent).toContain("未接入");
       expect(row?.getAttribute("aria-disabled")).toBe("true");
-      expect(row?.querySelector("button, a")).toBeNull();
+      expect(row?.getAttribute("role")).toBe("button");
     }
+    expect(host.querySelector('[data-testid="payment-method-card"]')?.textContent).toContain("在线支付（Stripe）");
+    await act(async () => {
+      (host.querySelector('[data-testid="payment-method-paypay"]') as HTMLElement).click();
+    });
+    expect(host.querySelector('[role="status"]')?.textContent).toBe("目前此支付方式暂不可用");
     expect(host.textContent).not.toContain("未绑定");
   });
 

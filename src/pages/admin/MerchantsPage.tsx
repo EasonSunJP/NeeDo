@@ -14,6 +14,7 @@ import { MerchantAccountDetailDrawer } from "../../components/admin/MerchantAcco
 import { MerchantAccountCollection } from "../../components/admin/MerchantAccountCollection";
 import { MerchantBillingEditorDialog } from "../../components/admin/MerchantBillingEditorDialog";
 import { MerchantSuspensionDialog } from "../../components/admin/MerchantSuspensionDialog";
+import { BookingContactSettingEditor } from "../../components/merchant-admin/BookingContactSettingEditor";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -416,6 +417,7 @@ export function MerchantsPage({ embeddedDetail }: {
           {(["name", "city", "address"] as const).map((field) => <label className="block" key={field}><span className="mb-2 block text-sm font-black">{field}</span><input className={inputClassName} onChange={(event) => setShopDraft((current) => ({ ...current, [field]: event.target.value }))} value={shopDraft[field]} /></label>)}
           <label className="block"><span className="mb-2 block text-sm font-black">电话</span><input className={inputClassName} onChange={(event) => setShopDraft((current) => ({ ...current, phone: event.target.value }))} value={shopDraft.phone} /></label>
           <label className="block"><span className="mb-2 block text-sm font-black">简介</span><textarea className={inputClassName} onChange={(event) => setShopDraft((current) => ({ ...current, description: event.target.value }))} value={shopDraft.description} /></label>
+          <BookingContactSettingEditor mode="backoffice" onSaved={setSelectedShop} shop={selectedShop} />
           <div className="flex flex-wrap gap-2"><Button disabled={saving} onClick={saveShop}>保存资料</Button>{selectedShop.status !== "published" ? <Button disabled={saving} onClick={() => void mutate(async () => setSelectedShop(await backofficeRealDataApi.approveShop(selectedShop.id)))} variant="secondary">审核通过</Button> : null}<Button disabled={saving} onClick={() => void mutate(async () => { await backofficeRealDataApi.deleteShop(selectedShop.id); setSelectedShop(null); })} variant="danger">软删除</Button></div>
         </div> : null}
       </Drawer>

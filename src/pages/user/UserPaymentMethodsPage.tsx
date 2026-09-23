@@ -16,11 +16,13 @@ function PaymentMethodRow({
   code,
   description,
   label,
+  onUnavailableClick,
   status,
 }: {
   code: "card" | "cash" | "ndp" | "paypal" | "paypay";
   description: string;
   label: string;
+  onUnavailableClick?: () => void;
   status: PaymentMethodStatus;
 }) {
   const { language } = useI18n();
@@ -31,6 +33,10 @@ function PaymentMethodRow({
       aria-disabled={status === "available" ? undefined : true}
       className="flex min-h-[78px] items-center gap-3 px-4 py-3.5"
       data-testid={`payment-method-${code}`}
+      onClick={status === "unintegrated" ? onUnavailableClick : undefined}
+      onKeyDown={status === "unintegrated" ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onUnavailableClick?.(); } } : undefined}
+      role={status === "unintegrated" ? "button" : undefined}
+      tabIndex={status === "unintegrated" ? 0 : undefined}
     >
       <span
         aria-hidden="true"
@@ -66,6 +72,7 @@ export function UserPaymentMethodsPage() {
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [walletStatus, setWalletStatus] = useState<"error" | "loading" | "ready">("loading");
   const [walletRevision, setWalletRevision] = useState(0);
+  const [unavailableNotice, setUnavailableNotice] = useState(false);
   const t = (key: Parameters<typeof paymentMethodsText>[0]) => paymentMethodsText(key, language);
 
   useEffect(() => {
@@ -143,21 +150,26 @@ export function UserPaymentMethodsPage() {
           code="card"
           description={t("cardUnavailable")}
           label={t("card")}
+          onUnavailableClick={() => setUnavailableNotice(true)}
           status="unintegrated"
         />
         <PaymentMethodRow
           code="paypay"
           description={t("paypayUnavailable")}
           label="PayPay"
+          onUnavailableClick={() => setUnavailableNotice(true)}
           status="unintegrated"
         />
         <PaymentMethodRow
           code="paypal"
           description={t("paypalUnavailable")}
           label="PayPal"
+          onUnavailableClick={() => setUnavailableNotice(true)}
           status="unintegrated"
         />
       </SettingsSection>
+
+      {unavailableNotice ? <p className="rounded-[18px] bg-[color:var(--client-surface)] px-4 py-3 text-sm font-bold text-[color:var(--client-muted)]" role="status">{t("paymentUnavailable")}</p> : null}
 
       {loadFailed ? (
         <section

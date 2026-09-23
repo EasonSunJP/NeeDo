@@ -186,7 +186,7 @@ const bookingBaseSchema = z.object({
   scheduleSlotId: scheduleSlotSelectorSchema,
   scheduleSlotIds: z.array(scheduleSlotSelectorSchema).min(2).max(10).optional(),
   orderType: z.enum(["booking", "request"]).optional(),
-  paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
+  paymentMethod: z.literal("onsite").default("onsite"),
   note: z.string().trim().max(500).optional(),
   affiliateCode: z.string().trim().min(1).max(40).optional(),
   affiliatePublicToken: z.string().trim().min(1).max(512).optional()
@@ -278,7 +278,7 @@ export const bookingGroupCreateBodySchema = z.object({
     label: visibleTextSchema(60),
     assignments: z.array(groupAssignmentSchema).min(1).max(10)
   }).strict()).min(1).max(10),
-  paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
+  paymentMethod: z.literal("onsite").default("onsite"),
   note: z.string().trim().max(500).optional()
 }).strict().superRefine((value, context) => {
   const assignments = value.guests.flatMap((guest) => guest.assignments);
@@ -316,7 +316,7 @@ export const technicianManualBookingBodySchema = z.object({
   technicianServiceId: z.coerce.number().int().positive().optional(),
   startsAt: isoDateSchema,
   endsAt: isoDateSchema,
-  paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
+  paymentMethod: z.literal("onsite").default("onsite"),
   note: z.string().trim().max(500).optional()
 }).strict().refine((value) => Boolean(value.serviceId) !== Boolean(value.technicianServiceId), {
   message: "Exactly one of serviceId or technicianServiceId is required",
@@ -350,7 +350,7 @@ export const orderAssignTechnicianBodySchema = z.object({
 
 export const merchantOrderEditBodySchema = z.object({
   priceAmountJpy: z.coerce.number().int().nonnegative().optional(),
-  paymentMethod: z.enum(["onsite", "bank_transfer"]).optional(),
+  paymentMethod: z.literal("onsite").optional(),
   note: z.string().trim().max(500).nullable().optional()
 }).strict().refine((value) => Object.keys(value).length > 0, { message: "At least one field is required" });
 
@@ -559,7 +559,7 @@ export const orderCancelBodySchema = z.object({
 });
 
 export const manualPaymentConfirmBodySchema = z.object({
-  method: z.enum(["onsite", "bank_transfer"]),
+  method: z.literal("onsite"),
   amountJpy: z.coerce.number().int().positive().max(100_000_000),
   reference: z.string().trim().min(1).max(120).nullable().optional(),
   note: z.string().trim().min(1).max(500).nullable().optional()

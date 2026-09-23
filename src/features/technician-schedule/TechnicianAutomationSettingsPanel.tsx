@@ -34,7 +34,7 @@ export function defaultAutomationRules(kind: TechnicianAutomationKind): Technici
     customerType: "all",
     partyTypes: ["single"],
     serviceModes: ["store", "home"],
-    paymentMethods: ["onsite", "card", "ndp", "bank_transfer", "other"],
+    paymentMethods: ["onsite", "card", "ndp", "other"],
     serviceIds: [],
     minimumPrepaymentPercent: 0,
     onlyOnline: kind === "request",
@@ -335,7 +335,7 @@ export function TechnicianAutomationSettingsPanel({
         <div className="mt-3 space-y-4">
           <MultiChoice label="人数" options={[{ value: "single", label: "单人" }, { value: "multiple", label: "多人" }]} value={rules.partyTypes} onChange={(partyTypes) => updateRules({ partyTypes })} />
           <MultiChoice label="服务方式" options={[{ value: "store", label: "到店" }, { value: "home", label: "上门" }]} value={rules.serviceModes} onChange={(serviceModes) => updateRules({ serviceModes })} />
-          <MultiChoice label="支付方式" options={[{ value: "onsite", label: "现场" }, { value: "card", label: "银行卡" }, { value: "ndp", label: "NDP" }, { value: "bank_transfer", label: "转账" }, { value: "other", label: "其他" }]} value={rules.paymentMethods} onChange={(paymentMethods) => updateRules({ paymentMethods })} />
+          <MultiChoice label="支付方式" options={[{ value: "onsite", label: "现金" }, { value: "card", label: "银行卡" }, { value: "ndp", label: "NDP" }, { value: "other", label: "其他" }]} value={rules.paymentMethods} onChange={(paymentMethods) => updateRules({ paymentMethods })} />
           <fieldset><legend className="text-xs font-black text-[color:var(--client-muted)]">项目类型（不选表示全部）</legend><div className="mt-2 space-y-2">{services.length === 0 ? <p className="text-xs text-[color:var(--client-muted)]">当前没有可用的正式服务项目</p> : services.map((service) => <label className="flex items-center gap-2 rounded-xl border border-[color:var(--client-line)] p-3 text-sm font-bold" key={service.id}><input checked={rules.serviceIds.includes(service.id)} onChange={(event) => updateRules({ serviceIds: event.target.checked ? [...rules.serviceIds, service.id] : rules.serviceIds.filter((id) => id !== service.id) })} type="checkbox" />{service.name}<span className="ml-auto text-xs text-[color:var(--client-muted)]">¥{service.priceAmount.toLocaleString()}</span></label>)}</div></fieldset>
           <div className="space-y-3 border-t border-[color:var(--client-line)] pt-4" data-testid="automation-prepayment-rule">
             <Toggle

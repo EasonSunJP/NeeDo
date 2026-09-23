@@ -305,6 +305,24 @@ describe("formal IM persistent cache policy", () => {
     expect(listMessages).toHaveBeenCalledTimes(1);
     expect(store?.messagesByConversation["91"]).toEqual([expect.objectContaining({ id: "700" })]);
   });
+
+  it("retains temporary business chat text locally after the server history expires", async () => {
+    mocked.session = { activePublicId: "u0000000778", avatarUrl: null, id: 778, primaryPublicId: "u0000000778", username: "业务聊天测试用户" };
+    const listMessages = vi.fn()
+      .mockResolvedValueOnce({ messages: [message()], nextCursor: null, hasMore: false })
+      .mockResolvedValueOnce({ messages: [], nextCursor: null, hasMore: false });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100", config: {}, users: [], contacts: [], friendRequests: [],
+        conversations: [conversation({ businessContextType: "shop_booking_contact" })], members: []
+      }),
+      listMessages
+    };
+    await renderStore();
+    await act(async () => { await store?.loadMessages("91", { reset: true, force: true }); });
+    await act(async () => { await store?.loadMessages("91", { reset: true, force: true }); });
+    expect(store?.messagesByConversation["91"]).toEqual([expect.objectContaining({ id: "700" })]);
+  });
 });
 
 function deferred<T>() {

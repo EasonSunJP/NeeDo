@@ -99,6 +99,11 @@ export interface ExchangeCancellationSettlementOptions {
     actorUserId: number;
     transactionClient: LedgerTransactionClient;
   }): Promise<void>;
+  releaseServicePrepayment(input: {
+    bookingOrderId: number;
+    actorUserId: number;
+    transactionClient: LedgerTransactionClient;
+  }): Promise<void>;
 }
 
 export type ExchangeCancellationRepositoryResult =

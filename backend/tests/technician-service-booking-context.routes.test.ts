@@ -23,6 +23,7 @@ const context = {
   },
   shopCard: {
     type: "shop" as const,
+    id: 11,
     publicId: "shop0000000011",
     name: "青山ケア",
     coverUrl: null,

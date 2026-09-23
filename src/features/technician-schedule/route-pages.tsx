@@ -516,7 +516,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   const [contacts, setContacts] = useState<TechnicianAutomationContactPage["list"]>([]);
   const [selectedCustomerIdentityId, setSelectedCustomerIdentityId] = useState<number | null>(null);
   const [contactsLoading, setContactsLoading] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"onsite" | "bank_transfer">("onsite");
+  const paymentMethod = "onsite" as const;
   const [note, setNote] = useState("");
   const [startsAt, setStartsAt] = useState(defaultRange.startsAt);
   const [endsAt, setEndsAt] = useState(defaultRange.endsAt);
@@ -742,18 +742,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
                   ))}
                 </select>
               </label>
-              <label className="mt-4 block text-sm font-black">
-                支付方式
-                <select
-                  aria-label="支付方式"
-                  className={fieldClass}
-                  onChange={(event) => setPaymentMethod(event.target.value as "onsite" | "bank_transfer")}
-                  value={paymentMethod}
-                >
-                  <option value="onsite">现场支付</option>
-                  <option value="bank_transfer">银行转账</option>
-                </select>
-              </label>
+              <p className="mt-4 text-sm font-black">支付方式：现金支付</p>
               <label className="mt-4 block text-sm font-black">
                 备注
                 <textarea
@@ -851,7 +840,7 @@ function orderStatusLabel(status: BookingOrderStatus): string {
 }
 
 function orderPaymentLabel(order: BookingOrder): string {
-  const method = order.paymentMethod === "onsite" ? "现场支付" : order.paymentMethod === "bank_transfer" ? "银行转账" : order.paymentMethod === "cash" ? "现金" : order.paymentMethod === "ndp" ? "NDP" : "其他方式";
+  const method = order.paymentMethod === "onsite" ? "现金支付" : order.paymentMethod === "bank_transfer" ? "银行转账" : order.paymentMethod === "cash" ? "现金" : order.paymentMethod === "ndp" ? "NDP" : "其他方式";
   const status = order.paymentStatus === "confirmed"
     ? "已确认收款"
     : order.paymentStatus === "refundPending"

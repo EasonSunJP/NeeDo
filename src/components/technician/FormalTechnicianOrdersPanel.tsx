@@ -38,7 +38,7 @@ function orderStatusLabel(status: BookingOrderStatus) {
 }
 
 function paymentLabel(order: BookingOrder) {
-  const method = order.paymentMethod === "onsite" ? "现场支付" : order.paymentMethod === "bank_transfer" ? "银行转账" : order.paymentMethod === "cash" ? "现金" : order.paymentMethod === "ndp" ? "NDP" : "其他方式";
+  const method = order.paymentMethod === "onsite" ? "现金支付" : order.paymentMethod === "bank_transfer" ? "银行转账" : order.paymentMethod === "cash" ? "现金" : order.paymentMethod === "ndp" ? "NDP" : "其他方式";
   const status = order.paymentStatus === "confirmed"
     ? "已确认收款"
     : order.paymentStatus === "refundPending"

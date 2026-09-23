@@ -1446,6 +1446,7 @@ function toConversation(
 
   return {
     id: String(conversation.id),
+    businessContextType: conversation.businessContextType ?? null,
     type: isDirect ? "single" : "group",
     title,
     avatar: isDirect ? resolveAvatarUrl(otherParticipant?.avatarUrl) : "",

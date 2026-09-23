@@ -288,6 +288,7 @@ const technicianBookingContext: TechnicianServiceBookingContext = {
     detailPath: "/stores/shop0000000007/technicians/s0000000017/services"
   },
   shopCard: {
+    id: 11,
     type: "shop",
     publicId: "shop0000000007",
     name: "GINZA Calm Body Lab",
@@ -1234,7 +1235,7 @@ describe("formal checkout technician-card round trip", () => {
       "予約前に日時、住所、支払い方法をご確認ください。",
       "予約後の状況は予約詳細で確認できます。",
       "この予約の NDP 利用額と精算結果は、サービス完了後の正式な精算記録で確定します。",
-      "現地で支払う",
+      "現金払い",
       "この内容で予約"
     ]) {
       expect(text).toContain(expected);

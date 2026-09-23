@@ -1152,12 +1152,16 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
     const response = await api.listMessages(conversationId, options?.reset ? null : pagination?.nextCursor ?? null, options?.limit ?? 30);
     if ((historyGenerations.get(conversationId) ?? 0) !== generation) return;
+    const temporaryBusinessChat = snapshot.conversations.some((conversation) =>
+      conversation.id === conversationId &&
+      (conversation.businessContextType === "shop_booking_contact" || conversation.businessContextType === "booking_contact")
+    );
     const nextMessages = mergeConversationMessageHistory(
       snapshot.messagesByConversation[conversationId] ?? [],
       response.messages.filter(
         (message) => !isTracelessMessage(conversationId, message.id),
       ),
-      options?.reset ?? false,
+      (options?.reset ?? false) && !temporaryBusinessChat,
     );
 
     snapshot = {

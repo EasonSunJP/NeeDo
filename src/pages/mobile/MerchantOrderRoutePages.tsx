@@ -1139,7 +1139,7 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
   const technician = technicianProfile ? mapCoreTechnicianToTechnician(technicianProfile) : null;
   const assignedTechnician = order?.assignedTechnician ?? null;
   const totalAmount = checkout?.checkoutAmountJpy ?? (order ? Number(order.priceAmount) : null);
-  const paymentLabel = checkout?.paymentMethod === "other" ? checkout.otherMethod?.label ?? "其他方式" : checkout?.paymentMethod === "ndp" ? "NDP" : checkout?.paymentMethod === "cash" ? "现金" : order?.paymentMethod === "onsite" ? "到店支付" : order?.paymentMethod === "bank_transfer" ? "银行转账" : order?.paymentMethod === "ndp" ? "NDP" : order?.paymentMethod === "cash" ? "现金" : "未选择";
+  const paymentLabel = checkout?.paymentMethod === "other" ? checkout.otherMethod?.label ?? "其他方式" : checkout?.paymentMethod === "ndp" ? "NDP" : checkout?.paymentMethod === "cash" ? "现金" : order?.paymentMethod === "onsite" ? "现金支付" : order?.paymentMethod === "bank_transfer" ? "银行转账" : order?.paymentMethod === "ndp" ? "NDP" : order?.paymentMethod === "cash" ? "现金" : "未选择";
   const canForceCancel = Boolean(order && (order.status === "pending" || order.status === "confirmed") && exchangeOrderLinked === false);
   const handleExchangeCancellationChange = useCallback((payload: ExchangeCancellation) => {
     if (payload.orderStatus !== "cancelled") return;
@@ -1931,7 +1931,7 @@ function FormalMerchantOrderChangeContent({ orderId }: { orderId: number }) {
   const navigate = useNavigate();
   const [order, setOrder] = useState<BookingOrder | null>(null);
   const [amount, setAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"onsite" | "bank_transfer">("onsite");
+  const paymentMethod = "onsite" as const;
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -1943,7 +1943,6 @@ function FormalMerchantOrderChangeContent({ orderId }: { orderId: number }) {
       if (!active) return;
       setOrder(value);
       setAmount(String(value.paymentAmountJpy));
-      setPaymentMethod(value.paymentMethod === "bank_transfer" ? "bank_transfer" : "onsite");
       setNote(value.note ?? "");
     }).catch(() => { if (active) setError("正式订单读取失败，请重试。"); });
     return () => { active = false; };
@@ -1982,7 +1981,7 @@ function FormalMerchantOrderChangeContent({ orderId }: { orderId: number }) {
           </p>
         ) : null}
         <label className="block text-sm font-black">金额<input className={orderChangeInputClassName} disabled={!editable} inputMode="numeric" onChange={(event) => setAmount(event.target.value.replace(/\D/gu, ""))} value={amount} /></label>
-        <label className="block text-sm font-black">支付手段<select className={orderChangeInputClassName} disabled={!editable} onChange={(event) => setPaymentMethod(event.target.value as "onsite" | "bank_transfer")} value={paymentMethod}><option value="onsite">现场支付</option><option value="bank_transfer">银行转账</option></select></label>
+        <label className="block text-sm font-black">支付手段<input className={orderChangeInputClassName} disabled readOnly value="现金支付" /></label>
         <label className="block text-sm font-black">备注<textarea className={`${orderChangeInputClassName} min-h-32 py-3`} disabled={!editable} maxLength={500} onChange={(event) => setNote(event.target.value)} value={note} /></label>
       </section>
       {error ? <p className="rounded-2xl bg-red-500/10 p-4 text-sm font-black text-red-500" role="alert">{error}</p> : null}

@@ -32,6 +32,11 @@ export const technicianBusinessConversationParamSchema = z.object({
   technicianPublicId: z.string().regex(/^s[0-9]{10}$/u)
 });
 
+export const shopBookingContactParamSchema = z.object({ shopId: safePositiveIntegerSchema });
+export const shopBookingContactBodySchema = z.object({
+  nominatedTechnicianProfileId: safePositiveIntegerSchema.nullable().optional()
+}).strict();
+
 export const messageReactionParamSchema = conversationIdParamSchema.extend({
   messageId: z.coerce.number().int().positive()
 });

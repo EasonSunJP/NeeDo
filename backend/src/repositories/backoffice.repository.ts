@@ -1725,12 +1725,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           });
         }
       }
-      const shopFields = { ...input };
+      const { bookingContact, ...shopFields } = input;
       delete shopFields.serviceCountryCode;
       delete shopFields.serviceAdmin1Code;
       delete shopFields.serviceAdmin2Code;
-      if (Object.keys(shopFields).length > 0) {
-        await transaction.shop.update({ where: { id }, data: shopFields });
+      const bookingContactFields = bookingContact
+        ? await this.resolveBookingContactFields(transaction, id, bookingContact)
+        : {};
+      if (Object.keys(shopFields).length > 0 || bookingContact) {
+        await transaction.shop.update({ where: { id }, data: { ...shopFields, ...bookingContactFields } });
       }
       if (verifiedScope && mutation?.verifiedById && publicShopNo) {
         await this.upsertShopServiceLocation(transaction, id, verifiedScope, mutation.verifiedById);
@@ -1763,10 +1766,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       });
       if (!existing) return null;
 
-      if (Object.keys(input.fields).length > 0) {
+      const { bookingContact, ...shopFields } = input.fields;
+      const bookingContactFields = bookingContact
+        ? await this.resolveBookingContactFields(transaction, input.shopId, bookingContact)
+        : {};
+      if (Object.keys(shopFields).length > 0 || bookingContact) {
         await transaction.shop.update({
           where: { id: input.shopId },
-          data: input.fields
+          data: { ...shopFields, ...bookingContactFields }
         });
       }
       if (input.avatar) {
@@ -3761,12 +3768,48 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     };
   }
 
+  private async resolveBookingContactFields(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    setting: NonNullable<BackofficeShopUpdateBody["bookingContact"]>
+  ) {
+    if (setting.target === "employee") {
+      const now = new Date();
+      const employee = await transaction.shopEmployee.findFirst({
+        where: {
+          shopId,
+          status: "ACTIVE",
+          deletedAt: null,
+          startsAt: { lte: now },
+          OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+          user: { needoId: setting.employeeNeedoId!, isActive: true, deletedAt: null }
+        },
+        select: { id: true }
+      });
+      if (!employee) {
+        throw new AppError({
+          code: ERROR_CODES.VALIDATION,
+          message: "error.shop.booking_contact_employee_unavailable",
+          statusCode: 400
+        });
+      }
+    }
+    return {
+      bookingContactTarget: setting.target,
+      bookingContactEmployeeNeedoId: setting.employeeNeedoId
+    };
+  }
+
   private mapShop(shop: ShopRecord): BackofficeShopPayload {
     return {
       id: shop.id,
       shopNo: shop.shopNo,
       ownerUserId: shop.ownerUserId,
       ownerEmail: shop.owner?.email ?? null,
+      bookingContact: {
+        target: shop.bookingContactTarget === "employee" || shop.bookingContactTarget === "selected_technician" ? shop.bookingContactTarget : "owner",
+        employeeNeedoId: shop.bookingContactEmployeeNeedoId
+      },
       avatarUrl: shop.mediaAssets?.[0]?.url ?? shop.owner?.avatarBootstrapUrl ?? null,
       name: shop.name,
       description: shop.description,

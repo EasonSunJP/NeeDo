@@ -439,7 +439,7 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
     });
     const amountLabel = [...container.querySelectorAll("p")].find((item) => item.textContent === "金额");
     expect(amountLabel?.nextElementSibling?.textContent).toBe("￥14,500");
-    expect(container.textContent).toContain("到店支付");
+    expect(container.textContent).toContain("现金支付");
     expect(container.textContent).not.toContain("其他方式");
   });
 
@@ -575,7 +575,8 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
       await Promise.resolve();
     });
 
-    expect(Array.from(container.querySelectorAll("input, select, textarea")).every((field) => !field.hasAttribute("disabled"))).toBe(true);
+    expect(Array.from(container.querySelectorAll("input, textarea")).filter((field) => !field.hasAttribute("readonly")).every((field) => !field.hasAttribute("disabled"))).toBe(true);
+    expect(Array.from(container.querySelectorAll("input")).find((field) => field.value === "现金支付")?.readOnly).toBe(true);
     const saveButton = Array.from(container.querySelectorAll("button")).find((item) => item.textContent === "保存变更");
     expect(saveButton?.disabled).toBe(false);
     await act(async () => saveButton?.click());

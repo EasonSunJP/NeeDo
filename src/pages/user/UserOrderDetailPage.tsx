@@ -64,7 +64,10 @@ registerTranslationEntries({
   "费用处理": { "zh-Hant": "費用處理", ja: "料金の処理", en: "Payment handling", ko: "비용 처리" },
   "已确认付款将进入退款待处理；如适用取消扣费，以正式财务记录为准。": { "zh-Hant": "已確認付款將進入退款待處理；如適用取消扣費，以正式財務記錄為準。", ja: "確認済みの支払いは返金処理待ちになります。キャンセル料が適用される場合は、正式な財務記録が基準です。", en: "Confirmed payment moves to refund pending. Any cancellation charge follows the formal finance record.", ko: "확인된 결제는 환불 대기로 전환됩니다. 취소 수수료가 적용되는 경우 공식 재무 기록을 기준으로 합니다." },
   "未确认付款；如有已冻结 NDP、预付款或取消费用，将按正式规则处理。": { "zh-Hant": "付款尚未確認；如有已凍結 NDP、預付款或取消費用，將按正式規則處理。", ja: "支払いは未確認です。凍結済みNDP、前払い、またはキャンセル料がある場合は正式ルールに従って処理されます。", en: "Payment is not confirmed. Any frozen NDP, prepayment, or cancellation charge is handled under the formal rules.", ko: "결제가 확인되지 않았습니다. 동결된 NDP, 선결제 또는 취소 비용이 있는 경우 공식 규칙에 따라 처리됩니다." },
-  "返回": { "zh-Hant": "返回", ja: "戻る", en: "Back", ko: "돌아가기" }
+  "返回": { "zh-Hant": "返回", ja: "戻る", en: "Back", ko: "돌아가기" },
+  "现金支付": { "zh-Hant": "現金支付", ja: "現金払い", en: "Pay cash", ko: "현금 결제" },
+  "在线支付（Stripe）": { "zh-Hant": "線上支付（Stripe）", ja: "オンライン決済（Stripe）", en: "Online payment (Stripe)", ko: "온라인 결제(Stripe)" },
+  "目前此支付方式暂不可用": { "zh-Hant": "目前此支付方式暫不可用", ja: "現在、この支払い方法はご利用いただけません。", en: "This payment method is currently unavailable.", ko: "현재 이 결제 수단은 사용할 수 없습니다." }
 });
 
 function isAmbiguousMutationError(error: unknown) {
@@ -99,7 +102,7 @@ function formalStatusLabel(status: BookingOrder["status"]) {
 }
 
 function paymentMethodLabel(method: OrderCheckout["paymentMethod"]) {
-  if (method === "cash") return "线下支付";
+  if (method === "cash") return "现金支付";
   if (method === "ndp") return "NDP 支付";
   if (method === "other") return "其他方式支付";
   return "尚未选择";
@@ -115,10 +118,10 @@ function paymentEvidenceLabel(evidence: OrderCheckout["paymentEvidence"]) {
 
 function bookingPaymentMethodLabel(
   method: BookingOrder["paymentMethod"],
-  fulfillmentMode: BookingOrder["fulfillmentMode"]
+  _fulfillmentMode: BookingOrder["fulfillmentMode"]
 ) {
   if (method === "onsite" || method === "cash") {
-    return fulfillmentMode === "home" ? "服务现场确认付款" : "到店后确认付款";
+    return "现金支付";
   }
   if (method === "bank_transfer") return "银行转账";
   if (method === "ndp") return "NDP 支付";
@@ -265,6 +268,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const [now, setNow] = useState(() => Date.now());
   const [queryRevision, setQueryRevision] = useState(0);
   const [exchangeOrderLinked, setExchangeOrderLinked] = useState<boolean | null>(null);
+  const [paymentUnavailable, setPaymentUnavailable] = useState(false);
   const mutationKeys = useRef(new Map<string, string>());
   const retainedReviewCommand = useRef<{ fingerprint: string; key: string } | null>(null);
   const routeState = location.state as { notice?: string } | null;
@@ -777,7 +781,11 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           {order.status === "inService" && remaining > 0 ? <button className="h-12 w-full rounded-[20px] bg-red-500 text-sm font-black text-white" disabled={Boolean(pendingAction)} onClick={() => setEndConfirmOpen(true)} type="button">提前结束服务</button> : null}
           {order.status === "inService" && remaining === 0 ? <p className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black">服务时间已到，等待系统完成结算准备</p> : null}
           {canChoosePayment && checkout.availablePaymentMethods.length === 0 ? <p className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black text-[color:var(--client-muted)]">当前暂无可用支付方式</p> : null}
-          {canChoosePayment && checkout.availablePaymentMethods.length > 0 ? <div className="grid grid-cols-2 gap-2">{checkout.availablePaymentMethods.includes("cash") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={selectOfflinePayment} type="button">线下支付</button> : null}{checkout.availablePaymentMethods.includes("ndp") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-primary)] text-xs font-black text-[color:var(--client-primary-contrast)]" disabled={Boolean(pendingAction)} onClick={() => void payWithNdp()} type="button">NDP 支付</button> : null}</div> : null}
+          {canChoosePayment ? <div className="space-y-2">
+            {checkout.availablePaymentMethods.length > 0 ? <div className="grid grid-cols-2 gap-2">{checkout.availablePaymentMethods.includes("cash") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={selectOfflinePayment} type="button">{localize("现金支付")}</button> : null}{checkout.availablePaymentMethods.includes("ndp") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-primary)] text-xs font-black text-[color:var(--client-primary-contrast)]" disabled={Boolean(pendingAction)} onClick={() => void payWithNdp()} type="button">NDP 支付</button> : null}</div> : null}
+            <div className="grid grid-cols-3 gap-2">{["PayPay", "PayPal", localize("在线支付（Stripe）")].map((label) => <button aria-disabled="true" className="min-h-11 rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-2 text-xs font-black text-[color:var(--client-muted)] opacity-60" key={label} onClick={() => setPaymentUnavailable(true)} type="button">{label}</button>)}</div>
+            {paymentUnavailable ? <p className="text-center text-xs font-bold text-[color:var(--client-muted)]" role="status">{localize("目前此支付方式暂不可用")}</p> : null}
+          </div> : null}
           {exchangeOrderLinked === false && canCancel ? <button className="h-12 w-full rounded-[20px] border border-red-400/40 text-sm font-black text-red-500" disabled={Boolean(pendingAction)} onClick={() => { setActionError(""); setCancelConfirmOpen(true); }} type="button">取消预约</button> : null}
         </>
       ) : null}

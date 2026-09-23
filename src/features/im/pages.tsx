@@ -58,7 +58,7 @@ import {
 } from "../../lib/merchantStaffRoles";
 import { cn } from "../../lib/utils";
 import { useI18n, useOptionalI18n } from "../../i18n/I18nProvider";
-import { translateText } from "../../i18n/translations";
+import { registerTranslationEntries, translateText } from "../../i18n/translations";
 import {
   PlatformMembershipSimpleCard,
   TechnicianPublicInfoCard,
@@ -1677,6 +1677,13 @@ function ImHeaderQuickMenu({
   );
 }
 
+registerTranslationEntries({
+  "临时聊天列表": { "zh-Hant": "臨時聊天列表", ja: "一時的な業務チャット", en: "Temporary business chats", ko: "임시 업무 채팅" },
+  "返回聊天列表": { "zh-Hant": "返回聊天列表", ja: "チャット一覧に戻る", en: "Back to chats", ko: "채팅 목록으로 돌아가기" },
+  "还没有临时业务聊天": { "zh-Hant": "尚無臨時業務聊天", ja: "一時的な業務チャットはありません", en: "No temporary business chats yet", ko: "아직 임시 업무 채팅이 없습니다" },
+  "从预约页点击联系后，业务聊天会显示在这里。": { "zh-Hant": "從預約頁點擊聯絡後，業務聊天會顯示在這裡。", ja: "予約ページから連絡すると、業務チャットがここに表示されます。", en: "Business chats opened from booking pages appear here.", ko: "예약 페이지에서 연락하면 업무 채팅이 여기에 표시됩니다." }
+});
+
 export function ImMessagesEntryPage() {
   const [searchParams] = useSearchParams();
   const compatConversationId = searchParams.get("chat");
@@ -1692,6 +1699,7 @@ export function ImConversationListPage() {
   const { store, config, scope } = useImRuntime();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const temporaryView = searchParams.get("view") === "temporary";
   const queryFromParams = searchParams.get("q") ?? "";
   const selectedTags = useMemo(() => readTagFilterParams(searchParams), [searchParams]);
   const [query, setQuery] = useState(queryFromParams);
@@ -1859,7 +1867,19 @@ export function ImConversationListPage() {
   }, [deferredQuery, scope, store.search, store.usersById]);
 
   const visibleContacts = useMemo(() => getVisibleImContacts(store, scope), [scope, store.contacts, store.usersById]);
-  const conversations = store.conversations;
+  const temporaryConversations = store.conversations.filter((conversation) => conversation.businessContextType === "shop_booking_contact" || conversation.businessContextType === "booking_contact");
+  const conversations = store.conversations.filter((conversation) => temporaryView
+    ? conversation.businessContextType === "shop_booking_contact" || conversation.businessContextType === "booking_contact"
+    : conversation.businessContextType !== "shop_booking_contact" && conversation.businessContextType !== "booking_contact");
+  const changeConversationView = (temporary: boolean) => {
+    const next = new URLSearchParams(searchParams);
+    if (temporary) next.set("view", "temporary");
+    else next.delete("view");
+    next.delete("q");
+    next.delete("tag");
+    next.delete("tags");
+    setSearchParams(next);
+  };
   const contactLabelExcludedTags = useMemo(() => scope === "merchant" ? getMerchantOrganizationRoleTagNames() : [], [scope]);
   const availableTags = useMemo(
     () => buildManagedTagCounts(visibleContacts, readImTagListUiState(scope), conversations, contactLabelExcludedTags),
@@ -2093,6 +2113,7 @@ export function ImConversationListPage() {
           />
         }
       >
+        {temporaryView ? <button className="mb-3 w-full rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 py-3 text-left text-sm font-bold" onClick={() => changeConversationView(false)} type="button">← 返回聊天列表</button> : <button className="mb-3 flex w-full items-center justify-between rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 py-3 text-left text-sm font-bold" onClick={() => changeConversationView(true)} type="button"><span>临时聊天列表</span><span>{temporaryConversations.length}</span></button>}
         {conversationActionError ? (
           <div
             className="mb-3 rounded-2xl border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200"
@@ -2103,9 +2124,9 @@ export function ImConversationListPage() {
         ) : null}
         {conversations.length === 0 ? (
           <ImEmptyState
-            action={<Button size="md" to={config.routes.contacts}>去通讯录发起聊天</Button>}
-            caption="先从通讯录里找一个联系人开始对话。"
-            title="还没有会话"
+            action={temporaryView ? undefined : <Button size="md" to={config.routes.contacts}>去通讯录发起聊天</Button>}
+            caption={temporaryView ? "从预约页点击联系后，业务聊天会显示在这里。" : "先从通讯录里找一个联系人开始对话。"}
+            title={temporaryView ? "还没有临时业务聊天" : "还没有会话"}
           />
         ) : (
           <>

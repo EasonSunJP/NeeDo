@@ -45,6 +45,10 @@ export class ImServerRetentionRepository
   public constructor(private readonly client: PrismaClient = prisma) {}
 
   public async registerUpload(input: RegisterImMediaUploadInput): Promise<void> {
+    const conversation = await this.client.conversation.findUnique({
+      where: { id: input.conversationId },
+      select: { businessContextType: true }
+    });
     await this.client.mediaAsset.create({
       data: {
         entityType: "im_media_upload",
@@ -57,7 +61,9 @@ export class ImServerRetentionRepository
         checksumSha256: input.checksumSha256,
         width: input.width,
         height: input.height,
-        purgeAt: input.purgeAt
+        purgeAt: conversation?.businessContextType === "shop_booking_contact" || conversation?.businessContextType === "booking_contact"
+          ? new Date(Math.min(input.purgeAt.getTime(), Date.now() + 30 * 60_000))
+          : input.purgeAt
       },
       select: { id: true }
     });

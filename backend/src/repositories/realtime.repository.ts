@@ -76,6 +76,7 @@ export interface ParticipantPayload {
 
 export interface ConversationPayload {
   id: number;
+  businessContextType: string | null;
   type: ConversationTypePayload;
   title: string | null;
   participants: ParticipantPayload[];
@@ -554,9 +555,22 @@ export interface EnsureTechnicianBusinessConversationInput {
   now: Date;
 }
 
+export interface EnsureShopBookingContactConversationInput {
+  customerUserId: number;
+  customerIdentityId: number;
+  shopId: number;
+  nominatedTechnicianProfileId: number | null;
+  now: Date;
+}
+
 export interface TechnicianBusinessConversationPayload {
   conversationId: number;
   expiresAt: string;
+}
+
+export interface ShopBookingContactConversationPayload {
+  conversationId: number;
+  expiresAt: string | null;
 }
 
 export interface RecallMessageInput {
@@ -841,6 +855,9 @@ export interface RealtimeRepositoryPort {
   ensureTechnicianBusinessConversation: (
     input: EnsureTechnicianBusinessConversationInput
   ) => Promise<TechnicianBusinessConversationPayload | null>;
+  ensureShopBookingContactConversation: (
+    input: EnsureShopBookingContactConversationInput
+  ) => Promise<ShopBookingContactConversationPayload | null>;
   getDirectoryProfile: (
     viewerUserId: number,
     viewerIdentityId: number,
@@ -3377,6 +3394,137 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         conversationId: created.id,
         expiresAt: (created.businessContextExpiresAt ?? expiresAt).toISOString()
       };
+    });
+  }
+
+  public async ensureShopBookingContactConversation(
+    input: EnsureShopBookingContactConversationInput
+  ): Promise<ShopBookingContactConversationPayload | null> {
+    const shop = await this.client.shop.findFirst({
+      where: { id: input.shopId, status: "published", deletedAt: null },
+      select: {
+        ownerUserId: true,
+        createdById: true,
+        bookingContactTarget: true,
+        bookingContactEmployeeNeedoId: true,
+        merchantMemberships: {
+          where: {
+            deletedAt: null,
+            startsAt: { lte: input.now },
+            OR: [{ endsAt: null }, { endsAt: { gt: input.now } }]
+          },
+          select: { merchantAccountId: true }
+        }
+      }
+    });
+    if (!shop) return null;
+
+    if (shop.bookingContactTarget === "selected_technician" && input.nominatedTechnicianProfileId) {
+      const technician = await this.client.technicianProfile.findFirst({
+        where: {
+          id: input.nominatedTechnicianProfileId,
+          deletedAt: null,
+          status: "published",
+          visibility: "public",
+          OR: [{ shopId: input.shopId }, { currentOperatingShopId: input.shopId }]
+        },
+        select: {
+          user: {
+            select: {
+              identities: {
+                where: { isActive: true, deletedAt: null, type: { in: ["technician", "service", "s"] } },
+                select: { publicIdentifier: { select: { publicId: true } } }
+              }
+            }
+          }
+        }
+      });
+      const publicId = technician?.user.identities[0]?.publicIdentifier?.publicId;
+      if (publicId) {
+        return this.ensureTechnicianBusinessConversation({
+          customerUserId: input.customerUserId,
+          customerIdentityId: input.customerIdentityId,
+          technicianPublicId: publicId,
+          now: input.now
+        });
+      }
+    }
+
+    const employee = shop.bookingContactTarget === "employee" && shop.bookingContactEmployeeNeedoId
+      ? await this.client.shopEmployee.findFirst({
+          where: {
+            shopId: input.shopId,
+            status: "ACTIVE",
+            deletedAt: null,
+            startsAt: { lte: input.now },
+            OR: [{ endsAt: null }, { endsAt: { gt: input.now } }],
+            user: { needoId: shop.bookingContactEmployeeNeedoId, isActive: true, deletedAt: null }
+          },
+          select: { userId: true }
+        })
+      : null;
+    if (shop.bookingContactTarget === "employee" && !employee) return null;
+    const targetUserId = employee?.userId ?? shop.ownerUserId ?? shop.createdById;
+    if (!targetUserId || targetUserId === input.customerUserId) return null;
+    const targetIdentity = await this.client.userIdentity.findFirst({
+      where: {
+        userId: targetUserId,
+        isActive: true,
+        deletedAt: null,
+        user: { isActive: true, deletedAt: null },
+        OR: employee
+          ? [{ type: "customer", scopeType: "customer_profile" }]
+          : [
+              { type: { in: ["merchant", "merchant_owner", "merchant_staff", "business", "b"] }, scopeType: "shop", scopeId: input.shopId },
+              { type: { in: ["merchant_organization", "merchant_owner", "owner", "o"] }, scopeType: { in: ["merchant_account", "merchant"] }, scopeId: { in: shop.merchantMemberships.map((row) => row.merchantAccountId) } }
+            ]
+      },
+      select: { id: true, userId: true },
+      orderBy: { id: "asc" }
+    });
+    if (!targetIdentity) return null;
+
+    return this.client.$transaction(async (transaction) => {
+      const existing = await transaction.conversation.findFirst({
+        where: {
+          type: ConversationType.DIRECT,
+          accessPolicy: ConversationAccessPolicy.BUSINESS_CONTEXT,
+          businessContextType: "shop_booking_contact",
+          businessContextShopId: input.shopId,
+          businessContextCustomerUserId: input.customerUserId,
+          deletedAt: null,
+          participants: {
+            every: { identityId: { in: [input.customerIdentityId, targetIdentity.id] }, deletedAt: null },
+            some: { identityId: targetIdentity.id, deletedAt: null }
+          }
+        },
+        select: { id: true }
+      });
+      if (existing) {
+        await transaction.conversationParticipant.updateMany({
+          where: { conversationId: existing.id, identityId: { in: [input.customerIdentityId, targetIdentity.id] }, deletedAt: null },
+          data: { hiddenAt: null }
+        });
+        return { conversationId: existing.id, expiresAt: null };
+      }
+      const created = await transaction.conversation.create({
+        data: {
+          type: ConversationType.DIRECT,
+          accessPolicy: ConversationAccessPolicy.BUSINESS_CONTEXT,
+          createdByUserId: input.customerUserId,
+          createdByIdentityId: input.customerIdentityId,
+          businessContextType: "shop_booking_contact",
+          businessContextShopId: input.shopId,
+          businessContextCustomerUserId: input.customerUserId,
+          businessContextExpiresAt: null,
+          participants: { create: [
+            { userId: input.customerUserId, identityId: input.customerIdentityId, role: "member" },
+            { userId: targetIdentity.userId, identityId: targetIdentity.id, role: "member" }
+          ] }
+        },
+        select: { id: true }
+      });
+      return { conversationId: created.id, expiresAt: null };
     });
   }
 
@@ -5958,6 +6106,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
     return {
       id: conversation.id,
+      businessContextType: conversation.businessContextType,
       type: this.conversationTypeFromDb(conversation.type),
       title: conversation.title,
       participants: conversation.participants.map((participant) =>

@@ -1875,6 +1875,8 @@ model Shop {
   technicianPricingRatePercent Int             @default(100) @map("technician_pricing_rate_percent")
   pricingModeUpdatedAt         DateTime?       @map("pricing_mode_updated_at")
   pricingModeUpdatedBy         Int?            @map("pricing_mode_updated_by")
+  bookingContactTarget         String          @default("owner") @map("booking_contact_target") @db.VarChar(32)
+  bookingContactEmployeeNeedoId String?        @map("booking_contact_employee_needo_id") @db.VarChar(32)
   createdAt                    DateTime        @default(now()) @map("created_at")
   updatedAt                    DateTime        @updatedAt @map("updated_at")
   deletedAt                    DateTime?       @map("deleted_at")
@@ -1893,6 +1895,7 @@ model Shop {
   scheduleSlots              ScheduleSlot[]
   scheduleCycles             ScheduleCycle[]
   bookingOrders              BookingOrder[]
+  bookingContactConversations Conversation[] @relation("ShopBookingContactConversations")
   bookingGroups              BookingGroup[]
   orderRefundCases           OrderRefundCase[]
   orderRefundDisputes        OrderRefundDispute[]
@@ -5536,6 +5539,7 @@ model Conversation {
   businessContextExpiresAt DateTime?              @map("business_context_expires_at")
   businessContextCustomerUserId Int?              @map("business_context_customer_user_id")
   businessContextTechnicianProfileId Int?         @map("business_context_technician_profile_id")
+  businessContextShopId Int?                       @map("business_context_shop_id")
   createdAt              DateTime                 @default(now()) @map("created_at")
   updatedAt              DateTime                 @updatedAt @map("updated_at")
   deletedAt              DateTime?                @map("deleted_at")
@@ -5545,6 +5549,7 @@ model Conversation {
   privacyUpdatedBy          User?                         @relation("ConversationPrivacyUpdater", fields: [privacyUpdatedByUserId], references: [id], onDelete: SetNull)
   businessContextCustomer   User?                         @relation("ConversationBusinessContextCustomer", fields: [businessContextCustomerUserId], references: [id], onDelete: Restrict)
   businessContextTechnician TechnicianProfile?            @relation("ConversationBusinessContextTechnician", fields: [businessContextTechnicianProfileId], references: [id], onDelete: Restrict)
+  businessContextShop Shop?                        @relation("ShopBookingContactConversations", fields: [businessContextShopId], references: [id], onDelete: Restrict)
   participants              ConversationParticipant[]
   messages                  Message[]
   contactCardSendCommands   ImContactCardSendCommand[]
@@ -5563,6 +5568,7 @@ model Conversation {
   @@index([privacyModeEnabled, deletedAt])
   @@index([businessContextType, businessContextExpiresAt, deletedAt], map: "conversations_business_context_expiry_idx")
   @@index([businessContextCustomerUserId, businessContextTechnicianProfileId, deletedAt], map: "conversations_booking_contact_pair_idx")
+  @@index([businessContextShopId, businessContextCustomerUserId, deletedAt], map: "conversations_shop_booking_contact_idx")
   @@index([updatedAt])
   @@index([deletedAt])
   @@map("conversations")

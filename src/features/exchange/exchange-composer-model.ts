@@ -192,18 +192,29 @@ export type IntelligenceComposerDraft = {
   expiresDate: string;
   expiresTime: string;
   campaignPriceJpy: string;
+  pricingMode?: "price" | "discount";
+  discountPercent?: string;
 };
 
 export function normalizeIntelligenceDraft(
   draft: IntelligenceComposerDraft,
-  catalogPriceJpy: number | null
+  catalogPriceJpy: number | null,
+  nowMs?: number
 ): { ok: true; value: PublishExchangeIntelligenceInput } | { ok: false; errorKey: ExchangeComposerErrorKey } {
   const serviceStartAt = combineLocalDateTime(draft.serviceStartDate, draft.serviceStartTime);
   const serviceEndAt = combineLocalDateTime(draft.serviceEndDate, draft.serviceEndTime);
   const expiresAt = combineLocalDateTime(draft.expiresDate, draft.expiresTime);
-  const campaignPriceJpy = requiredMoney(draft.campaignPriceJpy);
+  const discountPercent = Number(draft.discountPercent);
+  const campaignPriceJpy = draft.pricingMode === "discount"
+    ? catalogPriceJpy !== null && Number.isInteger(discountPercent) && discountPercent >= 10 && discountPercent <= 99
+      ? Math.floor((catalogPriceJpy * (100 - discountPercent)) / 100)
+      : null
+    : requiredMoney(draft.campaignPriceJpy);
   if (!/^(?:shop|technician):[1-9]\d*$/u.test(draft.serviceRef)) {
     return { ok: false, errorKey: "serviceRequired" };
+  }
+  if (draft.pricingMode === "discount" && campaignPriceJpy === null) {
+    return { ok: false, errorKey: "invalidPrice" };
   }
   if (
     !draft.title.trim()
@@ -218,7 +229,10 @@ export function normalizeIntelligenceDraft(
   if (!(serviceStartAt < serviceEndAt && serviceEndAt < expiresAt)) {
     return { ok: false, errorKey: "invalidWindow" };
   }
-  if (catalogPriceJpy === null || campaignPriceJpy > catalogPriceJpy) {
+  if (nowMs !== undefined && Date.parse(expiresAt) <= nowMs) {
+    return { ok: false, errorKey: "invalidWindow" };
+  }
+  if (catalogPriceJpy === null || campaignPriceJpy > Math.floor((catalogPriceJpy * 9) / 10)) {
     return { ok: false, errorKey: "invalidPrice" };
   }
   return {

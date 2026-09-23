@@ -221,6 +221,34 @@ export class RealtimeService
     return result;
   }
 
+  public async ensureShopBookingContactConversation(
+    auth: AuthenticatedAccessContext,
+    shopId: number,
+    nominatedTechnicianProfileId: number | null
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    if (
+      !["customer", "user", "u"].includes(scope.identityType) ||
+      scope.scopeType !== "customer_profile" ||
+      !scope.scopeId
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.booking_contact_requires_customer_identity",
+        statusCode: 403
+      });
+    }
+    const result = await this.repository.ensureShopBookingContactConversation({
+      customerUserId: auth.userId,
+      customerIdentityId: scope.identityId,
+      shopId,
+      nominatedTechnicianProfileId,
+      now: this.now()
+    });
+    if (!result) throw this.notFoundError("error.im.shop_booking_contact_unavailable");
+    return result;
+  }
+
   public async updateConversationPrivacy(
     auth: AuthenticatedAccessContext,
     input: Omit<UpdateConversationPrivacyInput, "actorUserId">

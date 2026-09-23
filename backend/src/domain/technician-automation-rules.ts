@@ -171,7 +171,7 @@ export function evaluateTechnicianAutomationRules(
   if (rules.customerType === "new") pass("customer:new", context.completedOrdersWithTechnician === 0, "customer:new_required");
   pass("order:party_type", rules.partyTypes.includes(context.partyType), "order:party_type_not_allowed");
   pass("order:service_mode", rules.serviceModes.includes(context.serviceMode), "order:service_mode_not_allowed");
-  pass("order:payment_method", rules.paymentMethods.includes(context.paymentMethod), "order:payment_method_not_allowed");
+  pass("order:payment_method", rules.paymentMethods.some((method) => method === context.paymentMethod), "order:payment_method_not_allowed");
   if (rules.serviceIds.length > 0) pass("service:enabled", rules.serviceIds.includes(context.serviceId), "service:not_selected");
   if (kind === "request" && rules.requireMatchingTags) {
     pass("tags:match", context.tagsMatch === true, context.tagsMatch === null ? "tags:unavailable" : "tags:mismatch");

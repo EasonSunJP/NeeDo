@@ -39,3 +39,18 @@ describe("technician booking contact conversation route", () => {
     );
   });
 });
+
+describe("shop booking contact conversation route", () => {
+  it("uses the same conversation permission and validates the shop and optional technician", async () => {
+    const result = { conversationId: 94, expiresAt: null };
+    const service = { ensureShopBookingContactConversation: jest.fn(async () => result) } as unknown as jest.Mocked<RealtimeService>;
+    const fixture = await createStep06Fixture({ realtimeService: service });
+    const token = await fixture.loginAsAdmin();
+    fixture.replaceAdminPermissions(["conversation:create"]);
+    await request(fixture.app).post("/api/v1/im/business-conversations/shops/invalid").set("Authorization", `Bearer ${token}`).send({}).expect(400);
+    await request(fixture.app).post("/api/v1/im/business-conversations/shops/36").set("Authorization", `Bearer ${token}`).send({ nominatedTechnicianProfileId: -1 }).expect(400);
+    const response = await request(fixture.app).post("/api/v1/im/business-conversations/shops/36").set("Authorization", `Bearer ${token}`).send({ nominatedTechnicianProfileId: 19 }).expect(200);
+    expect(response.body.data).toEqual(result);
+    expect(service.ensureShopBookingContactConversation).toHaveBeenCalledWith(expect.objectContaining({ userId: expect.any(Number) }), 36, 19);
+  });
+});

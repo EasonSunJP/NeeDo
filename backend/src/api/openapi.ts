@@ -5278,6 +5278,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: [
           "type",
+          "id",
           "publicId",
           "name",
           "coverUrl",
@@ -5292,6 +5293,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           type: { type: "string", enum: ["shop"] },
+          id: { type: "integer", minimum: 1 },
           publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
           name: { type: "string", minLength: 1, maxLength: 160 },
           coverUrl: { type: ["string", "null"], maxLength: 500 },
@@ -23270,7 +23272,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             properties: {
               shopId: { type: "integer", minimum: 1 },
               startsAt: { type: "string", format: "date-time" },
-              paymentMethod: { type: "string", enum: ["onsite", "bank_transfer"], default: "onsite" },
+              paymentMethod: { type: "string", enum: ["onsite"], default: "onsite" },
               note: { type: "string", maxLength: 500 },
               guests: { type: "array", minItems: 1, maxItems: 10, items: {
                 type: "object", additionalProperties: false, required: ["label", "assignments"],
@@ -23393,7 +23395,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   travelEstimatePublicId: { type: "string", format: "uuid" },
                   paymentMethod: {
                     type: "string",
-                    enum: ["onsite", "bank_transfer"],
+                    enum: ["onsite"],
                     default: "onsite"
                   },
                   note: { type: "string", maxLength: 500 },
@@ -23438,7 +23440,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       fulfillmentMode: { type: "string", enum: ["store"] },
                       paymentMethod: {
                         type: "string",
-                        enum: ["onsite", "bank_transfer"],
+                        enum: ["onsite"],
                         default: "onsite"
                       },
                       note: { type: "string", maxLength: 500 },
@@ -23480,7 +23482,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       },
                       paymentMethod: {
                         type: "string",
-                        enum: ["onsite", "bank_transfer"],
+                        enum: ["onsite"],
                         default: "onsite"
                       },
                       note: { type: "string", maxLength: 500 },
@@ -23703,7 +23705,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 minProperties: 1,
                 properties: {
                   priceAmountJpy: { type: "integer", minimum: 0 },
-                  paymentMethod: { type: "string", enum: ["onsite", "bank_transfer"] },
+                  paymentMethod: { type: "string", enum: ["onsite"] },
                   note: { type: ["string", "null"], maxLength: 500 }
                 }
               }
@@ -24472,7 +24474,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/merchant-admin/orders/{id}/payment/confirm`]: {
       post: {
         tags: ["Booking Payments"],
-        summary: "Confirm an onsite or bank-transfer payment in the authenticated shop",
+        summary: "Confirm a cash payment in the authenticated shop",
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
@@ -24485,7 +24487,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 type: "object",
                 required: ["method", "amountJpy"],
                 properties: {
-                  method: { type: "string", enum: ["onsite", "bank_transfer"] },
+                  method: { type: "string", enum: ["onsite"] },
                   amountJpy: { type: "integer", minimum: 1, maximum: 100000000 },
                   reference: { type: ["string", "null"], maxLength: 120 },
                   note: { type: ["string", "null"], maxLength: 500 }
@@ -24533,7 +24535,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/backoffice/orders/{id}/payment/confirm`]: {
       post: {
         tags: ["Booking Payments"],
-        summary: "Confirm an onsite or bank-transfer payment as platform operations",
+        summary: "Confirm a cash payment as platform operations",
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
@@ -24546,7 +24548,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 type: "object",
                 required: ["method", "amountJpy"],
                 properties: {
-                  method: { type: "string", enum: ["onsite", "bank_transfer"] },
+                  method: { type: "string", enum: ["onsite"] },
                   amountJpy: { type: "integer", minimum: 1, maximum: 100000000 },
                   reference: { type: ["string", "null"], maxLength: 120 },
                   note: { type: ["string", "null"], maxLength: 500 }

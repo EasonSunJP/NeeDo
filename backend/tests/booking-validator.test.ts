@@ -3,6 +3,8 @@ import {
   availabilityWindowListQuerySchema,
   bookingCreateBodySchema,
   bookingGroupCreateBodySchema,
+  merchantOrderEditBodySchema,
+  manualPaymentConfirmBodySchema,
   orderListQuerySchema,
   startServiceBodySchema
 } from "../src/validators/booking.validator";
@@ -27,6 +29,10 @@ describe("bookingGroupCreateBodySchema", () => {
 
   it("accepts a multi-guest booking with distinct technician and slot selectors", () => {
     expect(bookingGroupCreateBodySchema.parse(base)).toMatchObject(base);
+  });
+
+  it("does not offer bank transfer for a new group booking", () => {
+    expect(bookingGroupCreateBodySchema.safeParse({ ...base, paymentMethod: "bank_transfer" }).success).toBe(false);
   });
 
   it("rejects guest counts outside one to ten and empty assignments", () => {
@@ -180,6 +186,17 @@ describe("availabilityListQuerySchema", () => {
 });
 
 describe("bookingCreateBodySchema", () => {
+  it("rejects bank transfer on new bookings and payment changes", () => {
+    expect(bookingCreateBodySchema.safeParse({
+      expectedPriceAmountJpy: 8_800,
+      serviceId: 1,
+      scheduleSlotId: 2,
+      fulfillmentMode: "store",
+      paymentMethod: "bank_transfer"
+    }).success).toBe(false);
+    expect(merchantOrderEditBodySchema.safeParse({ paymentMethod: "bank_transfer" }).success).toBe(false);
+    expect(manualPaymentConfirmBodySchema.safeParse({ method: "bank_transfer", amountJpy: 8_800 }).success).toBe(false);
+  });
   it("accepts a negative dynamic availability selector but never zero", () => {
     const input = {
       expectedPriceAmountJpy: 8_800,

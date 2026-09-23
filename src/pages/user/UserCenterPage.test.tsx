@@ -14,7 +14,7 @@ describe("UserCenterPage", () => {
 
   it("routes payment-method management to its own settings page", () => {
     expect(source).toMatch(
-      /label: "支付方式",[^}]*info: "银行卡、PayPay、现金",[^}]*to: "\/me\/settings\/payment-methods"/u,
+      /label: "支付方式",[^}]*info: "现金、PayPay、PayPal、在线支付",[^}]*to: "\/me\/settings\/payment-methods"/u,
     );
     expect(source).not.toMatch(
       /label: "支付方式",[^}]*to: "\/me\/settings\/account"/u,
@@ -93,7 +93,7 @@ describe("UserCenterPage", () => {
     );
     [
       ["账号设置", "手机号、邮箱、登录密码"],
-      ["支付方式", "银行卡、PayPay、现金"],
+      ["支付方式", "现金、PayPay、PayPal、在线支付"],
       ["发票记录", "企业抬头与历史发票"],
       ["通知设置", "订单、营销、客服提醒"],
       ["隐私与安全", "登录设备、数据授权"],

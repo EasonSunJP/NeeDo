@@ -21,6 +21,7 @@ import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { ExchangeActorLookup, ExchangeActorRecord } from "./exchange.service";
 import type { LedgerService } from "./ledger.service";
+import type { ServicePrepaymentService } from "./service-prepayment.service";
 import { requireMerchantShopId } from "./merchant-shop-scope";
 
 export interface ExchangeCancellationRepositoryPort {
@@ -61,6 +62,7 @@ export class ExchangeCancellationService {
       LedgerService,
       "captureExchangeRequestPublication" | "releaseBookingHold"
     >,
+    private readonly prepayments: Pick<ServicePrepaymentService, "releaseForTerminal">,
     private readonly realtime?: ExchangeCancellationRealtimePort,
     private readonly now: () => Date = () => new Date()
   ) {}
@@ -202,6 +204,14 @@ export class ExchangeCancellationService {
           },
           { transactionClient: input.transactionClient }
         );
+      },
+      releaseServicePrepayment: async (input) => {
+        await this.prepayments.releaseForTerminal({
+          subject: { type: "booking", id: input.bookingOrderId },
+          actorUserId: input.actorUserId,
+          idempotencyKey: `booking:${input.bookingOrderId}:cancelled:service-prepayment-release`,
+          transactionClient: input.transactionClient
+        });
       }
     };
   }

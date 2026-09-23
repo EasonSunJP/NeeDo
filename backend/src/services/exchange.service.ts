@@ -409,7 +409,7 @@ export class ExchangeService {
         );
         if (replay) return this.unwrapPublicationReplay(replay, payloadFingerprint);
 
-        if (input.type === "demand" && input.expiresAt.getTime() <= occurredAt.getTime()) {
+        if (input.expiresAt.getTime() <= occurredAt.getTime()) {
           throw this.postUnavailable();
         }
 
@@ -473,7 +473,7 @@ export class ExchangeService {
           now: occurredAt
         });
         const resolvedService = this.unwrapIntelligenceService(intelligenceService);
-        if (input.campaignPriceJpy > resolvedService.catalogPriceJpy) {
+        if (input.campaignPriceJpy > Math.floor((resolvedService.catalogPriceJpy * 9) / 10)) {
           throw new AppError({
             code: ERROR_CODES.EXCHANGE_INTELLIGENCE_CAMPAIGN_PRICE_INVALID,
             message: "error.exchange.intelligence_campaign_price_invalid",

@@ -78,6 +78,7 @@ describe("formal IM adapter", () => {
       list: [
         {
           id: 91,
+          businessContextType: "shop_booking_contact",
           type: "direct",
           title: "LifeDance 管理员 2",
           participants: [
@@ -157,6 +158,7 @@ describe("formal IM adapter", () => {
     expect(bootstrap.currentUserId).toBe("100");
     expect(bootstrap.conversations[0]).toMatchObject({
       id: "91",
+      businessContextType: "shop_booking_contact",
       type: "single",
       contactUserId: "201",
       title: "sim-technician-001",

@@ -87,6 +87,7 @@ export type RealtimeMessageReaction = {
 
 export type RealtimeConversation = {
   createdAt: string;
+  businessContextType?: string | null;
   directPeer?: RealtimeParticipant | null;
   id: number;
   lastMessage: RealtimeMessage | null;
@@ -353,6 +354,12 @@ export const realtimeApi = {
     return httpClient.request<{ conversationId: number; expiresAt: string }>(
       `/im/business-conversations/technicians/${encodeURIComponent(technicianPublicId)}`,
       { method: "POST" },
+    );
+  },
+  ensureShopBookingContactConversation(shopId: number, nominatedTechnicianProfileId: number | null) {
+    return httpClient.request<{ conversationId: number; expiresAt: string | null }>(
+      `/im/business-conversations/shops/${shopId}`,
+      { method: "POST", body: { nominatedTechnicianProfileId } },
     );
   },
   listMessages(conversationId: number, query: { beforeId?: number; pageSize?: number } = {}) {

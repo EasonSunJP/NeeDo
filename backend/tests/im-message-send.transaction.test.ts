@@ -5,6 +5,42 @@ import { persistImMessageInTransaction } from "../src/repositories/im-message-se
 const transactionNow = new Date("2026-08-31T09:00:00.000Z");
 
 describe("persistImMessageInTransaction", () => {
+  it("keeps shop business chat writable without friendship and expires server text after thirty minutes", async () => {
+    const tx = {
+      conversationParticipant: {
+        findFirst: jest.fn(async () => ({
+          id: 1,
+          conversation: {
+            type: ConversationType.DIRECT,
+            accessPolicy: "BUSINESS_CONTEXT",
+            businessContextType: "shop_booking_contact",
+            businessContextExpiresAt: null,
+            privacyModeEnabled: false,
+            disappearingTtlSeconds: null,
+            privacyPolicyVersion: 1,
+            participants: [
+              { userId: 41, identityId: 71, identity: { ownedContacts: [] } },
+              { userId: 52, identityId: 82, identity: { ownedContacts: [] } }
+            ]
+          }
+        })),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      },
+      contact: { count: jest.fn() },
+      imPolicy: { findFirst: jest.fn(async () => ({ textRetentionSeconds: 86_400, recallWindowSeconds: 180, version: 1 })) },
+      message: { create: jest.fn(async () => ({ id: 94 })) },
+      conversation: { update: jest.fn() }
+    };
+    await expect(persistImMessageInTransaction(tx as never, {
+      content: "hello", conversationId: 91, metadata: null,
+      senderIdentityId: 71, senderUserId: 41, transactionNow, type: MessageType.TEXT
+    })).resolves.toMatchObject({ status: "created" });
+    expect(tx.contact.count).not.toHaveBeenCalled();
+    expect(tx.message.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ expiresAt: new Date(transactionNow.getTime() + 30 * 60_000) }),
+      include: expect.any(Object)
+    });
+  });
   it("expires a non-friend booking contact after its temporary window", async () => {
     const tx = {
       conversationParticipant: {
@@ -477,6 +513,40 @@ describe("persistImMessageInTransaction", () => {
         entityId: 803,
         purgeAt: new Date(transactionNow.getTime() + 604_800_000)
       }
+    }));
+  });
+
+  it("purges temporary business chat media after thirty minutes even when the global policy is longer", async () => {
+    const tx = {
+      conversationParticipant: {
+        findFirst: jest.fn(async () => ({ id: 1, conversation: {
+          type: ConversationType.DIRECT, accessPolicy: "BUSINESS_CONTEXT",
+          businessContextType: "shop_booking_contact", privacyModeEnabled: false,
+          disappearingTtlSeconds: null, privacyPolicyVersion: 1,
+          participants: [
+            { userId: 41, identityId: 71, identity: { ownedContacts: [] } },
+            { userId: 52, identityId: 82, identity: { ownedContacts: [] } }
+          ]
+        } })),
+        updateMany: jest.fn()
+      },
+      contact: { count: jest.fn() },
+      imPolicy: { findFirst: jest.fn(async () => ({
+        textRetentionSeconds: 86_400, imageRetentionSeconds: 604_800,
+        videoRetentionSeconds: 604_800, recallWindowSeconds: 180, version: 1
+      })) },
+      mediaAsset: { findFirst: jest.fn(async () => ({ id: 33 })), updateMany: jest.fn(async () => ({ count: 1 })) },
+      message: { create: jest.fn(async () => ({ id: 803 })) },
+      conversation: { update: jest.fn() }
+    };
+    const url = "https://media.needo.test/media/im/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png";
+    await expect(persistImMessageInTransaction(tx as never, {
+      content: url, conversationId: 91,
+      metadata: { needoMessageType: "image", needoMessageExt: { url } },
+      senderIdentityId: 71, senderUserId: 41, transactionNow, type: MessageType.TEXT
+    })).resolves.toMatchObject({ status: "created" });
+    expect(tx.mediaAsset.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { entityType: "message", entityId: 803, purgeAt: new Date(transactionNow.getTime() + 30 * 60_000) }
     }));
   });
 });

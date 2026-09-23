@@ -22,6 +22,7 @@ export interface TechnicianServiceBookingContextServiceCardPayload {
 
 export interface TechnicianServiceBookingContextShopCardPayload {
   type: "shop";
+  id: number;
   publicId: string;
   name: string;
   coverUrl: string | null;

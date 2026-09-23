@@ -44,6 +44,18 @@ const option: ExchangeIntelligenceServiceOption = {
 };
 
 describe("IntelligenceComposerFields", () => {
+  it("shows only the editable value for the chosen price or discount mode", () => {
+    const priceHtml = renderToStaticMarkup(<IntelligenceComposerFields draft={{ ...draft, pricingMode: "price" }} language="zh" onChange={vi.fn()} onRetryServiceOptions={vi.fn()} serviceOptions={[option]} serviceOptionsStatus="ready" />);
+    expect(priceHtml).toContain('name="campaignPriceJpy"');
+    expect(priceHtml).toContain('data-testid="calculated-discount-percent"');
+    expect(priceHtml).not.toContain('name="discountPercent"');
+
+    const discountHtml = renderToStaticMarkup(<IntelligenceComposerFields draft={{ ...draft, pricingMode: "discount", discountPercent: "15" }} language="zh" onChange={vi.fn()} onRetryServiceOptions={vi.fn()} serviceOptions={[option]} serviceOptionsStatus="ready" />);
+    expect(discountHtml).toContain('name="discountPercent"');
+    expect(discountHtml).toContain('data-testid="calculated-campaign-price"');
+    expect(discountHtml).toContain("¥8,500");
+    expect(discountHtml).not.toContain('name="campaignPriceJpy"');
+  });
   it("shows authoritative service, owner, shop, duration, address, and catalog price", () => {
     const html = renderToStaticMarkup(
       <IntelligenceComposerFields draft={draft} language="zh" onChange={vi.fn()} onRetryServiceOptions={vi.fn()} serviceOptions={[option]} serviceOptionsStatus="ready" />

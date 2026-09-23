@@ -522,6 +522,7 @@ export interface BackofficeTechnicianRankingPayload extends PaginatedApiPayload<
 
 export interface BackofficeShopPayload {
   id: number;
+  bookingContact: BookingContactSetting;
   ownerUserId: number | null;
   avatarUrl: string | null;
   ownerEmail: string | null;
@@ -534,6 +535,11 @@ export interface BackofficeShopPayload {
   isRecommended: boolean;
   createdAt: string;
 }
+
+export type BookingContactSetting = {
+  target: "owner" | "employee" | "selected_technician";
+  employeeNeedoId: string | null;
+};
 
 export interface BackofficeCustomerPayload {
   id: number;
@@ -706,11 +712,12 @@ export type BackofficeShopUpdateInput = Partial<
     BackofficeShopCreateInput,
     "name" | "description" | "city" | "address" | "phone" | "isRecommended"
   >
->;
+> & { bookingContact?: BookingContactSetting };
 export type MerchantShopUpdateInput = Partial<
   Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone">
 > & {
   avatarDataUrl?: string;
+  bookingContact?: BookingContactSetting;
 };
 
 export type ShopPresentationLocale = "ja" | "en" | "ko" | "zh-CN" | "zh-TW";

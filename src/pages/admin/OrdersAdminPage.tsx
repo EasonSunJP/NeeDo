@@ -122,7 +122,7 @@ export function OrdersAdminPage() {
   const [mutationError, setMutationError] = useState("");
   const [confirmIntent, setConfirmIntent] = useState<ConfirmIntent>(null);
   const [cancelReason, setCancelReason] = useState("运营复核后取消订单");
-  const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>("onsite");
+  const paymentMethod: ManualPaymentMethod = "onsite";
   const [paymentReference, setPaymentReference] = useState("");
   const [refundReason, setRefundReason] = useState("运营已复核退款凭证并确认线下退款完成");
   const [performancePublicReason, setPerformancePublicReason] = useState("");
@@ -630,11 +630,8 @@ export function OrdersAdminPage() {
               <h3 className="font-black text-ink">运营线下收款与退款</h3>
               {selectedOrder.paymentStatus === "pending" && ["confirmed", "inService", "completed"].includes(selectedOrder.status) ? (
                 <div className="mt-3 space-y-3">
-                  <select className="focus-ring h-10 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold text-ink" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as ManualPaymentMethod)}>
-                    <option value="onsite">现场收款</option>
-                    <option value="bank_transfer">银行转账</option>
-                  </select>
-                  <input className="focus-ring h-10 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold text-ink" placeholder="银行流水号或收款凭证编号（可选）" value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} />
+                  <p className="text-sm font-bold text-ink">现金收款</p>
+                  <input className="focus-ring h-10 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold text-ink" placeholder="收款凭证编号（可选）" value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} />
                   <Button disabled={mutationStatus === "saving"} onClick={() => void confirmPayment()}>
                     {confirmIntent === "payment-confirm" ? `再次点击确认收款 ${yen(selectedOrder.totalAmountJpy)}` : `确认已收款 ${yen(selectedOrder.totalAmountJpy)}`}
                   </Button>

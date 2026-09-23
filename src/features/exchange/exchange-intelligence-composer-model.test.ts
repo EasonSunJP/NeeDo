@@ -66,4 +66,26 @@ describe("Intelligence composer authority boundary", () => {
       errorKey: "invalidWindow"
     });
   });
+
+  it("rejects an already elapsed intelligence deadline before submission", () => {
+    expect(normalizeIntelligenceDraft(validDraft, 10_000, Date.parse("2026-09-07T03:00:00.000Z"))).toEqual({
+      ok: false,
+      errorKey: "invalidWindow"
+    });
+  });
+
+  it("requires at least ten percent discount and derives the price from percentage mode", () => {
+    expect(normalizeIntelligenceDraft({ ...validDraft, campaignPriceJpy: "9001" }, 10_000)).toEqual({
+      ok: false,
+      errorKey: "invalidPrice"
+    });
+    expect(normalizeIntelligenceDraft({ ...validDraft, pricingMode: "discount", discountPercent: "15", campaignPriceJpy: "1" }, 10_000)).toEqual({
+      ok: true,
+      value: expect.objectContaining({ campaignPriceJpy: 8500 })
+    });
+    expect(normalizeIntelligenceDraft({ ...validDraft, pricingMode: "discount", discountPercent: "9" }, 10_000)).toEqual({
+      ok: false,
+      errorKey: "invalidPrice"
+    });
+  });
 });

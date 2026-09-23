@@ -93,7 +93,9 @@ function createEmptyIntelligenceDraft(contentLocale: ExchangeContentLocale): Int
     serviceEndTime: "",
     expiresDate: "",
     expiresTime: "",
-    campaignPriceJpy: ""
+    campaignPriceJpy: "",
+    pricingMode: "price",
+    discountPercent: "10"
   };
 }
 
@@ -304,7 +306,8 @@ export function ExchangeComposer({
       );
       result = normalizeIntelligenceDraft(
         intelligenceDraft,
-        selectedService?.catalogPriceJpy ?? null
+        selectedService?.catalogPriceJpy ?? null,
+        Date.now()
       );
     }
     if (!result.ok) {

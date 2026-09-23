@@ -650,6 +650,7 @@ export interface BackofficeShopPayload {
   shopNo: string | null;
   ownerUserId: number | null;
   ownerEmail: string | null;
+  bookingContact: { target: "owner" | "employee" | "selected_technician"; employeeNeedoId: string | null };
   avatarUrl: string | null;
   name: string;
   description: string | null;

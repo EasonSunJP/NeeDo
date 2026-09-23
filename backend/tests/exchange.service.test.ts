@@ -1263,7 +1263,7 @@ describe("ExchangeService", () => {
     }
   );
 
-  it("rejects a campaign price above the server-resolved catalog price", async () => {
+  it("rejects campaign prices with less than ten percent discount against the server catalog", async () => {
     const repository = createRepository();
     repository.resolveActor.mockResolvedValue({
       ...actor,
@@ -1276,8 +1276,9 @@ describe("ExchangeService", () => {
     });
     const service = new ExchangeService(repository, () => now);
 
-    await expect(
-      service.publish(
+    for (const campaignPriceJpy of [15_001, 13_501]) {
+      await expect(
+        service.publish(
         {
           ...access,
           currentIdentityType: "merchant_staff",
@@ -1294,14 +1295,39 @@ describe("ExchangeService", () => {
           serviceStartAt: new Date("2026-08-31T00:00:00.000Z"),
           serviceEndAt: new Date("2026-08-31T01:00:00.000Z"),
           expiresAt: new Date("2026-08-31T08:30:00.000Z"),
-          campaignPriceJpy: 15_001
+          campaignPriceJpy
         },
         "intelligence-price-01"
       )
-    ).rejects.toMatchObject({
-      code: ERROR_CODES.EXCHANGE_INTELLIGENCE_CAMPAIGN_PRICE_INVALID,
-      statusCode: 422
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.EXCHANGE_INTELLIGENCE_CAMPAIGN_PRICE_INVALID,
+        statusCode: 422
+      });
+    }
+    expect(repository.createPost).not.toHaveBeenCalled();
+  });
+
+  it("rejects intelligence whose publication deadline has already passed", async () => {
+    const repository = createRepository();
+    repository.resolveActor.mockResolvedValue({
+      ...actor,
+      identityType: "merchant_staff", scopeType: "shop", scopeId: 11,
+      publicId: "b0000000017", customerMembership: null,
+      shopScope: { shopId: 11, status: "published" }
     });
+    const service = new ExchangeService(repository, () => now);
+    await expect(service.publish({
+      ...access,
+      currentIdentityType: "merchant_staff",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 11,
+      currentPublicId: "b0000000017"
+    }, {
+      type: "intelligence", serviceRef: "shop:501", title: "已过期活动", detail: "正式服务",
+      contentLocale: "ja", serviceStartAt: new Date("2026-08-29T20:00:00.000Z"),
+      serviceEndAt: new Date("2026-08-29T21:00:00.000Z"),
+      expiresAt: new Date("2026-08-29T22:00:00.000Z"), campaignPriceJpy: 10_000
+    }, "expired-intelligence-01")).rejects.toMatchObject({ statusCode: 409 });
     expect(repository.createPost).not.toHaveBeenCalled();
   });
 

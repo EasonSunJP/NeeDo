@@ -206,7 +206,9 @@ export async function persistImMessageInTransaction(
     privacyTtlSeconds <= IM_PRIVACY_TTL_MAX_SECONDS;
   const retentionSeconds = usesPrivacyExpiry
     ? privacyTtlSeconds
-    : (policy?.textRetentionSeconds ?? 30 * 86_400);
+    : conversation.businessContextType === "shop_booking_contact" || conversation.businessContextType === "booking_contact"
+      ? 30 * 60
+      : (policy?.textRetentionSeconds ?? 30 * 86_400);
   const expiresAt = new Date(input.transactionNow.getTime() + retentionSeconds * 1_000);
   const mediaReference = imMediaReference(input.metadata, input.content);
   if (mediaReference === "invalid") throw new ImMediaBindingError();
@@ -247,8 +249,9 @@ export async function persistImMessageInTransaction(
   });
 
   if (mediaReference && mediaAsset) {
-    const mediaRetentionSeconds =
-      mediaReference.kind === "video"
+    const mediaRetentionSeconds = conversation.businessContextType === "shop_booking_contact" || conversation.businessContextType === "booking_contact"
+      ? 30 * 60
+      : mediaReference.kind === "video"
         ? (policy?.videoRetentionSeconds ?? 3 * 86_400)
         : (policy?.imageRetentionSeconds ?? 3 * 86_400);
     const bound = await transaction.mediaAsset.updateMany({

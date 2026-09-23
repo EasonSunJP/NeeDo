@@ -13,6 +13,7 @@ import {
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
 import { PayrollSchedulePolicyEditor } from "../../components/merchant-admin/PayrollSchedulePolicyEditor";
+import { BookingContactSettingEditor } from "../../components/merchant-admin/BookingContactSettingEditor";
 import { Badge } from "../../components/ui/Badge";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
@@ -397,6 +398,10 @@ export function MerchantAdminSettingsPage() {
             )}
           </section>
         ) : null}
+
+        <div className="mt-5">
+          {shop ? <BookingContactSettingEditor mode="merchant" onSaved={setShop} shop={shop} /> : null}
+        </div>
 
         <div className="mt-5">
           <PayrollSchedulePolicyEditor

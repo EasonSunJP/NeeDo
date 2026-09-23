@@ -11,7 +11,7 @@ export const shopMembershipCardTopUpPublicIdParamSchema = z
 export const shopMembershipCardTopUpCreateBodySchema = z
   .object({
     amountJpy: z.number().int().min(1).max(10_000_000),
-    paymentMethod: z.enum(["cash", "card", "paypay", "bank_transfer", "other"]),
+    paymentMethod: z.enum(["cash", "card", "paypay", "other"]),
     paymentReference: evidence(160),
     note: evidence(500),
     idempotencyKey: z.string().trim().min(8).max(160)

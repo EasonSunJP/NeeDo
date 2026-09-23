@@ -12,7 +12,6 @@ export const servicePrepaymentSubjectSchema = z.discriminatedUnion("type", [
 
 export const servicePrepaymentMethodSchema = z.enum([
   "onsite",
-  "bank_transfer",
   "cash",
   "ndp",
   "other"

@@ -646,6 +646,11 @@ export class ExchangeCancellationRepository {
         transactionClient: this.client
       });
     }
+    await options.releaseServicePrepayment({
+      bookingOrderId: order.id,
+      actorUserId: input.actorUserId,
+      transactionClient: this.client
+    });
   }
 
   private async findReplay(

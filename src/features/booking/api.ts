@@ -485,6 +485,7 @@ export type TechnicianServiceBookingContext = {
   serviceCard: TechnicianServiceBookingContextServiceCardProjection;
   shopCard: Omit<ExchangeIntelligenceShopPublisherProfileProjection, "avatarUrl" | "serviceMode"> & {
     type: "shop";
+    id: number;
     serviceMode: "store" | "onsite" | "flexible";
   };
   technicianCard: ExchangeIntelligenceTechnicianPublisherProfileProjection;

@@ -53,7 +53,7 @@ export const technicianAutomationRulesSchema = z.object({
   customerType: z.enum(["all", "returning", "new"]),
   partyTypes: uniqueArray(z.enum(["single", "multiple"]), 2, 1),
   serviceModes: uniqueArray(z.enum(["store", "home"]), 2, 1),
-  paymentMethods: uniqueArray(z.enum(["onsite", "card", "ndp", "bank_transfer", "other"]), 5, 1),
+  paymentMethods: uniqueArray(z.enum(["onsite", "card", "ndp", "other"]), 4, 1),
   serviceIds: uniqueArray(z.number().int().positive(), 200),
   minimumPrepaymentPercent: z.union([
     z.literal(0),
@@ -104,7 +104,7 @@ export function defaultTechnicianAutomationRules(
     customerType: "all",
     partyTypes: ["single"],
     serviceModes: ["store", "home"],
-    paymentMethods: ["onsite", "card", "ndp", "bank_transfer", "other"],
+    paymentMethods: ["onsite", "card", "ndp", "other"],
     serviceIds: [],
     minimumPrepaymentPercent: 0,
     onlyOnline: kind === "request",

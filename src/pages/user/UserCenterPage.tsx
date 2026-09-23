@@ -24,7 +24,7 @@ import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { LocalizedTextEditor } from "../../shared/localized-content/LocalizedTextEditor";
 import { localizedText } from "../../shared/localized-content/localizedText";
-import type { Language } from "../../i18n/translations";
+import { registerTranslationEntries, type Language } from "../../i18n/translations";
 import {
   bookingApi,
   type BookingOrderStatus,
@@ -62,6 +62,10 @@ import {
   normalizeProfileLanguageLabels,
 } from "../../shared/profile-card/profileLanguages";
 import type { Customer } from "../../types/domain";
+
+registerTranslationEntries({
+  "现金、PayPay、PayPal、在线支付": { "zh-Hant": "現金、PayPay、PayPal、線上支付", ja: "現金・PayPay・PayPal・オンライン決済", en: "Cash, PayPay, PayPal, online payment", ko: "현금, PayPay, PayPal, 온라인 결제" }
+});
 
 const formalOrderStatuses = [
   "pending",
@@ -117,7 +121,7 @@ const accountSettings: Array<{
   },
   {
     label: "支付方式",
-    info: "银行卡、PayPay、现金",
+    info: "现金、PayPay、PayPal、在线支付",
     to: "/me/settings/payment-methods",
   },
   {

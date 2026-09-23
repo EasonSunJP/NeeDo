@@ -12,12 +12,16 @@ import { ExchangeCancellationRepository } from "../repositories/exchange-cancell
 import { ExchangePostRepository } from "../repositories/exchange.repository";
 import { FeeRuleRepository } from "../repositories/fee-rule.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
+import { NdpExchangeRateRepository } from "../repositories/ndp-exchange-rate.repository";
 import { PlatformFeePolicyRepository } from "../repositories/platform-fee-policy.repository";
+import { ServicePrepaymentRepository } from "../repositories/service-prepayment.repository";
 import { AuditLogService } from "../services/audit-log.service";
 import { ExchangeCancellationService } from "../services/exchange-cancellation.service";
 import { FeeCalculationService } from "../services/fee-calculation.service";
 import { LedgerService } from "../services/ledger.service";
+import { NdpExchangeRateService } from "../services/ndp-exchange-rate.service";
 import { PlatformFeePolicyService } from "../services/platform-fee-policy.service";
+import { ServicePrepaymentService } from "../services/service-prepayment.service";
 import {
   exchangeCancellationDecisionBodySchema,
   exchangeCancellationOrderIdParamSchema,
@@ -46,6 +50,14 @@ export const createExchangeCancellationRoutes = (
         audit
       )
     );
+  const prepayments = new ServicePrepaymentService(
+    new ServicePrepaymentRepository(),
+    ledger,
+    dependencies.ndpExchangeRateService ?? new NdpExchangeRateService(
+      dependencies.ndpExchangeRateRepository ?? new NdpExchangeRateRepository(),
+      audit
+    )
+  );
   const service =
     dependencies.exchangeCancellationService ??
     new ExchangeCancellationService(
@@ -53,6 +65,7 @@ export const createExchangeCancellationRoutes = (
       new ExchangePostRepository(),
       audit,
       ledger,
+      prepayments,
       dependencies.realtimeService
     );
   const controller = new ExchangeCancellationController(service);

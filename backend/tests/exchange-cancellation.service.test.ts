@@ -62,6 +62,11 @@ function fixture(commandResult: unknown = { outcome: "created", payload, notific
         actorUserId: 41,
         transactionClient: { marker: "transaction" }
       });
+      await options.releaseServicePrepayment({
+        bookingOrderId: 501,
+        actorUserId: 41,
+        transactionClient: { marker: "transaction" }
+      });
       return commandResult;
     })
   };
@@ -81,16 +86,18 @@ function fixture(commandResult: unknown = { outcome: "created", payload, notific
     captureExchangeRequestPublication: jest.fn(async () => undefined),
     releaseBookingHold: jest.fn(async () => undefined)
   };
+  const prepayments = { releaseForTerminal: jest.fn(async () => undefined) };
   const realtime = { publishCommittedNotifications: jest.fn(async () => undefined) };
   const service = new ExchangeCancellationService(
     repository as never,
     actorResolver,
     audit as never,
     ledger as never,
+    prepayments as never,
     realtime,
     () => now
   );
-  return { repository, actorResolver, audit, ledger, realtime, service };
+  return { repository, actorResolver, audit, ledger, prepayments, realtime, service };
 }
 
 describe("ExchangeCancellationService", () => {
@@ -272,7 +279,8 @@ describe("ExchangeCancellationService", () => {
       }),
       expect.objectContaining({
         capturePublicationFee: expect.any(Function),
-        releaseBookingHold: expect.any(Function)
+        releaseBookingHold: expect.any(Function),
+        releaseServicePrepayment: expect.any(Function)
       })
     );
     expect(state.ledger.captureExchangeRequestPublication).toHaveBeenCalledWith(
@@ -283,6 +291,12 @@ describe("ExchangeCancellationService", () => {
       expect.objectContaining({ bookingOrderId: 501, orderType: "request" }),
       { transactionClient: { marker: "transaction" } }
     );
+    expect(state.prepayments.releaseForTerminal).toHaveBeenCalledWith({
+      subject: { type: "booking", id: 501 },
+      actorUserId: 41,
+      idempotencyKey: "booking:501:cancelled:service-prepayment-release",
+      transactionClient: { marker: "transaction" }
+    });
   });
 
   it("maps repository failures and publishes realtime only for a new commit", async () => {

@@ -268,7 +268,9 @@ describe("formal customer checkout", () => {
     expect(checkoutText("bookingNotice", "ja")).toContain("予約前に日時、住所、支払い方法をご確認ください");
     expect(checkoutText("cancellationNotice", "ja")).toContain("予約後の状況は予約詳細で確認できます");
     expect(checkoutText("ndpNotice", "ja")).toContain("正式な精算記録で確定します");
-    expect(checkoutText("payOnArrival", "ja")).toBe("現地で支払う");
+    expect(checkoutText("payOnArrival", "ja")).toBe("現金払い");
+    expect(checkoutText("payOnArrival", "zh")).toBe("现金支付");
+    expect(checkoutText("paymentUnavailable", "zh")).toBe("目前此支付方式暂不可用");
     expect(checkoutText("noteCount", "ja", { count: 12 })).toBe("12文字入力済み");
     expect(checkoutText("routeDetails", "ja", { distance: "2.5", maximum: "5.0", version: 3 })).toBe("車での距離 2.5 km・適用上限 5.0 km・料金規則 v3");
     expect(checkoutText("availableTimesAria", "ja", { date: "2026-09-13" })).toBe("2026-09-13の予約可能時間");

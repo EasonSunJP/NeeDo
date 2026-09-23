@@ -40,6 +40,8 @@ import {
   socialPostUpdateBodySchema,
   socialActivityStatusQuerySchema,
   socialUserIdParamSchema,
+  shopBookingContactBodySchema,
+  shopBookingContactParamSchema,
   technicianBusinessConversationParamSchema
 } from "../validators/realtime.validator";
 
@@ -67,6 +69,16 @@ export class RealtimeController {
     return this.service.ensureTechnicianBusinessConversation(
       getAuthenticatedAccess(response),
       params.technicianPublicId
+    );
+  });
+
+  public ensureShopBookingContactConversation = this.createHandler((request, response) => {
+    const params = shopBookingContactParamSchema.parse(request.params);
+    const body = shopBookingContactBodySchema.parse(request.body);
+    return this.service.ensureShopBookingContactConversation(
+      getAuthenticatedAccess(response),
+      params.shopId,
+      body.nominatedTechnicianProfileId ?? null
     );
   });
 
