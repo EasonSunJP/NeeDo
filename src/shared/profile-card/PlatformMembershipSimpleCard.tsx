@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { coreReadApi } from "../../features/core-read/api";
 import { useHomeLayoutStore } from "../../state/homeLayoutStore";
 import { useHomeLocationPreference } from "../../state/homeLocationStore";
+import { resolveAvatarUrl } from "../../lib/defaultAvatar";
 import type { SpecialReviewTag } from "./SpecialReviewIconRow";
 import { UnifiedEntityInfoCard } from "./UnifiedEntityInfoCard";
 
@@ -101,7 +102,7 @@ export function PlatformMembershipSimpleCard(
         kind,
         id: publicId ?? props.needoId,
         name: props.displayName,
-        imageUrl: props.avatarUrl,
+        imageUrl: props.entityKind === "service" ? props.avatarUrl : resolveAvatarUrl(props.avatarUrl),
         description: props.bio || null,
         languages: props.languages ?? [],
         tags: [],

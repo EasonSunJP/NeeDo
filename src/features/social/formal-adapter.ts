@@ -4,6 +4,7 @@ import type {
   RealtimeSocialProfileSummary
 } from "../realtime/api";
 import { normalizeImMessageRichText, type ImMessageRichText } from "../im/reaction-policy";
+import { resolveAvatarUrl } from "../../lib/defaultAvatar";
 import type {
   SocialEntityType,
   SocialMediaItem,
@@ -165,7 +166,7 @@ export function mapFormalSocialPost(post: RealtimeSocialPost): SocialPost {
 
 export function mapFormalSocialProfile(author: RealtimeSocialProfileSummary): SocialProfile {
   const entityType = toEntityType(author.entityType);
-  const avatar = author.avatarUrl ?? "";
+  const avatar = resolveAvatarUrl(author.avatarUrl);
 
   return {
     id: String(author.userId),

@@ -13,6 +13,7 @@ const profile = { avatarUrl: null, bio: "", displayName: "Mia", ekycVerified: tr
 describe("shared platform membership cards", () => {
   it("maps all ten theme colors and keeps empty profile rows visible", () => {
     const markup = renderToStaticMarkup(<PlatformMembershipDetailCard {...profile} theme={theme} />);
+    expect(markup).toContain('/images/generated/profiles/dodo-default-avatar.webp');
     for (const color of Object.values(theme).slice(0, 8)) expect(markup.toLowerCase()).toContain(color.toLowerCase());
     expect(markup).toContain("linear-gradient(155deg, #10242D 0%, #183A32 52%, #24314B 100%)");
     expect(markup).toContain("语言能力");

@@ -21,7 +21,6 @@ import type {
   SelectExchangeMatchingInput
 } from "./types";
 
-const fallbackProviderImage = "/icons/needo-nav-button-dark.png";
 const panelClassName =
   "rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel";
 
@@ -144,7 +143,7 @@ function ClaimCard({
         <AvatarImage
           alt={claim.provider.displayName}
           className="h-12 w-12 shrink-0 rounded-2xl border border-[color:var(--client-line)] object-cover"
-          src={claim.provider.avatarUrl || fallbackProviderImage}
+          src={claim.provider.avatarUrl ?? undefined}
         />
         <div className="min-w-0 flex-1">
           <p className="truncate text-base font-black text-[color:var(--client-text)]">{claim.provider.displayName}</p>

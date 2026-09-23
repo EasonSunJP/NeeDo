@@ -49,6 +49,13 @@ const baseMe = {
 } satisfies AuthMePayload;
 
 describe("frontend RBAC session helpers", () => {
+  it("uses the system avatar only when the account has no custom image", () => {
+    expect(buildAuthSessionFromMe(baseMe, "admin", "password").avatarUrl)
+      .toBe("/images/generated/profiles/dodo-default-avatar.webp");
+    expect(buildAuthSessionFromMe({ ...baseMe, avatarUrl: "/uploads/my-avatar.png" }, "admin", "password").avatarUrl)
+      .toBe("/uploads/my-avatar.png");
+  });
+
   it("carries the formal profile display name into the admin session", () => {
     const me = {
       ...baseMe,

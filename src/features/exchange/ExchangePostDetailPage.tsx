@@ -230,7 +230,7 @@ function PublisherCard({ post, language }: { post: ExchangePost; language: Langu
           <AvatarImage
             alt={publisherName}
             className="h-24 w-24 shrink-0 rounded-[24px] border border-[color:var(--client-line)] object-cover shadow-soft"
-            src={post.publisher?.avatarUrl || fallbackPublisherImage}
+            src={post.publisher?.avatarUrl ?? undefined}
           />
           <div className="min-w-0 flex-1">
             <p className="truncate text-xl font-black text-[color:var(--client-text)]">{publisherName}</p>

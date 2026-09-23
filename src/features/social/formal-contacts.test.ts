@@ -72,7 +72,7 @@ describe("formal Social mention contacts", () => {
         needoId: "u0000000074",
         displayName: "佐藤 葵",
         username: "佐藤 葵",
-        avatarUrl: "",
+        avatarUrl: "/images/generated/profiles/dodo-default-avatar.webp",
         searchText: "佐藤 葵 佐藤 葵 u0000000074"
       }
     ]);

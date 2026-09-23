@@ -1,4 +1,5 @@
 import { realtimeApi } from "../realtime/api";
+import { resolveAvatarUrl } from "../../lib/defaultAvatar";
 import type { SocialMentionCandidate } from "./types";
 
 const CONTACT_PAGE_SIZE = 100;
@@ -35,7 +36,7 @@ export async function loadFormalSocialMentionCandidates(
         needoId,
         displayName,
         username,
-        avatarUrl: contact.contactUser.avatarUrl ?? "",
+        avatarUrl: resolveAvatarUrl(contact.contactUser.avatarUrl),
         searchText: `${displayName} ${username} ${needoId}`
       };
     });

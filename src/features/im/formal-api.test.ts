@@ -181,9 +181,8 @@ describe("formal IM adapter", () => {
       avatar: "/avatars/tech-1.png",
       userIdLabel: "u0000000201",
     });
-    expect(bootstrap.users.find((user) => user.id === "100")?.avatar).toMatch(
-      /^data:image\/svg\+xml/,
-    );
+    expect(bootstrap.users.find((user) => user.id === "100")?.avatar)
+      .toBe("/images/generated/profiles/dodo-default-avatar.webp");
   });
 
   it("keeps a deleted friendship peer as the title of the retained direct history", async () => {
@@ -501,7 +500,7 @@ describe("formal IM adapter", () => {
             needoId: "n0000000202",
             displayName: "吉田 拓海",
             email: "sim.technician.011@needo.local",
-            avatarUrl: "/images/generated/profiles/ai-profile-11.jpg",
+            avatarUrl: null,
             shopId: 16,
             shopName: "Tokyo Relax Shibuya",
             city: "Tokyo",
@@ -560,6 +559,7 @@ describe("formal IM adapter", () => {
     expect(bootstrap.users.find((user) => user.id === "202")).toMatchObject({
       accountId: "n0000000202",
       nickname: "吉田 拓海",
+      avatar: "/images/generated/profiles/dodo-default-avatar.webp",
       tags: ["员工", "临时工", "技师"],
     });
   });

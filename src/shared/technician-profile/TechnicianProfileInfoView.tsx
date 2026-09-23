@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { copyTextToClipboard } from "../../lib/share";
 import { cn } from "../../lib/utils";
 import type { WalletSummary } from "../../features/wallet/api";
@@ -99,13 +100,7 @@ export function TechnicianProfileInfoView({ className, model, privacySlot, servi
     <div className={cn("space-y-4", className)} data-testid="technician-profile-info-view">
       <section className="overflow-visible rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,var(--client-primary)_18%)] bg-[color:var(--client-surface)] p-4 text-[color:var(--client-text)] shadow-panel">
         <header className="flex min-w-0 items-start gap-3">
-          {model.avatarUrl ? (
-            <img alt={model.displayName} className="h-32 w-32 shrink-0 rounded-[26px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] object-cover shadow-soft" src={model.avatarUrl} />
-          ) : (
-            <div aria-label={`${model.displayName} 暂无公开照片`} className="grid h-32 w-32 shrink-0 place-items-center rounded-[26px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] bg-[color:var(--client-elevated)] text-4xl font-black text-[color:var(--client-muted)]" role="img">
-              {Array.from(model.displayName)[0] ?? "·"}
-            </div>
-          )}
+          <AvatarImage alt={model.displayName} className="h-32 w-32 shrink-0 rounded-[26px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] object-cover shadow-soft" src={model.avatarUrl ?? undefined} />
           <div className="min-w-0 flex-1 pt-1">
             <h1 className="text-[21px] font-black leading-7">{model.displayName} <KycVerifiedBadge className="inline-flex align-middle" size="label" /></h1>
             <span className="mt-2 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_45%,var(--client-line))] bg-[color:var(--client-primary-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-primary)]">{model.identityLabel}</span>

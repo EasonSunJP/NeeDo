@@ -22,7 +22,7 @@ function chunkModules(modules: MerchantPrimaryModule[], size: number) {
 function MerchantPrimaryIcon({ icon }: { icon: MerchantPrimaryModule["icon"] }) {
   if (icon === "calendar") {
     return (
-      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24">
         <rect height="15" rx="3" stroke="currentColor" strokeWidth="1.9" width="16" x="4" y="5" />
         <path d="M8 3.5v4M16 3.5v4M4 9.5h16" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
       </svg>
@@ -31,7 +31,7 @@ function MerchantPrimaryIcon({ icon }: { icon: MerchantPrimaryModule["icon"] }) 
 
   if (icon === "shield") {
     return (
-      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24">
         <path d="M12 4.2c2.1 1.7 4.6 2.5 7.2 2.5v4.6c0 4.4-2.7 7.3-7.2 8.9-4.5-1.6-7.2-4.5-7.2-8.9V6.7c2.6 0 5.1-.8 7.2-2.5Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.9" />
         <path d="m9.2 12.2 2 2 3.8-4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
       </svg>
@@ -40,7 +40,7 @@ function MerchantPrimaryIcon({ icon }: { icon: MerchantPrimaryModule["icon"] }) 
 
   if (icon === "heart") {
     return (
-      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24">
         <path d="M12 19.2s-6.8-4.3-8.6-8.3C2 7.8 4 5.2 7 5.2c1.8 0 3.2.8 5 2.9 1.8-2.1 3.2-2.9 5-2.9 3 0 5 2.6 3.6 5.7-1.8 4-8.6 8.3-8.6 8.3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
       </svg>
     );
@@ -48,7 +48,7 @@ function MerchantPrimaryIcon({ icon }: { icon: MerchantPrimaryModule["icon"] }) 
 
   if (icon === "order") {
     return (
-      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24">
         <path d="M8 4.5h8M8 8h8M7 3h10a2 2 0 0 1 2 2v14l-3.5-2-3.5 2-3.5-2-3.5 2V5a2 2 0 0 1 2-2Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
       </svg>
     );
@@ -56,7 +56,7 @@ function MerchantPrimaryIcon({ icon }: { icon: MerchantPrimaryModule["icon"] }) 
 
   if (icon === "menu") {
     return (
-      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24">
         <path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" strokeLinecap="round" strokeWidth="2.1" />
       </svg>
     );
@@ -64,14 +64,14 @@ function MerchantPrimaryIcon({ icon }: { icon: MerchantPrimaryModule["icon"] }) 
 
   if (icon === "floor") {
     return (
-      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24">
         <path d="M4.5 7.5h6v5h-6v-5ZM13.5 5h6v7.5h-6V5ZM4.5 15h6v4h-6v-4ZM13.5 15h6v4h-6v-4Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.9" />
       </svg>
     );
   }
 
   return (
-    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+    <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24">
       <path d="m12 4 1.1 3.4L16.5 8l-3.4 1.1L12 12.5l-1.1-3.4L7.5 8l3.4-1.1L12 4ZM18.5 14l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7.7-2.1ZM6 14l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7L6 14Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.6" />
     </svg>
   );
@@ -126,9 +126,9 @@ export function MerchantPrimaryNavCarousel({
   }, [session?.portal, session?.merchantShopPublicId]);
 
   return (
-    <section className={cn("rounded-[28px] border border-line bg-white p-3 shadow-panel", className)}>
+    <section className={cn("py-0.5", className)}>
       <div
-        className="scrollbar-none -mt-2 flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain pt-2"
+        className="home-quick-actions__viewport scrollbar-none -mt-2 pt-2"
         data-scroll-drag-ignore="true"
         data-testid="merchant-primary-module-viewport"
         onScroll={() => {
@@ -144,14 +144,14 @@ export function MerchantPrimaryNavCarousel({
         ref={viewportRef}
       >
         {pages.map((page, pageIndex) => (
-          <div className="grid min-w-full snap-start grid-cols-4 gap-2" key={`merchant-primary-page-${pageIndex}`}>
+          <div className="home-quick-actions__page" key={`merchant-primary-page-${pageIndex}`}>
             {page.map((module) => (
               <Link
                 className={cn(
-                  "relative grid aspect-square grid-rows-[24px_auto] content-center items-start justify-items-center gap-0.5 rounded-[18px] border px-1 py-1 text-center transition before:hidden min-[380px]:grid-rows-[30px_auto] min-[380px]:gap-1 min-[380px]:px-2 min-[380px]:py-1.5 sm:grid-rows-[34px_auto] sm:content-center sm:gap-1.5 sm:py-3",
+                  "home-quick-action-card relative flex min-w-0 flex-col items-center justify-center gap-1.5 rounded-[18px] border px-2 py-2 text-center shadow-[0_12px_26px_rgba(0,0,0,0.09)] transition before:hidden",
                   activeModule === module.key
                     ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
-                    : "border-line bg-white text-[color:var(--client-text)] hover:border-[color:var(--client-primary)]"
+                    : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_100%,transparent),color-mix(in_srgb,var(--client-surface)_86%,transparent))] text-[color:var(--client-text)]"
                 )}
                 key={module.key}
                 to={module.route}
@@ -163,23 +163,14 @@ export function MerchantPrimaryNavCarousel({
                     className="pointer-events-none absolute -right-1 -top-1 z-30 h-4 w-4 rounded-full border-2 border-[color:var(--client-surface)] bg-red-500 shadow-[0_6px_16px_rgba(239,68,68,0.5)]"
                   />
                 ) : null}
-                <span className="inline-flex h-[24px] w-[24px] items-center justify-center rounded-[11px] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)] min-[380px]:h-[30px] min-[380px]:w-[30px] min-[380px]:rounded-[13px] sm:h-[34px] sm:w-[34px]">
+                <span className="home-quick-action-card__icon inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[13px] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]">
                   <MerchantPrimaryIcon icon={module.icon} />
                 </span>
-                <span className="min-w-0">
-                  <span className="block text-[12px] font-black leading-[14px] min-[380px]:text-[13px] min-[380px]:leading-4">{translateText(module.label, language)}</span>
+                <span className="home-quick-action-card__label flex h-[28px] w-full shrink-0 items-center justify-center overflow-hidden">
+                  <span className="home-quick-action-card__title w-full text-center text-[12px] font-black leading-[14px]">{translateText(module.label, language)}</span>
                 </span>
               </Link>
             ))}
-            {page.length < 4 ? (
-              Array.from({ length: 4 - page.length }).map((_, index) => (
-                <div
-                  aria-hidden="true"
-                  className="aspect-square rounded-[18px] border border-dashed border-line bg-paper/50"
-                  key={`merchant-primary-empty-${pageIndex}-${index}`}
-                />
-              ))
-            ) : null}
           </div>
         ))}
       </div>

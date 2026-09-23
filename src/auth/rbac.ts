@@ -1,5 +1,6 @@
 import type { PortalScope } from "./portal";
 import type { IdentityAvailability } from "../features/identity-applications/model";
+import { resolveAvatarUrl } from "../lib/defaultAvatar";
 
 export const authSessionVersion = 7;
 
@@ -196,6 +197,7 @@ function getScopedIdentityId(me: AuthMePayload, type: string | string[]) {
 export function normalizeAuthSessionEntityIds(session: AuthSession): AuthSession {
   return {
     ...session,
+    avatarUrl: resolveAvatarUrl(session.avatarUrl),
     linkedCustomerId: normalizeScopedLocalEntityId(session.linkedCustomerId, "cus"),
     linkedStoreId: normalizeScopedLocalEntityId(session.linkedStoreId, "store"),
     linkedTechnicianId: normalizeScopedLocalEntityId(session.linkedTechnicianId, "tech")

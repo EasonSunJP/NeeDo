@@ -482,6 +482,16 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     await flushUntil(() => expect(container.querySelector<HTMLImageElement>('img[alt="小林技师"]')?.src).toContain("/technician-avatar.png"));
   });
 
+  it("shows the system avatar for a technician identity without an uploaded image", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue({ ...profile, avatarUrl: null });
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue({ ...employedTechnician, avatarUrl: null });
+
+    await renderPortal();
+    await flushUntil(() => expect(container.querySelector('img[alt="小林技师"]')).not.toBeNull());
+    expect(container.querySelector<HTMLImageElement>('img[alt="小林技师"]')?.getAttribute("src"))
+      .toBe("/images/generated/profiles/dodo-default-avatar.webp");
+  });
+
   it("requests and renders formal metrics for an independent technician without a shop", async () => {
     vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(independentProfile);
     const detailRequest = vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technician);

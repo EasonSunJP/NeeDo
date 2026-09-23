@@ -42,6 +42,7 @@ import { TechnicianServiceCoverField } from "../../features/pricing-mode/Technic
 import { loadEveryTechnicianOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
 import { getTokyoDayWindow, getTokyoSlotParts } from "../user/formal-checkout/checkoutTimeSlots";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { resolveAvatarUrl } from "../../lib/defaultAvatar";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn, yen } from "../../lib/utils";
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
@@ -113,10 +114,7 @@ function splitList(value: string) {
 }
 
 function profileAvatarSrc(profile: TechnicianSelfProfile) {
-  if (profile.avatarUrl) return profile.avatarUrl;
-  const label = (profile.displayName.trim().slice(0, 1) || "技").replace(/[<>&'\"]/g, "") || "技";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" rx="60" fill="#dff5e8"/><text x="60" y="76" text-anchor="middle" font-size="52" font-family="sans-serif" font-weight="700" fill="#176b45">${label}</text></svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  return resolveAvatarUrl(profile.avatarUrl);
 }
 
 function profileDraft(profile: TechnicianSelfProfile) {

@@ -1,5 +1,6 @@
 import { WorkStatusMetrics } from "../../features/technician-work-status/WorkStatusMetrics";
 import { WorkTimeline } from "../../features/technician-work-status/WorkTimeline";
+import { AvatarImage } from "../ui/AvatarImage";
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import type {
   EmployeePayrollSchedulePolicyInput,
@@ -368,15 +369,7 @@ export function EmployeeDetailCard({
         <div className="h-1.5 bg-gradient-to-r from-moss via-sky to-lemon" />
         <div className="grid gap-5 p-5 sm:grid-cols-[96px_minmax(0,1fr)] sm:p-6">
           <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[24px] border border-white/20 bg-white/10 text-3xl font-black">
-            {employee.avatarUrl ? (
-              <img
-                alt={employee.displayName}
-                className="h-full w-full object-cover"
-                src={employee.avatarUrl}
-              />
-            ) : (
-              employee.displayName.trim().slice(0, 1).toUpperCase()
-            )}
+            <AvatarImage alt={employee.displayName} className="h-full w-full object-cover" src={employee.avatarUrl ?? undefined} />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-3">

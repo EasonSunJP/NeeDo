@@ -6,6 +6,7 @@ import {
   getMerchantStaffEmploymentLabel,
   toMerchantStaffEmploymentType,
 } from "../../lib/merchantStaffRoles";
+import { resolveAvatarUrl } from "../../lib/defaultAvatar";
 import {
   realtimeApi,
   subscribeRealtimeEvents,
@@ -1069,31 +1070,6 @@ function inferProfileKind(username: string): ImProfileKind {
   return "person";
 }
 
-function buildInitialAvatar(username: string, profileKind: ImProfileKind) {
-  const initials =
-    username
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? "")
-      .join("") || "N";
-  const safeInitials = initials
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-  const colors: Record<ImProfileKind, [string, string]> = {
-    person: ["#203b52", "#84d8ff"],
-    technician: ["#173f37", "#7ce0bd"],
-    store: ["#49371d", "#ffd98b"],
-    service: ["#3c2e55", "#d6b9ff"],
-  };
-  const [background, foreground] = colors[profileKind];
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><rect width="128" height="128" rx="34" fill="${background}"/><text x="64" y="74" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="38" font-weight="800" fill="${foreground}">${safeInitials}</text></svg>`;
-
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-}
-
 function toImUserWithProfileKind(
   participant: RealtimeParticipant,
   profileKind: ImProfileKind,
@@ -1104,9 +1080,7 @@ function toImUserWithProfileKind(
     id,
     accountId: participant.needoId,
     nickname: participant.username,
-    avatar:
-      participant.avatarUrl ??
-      buildInitialAvatar(participant.username, profileKind),
+    avatar: resolveAvatarUrl(participant.avatarUrl),
     status: "active",
     searchableFields: [participant.username, participant.needoId],
     sortKey: participant.username,
@@ -1177,9 +1151,7 @@ function toOrganizationUser(technician: BackofficeTechnicianPayload): ImUser {
     id,
     accountId: technician.needoId,
     nickname: technician.displayName,
-    avatar:
-      technician.avatarUrl ??
-      buildInitialAvatar(technician.displayName, "technician"),
+    avatar: resolveAvatarUrl(technician.avatarUrl),
     region: technician.city,
     status: "active",
     searchableFields: [

@@ -10,6 +10,7 @@ import {
 import { businessNavItems } from "../../components/mobile/businessNavItems";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { useI18n } from "../../i18n/I18nProvider";
 import { languageLocales, translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
@@ -463,17 +464,7 @@ function IdentityCard({
   return (
     <section className="overflow-hidden rounded-[30px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] shadow-[0_22px_60px_rgba(0,0,0,0.12)]">
       <div className="flex items-center gap-4 p-5">
-        {profile.avatarUrl ? (
-          <img
-            alt={profile.displayName}
-            className="h-16 w-16 rounded-[22px] object-cover"
-            src={profile.avatarUrl}
-          />
-        ) : (
-          <div className="grid h-16 w-16 place-items-center rounded-[22px] bg-[color:var(--client-primary-soft)] text-2xl font-black text-[color:var(--client-primary)]">
-            {profile.displayName.trim().slice(0, 1).toUpperCase() || "N"}
-          </div>
-        )}
+        <AvatarImage alt={profile.displayName} className="h-16 w-16 rounded-[22px] object-cover" src={profile.avatarUrl ?? undefined} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-xl font-black text-[color:var(--client-text)]">
             {profile.displayName}

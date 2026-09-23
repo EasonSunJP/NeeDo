@@ -1,4 +1,5 @@
 import type { SocialProfileMiniData } from "../../shared/profile-card";
+import { resolveAvatarUrl } from "../../lib/defaultAvatar";
 import {
   registerTranslationEntries,
   translateText,
@@ -35,7 +36,7 @@ export function buildFormalOrderPersonCard(profile: {
 }, entityType: "user" | "technician"): SocialProfileMiniData {
   return {
     id: String(profile.id), entityType, displayName: profile.displayName,
-    avatar: profile.avatarUrl ?? "", coverImage: profile.avatarUrl ?? "",
+    avatar: resolveAvatarUrl(profile.avatarUrl), coverImage: resolveAvatarUrl(profile.avatarUrl),
     headline: profile.bio ?? undefined, regionLabel: profile.serviceArea ?? profile.city ?? "",
     primaryLabel: "", kycVerified: false, levelLabel: "", scoreLabel: "评价",
     scoreValue: profile.reviewSummary && profile.reviewSummary.reviewCount > 0 ? profile.reviewSummary.ratingAverage : "—",

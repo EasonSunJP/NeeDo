@@ -99,6 +99,13 @@ const coreService = {
 } satisfies CoreServiceDetail;
 
 describe("core read API adapter", () => {
+  it("uses the system avatar for an unconfigured technician without changing a configured one", () => {
+    const unconfigured = mapCoreTechnicianToTechnician({ ...coreService.technician, avatarUrl: null });
+    const configured = mapCoreTechnicianToTechnician(coreService.technician);
+    expect(unconfigured.avatar).toBe("/images/generated/profiles/dodo-default-avatar.webp");
+    expect(configured.avatar).toBe("/images/generated/profile-technician-mika.jpg");
+  });
+
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
   });

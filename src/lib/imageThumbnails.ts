@@ -1,3 +1,5 @@
+import { DEFAULT_AVATAR_URL } from "./defaultAvatar";
+
 const generatedImagePrefix = "/images/generated/";
 const generatedThumbnailPrefix = "/images/generated/thumbnails/";
 const thumbnailExtensionPattern = /\.(?:jpe?g|png|webp)$/i;
@@ -5,6 +7,7 @@ const thumbnailExtensionPattern = /\.(?:jpe?g|png|webp)$/i;
 export function getGeneratedImageThumbnailUrl(url?: string) {
   if (
     !url ||
+    url === DEFAULT_AVATAR_URL ||
     url.startsWith("data:") ||
     url.startsWith("blob:") ||
     !url.startsWith(generatedImagePrefix) ||

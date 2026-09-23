@@ -211,11 +211,7 @@ export function ExchangeInteractions({
           {!loadingComments && !commentLoadError && comments.length === 0 ? <p className="text-sm font-bold text-[color:var(--client-muted)]">{t("emptyComments")}</p> : null}
           {comments.map((comment) => {
             const author = <>
-              {comment.author.avatarUrl ? (
-                <AvatarImage alt={comment.author.displayName} className="h-9 w-9 shrink-0 rounded-xl object-cover" src={comment.author.avatarUrl} />
-              ) : (
-                <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[color:var(--client-primary-soft)] text-xs font-black text-[color:var(--client-primary)]">{comment.author.displayName.slice(0, 1)}</span>
-              )}
+              <AvatarImage alt={comment.author.displayName} className="h-9 w-9 shrink-0 rounded-xl object-cover" src={comment.author.avatarUrl ?? undefined} />
               <span className="min-w-0">
                 <span className="block truncate text-sm font-black text-[color:var(--client-text)]">{comment.author.displayName}</span>
                 <span className="block truncate font-mono text-[10px] font-bold text-[color:var(--client-muted)]">{comment.author.publicId}</span>
