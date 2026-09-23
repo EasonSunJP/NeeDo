@@ -8,6 +8,7 @@ const entry = (zhHant: string, ja: string, en: string, ko: string): TranslationE
 });
 
 export const technicianAutomationTranslations: Record<string, TranslationEntry> = {
+  "银行转账（历史订单）": entry("銀行轉帳（歷史訂單）", "銀行振込（過去の注文）", "Bank transfer (past orders)", "은행 이체 (과거 주문)"),
   下一周期反馈: entry("下一週期回饋", "次周期の回答", "Next-cycle feedback", "다음 주기 피드백"),
   "选择可以上班的日期并提交；反馈由服务端保存，同店铺商户端会读取同一份数据。": entry("選擇可以上班的日期並提交；回饋由伺服器儲存，同店鋪商戶端會讀取同一份資料。", "勤務可能な日を選択して送信します。回答はサーバーに保存され、同じ店舗の管理画面にも同じデータが表示されます。", "Select available work dates and submit. Feedback is stored on the server and shared with the same shop's merchant view.", "근무 가능한 날짜를 선택해 제출하세요. 피드백은 서버에 저장되며 같은 매장의 상점 화면과 공유됩니다."),
   提交下一周期反馈: entry("提交下一週期回饋", "次周期の回答を送信", "Submit next-cycle feedback", "다음 주기 피드백 제출"),
