@@ -609,7 +609,7 @@ describe("StoreDetailPage routed booking defaults", () => {
 
   it("keeps the fixed store header compact and out of page vertical rhythm spacing", () => {
     expect(pageSource).toContain('contentClassName="pb-40 pt-[calc(env(safe-area-inset-top,0px)+148px)] sm:pt-[calc(env(safe-area-inset-top,0px)+156px)]"');
-    expect(pageSource).toContain('<div className="mt-2">{tabSwitcher}</div>');
+    expect(pageSource).toContain('<div className="mt-2 overflow-x-auto">{tabSwitcher}</div>');
     expect(pageSource).toContain('<div className="space-y-3">{content}</div>');
     expect(pageSource).not.toContain('contentClassName="space-y-3 pb-40');
     expect(pageSource).not.toContain("pointer-events-none fixed inset-x-0 top-0 z-30");
@@ -618,9 +618,9 @@ describe("StoreDetailPage routed booking defaults", () => {
 
   it("keeps store booking capsule CTAs compact instead of relying on h-14 overrides", () => {
     expect(pageSource).toContain('const storeBookingCtaButtonClassName = "h-[52px] min-w-[176px] justify-center gap-2 px-7 text-center text-sm";');
-    expect(pageSource).toContain('const storeBottomActionRowClassName = "client-app-frame client-app-gutter flex items-center gap-3 pb-2";');
-    expect(pageSource).toContain('const storeBottomSecondaryButtonClassName = "h-[52px] shrink-0 gap-2 px-5 shadow-[0_12px_26px_rgba(0,0,0,0.20)] backdrop-blur-xl";');
-    expect(pageSource).toContain('const storeBottomPrimaryButtonClassName = "h-[52px] flex-1 gap-2 px-5 text-sm shadow-[0_12px_30px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]";');
+    expect(pageSource).toContain('const storeBottomActionRowClassName = "client-app-frame client-app-gutter flex items-center gap-2 pb-2 sm:gap-3";');
+    expect(pageSource).toMatch(/const storeBottomSecondaryButtonClassName = "h-\[52px\] min-w-0 flex-1[^\n]+sm:flex-none/);
+    expect(pageSource).toMatch(/const storeBottomPrimaryButtonClassName = "h-\[52px\] min-w-0 flex-1/);
     expect(pageSource).not.toContain("min-h-14 min-w-[188px]");
     expect(pageSource).not.toContain('className="h-14 shrink-0');
     expect(pageSource).not.toContain('className="h-14 flex-1');

@@ -94,13 +94,13 @@ export function UnifiedServiceInfoCard({
   const metrics: UnifiedCardMetric[] = [
     {
       icon: "calendar",
-      label: text.bookable,
+      label: data.isBookable === false ? text.notBookable : text.bookable,
       value:
         data.isBookable === false
-          ? text.notBookable
+          ? <><span className="sm:hidden" aria-hidden="true">×</span><span className="sr-only sm:hidden">{text.notBookable}</span><span className="hidden sm:inline">{text.notBookable}</span></>
           : data.isBookable === null || data.isBookable === undefined
             ? "-"
-            : text.bookable,
+            : <><span className="sm:hidden" aria-hidden="true">✓</span><span className="sr-only sm:hidden">{text.bookable}</span><span className="hidden sm:inline">{text.bookable}</span></>,
     },
     {
       icon: "completed",
