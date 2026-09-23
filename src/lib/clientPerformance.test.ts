@@ -45,7 +45,7 @@ describe("client performance profile", () => {
 
   it("avoids eager pet work and expensive glass effects on the reduced profile", () => {
     expect(appSource).toContain("<NeedoPetAssetBootstrap disabled={reducedPerformance} />");
-    expect(appSource).toContain("<NeedoPet disabled={Boolean(splashPortal) || reducedPerformance} />");
+    expect(appSource).toContain("<NeedoPet disabled={Boolean(visibleSplashPortal) || reducedPerformance} />");
     expect(appSource).toContain("reducedPerformance ? 140 : 920");
     expect(appSource).toContain('decoding={reducedPerformance ? "async" : "sync"}');
     expect(stylesSource).toContain('html[data-needo-performance-profile="reduced"]');
