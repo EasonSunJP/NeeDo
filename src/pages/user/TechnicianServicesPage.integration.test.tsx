@@ -3,6 +3,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { I18nProvider } from "../../i18n/I18nProvider";
 import { TechnicianServicesPage } from "./TechnicianServicesPage";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -94,11 +95,13 @@ it.each(["user", "merchant", "technician"] as const)(
     const prefix = scope === "user" ? "" : `/${scope}`;
 
     await act(async () => root.render(
-      <MemoryRouter initialEntries={[`${prefix}/stores/shop6333731099/technicians/s5148317836/services`]}>
-        <Routes>
-          <Route path={`${prefix}/stores/:shopId/technicians/:technicianId/services`} element={<TechnicianServicesPage scope={scope} />} />
-        </Routes>
-      </MemoryRouter>
+      <I18nProvider>
+        <MemoryRouter initialEntries={[`${prefix}/stores/shop6333731099/technicians/s5148317836/services`]}>
+          <Routes>
+            <Route path={`${prefix}/stores/:shopId/technicians/:technicianId/services`} element={<TechnicianServicesPage scope={scope} />} />
+          </Routes>
+        </MemoryRouter>
+      </I18nProvider>
     ));
 
     await vi.waitFor(() => expect(pricingModeMock.listPublicTechnicianServices)
@@ -120,11 +123,13 @@ it("loads the selected available technician's services and preserves the chosen 
   pricingModeMock.listPublicTechnicianServices.mockResolvedValue(serviceResult);
 
   await act(async () => root.render(
-    <MemoryRouter initialEntries={["/stores/11/technicians/23/services?date=2026-09-22&people=1%E5%90%8D&time=10%3A00"]}>
-      <Routes>
-        <Route path="/stores/:shopId/technicians/:technicianId/services" element={<TechnicianServicesPage />} />
-      </Routes>
-    </MemoryRouter>
+    <I18nProvider>
+      <MemoryRouter initialEntries={["/stores/11/technicians/23/services?date=2026-09-22&people=1%E5%90%8D&time=10%3A00"]}>
+        <Routes>
+          <Route path="/stores/:shopId/technicians/:technicianId/services" element={<TechnicianServicesPage />} />
+        </Routes>
+      </MemoryRouter>
+    </I18nProvider>
   ));
 
   await vi.waitFor(() => expect(container.textContent).toContain("アロマオイルトリートメント 60分"));
