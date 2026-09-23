@@ -565,12 +565,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           endsAt: slot.endsAt,
           actualScheduleAvailable: true,
           hasBufferedConflict,
-          hardBlockReasons: this.isOnlineAtShop(
-            slot.technicianProfile.workStates,
-            slot.shopId
-          )
-            ? []
-            : ["technician_not_on_duty"],
+          hardBlockReasons: [],
           areaCode: post.areaLabel,
           distanceKm: null,
           grossAmountJpy: post.demand.budgetMaxJpy,
