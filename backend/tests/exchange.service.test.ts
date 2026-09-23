@@ -900,6 +900,18 @@ describe("ExchangeService", () => {
     expect(ledger.freezeExchangeRequestPublication).toHaveBeenCalledTimes(1);
   });
 
+  it("does not freeze the Request fee when the application deadline has passed before publication", async () => {
+    const repository = createRepository();
+    const ledger = createLedgerService();
+    const feeService = createFeeService();
+    const service = new ExchangeService(repository, () => now, undefined, feeService, ledger);
+
+    await expect(service.publish(access, { ...demandInput, expiresAt: now }, "expired-demand-0001"))
+      .rejects.toMatchObject({ message: "error.exchange.post_unavailable", statusCode: 409 });
+    expect(repository.createPost).not.toHaveBeenCalled();
+    expect(ledger.freezeExchangeRequestPublication).not.toHaveBeenCalled();
+  });
+
   it("rejects a reused idempotency key with a different Request payload", async () => {
     const repository = createRepository();
     const transactionRepository = createRepository();

@@ -28,7 +28,7 @@ const demandPost: ExchangePost = {
   areaLabel: "東京都千代田区",
   serviceStartAt: "2026-08-31T04:00:00.000Z",
   serviceEndAt: "2026-08-31T06:00:00.000Z",
-  expiresAt: "2026-08-31T06:00:00.000Z",
+  expiresAt: "2026-08-31T03:30:00.000Z",
   publishedAt: "2026-08-30T04:00:00.000Z",
   publisher: { publicId: "u0000000041", identityType: "customer", displayName: "测试客户 41", avatarUrl: null },
   counts: { comments: 4, likes: 21, shares: 6 },
@@ -202,7 +202,7 @@ describe("ExchangeFeedPage", () => {
     expect(markup).toContain("利用条件");
     expect(markup).toContain("适用范围");
     expect(markup).toContain("备注");
-    expect(markup).toContain("有效期限");
+    expect(markup).toContain("应募有效截止时间");
     expect(markup).toContain("测试客户 41");
     expect(markup).toContain("u0000000041");
     expect(markup).toContain("東京駅附近寻找中文口译");

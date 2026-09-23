@@ -1,10 +1,23 @@
 import type { ReactNode } from "react";
 import type { Language } from "../../i18n/translations";
+import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { exchangeText } from "./i18n";
 import type { RequestComposerDraft } from "./exchange-composer-model";
 import type { ExchangeRequestPublicationContext } from "./types";
 
 const fieldClassName = "focus-ring min-h-12 w-full rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-4 text-sm font-semibold text-[color:var(--client-text)] outline-none transition focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:var(--client-primary-soft)]";
+const halfHourOptions = Array.from({ length: 48 }, (_, index) => `${String(Math.floor(index / 2)).padStart(2, "0")}:${index % 2 === 0 ? "00" : "30"}`);
+
+function HalfHourSelect({ name, label, value, onChange }: { name: string; label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <Field label={label} required>
+      <select className={`${fieldClassName} min-w-0 px-3`} name={name} onChange={(event) => onChange(event.target.value)} value={value}>
+        <option value="">—</option>
+        {halfHourOptions.map((time) => <option key={time} value={time}>{time}</option>)}
+      </select>
+    </Field>
+  );
+}
 
 function Field({ label, required = false, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
@@ -25,7 +38,7 @@ function SegmentedChoice<TValue extends string>({
   onChange
 }: {
   label: string;
-  options: Array<{ label: string; value: TValue }>;
+  options: Array<{ label: string; value: TValue; info?: string; infoLabel?: string }>;
   value: TValue;
   onChange: (value: TValue) => void;
 }) {
@@ -33,18 +46,20 @@ function SegmentedChoice<TValue extends string>({
     <Field label={label} required>
       <div aria-label={label} className="grid grid-cols-2 gap-1 rounded-2xl bg-[color:var(--client-bg)] p-1" role="radiogroup">
         {options.map((option) => (
-          <button
-            aria-checked={value === option.value}
-            className={value === option.value
-              ? "focus-ring min-h-11 rounded-xl bg-[color:var(--client-surface)] text-sm font-black text-[color:var(--client-text)] shadow-soft"
-              : "focus-ring min-h-11 rounded-xl text-sm font-bold text-[color:var(--client-muted)]"}
-            key={option.value}
-            onClick={() => onChange(option.value)}
-            role="radio"
-            type="button"
-          >
-            {option.label}
-          </button>
+          <div className="relative min-w-0" key={option.value}>
+            <button
+              aria-checked={value === option.value}
+              className={`${value === option.value
+                ? "bg-[color:var(--client-surface)] font-black text-[color:var(--client-text)] shadow-soft"
+                : "font-bold text-[color:var(--client-muted)]"} focus-ring min-h-11 w-full rounded-xl text-sm ${option.info ? "pr-9" : ""}`}
+              onClick={() => onChange(option.value)}
+              role="radio"
+              type="button"
+            >
+              {option.label}
+            </button>
+            {option.info ? <InfoTooltipTrigger className="absolute right-1 top-1/2 -translate-y-1/2" content={option.info} label={option.infoLabel} /> : null}
+          </div>
         ))}
       </div>
     </Field>
@@ -151,30 +166,24 @@ export function RequestComposerFields({
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label={t("serviceStartDate")} required>
+          <Field label={t("requestServiceStartDate")} required>
             <input className={`${fieldClassName} min-w-0 px-3`} name="serviceStartDate" onChange={(event) => onChange({ serviceStartDate: event.target.value })} type="date" value={draft.serviceStartDate} />
           </Field>
-          <Field label={t("serviceStartTime")} required>
-            <input className={`${fieldClassName} min-w-0 px-3`} name="serviceStartTime" onChange={(event) => onChange({ serviceStartTime: event.target.value })} type="time" value={draft.serviceStartTime} />
-          </Field>
+          <HalfHourSelect label={t("requestServiceStartTime")} name="serviceStartTime" onChange={(serviceStartTime) => onChange({ serviceStartTime })} value={draft.serviceStartTime} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label={t("serviceEndDate")} required>
+          <Field label={t("requestServiceEndDate")} required>
             <input className={`${fieldClassName} min-w-0 px-3`} min={draft.serviceStartDate || undefined} name="serviceEndDate" onChange={(event) => onChange({ serviceEndDate: event.target.value })} type="date" value={draft.serviceEndDate} />
           </Field>
-          <Field label={t("serviceEndTime")} required>
-            <input className={`${fieldClassName} min-w-0 px-3`} name="serviceEndTime" onChange={(event) => onChange({ serviceEndTime: event.target.value })} type="time" value={draft.serviceEndTime} />
-          </Field>
+          <HalfHourSelect label={t("requestServiceEndTime")} name="serviceEndTime" onChange={(serviceEndTime) => onChange({ serviceEndTime })} value={draft.serviceEndTime} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label={t("expiryDate")} required>
-            <input className={`${fieldClassName} min-w-0 px-3`} min={draft.serviceEndDate || undefined} name="expiresDate" onChange={(event) => onChange({ expiresDate: event.target.value })} type="date" value={draft.expiresDate} />
+          <Field label={t("applicationDeadlineDate")} required>
+            <input className={`${fieldClassName} min-w-0 px-3`} max={draft.serviceStartDate || undefined} name="expiresDate" onChange={(event) => onChange({ expiresDate: event.target.value })} type="date" value={draft.expiresDate} />
           </Field>
-          <Field label={t("expiryTime")} required>
-            <input className={`${fieldClassName} min-w-0 px-3`} name="expiresTime" onChange={(event) => onChange({ expiresTime: event.target.value })} type="time" value={draft.expiresTime} />
-          </Field>
+          <HalfHourSelect label={t("applicationDeadlineTime")} name="expiresTime" onChange={(expiresTime) => onChange({ expiresTime })} value={draft.expiresTime} />
         </div>
 
         <Field label={t("targetProviderCount")} required>
@@ -194,8 +203,8 @@ export function RequestComposerFields({
           label={t("matchMode")}
           onChange={(matchMode) => onChange({ matchMode })}
           options={[
-            { label: t("quickMatch"), value: "quick" },
-            { label: t("selectiveMatch"), value: "selective" }
+            { label: t("quickMatch"), value: "quick", info: t("quickMatchInfo"), infoLabel: t("quickMatchInfoLabel") },
+            { label: t("selectiveMatch"), value: "selective", info: t("selectiveMatchInfo"), infoLabel: t("selectiveMatchInfoLabel") }
           ]}
           value={draft.matchMode}
         />

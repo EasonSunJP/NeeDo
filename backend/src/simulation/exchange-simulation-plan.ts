@@ -234,7 +234,9 @@ export const buildExchangeSimulationPlan = (
       serviceBase.getTime() + typeIndex * 20 * 60 * 60_000 + (index % 3) * 60 * 60_000
     );
     const serviceEndAt = new Date(serviceStartAt.getTime() + (60 + (index % 3) * 30) * 60_000);
-    const expiresAt = new Date(serviceEndAt.getTime() + 6 * 60 * 60_000);
+    const expiresAt = new Date(type === "demand"
+      ? serviceStartAt.getTime() - 60 * 60_000
+      : serviceEndAt.getTime() + 6 * 60 * 60_000);
     const interactionActors = distinctActorsByUser(
       actors.filter((candidate) => candidate.userId !== author.userId)
     );

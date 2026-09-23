@@ -6270,9 +6270,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             example: "午後のイベント前に、自然なアップスタイルを希望します。"
           },
           contentLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
-          serviceStartAt: { type: "string", format: "date-time" },
-          serviceEndAt: { type: "string", format: "date-time" },
-          expiresAt: { type: "string", format: "date-time" },
+          serviceStartAt: { type: "string", format: "date-time", description: "Service start; must be on a 30-minute boundary." },
+          serviceEndAt: { type: "string", format: "date-time", description: "Service end; must be on a 30-minute boundary." },
+          expiresAt: { type: "string", format: "date-time", description: "Application deadline; must be on a 30-minute boundary and at least 30 minutes before serviceStartAt." },
           serviceMode: { type: "string", enum: ["home", "store"] },
           targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
           matchMode: { type: "string", enum: ["quick", "selective"] },

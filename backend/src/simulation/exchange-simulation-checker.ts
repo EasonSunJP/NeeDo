@@ -209,7 +209,10 @@ export const checkFormalExchangeSimulation = async (
     assert(post.expiresAt.getTime() > checkedAt.getTime(), `Simulation post ${post.id} expired.`);
     assert(
       post.serviceStartAt.getTime() < post.serviceEndAt.getTime() &&
-        post.serviceEndAt.getTime() <= post.expiresAt.getTime(),
+        (post.type === ExchangePostType.DEMAND
+          ? post.expiresAt.getTime() < post.serviceStartAt.getTime()
+            || post.serviceEndAt.getTime() <= post.expiresAt.getTime()
+          : post.serviceEndAt.getTime() < post.expiresAt.getTime()),
       `Simulation post ${post.id} has an invalid service window.`
     );
     assert(

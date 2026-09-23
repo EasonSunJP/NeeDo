@@ -50,7 +50,7 @@ function fillValidRequestDraft() {
     serviceEndDate: "2026-09-02",
     serviceEndTime: "16:00",
     expiresDate: "2026-09-02",
-    expiresTime: "16:01",
+    expiresTime: "12:30",
     targetProviderCount: "3",
     budgetMinJpy: "15000",
     budgetMaxJpy: "30000",
@@ -59,7 +59,7 @@ function fillValidRequestDraft() {
     addressLine3: "Room 1201"
   };
   Object.entries(values).forEach(([name, value]) => {
-    const input = document.body.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
+    const input = document.body.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${name}"]`);
     if (!input) throw new Error(`missing ${name}`);
     setInputValue(input, value);
   });
@@ -120,8 +120,13 @@ describe("RequestComposerFields formal publication contract", () => {
     expect(getRequestPublicationContext).toHaveBeenCalledTimes(1);
     expect(document.body.querySelector<HTMLInputElement>('[name="targetProviderCount"]')?.getAttribute("max")).toBe("3");
     expect(document.body.textContent).toContain("地址1 *");
-    expect(document.body.textContent).toContain("预算上限 *");
+    expect(document.body.textContent).toContain("预算上限（日元） *");
     expect(document.body.textContent).toContain("服务方式 *");
+    expect(document.body.textContent).toContain("服务开始日期 *");
+    expect(document.body.textContent).toContain("服务结束时间 *");
+    expect(document.body.textContent).toContain("应募有效截止时间 *");
+    expect(document.body.textContent).toContain("地址2（可选，仅对应募成功者展示）");
+    expect(document.body.textContent).toContain("地址3（可选，仅对应募成功者展示）");
     expect(document.body.querySelector('[name="addressLine1Public"]')).toBeNull();
 
     fillValidRequestDraft();
@@ -167,6 +172,29 @@ describe("RequestComposerFields formal publication contract", () => {
     expect(document.body.querySelector('[name="addressLine2Public"]')).toBeNull();
     expect(document.body.querySelector('[name="addressLine3Public"]')).toBeNull();
     expect(document.body.textContent).toContain("匹配成功后，参与者全员可查看所有已填写地址");
+  });
+
+  it("offers half-hour Request time choices and separate matching mode explanations", async () => {
+    await renderAndOpen();
+    await waitFor(() => expect(document.body.querySelector('[name="serviceStartTime"]')).not.toBeNull());
+
+    for (const name of ["serviceStartTime", "serviceEndTime", "expiresTime"]) {
+      const select = document.body.querySelector<HTMLSelectElement>(`select[name="${name}"]`);
+      expect(select).not.toBeNull();
+      const options = Array.from(select!.options).map((option) => option.value);
+      expect(options).toContain("10:00");
+      expect(options).toContain("10:30");
+      expect(options).toContain("11:00");
+      expect(options).not.toContain("10:45");
+    }
+    expect(document.body.querySelector('button[aria-label="速配说明"]')).not.toBeNull();
+    expect(document.body.querySelector('button[aria-label="选配说明"]')).not.toBeNull();
+    await act(async () => document.body.querySelector<HTMLButtonElement>('button[aria-label="速配说明"]')?.click());
+    expect(document.body.textContent).toContain("有效应募达到所需人数且总报价在预算内时自动匹配");
+    expect(document.body.querySelector<HTMLButtonElement>('button[role="radio"]')?.getAttribute("aria-checked")).toBe("true");
+    await act(async () => document.body.querySelector<HTMLButtonElement>('button[aria-label="选配说明"]')?.click());
+    expect(document.body.textContent).toContain("由你查看报价并选择服务者");
+    expect(document.body.querySelector<HTMLButtonElement>('button[role="radio"]')?.getAttribute("aria-checked")).toBe("true");
   });
 
   it("keeps Next disabled until the server returns publication authority", async () => {

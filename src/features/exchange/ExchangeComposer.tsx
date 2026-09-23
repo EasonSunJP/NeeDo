@@ -15,6 +15,7 @@ import { ExchangePublicationReview } from "./ExchangePublicationReview";
 import { IntelligenceComposerFields } from "./IntelligenceComposerFields";
 import { RequestComposerFields } from "./RequestComposerFields";
 import {
+  applyRequestDraftPatch,
   normalizeIntelligenceDraft,
   normalizeRequestDraft,
   type ExchangeComposerErrorKey,
@@ -368,7 +369,7 @@ export function ExchangeComposer({
               { label: t("serviceMode"), value: t(normalizedPayload.serviceMode === "home" ? "home" : "store") },
               { label: t("addressLine1"), value: normalizedPayload.addressLine1 },
               { label: t("serviceWindow"), value: `${formatComposerDateTime(normalizedPayload.serviceStartAt, language)} ～ ${formatComposerDateTime(normalizedPayload.serviceEndAt, language)}` },
-              { label: t("expiry"), value: formatComposerDateTime(normalizedPayload.expiresAt, language) },
+              { label: t("applicationDeadlineTime"), value: formatComposerDateTime(normalizedPayload.expiresAt, language) },
               { label: t("targetProviderCount"), value: String(normalizedPayload.targetProviderCount) },
               { label: t("matchMode"), value: t(normalizedPayload.matchMode === "quick" ? "quickMatch" : "selectiveMatch") },
               { label: t("budgetMode"), value: t(normalizedPayload.budgetMode === "total" ? "totalBudget" : "perProviderBudget") },
@@ -483,7 +484,7 @@ export function ExchangeComposer({
                   context={requestContext}
                   draft={requestDraft}
                   language={language}
-                  onChange={(patch) => setRequestDraft((current) => ({ ...current, ...patch }))}
+                  onChange={(patch) => setRequestDraft((current) => applyRequestDraftPatch(current, patch))}
                 />
               </>
             ) : (

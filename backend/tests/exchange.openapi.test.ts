@@ -256,6 +256,9 @@ describe("formal Exchange OpenAPI contract", () => {
     expect(publish.required).not.toContain("budgetMinJpy");
     expect(publish.properties).not.toHaveProperty("areaLabel");
     expect(publish.properties.serviceMode.enum).toEqual(["home", "store"]);
+    expect(publish.properties.expiresAt).toEqual(expect.objectContaining({
+      description: expect.stringContaining("at least 30 minutes before serviceStartAt")
+    }));
     expect(document().paths["/api/v1/exchange/posts"].post.responses["403"].description).toContain(
       "error.user_policy.ekyc_required"
     );
