@@ -23254,6 +23254,106 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/bookings/groups`]: {
+      post: {
+        tags: ["Booking"],
+        summary: "Atomically create technician-backed bookings for one to ten guests",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "booking:create",
+        parameters: [{ name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", minLength: 16, maxLength: 191 } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object", additionalProperties: false,
+            required: ["shopId", "startsAt", "guests"],
+            properties: {
+              shopId: { type: "integer", minimum: 1 },
+              startsAt: { type: "string", format: "date-time" },
+              paymentMethod: { type: "string", enum: ["onsite", "bank_transfer"], default: "onsite" },
+              note: { type: "string", maxLength: 500 },
+              guests: { type: "array", minItems: 1, maxItems: 10, items: {
+                type: "object", additionalProperties: false, required: ["label", "assignments"],
+                properties: {
+                  label: { type: "string", minLength: 1, maxLength: 60 },
+                  assignments: { type: "array", minItems: 1, maxItems: 10, items: {
+                    type: "object", additionalProperties: false,
+                    required: ["technicianProfileId", "scheduleSlotIds", "expectedPriceAmountJpy"],
+                    oneOf: [{ required: ["serviceIds"] }, { required: ["technicianServiceIds"] }],
+                    properties: {
+                      technicianProfileId: { type: "integer", minimum: 1 },
+                      serviceIds: { type: "array", minItems: 1, maxItems: 10, items: { type: "integer", minimum: 1 } },
+                      technicianServiceIds: { type: "array", minItems: 1, maxItems: 10, items: { type: "integer", minimum: 1 } },
+                      scheduleSlotIds: { type: "array", minItems: 1, maxItems: 10, items: { type: "integer", not: { const: 0 } } },
+                      expectedPriceAmountJpy: { type: "integer", minimum: 0 }
+                    }
+                  } }
+                }
+              } }
+            }
+          } } }
+        },
+        responses: { "201": { description: "Group and real per-assignment orders" }, "403": { description: "Membership or identity restriction" }, "409": { description: "Availability, price, or idempotency conflict" } }
+      }
+    },
+    [`${config.API_PREFIX}/bookings/groups/{publicId}`]: {
+      get: {
+        tags: ["Booking"], summary: "Read visible group orders for the purchaser or an authorized provider",
+        security: [{ bearerAuth: [] }], "x-permission": "order:read",
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Group with guest and authorized order projections" }, "404": { description: "Group unavailable or no visible orders" } }
+      }
+    },
+    [`${config.API_PREFIX}/bookings/groups/{publicId}/orders/{orderId}`]: {
+      patch: {
+        tags: ["Booking"], summary: "Revise one pending unpaid group order's services or technician",
+        description: "The purchaser supplies the order version and the expected new price. The server rechecks the catalog, complete occupied span, and reservations in one transaction. Orders with payment, holds, checkout, or finance activity are rejected; no differential charge or refund is implied.",
+        security: [{ bearerAuth: [] }], "x-permission": "booking:create",
+        parameters: [
+          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "orderId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          { name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", minLength: 16, maxLength: 191 } }
+        ],
+        requestBody: { required: true, content: { "application/json": { schema: {
+          type: "object", additionalProperties: false, required: ["expectedUpdatedAt", "assignment"],
+          properties: {
+            expectedUpdatedAt: { type: "string", format: "date-time" },
+            assignment: { type: "object", additionalProperties: false,
+              required: ["technicianProfileId", "scheduleSlotIds", "expectedPriceAmountJpy"],
+              oneOf: [{ required: ["serviceIds"] }, { required: ["technicianServiceIds"] }],
+              properties: {
+                technicianProfileId: { type: "integer", minimum: 1 },
+                serviceIds: { type: "array", minItems: 1, maxItems: 10, items: { type: "integer", minimum: 1 } },
+                technicianServiceIds: { type: "array", minItems: 1, maxItems: 10, items: { type: "integer", minimum: 1 } },
+                scheduleSlotIds: { type: "array", minItems: 1, maxItems: 10, items: { type: "integer", not: { const: 0 } } },
+                expectedPriceAmountJpy: { type: "integer", minimum: 0 }
+              }
+            }
+          }
+        } } } },
+        responses: { "200": { description: "Revised group projection and replay flag" }, "403": { description: "Customer identity required" },
+          "404": { description: "Group or order not owned by purchaser" }, "409": { description: "Stale version, price, slot, idempotency, or financial restriction" } }
+      }
+    },
+    [`${config.API_PREFIX}/bookings/groups/{publicId}/guests/{guestId}/remove`]: {
+      post: {
+        tags: ["Booking"], summary: "Atomically cancel all pending unpaid assignments of one group guest",
+        security: [{ bearerAuth: [] }], "x-permission": "order:cancel",
+        parameters: [
+          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "guestId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          { name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", minLength: 16, maxLength: 191 } }
+        ],
+        requestBody: { required: true, content: { "application/json": { schema: {
+          type: "object", additionalProperties: false, required: ["expectedOrders"],
+          properties: { expectedOrders: { type: "array", minItems: 1, maxItems: 10,
+            items: { type: "object", additionalProperties: false, required: ["id", "updatedAt"],
+              properties: { id: { type: "integer", minimum: 1 }, updatedAt: { type: "string", format: "date-time" } } } } }
+        } } } },
+        responses: { "200": { description: "Group projection with the guest's orders cancelled" },
+          "403": { description: "Customer identity required" }, "404": { description: "Group or guest not owned by purchaser" },
+          "409": { description: "Stale version, idempotency, or financial restriction" } }
+      }
+    },
     [`${config.API_PREFIX}/bookings`]: {
       post: {
         tags: ["Booking"],

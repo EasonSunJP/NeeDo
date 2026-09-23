@@ -36,6 +36,12 @@ import {
   availabilityWindowUpdateBodySchema,
   availabilityListQuerySchema,
   bookingCreateBodySchema,
+  bookingGroupCreateBodySchema,
+  bookingGroupGuestParamSchema,
+  bookingGroupGuestRemovalBodySchema,
+  bookingGroupOrderParamSchema,
+  bookingGroupPublicIdParamSchema,
+  bookingGroupRevisionBodySchema,
   createOrderAddOnBodySchema,
   confirmReceiptBodySchema,
   endServiceBodySchema,
@@ -213,6 +219,34 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.create),
     validateRequest({ body: bookingCreateBodySchema }),
     controller.createBooking
+  );
+  router.post(
+    "/bookings/groups",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.create),
+    validateRequest({ body: bookingGroupCreateBodySchema }),
+    controller.createGroupBooking
+  );
+  router.get(
+    "/bookings/groups/:publicId",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.getOrder),
+    validateRequest({ params: bookingGroupPublicIdParamSchema }),
+    controller.getGroupBooking
+  );
+  router.patch(
+    "/bookings/groups/:publicId/orders/:orderId",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.create),
+    validateRequest({ params: bookingGroupOrderParamSchema, body: bookingGroupRevisionBodySchema }),
+    controller.reviseGroupOrder
+  );
+  router.post(
+    "/bookings/groups/:publicId/guests/:guestId/remove",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.cancel),
+    validateRequest({ params: bookingGroupGuestParamSchema, body: bookingGroupGuestRemovalBodySchema }),
+    controller.removeGroupGuest
   );
   router.post(
     "/bookings/:id/service-prepayment",
