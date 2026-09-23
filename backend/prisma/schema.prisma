@@ -1331,6 +1331,7 @@ model User {
   affiliateAllianceMemberships          AffiliateAllianceMember[]           @relation("AffiliateAllianceMemberUser")
   receivedAffiliateAllianceInvitations  AffiliateAllianceInvitation[]       @relation("AffiliateAllianceInvitationInvitee")
   bookingOrders                         BookingOrder[]                      @relation("BookingOrderCustomer")
+  bookingGroups                         BookingGroup[]                      @relation("BookingGroupCustomer")
   orderRefundCases                      OrderRefundCase[]                   @relation("OrderRefundCaseCustomer")
   customerOrderRefundDisputes           OrderRefundDispute[]                @relation("OrderRefundDisputeCustomer")
   merchantDecidedOrderRefundCases       OrderRefundCase[]                   @relation("OrderRefundCaseMerchantDecider")
@@ -1892,6 +1893,7 @@ model Shop {
   scheduleSlots              ScheduleSlot[]
   scheduleCycles             ScheduleCycle[]
   bookingOrders              BookingOrder[]
+  bookingGroups              BookingGroup[]
   orderRefundCases           OrderRefundCase[]
   orderRefundDisputes        OrderRefundDispute[]
   financeRuleSets            ShopFinanceRuleSet[]
@@ -3743,6 +3745,7 @@ model Service {
   reviewSummary         ReviewSummary?
   scheduleSlots         ScheduleSlot[]
   bookingOrders         BookingOrder[]
+  bookingOrderItems     BookingOrderServiceItem[]
   orderAddOns           OrderAddOn[]
   technicianServices    TechnicianService[]    @relation("TechnicianServiceSourceShopService")
   affiliateTaskScopes   AffiliateTaskService[]
@@ -4480,6 +4483,40 @@ model ScheduleSlot {
   @@map("schedule_slots")
 }
 
+model BookingGroup {
+  id                 Int                 @id @default(autoincrement())
+  publicId           String              @unique @default(uuid()) @map("public_id") @db.Char(36)
+  customerUserId     Int                 @map("customer_user_id")
+  shopId             Int                 @map("shop_id")
+  startsAt           DateTime            @map("starts_at")
+  idempotencyKey     String              @map("idempotency_key") @db.VarChar(191)
+  requestFingerprint String              @map("request_fingerprint") @db.Char(64)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  customer           User                @relation("BookingGroupCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  shop               Shop                @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  guests             BookingGroupGuest[]
+
+  @@unique([customerUserId, idempotencyKey], map: "booking_groups_customer_idempotency_key")
+  @@index([shopId, startsAt], map: "booking_groups_shop_start_idx")
+  @@map("booking_groups")
+}
+
+model BookingGroupGuest {
+  id                Int            @id @default(autoincrement())
+  bookingGroupId    Int            @map("booking_group_id")
+  position          Int
+  label             String         @db.VarChar(60)
+  createdAt         DateTime       @default(now()) @map("created_at")
+
+  group             BookingGroup   @relation(fields: [bookingGroupId], references: [id], onDelete: Restrict)
+  orders            BookingOrder[]
+
+  @@unique([bookingGroupId, position], map: "booking_group_guests_group_position_key")
+  @@map("booking_group_guests")
+}
+
 model BookingOrder {
   attendanceAffectedOrders TechnicianAttendanceAffectedOrder[]
   workEvents TechnicianWorkEvent[]
@@ -4489,6 +4526,7 @@ model BookingOrder {
   orderNo                 String               @unique @map("order_no") @db.VarChar(40)
   orderType               OrderType            @default(BOOKING) @map("order_type")
   customerUserId          Int                  @map("customer_user_id")
+  bookingGroupGuestId     Int?                 @map("booking_group_guest_id")
   serviceId               Int?                 @map("service_id")
   technicianServiceId     Int?                 @map("technician_service_id")
   shopId                  Int                  @map("shop_id")
@@ -4529,6 +4567,7 @@ model BookingOrder {
   deletedAt               DateTime?            @map("deleted_at")
 
   customer              User                   @relation("BookingOrderCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  bookingGroupGuest     BookingGroupGuest?     @relation(fields: [bookingGroupGuestId], references: [id], onDelete: Restrict)
   service               Service?               @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   technicianService     TechnicianService?     @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
   shop                  Shop                   @relation(fields: [shopId], references: [id], onDelete: Restrict)
@@ -4567,6 +4606,7 @@ model BookingOrder {
   serviceItems                   BookingOrderServiceItem[]
 
   @@index([customerUserId])
+  @@index([bookingGroupGuestId], map: "booking_orders_group_guest_idx")
   @@index([serviceId])
   @@index([technicianServiceId])
   @@index([shopId])
@@ -4595,7 +4635,8 @@ model BookingOrder {
 model BookingOrderServiceItem {
   id                  Int      @id @default(autoincrement())
   bookingOrderId      Int      @map("booking_order_id")
-  technicianServiceId Int      @map("technician_service_id")
+  serviceId           Int?     @map("service_id")
+  technicianServiceId Int?     @map("technician_service_id")
   scheduleSlotId      Int      @map("schedule_slot_id")
   position            Int
   serviceNameSnapshot String   @map("service_name_snapshot") @db.VarChar(160)
@@ -4608,12 +4649,14 @@ model BookingOrderServiceItem {
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   bookingOrder      BookingOrder      @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  technicianService TechnicianService @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  service           Service?          @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  technicianService TechnicianService? @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   scheduleSlot      ScheduleSlot      @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([bookingOrderId, position], map: "booking_order_service_items_order_position_key")
   @@unique([bookingOrderId, scheduleSlotId], map: "booking_order_service_items_order_slot_key")
   @@index([technicianServiceId], map: "booking_order_service_items_technician_service_idx")
+  @@index([serviceId], map: "booking_order_service_items_service_idx")
   @@index([scheduleSlotId], map: "booking_order_service_items_schedule_slot_idx")
   @@map("booking_order_service_items")
 }
