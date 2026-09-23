@@ -57,7 +57,7 @@ async function click(element: Element) {
   await act(async () => element.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
 
-function renderRow(onSelect = vi.fn()) {
+function renderRow(onSelect = vi.fn(), technicianNominated = false) {
   act(() => {
     root.render(
       <CheckoutTimeRow
@@ -66,6 +66,7 @@ function renderRow(onSelect = vi.fn()) {
         people="1名"
         selectedSlotId={1}
         slots={slots}
+        technicianNominated={technicianNominated}
       />
     );
   });
@@ -73,6 +74,17 @@ function renderRow(onSelect = vi.fn()) {
 }
 
 describe("CheckoutTimeRow", () => {
+  it("shows shop assignment when a shop service slot has no nominated technician", () => {
+    renderRow();
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')!;
+    expect(trigger.textContent).toContain("由店铺安排技师");
+    expect(trigger.textContent).not.toContain("Misaki");
+  });
+  it("shows the chosen technician when explicitly nominated", () => {
+    renderRow(vi.fn(), true);
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')!;
+    expect(trigger.textContent).toContain("Misaki");
+  });
   it("shows only same-day formal times and disables unavailable rows", async () => {
     const onSelect = renderRow();
     const trigger = container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')!;

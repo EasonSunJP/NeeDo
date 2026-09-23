@@ -565,7 +565,7 @@ it("builds checkout actions only from an exact future formal slot", async () => 
     serviceId: 31,
     technicianServiceId: null,
     shopId: 21,
-    technicianProfileId: null,
+    technicianProfileId: 501,
     startsAt: "2026-09-13T12:00:00.000Z",
     endsAt: "2026-09-13T13:00:00.000Z",
     capacity: 1,
@@ -629,6 +629,7 @@ it("builds checkout actions only from an exact future formal slot", async () => 
   const checkoutHref = container.querySelector<HTMLAnchorElement>('a[href*="scheduleSlotId=902"]')!.getAttribute("href")!;
   expect(checkoutHref).toContain("date=2026-09-13");
   expect(checkoutHref).toContain("time=21%3A00");
+  expect(checkoutHref).not.toContain("technician=");
   expect(checkoutHref).not.toContain("time=00%3A00");
 });
 

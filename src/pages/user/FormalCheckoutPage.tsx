@@ -1312,6 +1312,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                     people={people}
                     selectedSlotId={selectedSlotId}
                     slots={slots}
+                    technicianNominated={Boolean(selectedTechnicianProfileId)}
                   />
                   {slotSelectionInvalid ? (
                     <div className="mt-3 rounded-[18px] border border-amber-400/40 bg-amber-500/10 px-4 py-3" data-no-i18n role="alert">

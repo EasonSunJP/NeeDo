@@ -9,11 +9,12 @@ import {
 } from "./checkoutTimeSlots";
 import { useCheckoutText } from "./i18n";
 
-export function CheckoutTimeRow({ date, people, slots, selectedSlotId, nowMs = Date.now(), onSelect }: {
+export function CheckoutTimeRow({ date, people, slots, selectedSlotId, technicianNominated, nowMs = Date.now(), onSelect }: {
   date: string;
   people: string;
   slots: BookingScheduleSlot[];
   selectedSlotId: number | null;
+  technicianNominated: boolean;
   nowMs?: number;
   onSelect: (slotId: number) => void;
 }) {
@@ -57,7 +58,7 @@ export function CheckoutTimeRow({ date, people, slots, selectedSlotId, nowMs = D
             {selectedSlot ? getTokyoSlotParts(selectedSlot.startsAt)?.time : "—"}
           </p>
           <p className="mt-1 truncate text-[11px] font-semibold text-[color:var(--client-muted)]">
-            {selectedSlot?.technicianName ?? t("assignedByShop")}
+            {technicianNominated ? selectedSlot?.technicianName ?? t("assignedByShop") : t("assignedByShop")}
           </p>
         </button>
         <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">

@@ -3568,7 +3568,7 @@ export function StoreDetailExperience({
       people: selectedPeople,
       scheduleSlotId: selectedFormalOption?.scheduleSlotId,
       storeId: store.id,
-      technicianId: selectedBookingTechnician?.id ?? (selectedFormalOption?.technicianProfileId ? String(selectedFormalOption.technicianProfileId) : undefined),
+      technicianId: selectedBookingTechnician?.id,
       time: selectedTime
     });
   const bookingHref = technicianServiceListBookingHref

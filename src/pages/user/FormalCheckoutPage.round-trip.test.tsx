@@ -884,6 +884,7 @@ describe("formal checkout technician-card round trip", () => {
       );
     });
     await waitFor(() => expect(container.textContent).toContain("肩颈调理"));
+    await waitFor(() => expect(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')?.textContent).toContain("由店铺安排技师"));
     const confirm = () => Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
       .find((button) => button.textContent?.includes("确定预约"))!;
 
@@ -894,6 +895,7 @@ describe("formal checkout technician-card round trip", () => {
 
     expect(createBooking.mock.calls[0]?.[1]).toMatch(/^[a-f0-9]{32}$/);
     expect(createBooking.mock.calls[0]?.[1]).toBe(createBooking.mock.calls[1]?.[1]);
+    expect(createBooking.mock.calls[0]?.[0]).not.toHaveProperty("nominatedTechnicianProfileId");
   });
 
   it("reports an expired slot as stale availability instead of a checkout load failure", async () => {
