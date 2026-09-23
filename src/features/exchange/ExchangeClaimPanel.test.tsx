@@ -189,6 +189,33 @@ describe("ExchangeClaimPanel", () => {
     );
   });
 
+  it("keeps services distinct when a dynamic window gives them the same option id", async () => {
+    vi.mocked(listExchangeClaimOptions).mockResolvedValue({
+      list: [
+        { ...option, scheduleSlotId: -1048578, service: { ...option.service, ref: "technician:31" } },
+        { ...option, scheduleSlotId: -1048578, service: { ...option.service, ref: "technician:32", name: "第二项服务" } }
+      ],
+      total: 2, page: 1, page_size: 20
+    });
+    vi.mocked(createExchangeClaim).mockResolvedValue(activeClaim);
+    await act(async () => root.render(<ExchangeClaimPanel language="zh" post={post} />));
+    await waitFor(() => expect(document.body.textContent).toContain("第二项服务"));
+    const buttons = document.body.querySelectorAll<HTMLButtonElement>('[data-option-id="-1048578"]');
+    expect(buttons).toHaveLength(2);
+    await act(async () => buttons[1].click());
+    await act(async () => changeInput(
+      document.body.querySelector<HTMLInputElement>('input[name="claimQuoteAmountJpy"]')!,
+      "15000"
+    ));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="submit-claim"]')!.click());
+    expect(createExchangeClaim).toHaveBeenCalledWith("41", {
+      scheduleSlotId: -1048578,
+      serviceRef: "technician:32",
+      quoteAmountJpy: 15_000,
+      message: null
+    }, "exchange-claim-ui-0001");
+  });
+
   it("submits only the chosen server option and keeps inputs after a server error", async () => {
     vi.mocked(createExchangeClaim)
       .mockRejectedValueOnce(new Error("error.exchange.claim_time_conflict"))

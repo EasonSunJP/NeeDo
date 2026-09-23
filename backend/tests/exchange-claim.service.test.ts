@@ -112,6 +112,7 @@ const option = {
   scheduleSlotId: 91,
   shopId: 11,
   technicianProfileId: 81,
+  technicianUserId: 8,
   serviceId: 501,
   technicianServiceId: null,
   serviceName: "ヘアセット",
@@ -331,6 +332,45 @@ describe("ExchangeClaimService", () => {
       })
     );
     expect(quickMatchingService.attemptAfterClaim).not.toHaveBeenCalled();
+  });
+
+  it("passes a dynamic option's service reference through the locked claim path", async () => {
+    const repository = createRepository();
+    const service = new ExchangeClaimService(
+      repository,
+      { resolveActor: jest.fn(async () => merchantActor) },
+      () => now
+    );
+    await service.createClaim(
+      merchantAccess,
+      41,
+      { scheduleSlotId: -1048578, serviceRef: "shop:501", quoteAmountJpy: 15_000, message: null },
+      "claim-key-dynamic-0001",
+      requestContext
+    );
+    expect(repository.lockOption).toHaveBeenCalledWith(
+      -1048578,
+      { kind: "merchant", shopId: 11 },
+      now,
+      "shop:501"
+    );
+  });
+
+  it("rejects a shop claim that selects the Request author's own technician profile", async () => {
+    const repository = createRepository({
+      lockOption: jest.fn(async () => ({ ...option, technicianUserId: request.authorUserId }))
+    });
+    const service = new ExchangeClaimService(
+      repository,
+      { resolveActor: jest.fn(async () => merchantActor) },
+      () => now
+    );
+    await expect(service.createClaim(
+      merchantAccess, 41,
+      { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: null },
+      "claim-key-self-technician-0001", requestContext
+    )).rejects.toMatchObject({ code: 40311 });
+    expect(repository.create).not.toHaveBeenCalled();
   });
 
   it.each([

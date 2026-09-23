@@ -6,6 +6,7 @@ import {
   technicianAutomationRulesSchema,
   type TechnicianAutomationRules
 } from "../validators/technician-automation.validator";
+import type { ExchangeClaimServiceRef } from "../types/exchange-claim.types";
 
 export interface TechnicianAutomationCandidate {
   settingId: number;
@@ -20,13 +21,18 @@ export interface TechnicianAutomationCandidate {
 
 export interface TechnicianRequestAutomationCandidate extends TechnicianAutomationCandidate {
   scheduleSlotId: number;
+  serviceRef?: ExchangeClaimServiceRef;
   quoteAmountJpy: number;
   message: string;
 }
 
 export interface TechnicianAutomationProcessorRepositoryPort {
   loadBookingCandidate(orderId: number): Promise<TechnicianAutomationCandidate | null>;
-  loadRequestCandidates(postId: number): Promise<TechnicianRequestAutomationCandidate[]>;
+  loadRequestCandidates(postId: number, selection?: {
+    technicianProfileId: number;
+    scheduleSlotId: number;
+    serviceRef?: ExchangeClaimServiceRef;
+  }): Promise<TechnicianRequestAutomationCandidate[]>;
   reserveDecision(input: {
     settingId: number;
     technicianProfileId: number;
@@ -70,6 +76,7 @@ export interface TechnicianRequestAutomationAuthority {
     technicianProfileId: number;
     technicianPublicId: string;
     scheduleSlotId: number;
+    serviceRef?: ExchangeClaimServiceRef;
     quoteAmountJpy: number;
     message: string;
     idempotencyKey: string;
@@ -104,7 +111,11 @@ export class TechnicianAutomationProcessor {
     const candidates = await this.repository.loadRequestCandidates(postId);
     for (const candidate of candidates) {
       await this.processCandidate("request", postId, candidate, async () => {
-        const current = await this.repository.loadRequestCandidates(postId);
+        const current = await this.repository.loadRequestCandidates(postId, {
+          technicianProfileId: candidate.technicianProfileId,
+          scheduleSlotId: candidate.scheduleSlotId,
+          ...(candidate.serviceRef ? { serviceRef: candidate.serviceRef } : {})
+        });
         return current.find((item) => item.technicianProfileId === candidate.technicianProfileId) ?? null;
       }, async (idempotencyKey, currentCandidate) => {
         const current = currentCandidate as TechnicianRequestAutomationCandidate;
@@ -115,6 +126,7 @@ export class TechnicianAutomationProcessor {
           technicianProfileId: current.technicianProfileId,
           technicianPublicId: current.technicianPublicId,
           scheduleSlotId: current.scheduleSlotId,
+          ...(current.serviceRef ? { serviceRef: current.serviceRef } : {}),
           quoteAmountJpy: current.quoteAmountJpy,
           message: current.message,
           idempotencyKey,

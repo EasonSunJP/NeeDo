@@ -48,6 +48,7 @@ const makeRepository = () => ({
     ...bookingCandidate,
     rules: { ...defaultTechnicianAutomationRules("request"), maxDistanceKm: null, requireMatchingTags: false },
     scheduleSlotId: 81,
+    serviceRef: undefined as "shop:101" | undefined,
     quoteAmountJpy: 12_000,
     message: "NeeDo 自动应募"
   }]),
@@ -118,6 +119,30 @@ describe("TechnicianAutomationProcessor", () => {
       suppressQuickMatching: true
     }));
     expect(repository.notifyAutomaticAction).toHaveBeenCalledWith(expect.objectContaining({ kind: "request" }));
+  });
+
+  it("passes the dynamic service reference to the real Request authority", async () => {
+    const repository = makeRepository();
+    repository.loadRequestCandidates.mockImplementation(async () => [{
+      ...bookingCandidate,
+      rules: { ...defaultTechnicianAutomationRules("request"), maxDistanceKm: null, requireMatchingTags: false },
+      scheduleSlotId: -1048578,
+      serviceRef: "shop:101",
+      quoteAmountJpy: 12_000,
+      message: "NeeDo 自动应募"
+    }]);
+    const applyRequest = jest.fn(async () => undefined);
+    await new TechnicianAutomationProcessor(repository, { confirmBooking: jest.fn() }, { applyRequest })
+      .processRequest(601);
+    expect(applyRequest).toHaveBeenCalledWith(expect.objectContaining({
+      scheduleSlotId: -1048578,
+      serviceRef: "shop:101"
+    }));
+    expect(repository.loadRequestCandidates).toHaveBeenNthCalledWith(2, 601, {
+      technicianProfileId: 31,
+      scheduleSlotId: -1048578,
+      serviceRef: "shop:101"
+    });
   });
 
   it("does not repeat an action when the decision idempotency key already exists", async () => {

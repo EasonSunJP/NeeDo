@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
+import { logger } from "../config/logger";
 import type { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 import type { ServicePrepaymentService } from "../services/service-prepayment.service";
 import { successResponse } from "../utils/api-response";
@@ -43,7 +44,9 @@ export class ServicePrepaymentController {
         if (subjectType === "booking") {
           await this.automationProcessor?.processBooking(id).catch(() => undefined);
         } else {
-          await this.automationProcessor?.processRequest(id).catch(() => undefined);
+          await this.automationProcessor?.processRequest(id).catch((error: unknown) => {
+            logger.error({ error, exchangePostId: id }, "Request automation failed after prepayment confirmation");
+          });
         }
         response.status(201).json(successResponse({
           subject: result.subject,

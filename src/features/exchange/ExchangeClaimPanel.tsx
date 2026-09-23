@@ -45,6 +45,10 @@ function formatJpy(value: number) {
   return `¥${value.toLocaleString("ja-JP")}`;
 }
 
+function optionKey(option: ExchangeClaimOption) {
+  return `${option.scheduleSlotId}:${option.service.ref}`;
+}
+
 function RequiredLabel({ label }: { label: string }) {
   return (
     <span>
@@ -148,7 +152,7 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [readError, setReadError] = useState(false);
-  const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
+  const [selectedOptionKey, setSelectedOptionKey] = useState<string | null>(null);
   const [quote, setQuote] = useState("");
   const [message, setMessage] = useState("");
   const [submitPending, setSubmitPending] = useState(false);
@@ -169,7 +173,7 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
     setLoading(true);
     setLoadingMore(false);
     setReadError(false);
-    setSelectedSlotId(null);
+    setSelectedOptionKey(null);
     setQuote("");
     setMessage("");
     setSubmitPending(false);
@@ -228,12 +232,14 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
   async function submit() {
     if (submitPending) return;
     const quoteAmountJpy = Number(quote);
-    if (selectedSlotId === null || !Number.isSafeInteger(quoteAmountJpy) || quoteAmountJpy <= 0) {
+    const selectedOption = options.find((option) => optionKey(option) === selectedOptionKey);
+    if (!selectedOption || !Number.isSafeInteger(quoteAmountJpy) || quoteAmountJpy <= 0) {
       setSubmitError("claimRequired");
       return;
     }
     const payload = {
-      scheduleSlotId: selectedSlotId,
+      scheduleSlotId: selectedOption.scheduleSlotId,
+      ...(selectedOption.scheduleSlotId < 0 ? { serviceRef: selectedOption.service.ref } : {}),
       quoteAmountJpy,
       message: message.trim() || null
     };
@@ -326,7 +332,7 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
           <div className="grid gap-2">
             <p className="text-xs font-black text-[color:var(--client-muted)]"><RequiredLabel label={t("claimService")} /></p>
             {options.map((option) => (
-              <OptionCard key={option.scheduleSlotId} language={language} onSelect={() => setSelectedSlotId(option.scheduleSlotId)} option={option} selected={selectedSlotId === option.scheduleSlotId} />
+              <OptionCard key={optionKey(option)} language={language} onSelect={() => setSelectedOptionKey(optionKey(option))} option={option} selected={selectedOptionKey === optionKey(option)} />
             ))}
             {options.length === 0 ? <p className="rounded-[20px] bg-[color:var(--client-bg-soft)] px-4 py-5 text-center text-xs font-bold leading-5 text-[color:var(--client-muted)]">{t("claimOptionsEmpty")}</p> : null}
             {options.length < total ? (

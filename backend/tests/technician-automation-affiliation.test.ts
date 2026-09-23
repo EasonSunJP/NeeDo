@@ -1,10 +1,152 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { TechnicianAutomationRepository } from "../src/repositories/technician-automation.repository";
 import { defaultTechnicianAutomationRules } from "../src/validators/technician-automation.validator";
+import { ExchangeClaimRepository } from "../src/repositories/exchange-claim.repository";
 
 const asClient = (value: unknown): PrismaClient => value as PrismaClient;
 
 describe("technician automation shop-affiliation gates", () => {
+  it("finds a dynamic Request candidate when no persisted schedule slot exists", async () => {
+    const now = new Date();
+    const startsAt = new Date(now.getTime() + 3_600_000);
+    const endsAt = new Date(now.getTime() + 7_200_000);
+    const postEndAt = new Date(now.getTime() + 4 * 3_600_000);
+    const profiles = Array.from({ length: 26 }, (_, index) => ({
+      id: 31 + index,
+      userId: 100 + index,
+      workStates: [{ shopId: 11, status: "on_duty" }],
+      technicianShopAffiliations: [{ shopId: 11 }],
+      automationSettings: [{ id: 1 + index, version: 1, rules: defaultTechnicianAutomationRules("request") }]
+    }));
+    const listDynamic = jest.spyOn(ExchangeClaimRepository.prototype, "listDynamicOptions")
+      .mockImplementation(async (_input, _take, _technicianIds, visit) => {
+        for (const profile of profiles) visit?.({
+          scheduleSlotId: -1048578 - profile.id,
+          shop: { id: 11, name: "Shop" },
+          technician: { profileId: profile.id, publicId: `s${profile.id}`, displayName: "Technician" },
+          service: { ref: "technician:701", name: "Service", durationMinutes: 60 },
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString()
+        });
+        return { list: [], total: profiles.length };
+      });
+    const noConflict = jest.spyOn(ExchangeClaimRepository.prototype, "hasConflictingBooking")
+      .mockResolvedValue(false);
+    const noClaim = jest.spyOn(ExchangeClaimRepository.prototype, "hasOverlappingActiveClaim")
+      .mockResolvedValue(false);
+    const noMatch = jest.spyOn(ExchangeClaimRepository.prototype, "hasOverlappingMatchParticipant")
+      .mockResolvedValue(false);
+    const client = {
+      exchangePost: { findFirst: jest.fn(async () => ({
+        id: 601, authorUserId: 9, serviceStartAt: startsAt, serviceEndAt: postEndAt,
+        areaLabel: "Tokyo", servicePrepayment: null,
+        demand: { budgetMode: "TOTAL", targetProviderCount: 1, budgetMaxJpy: 12000, serviceMode: "STORE" }
+      })) },
+      scheduleSlot: { findMany: jest.fn(async () => []) },
+      availability: { findMany: jest.fn(async (args?: { where?: { technicianProfileId?: number } }) =>
+        profiles.filter((profile) => typeof args?.where?.technicianProfileId !== "number"
+          || profile.id === args.where.technicianProfileId).map((profile) => ({
+          id: profile.id, technicianProfileId: profile.id, shopId: 11,
+          startsAt: now, endsAt: postEndAt
+        }))) },
+      technicianProfile: { findMany: jest.fn(async (args?: { where?: { id?: number } }) =>
+        profiles.filter((profile) => typeof args?.where?.id !== "number" || profile.id === args.where.id)) },
+      userIdentity: { findMany: jest.fn(async () => profiles.map((profile) => ({
+        id: profile.id + 100, scopeId: profile.id,
+        publicIdentifier: { publicId: `s${profile.id}` }
+      }))) },
+      customerProfile: { findUnique: jest.fn(async () => null) },
+      bookingOrder: { count: jest.fn(async () => 0) },
+      ekycVerification: { count: jest.fn(async () => 0) },
+      contact: { findMany: jest.fn(async () => []) }
+    };
+    try {
+      const repository = new TechnicianAutomationRepository(asClient(client));
+      const candidates = await repository.loadRequestCandidates(601);
+      expect(candidates).toHaveLength(26);
+      expect(candidates).toEqual(expect.arrayContaining([expect.objectContaining({
+        scheduleSlotId: -1048578 - 31,
+        serviceRef: "technician:701",
+        technicianProfileId: 31
+      })]));
+      expect(listDynamic).toHaveBeenCalledTimes(1);
+      expect(listDynamic).toHaveBeenCalledWith(expect.objectContaining({
+        scope: { kind: "merchant", shopId: 11 }
+      }), 0, profiles.map((profile) => profile.id), expect.any(Function));
+      listDynamic.mockClear();
+      const selected = await repository.loadRequestCandidates(601, {
+        technicianProfileId: 31,
+        scheduleSlotId: -1048578 - 31,
+        serviceRef: "technician:701"
+      });
+      expect(selected).toHaveLength(1);
+      expect(listDynamic).toHaveBeenCalledTimes(1);
+      expect(listDynamic).toHaveBeenCalledWith(expect.objectContaining({
+        shopId: 11,
+        scope: { kind: "technician", technicianProfileId: 31 },
+        serviceRef: "technician:701"
+      }), 0, [31], expect.any(Function));
+      client.scheduleSlot.findMany.mockImplementationOnce(async () => ([{
+        id: 91, shopId: 11, technicianProfileId: 31, startsAt, endsAt,
+        availabilityId: 31, bookedCount: 0, capacity: 1,
+        service: null,
+        technicianService: { id: 701, shopId: 11, technicianId: 31 },
+        technicianProfile: profiles[0]
+      }] as never));
+      const withMaterializedSlot = await repository.loadRequestCandidates(601);
+      expect(withMaterializedSlot).toHaveLength(26);
+      expect(withMaterializedSlot).toEqual(expect.arrayContaining([expect.objectContaining({
+        scheduleSlotId: 91, technicianProfileId: 31
+      })]));
+      profiles[0].automationSettings[0].rules = {
+        ...profiles[0].automationSettings[0].rules, serviceIds: [752]
+      };
+      listDynamic.mockImplementationOnce(async (_input, _take, _technicianIds, visit) => {
+        for (const profile of profiles) {
+          for (let service = 0; service < 52; service += 1) {
+            for (let offset = 0; offset < 25; offset += 1) {
+              const start = new Date(startsAt.getTime() + offset * 5 * 60_000);
+              visit?.({
+                scheduleSlotId: -1048578 - profile.id - offset * 1000,
+                shop: { id: 11, name: "Shop" },
+                technician: { profileId: profile.id, publicId: `s${profile.id}`, displayName: "Technician" },
+                service: { ref: `technician:${701 + service}`, name: "Service", durationMinutes: 60 },
+                startsAt: start.toISOString(),
+                endsAt: new Date(start.getTime() + 60 * 60_000).toISOString()
+              });
+            }
+          }
+        }
+        return { list: [], total: 33_800 };
+      });
+      const streamedCandidates = await repository.loadRequestCandidates(601);
+      expect(streamedCandidates).toHaveLength(26);
+      expect(streamedCandidates).toEqual(expect.arrayContaining([expect.objectContaining({
+        scheduleSlotId: -1048578 - 31, serviceRef: "technician:752",
+        technicianProfileId: 31
+      })]));
+    } finally {
+      listDynamic.mockRestore();
+      noConflict.mockRestore();
+      noClaim.mockRestore();
+      noMatch.mockRestore();
+    }
+  });
+
+  it("does not evaluate a Request after its service window has passed", async () => {
+    const past = new Date(Date.now() - 60_000);
+    const findMany = jest.fn(async () => []);
+    const repository = new TechnicianAutomationRepository(asClient({
+      exchangePost: { findFirst: jest.fn(async () => ({
+        id: 601, authorUserId: 9, serviceStartAt: new Date(past.getTime() - 3_600_000),
+        serviceEndAt: past, servicePrepayment: null,
+        demand: { budgetMode: "TOTAL", budgetMaxJpy: 12000, targetProviderCount: 1 }
+      })) },
+      scheduleSlot: { findMany }
+    }));
+    await expect(repository.loadRequestCandidates(601)).resolves.toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
+  });
   it.each([
     ["on_duty", 77, true],
     ["in_service", 77, false],
@@ -130,8 +272,8 @@ describe("technician automation shop-affiliation gates", () => {
         findFirst: jest.fn(async () => ({
           id: 601,
           authorUserId: 9,
-          serviceStartAt: new Date("2026-09-10T03:00:00.000Z"),
-          serviceEndAt: new Date("2026-09-10T04:00:00.000Z"),
+          serviceStartAt: new Date(Date.now() + 3_600_000),
+          serviceEndAt: new Date(Date.now() + 7_200_000),
           areaLabel: "JP-13/minato",
           demand: { budgetMaxJpy: 12000, serviceMode: "STORE" }
         }))
@@ -141,7 +283,8 @@ describe("technician automation shop-affiliation gates", () => {
           void input;
           return [];
         })
-      }
+      },
+      availability: { findMany: jest.fn(async () => []) }
     };
 
     const repository = new TechnicianAutomationRepository(asClient(client));

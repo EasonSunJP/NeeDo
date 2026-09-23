@@ -116,6 +116,7 @@ export const createExchangeRequestAutomationProcessor = (
           input.postId,
           {
             scheduleSlotId: input.scheduleSlotId,
+            ...(input.serviceRef ? { serviceRef: input.serviceRef } : {}),
             quoteAmountJpy: input.quoteAmountJpy,
             message: input.message
           },

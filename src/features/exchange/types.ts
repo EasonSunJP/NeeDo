@@ -222,6 +222,7 @@ export type ExchangeClaimOptionListInput = PaginationInput & {
 
 export type CreateExchangeClaimInput = {
   scheduleSlotId: number;
+  serviceRef?: ExchangeClaimServiceRef;
   quoteAmountJpy: number;
   message: string | null;
 };
