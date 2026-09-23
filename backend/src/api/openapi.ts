@@ -25453,7 +25453,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/backoffice/technicians/summary`]: {
       get: {
         tags: ["Step 12 Backoffice"],
-        summary: "Cross-shop technician identity, pending applicant, and Tokyo-day active counts",
+        summary: "Cross-shop technician identities, pending applicants, and Tokyo-day work or free-schedule activity",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": jsonDataResponse("Operations technician summary", {

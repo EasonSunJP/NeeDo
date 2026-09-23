@@ -1111,7 +1111,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           ...eligible,
           OR: [
             { workStates: { some: { status: "on_duty", deletedAt: null } } },
-            { workEvents: { some: { deletedAt: null, at: { gte: dayStart, lt: dayEnd, lte: now }, OR: [{ toStatus: "on_duty" }, { fromStatus: "on_duty" }] } } }
+            { workEvents: { some: { deletedAt: null, at: { gte: dayStart, lt: dayEnd, lte: now }, OR: [{ toStatus: "on_duty" }, { fromStatus: "on_duty" }] } } },
+            { availabilities: { some: { sourceType: "TECHNICIAN", visibility: "TECHNICIAN_SHOPS", isActive: true, deletedAt: null, startsAt: { lt: dayEnd }, endsAt: { gt: dayStart } } } }
           ]
         }
       })

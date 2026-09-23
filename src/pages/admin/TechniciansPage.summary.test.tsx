@@ -32,6 +32,7 @@ it("shows authoritative cross-shop counts and requests the next ten technicians"
   expect(container.textContent).toContain("全部技师137");
   expect(container.textContent).toContain("待审核技师4");
   expect(container.textContent).toContain("今日活跃9");
+  expect(container.textContent).toContain("自由排班日程");
   expect(api.technicians).toHaveBeenCalledWith("backoffice", expect.objectContaining({ page: 1, pageSize: 10 }));
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="technician-list"] button')!.click());
   expect(api.technicians).toHaveBeenCalledWith("backoffice", expect.objectContaining({ page: 2, pageSize: 10 }));

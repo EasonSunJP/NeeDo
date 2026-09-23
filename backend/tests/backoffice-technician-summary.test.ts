@@ -19,7 +19,8 @@ describe("platform technician summary", () => {
     }) }));
     expect(technicianCount).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ OR: [
       { workStates: { some: { status: "on_duty", deletedAt: null } } },
-      { workEvents: { some: { deletedAt: null, at: { gte: new Date("2026-09-22T15:00:00.000Z"), lt: new Date("2026-09-23T15:00:00.000Z"), lte: new Date("2026-09-23T02:00:00.000Z") }, OR: [{ toStatus: "on_duty" }, { fromStatus: "on_duty" }] } } }
+      { workEvents: { some: { deletedAt: null, at: { gte: new Date("2026-09-22T15:00:00.000Z"), lt: new Date("2026-09-23T15:00:00.000Z"), lte: new Date("2026-09-23T02:00:00.000Z") }, OR: [{ toStatus: "on_duty" }, { fromStatus: "on_duty" }] } } },
+      { availabilities: { some: { sourceType: "TECHNICIAN", visibility: "TECHNICIAN_SHOPS", isActive: true, deletedAt: null, startsAt: { lt: new Date("2026-09-23T15:00:00.000Z") }, endsAt: { gt: new Date("2026-09-22T15:00:00.000Z") } } } }
     ] }) }));
   });
 });

@@ -8360,7 +8360,7 @@ export const translations: TranslationMap = {
   "待审核技师": { "zh-Hant": "待審核技師", ja: "審査待ちのスタッフ", en: "Technicians awaiting review", ko: "심사 대기 중인 기술자" },
   "已开通技师身份，包含所有店铺": { "zh-Hant": "已開通技師身分，包含所有店舖", ja: "スタッフ権限が有効な全店舗のユーザー", en: "Active technician identities across all shops", ko: "모든 매장의 활성 기술자 계정" },
   "申请开通技师身份，正在审核的用户": { "zh-Hant": "申請開通技師身分，正在審核的用戶", ja: "スタッフ権限の申請を審査中のユーザー", en: "Users whose technician applications are under review", ko: "기술자 계정 신청 심사 중인 사용자" },
-  "东京时间今日曾处于可接单状态的技师": { "zh-Hant": "東京時間今日曾處於可接單狀態的技師", ja: "東京時間の本日に受付可能だったスタッフ", en: "Technicians available for orders today in Tokyo time", ko: "도쿄 시간 오늘 주문 접수 가능 상태였던 기술자" },
+  "东京时间今日曾可接单或有自由排班日程的技师": { "zh-Hant": "東京時間今日曾可接單或有自由排班日程的技師", ja: "東京時間の本日に受付可能だったか自由シフトがあるスタッフ", en: "Technicians available for orders or with a free schedule today in Tokyo time", ko: "도쿄 시간 오늘 주문 접수가 가능했거나 자유 일정이 있는 기술자" },
   "全部角色": { "zh-Hant": "全部角色", ja: "全て役割", en: "AllRole", ko: "모두역할" },
   "全部开启": { "zh-Hant": "全部開啟", ja: "すべて有効", en: "All enabled", ko: "모두 활성화됨" },
   "全部来源": { "zh-Hant": "全部來源", ja: "全てソース", en: "AllSource", ko: "모두원천" },

@@ -314,7 +314,7 @@ export function TechniciansPage({ embeddedDetail }: {
               {[
                 { label: "全部技师", value: summary?.total ?? "—", note: "已开通技师身份，包含所有店铺" },
                 { label: "待审核技师", value: summary?.pendingReview ?? "—", note: "申请开通技师身份，正在审核的用户" },
-                { label: "今日活跃", value: summary?.activeToday ?? "—", note: "东京时间今日曾处于可接单状态的技师" }
+                { label: "今日活跃", value: summary?.activeToday ?? "—", note: "东京时间今日曾可接单或有自由排班日程的技师" }
               ].map((metric) => <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={metric.label}><p className="text-sm font-bold text-ink/50">{translate(metric.label)}</p><strong className="mt-2 block text-3xl font-black">{metric.value}</strong><p className="mt-2 text-xs font-bold text-ink/45">{translate(metric.note)}</p></article>)}
             </section>
             <TechnicianListModule context="platform" onSelectTechnician={openTechnician} stores={mappedShops} technicians={mappedTechnicians} page={page} total={listTotal} onPageChange={setPage} onShopFilterChange={setSelectedShopId} />
