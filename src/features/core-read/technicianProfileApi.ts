@@ -2,6 +2,7 @@ import { httpClient } from "../../api/httpClient";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import type { TechnicianReviewTagSummary } from "./api";
+import type { ContentLocale } from "../../shared/localized-content/localizedText";
 
 export type TechnicianProfileVisibility = "public" | "privateAll" | "limited" | "network";
 export type TechnicianProfileGender = "female" | "male" | "private";
@@ -35,6 +36,7 @@ export type TechnicianSelfProfile = {
   displayName: string;
   avatarUrl: string | null;
   bio: string | null;
+  bioLocales?: Partial<Record<ContentLocale, string>>;
   city: string;
   gender: TechnicianProfileGender;
   age: number | null;
@@ -71,7 +73,7 @@ export type TechnicianSelfProfileUpdate = Partial<Pick<
   | "paymentMethods"
   | "serviceBase"
   | "visibility"
->> & { avatarDataUrl?: string };
+>> & { avatarDataUrl?: string; localizedBio?: { locale: ContentLocale; bio: string } };
 
 export type TechnicianPersonalCenterUpdate = Pick<
   TechnicianSelfProfile,
@@ -90,6 +92,7 @@ export const technicianProfileApi = {
     const scope = getAuthenticatedPersistentCacheScope();
     if (scope) await persistentResourceCache.write(scope, "technician:self", profile);
     await persistentResourceCache.invalidate("public", `core:technician:${profile.id}`).catch(() => undefined);
+    await persistentResourceCache.invalidate("public", `core:technician:${profile.publicId}`).catch(() => undefined);
     return profile;
   }
 };

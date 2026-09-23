@@ -426,6 +426,17 @@ describe("technician profile current-identity API", () => {
       includePersonalIdentities: true,
       userId: 9
     });
+
+    await request(fixture.app)
+      .patch("/api/v1/technician-profile/me")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ localizedBio: { locale: "en", bio: "Shoulder care" } })
+      .expect(200);
+    expect(fixture.technicianProfileRepository.updateMine).toHaveBeenLastCalledWith(
+      9, 31, 109,
+      expect.objectContaining({ localizedBio: { locale: "en", bio: "Shoulder care" } }),
+      expect.objectContaining({ metadata: { changedFields: ["localizedBio"] } })
+    );
   });
 
   it("persists intentionally cleared optional list fields", async () => {
@@ -501,6 +512,11 @@ describe("technician profile current-identity API", () => {
       .patch("/api/v1/technician-profile/me")
       .set("Authorization", `Bearer ${technicianToken}`)
       .send({ profileTags: ["肩颈调理"] })
+      .expect(400);
+    await request(fixture.app)
+      .patch("/api/v1/technician-profile/me")
+      .set("Authorization", `Bearer ${technicianToken}`)
+      .send({ localizedBio: { locale: "fr", bio: "Unsupported" } })
       .expect(400);
   });
 });

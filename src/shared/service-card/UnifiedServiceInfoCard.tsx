@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { Language } from "../../i18n/translations";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { contentLocaleForLanguage } from "../localized-content/localizedText";
 import {
   UnifiedCardDetails,
   UnifiedDistanceMetricValue,
@@ -56,9 +58,14 @@ export function UnifiedServiceInfoCard({
   className,
   data,
   detailTo,
-  language = "zh",
+  language: languageOverride,
   onOpenDetails,
 }: UnifiedServiceInfoCardProps) {
+  const { language: currentLanguage } = useOptionalI18n();
+  const language = languageOverride ?? currentLanguage;
+  const localized = data.localizedContent?.[contentLocaleForLanguage(language)];
+  const serviceName = localized?.name?.trim() || data.name;
+  const serviceDescription = localized?.description?.trim() || data.description;
   const text = getUnifiedCardCopy(language);
   const target = data.engagementTarget ?? null;
   const [favoriteState, setFavoriteState] =
@@ -87,13 +94,13 @@ export function UnifiedServiceInfoCard({
   const metrics: UnifiedCardMetric[] = [
     {
       icon: "calendar",
-      label: text.bookable,
+      label: data.isBookable === false ? text.notBookable : text.bookable,
       value:
         data.isBookable === false
-          ? text.notBookable
+          ? <><span className="sm:hidden" aria-hidden="true">×</span><span className="sr-only sm:hidden">{text.notBookable}</span><span className="hidden sm:inline">{text.notBookable}</span></>
           : data.isBookable === null || data.isBookable === undefined
             ? "-"
-            : text.bookable,
+            : <><span className="sm:hidden" aria-hidden="true">✓</span><span className="sr-only sm:hidden">{text.bookable}</span><span className="hidden sm:inline">{text.bookable}</span></>,
     },
     {
       icon: "completed",
@@ -116,7 +123,7 @@ export function UnifiedServiceInfoCard({
                 language={language}
                 onChange={setFavoriteState}
                 state={favoriteState}
-                targetLabel={data.name}
+                targetLabel={serviceName}
               />
             ),
           }
@@ -133,7 +140,7 @@ export function UnifiedServiceInfoCard({
                 language={language}
                 onShareCountChange={setShareCount}
                 target={target}
-                targetLabel={data.name}
+                targetLabel={serviceName}
               />
             ),
           }
@@ -141,7 +148,7 @@ export function UnifiedServiceInfoCard({
     },
   ];
   const image = (
-    <UnifiedCardImage alt={data.name} language={language} src={data.coverUrl}>
+    <UnifiedCardImage alt={serviceName} language={language} src={data.coverUrl}>
       <span
         className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/80 px-2 py-1 text-[10px] font-black text-white backdrop-blur-sm sm:left-4 sm:top-4 sm:gap-2 sm:px-4 sm:py-2 sm:text-[16px]"
         data-testid="unified-card-duration-overlay"
@@ -168,16 +175,16 @@ export function UnifiedServiceInfoCard({
   );
   const details = (
     <UnifiedCardDetails
-      description={data.description}
+      description={serviceDescription}
       language={language}
-      name={data.name}
+      name={serviceName}
       tags={data.tags}
     />
   );
   return (
     <UnifiedInfoCardFrame
       actionSlot={actionSlot}
-      ariaLabel={`${text.viewService} ${data.name}`}
+      ariaLabel={`${text.viewService} ${serviceName}`}
       body={
         <div
           className="grid grid-cols-[minmax(132px,38%)_minmax(0,1fr)] gap-3 p-3 pt-0 sm:gap-7 sm:p-6 sm:pt-0"

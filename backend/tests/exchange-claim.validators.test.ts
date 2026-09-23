@@ -34,6 +34,28 @@ describe("Exchange selective claim validators", () => {
     });
   });
 
+  it("requires the service reference for a dynamic availability option", () => {
+    expect(createExchangeClaimSchema.parse({
+      scheduleSlotId: -1048578,
+      serviceRef: "technician:701",
+      quoteAmountJpy: 15_000
+    })).toMatchObject({ scheduleSlotId: -1048578, serviceRef: "technician:701" });
+    expect(createExchangeClaimSchema.safeParse({
+      scheduleSlotId: -1048578,
+      quoteAmountJpy: 15_000
+    }).success).toBe(false);
+    expect(createExchangeClaimSchema.safeParse({
+      scheduleSlotId: -1048578,
+      serviceRef: "shop:0",
+      quoteAmountJpy: 15_000
+    }).success).toBe(false);
+    expect(createExchangeClaimSchema.safeParse({
+      scheduleSlotId: -1048578,
+      serviceRef: "shop:999999999999999999999",
+      quoteAmountJpy: 15_000
+    }).success).toBe(false);
+  });
+
   it("trims an optional original-language message without adding fields", () => {
     expect(
       createExchangeClaimSchema.parse({

@@ -222,9 +222,9 @@ type StoreMapDetailCopy = {
 
 const baseBookingDate = new Date(2026, 3, 22);
 const storeBookingCtaButtonClassName = "h-[52px] min-w-[176px] justify-center gap-2 px-7 text-center text-sm";
-const storeBottomActionRowClassName = "client-app-frame client-app-gutter flex items-center gap-3 pb-2";
-const storeBottomSecondaryButtonClassName = "h-[52px] shrink-0 gap-2 px-5 shadow-[0_12px_26px_rgba(0,0,0,0.20)] backdrop-blur-xl";
-const storeBottomPrimaryButtonClassName = "h-[52px] flex-1 gap-2 px-5 text-sm shadow-[0_12px_30px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]";
+const storeBottomActionRowClassName = "client-app-frame client-app-gutter flex items-center gap-2 pb-2 sm:gap-3";
+const storeBottomSecondaryButtonClassName = "h-[52px] min-w-0 flex-1 gap-1.5 px-2 text-center text-xs leading-tight shadow-[0_12px_26px_rgba(0,0,0,0.20)] backdrop-blur-xl sm:flex-none sm:gap-2 sm:px-5 sm:text-sm";
+const storeBottomPrimaryButtonClassName = "h-[52px] min-w-0 flex-1 gap-1.5 px-2 text-center text-xs leading-tight shadow-[0_12px_30px_color-mix(in_srgb,var(--client-primary)_20%,transparent)] sm:gap-2 sm:px-5 sm:text-sm";
 const merchantScheduleEditorHref = "/merchant/schedule?tab=planning";
 const storeDisplayEditorBottomBarStyle = { "--client-main-nav-action-offset": "0px" } as CSSProperties;
 const storeDisplayEditorBottomMaskStyle = {
@@ -1307,6 +1307,7 @@ function StoreTechnicianSelectableCard({
       aria-label={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : active ? "已选技师" : "待选技师"}
       className={cn(
         "h-full w-full",
+        isMerchantEditable && "!border-[color:color-mix(in_srgb,var(--client-line)_40%,transparent)] !shadow-none",
         isMerchantEditable && !technicianVisible && "opacity-70 saturate-[0.72]",
         !isMerchantEditable && unavailable && "opacity-70 saturate-[0.72]"
       )}
@@ -2249,6 +2250,13 @@ function StoreDisplayInlineEditor({
               onChange={(value) => updatePresentationField("subtitle", value)}
               rows={3}
               value={config.subtitle}
+            />
+            <StoreDisplayEditorInput
+              label="店铺信息卡简介"
+              multiline
+              onChange={(value) => onStoreChange?.({ description: value })}
+              rows={3}
+              value={store.description}
             />
           </div>
           <ImageGalleryManager
@@ -3418,9 +3426,7 @@ export function StoreDetailExperience({
     || (
       canLoadFormalAvailability
       && (
-        formalAvailabilityDateSummariesStatus === "idle"
-        || formalAvailabilityDateSummariesStatus === "loading"
-        || formalStartSummariesStatus === "idle"
+        formalStartSummariesStatus === "idle"
         || formalStartSummariesStatus === "loading"
       )
     )
@@ -3557,7 +3563,7 @@ export function StoreDetailExperience({
     hasBookableCheckoutTarget ? (
       <PrimaryButton className={className} to={bookingHref}>
         <AppIcon className="h-4 w-4" name="calendar" />
-        <span>{label}</span>
+        <span className="min-w-0 text-center leading-tight">{label}</span>
       </PrimaryButton>
     ) : (
       <div
@@ -3569,7 +3575,7 @@ export function StoreDetailExperience({
         role="button"
       >
         <AppIcon className="h-4 w-4" name="calendar" />
-        <span>{translateText(bookingActionStatusLabel, language)}</span>
+        <span className="min-w-0 text-center leading-tight">{translateText(bookingActionStatusLabel, language)}</span>
       </div>
     );
   const canForwardOfferToNeedo = session?.portal === "merchant" && session.linkedStoreId === store.id && !isMerchantEditable;
@@ -3929,6 +3935,7 @@ export function StoreDetailExperience({
       return (
         <StoreDisplayEditorPanel title="轮播图文字">
           <StoreDisplayEditorInput label="轮播简介" multiline onChange={(value) => updatePresentationField("subtitle", value)} rows={3} value={config.subtitle} />
+          <StoreDisplayEditorInput label="店铺信息卡简介" multiline onChange={(value) => setEditableStore((current) => ({ ...current, description: value }))} rows={3} value={store.description} />
         </StoreDisplayEditorPanel>
       );
     }
@@ -3937,7 +3944,7 @@ export function StoreDetailExperience({
   const presentationLocaleRail = isMerchantEditable && activeEditor && activeTab !== "moments" && activeTab !== "offers" ? (
     <aside
       aria-label="店铺展示语言"
-      className="fixed right-2 top-1/2 z-[70] flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur"
+      className="relative z-[70] mx-auto my-3 flex w-fit max-w-full items-center gap-1 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur sm:fixed sm:right-2 sm:top-1/2 sm:my-0 sm:-translate-y-1/2 sm:flex-col sm:gap-1.5"
       data-testid="shop-presentation-locale-rail"
     >
       {shopPresentationLocales.map((locale) => (
@@ -3945,7 +3952,7 @@ export function StoreDetailExperience({
           aria-label={locale.label}
           aria-pressed={presentationLocale === locale.code}
           className={cn(
-            "focus-ring flex h-9 min-w-9 items-center justify-center rounded-[12px] px-2 text-[11px] font-black",
+            "focus-ring flex h-8 min-w-8 items-center justify-center rounded-[12px] px-1 text-[11px] font-black sm:h-9 sm:min-w-9 sm:px-2",
             presentationLocale === locale.code
               ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-ink)]"
               : "text-[color:var(--client-muted)]"
@@ -3955,12 +3962,12 @@ export function StoreDetailExperience({
           title={locale.label}
           type="button"
         >
-          {locale.shortLabel}
+          <span data-no-i18n>{locale.shortLabel}</span>
         </button>
       ))}
-      <div className="my-0.5 h-px w-6 bg-[color:var(--client-line)]" />
+      <div className="mx-0.5 h-6 w-px bg-[color:var(--client-line)] sm:my-0.5 sm:h-px sm:w-6" />
       <button
-        className="focus-ring rounded-[12px] bg-[color:var(--client-primary)] px-2 py-2 text-[10px] font-black text-[color:var(--client-primary-ink)] disabled:opacity-45"
+        className="focus-ring rounded-[12px] bg-[color:var(--client-primary)] px-1.5 py-2 text-[10px] font-black text-[color:var(--client-primary-ink)] disabled:opacity-45 sm:px-2"
         disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"}
         onClick={() => { void savePresentationLocale(); }}
         type="button"
@@ -3968,7 +3975,7 @@ export function StoreDetailExperience({
         {presentationSaveState === "saving" ? "保存中" : presentationSaveState === "saved" ? "已保存" : "保存"}
       </button>
       <button
-        className="focus-ring rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-danger)_48%,transparent)] px-2 py-2 text-[10px] font-black text-[color:var(--client-danger)] disabled:opacity-45"
+        className="focus-ring rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-danger)_48%,transparent)] px-1.5 py-2 text-[10px] font-black text-[color:var(--client-danger)] disabled:opacity-45 sm:px-2"
         disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"}
         onClick={() => setPresentationSyncConfirmOpen(true)}
         type="button"
@@ -4205,6 +4212,7 @@ export function StoreDetailExperience({
 
   const tabSwitcher = (
     <FeatureSegmentedTabs
+      className={embedded ? undefined : "min-w-[480px] sm:min-w-0"}
       items={tabs}
       onChange={changeStoreTab}
       value={activeTab}
@@ -4457,6 +4465,7 @@ export function StoreDetailExperience({
                     selectedDay={selectedVisitDate.getDate()}
                     technicianCountRelevant={isTechnicianPricingActive}
                     time={selectedTime}
+                    timeAvailabilityLoading={formalAvailabilityLoading}
                     timeOptions={displayedTimeOptions}
                     title="来店日"
                   />
@@ -4955,8 +4964,8 @@ export function StoreDetailExperience({
           <div className="min-w-0">{tabSwitcher}</div>
           {renderActiveInlineEditor("basic-card")}
         </section>
-        <div className="relative z-0">{content}</div>
         {presentationLocaleRail}
+        <div className="relative z-0">{content}</div>
         {lightbox}
         {fullscreenEditor}
         {storeImageEditor}
@@ -5015,7 +5024,7 @@ export function StoreDetailExperience({
                 />
               </div>
             </div>
-            <div className="mt-2">{tabSwitcher}</div>
+            <div className="mt-2 overflow-x-auto">{tabSwitcher}</div>
           </div>
         </div>
       </FloatingHomeHeader>
@@ -5025,8 +5034,8 @@ export function StoreDetailExperience({
           {translateText(notice, language)}
         </section>
       ) : null}
-      <div className="space-y-3">{content}</div>
       {presentationLocaleRail}
+      <div className="space-y-3">{content}</div>
 
       <div
         aria-hidden="true"
@@ -5036,7 +5045,7 @@ export function StoreDetailExperience({
         <div className={storeBottomActionRowClassName}>
           <SecondaryButton className={storeBottomSecondaryButtonClassName} to="/messages">
             <AppIcon className="h-4 w-4" name="chat" />
-            <span>聊天咨询</span>
+            <span className="min-w-0 text-center leading-tight">聊天咨询</span>
           </SecondaryButton>
           {renderBookingAction(storeBottomPrimaryButtonClassName, bookingCtaCopy(store.openStatus))}
         </div>

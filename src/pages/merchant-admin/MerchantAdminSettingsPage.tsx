@@ -20,9 +20,23 @@ import { coreReadApi, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
 import { describeMerchantReadError } from "../../features/merchant-admin/merchantReadError";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { registerTranslationEntries } from "../../i18n/translations";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { StoreDetailExperience } from "../user/StoreDetailPage";
 import type { Store, Technician } from "../../types/domain";
+
+registerTranslationEntries({
+  "五语言店铺展示": { "zh-Hant": "五語言店鋪展示", ja: "5言語の店舗紹介", en: "Shop showcase in five languages", ko: "5개 언어 매장 소개" },
+  "店铺前端与店铺后台共用同一套展示数据。任一入口保存后，日语、英语、韩语、简体中文和繁体中文都会从同一数据库版本读取。": {
+    "zh-Hant": "店鋪前台與後台共用同一套展示資料。從任一入口儲存後，日語、英語、韓語、簡體中文和繁體中文都會讀取同一資料庫版本。",
+    ja: "店舗ページと管理画面は同じ紹介データを使用します。どちらで保存しても、日本語、英語、韓国語、簡体字中国語、繁体字中国語は同じデータベースの内容を読み込みます。",
+    en: "The shop page and admin view share the same showcase data. Changes saved in either view are read from the same database for Japanese, English, Korean, Simplified Chinese and Traditional Chinese.",
+    ko: "매장 페이지와 관리자 화면은 동일한 소개 데이터를 사용합니다. 어느 화면에서 저장하든 일본어, 영어, 한국어, 중국어 간체 및 번체 버전이 같은 데이터베이스 내용을 읽습니다."
+  },
+  "与店铺前端同步": { "zh-Hant": "與店鋪前台同步", ja: "店舗ページと同期", en: "Synced with shop page", ko: "매장 페이지와 동기화" },
+  "重新加载五语言展示": { "zh-Hant": "重新載入五語言展示", ja: "5言語の紹介を再読み込み", en: "Reload five-language showcase", ko: "5개 언어 소개 다시 불러오기" },
+  "正在读取五语言店铺展示...": { "zh-Hant": "正在載入五語言店鋪展示...", ja: "5言語の店舗紹介を読み込み中...", en: "Loading five-language shop showcase...", ko: "5개 언어 매장 소개 불러오는 중..." }
+});
 
 type ShopDraft = {
   name: string;
@@ -351,11 +365,11 @@ export function MerchantAdminSettingsPage() {
         ) : null}
 
         {shop ? (
-          <section className="mt-5 overflow-hidden rounded-lg border border-line bg-white shadow-panel">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
+          <section className="mx-auto mt-5 max-w-[840px] overflow-hidden rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-[color:var(--client-text)] shadow-panel">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--client-line)] px-5 py-4">
               <div>
-                <h2 className="text-lg font-black text-ink">五语言店铺展示</h2>
-                <p className="mt-1 max-w-3xl text-sm font-bold leading-6 text-ink/50">
+                <h2 className="text-lg font-black">五语言店铺展示</h2>
+                <p className="mt-1 max-w-3xl text-sm font-bold leading-6 text-[color:var(--client-muted)]">
                   店铺前端与店铺后台共用同一套展示数据。任一入口保存后，日语、英语、韩语、简体中文和繁体中文都会从同一数据库版本读取。
                 </p>
               </div>
@@ -367,7 +381,7 @@ export function MerchantAdminSettingsPage() {
                 <Button onClick={() => void load()} size="sm" variant="secondary">重新加载五语言展示</Button>
               </div>
             ) : presentationStore ? (
-              <div className="bg-[color:var(--client-bg)] p-4 sm:p-5">
+              <div className="mx-auto w-full max-w-[780px] bg-[color:var(--client-bg)] p-3 sm:p-5">
                 <StoreDetailExperience
                   embedded
                   formalApiOnly
@@ -377,7 +391,7 @@ export function MerchantAdminSettingsPage() {
                 />
               </div>
             ) : (
-              <p className="m-5 rounded-lg border border-line bg-paper p-4 text-sm font-bold text-ink/55">
+              <p className="m-5 rounded-lg border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] p-4 text-sm font-bold text-[color:var(--client-muted)]">
                 正在读取五语言店铺展示...
               </p>
             )}

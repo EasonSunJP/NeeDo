@@ -46,6 +46,13 @@ describe("technician profile self-edit validation", () => {
     });
   });
 
+  it("accepts one scoped language bio edit and rejects unsupported locales", () => {
+    expect(technicianProfileUpdateBodySchema.parse({ localizedBio: { locale: "en", bio: "Deep tissue care" } }))
+      .toEqual({ localizedBio: { locale: "en", bio: "Deep tissue care" } });
+    expect(() => technicianProfileUpdateBodySchema.parse({ localizedBio: { locale: "fr", bio: "Bonjour" } })).toThrow();
+    expect(() => technicianProfileUpdateBodySchema.parse({ localizedBio: { locale: "en", bio: "x".repeat(2001) } })).toThrow();
+  });
+
   it.each([
     {},
     { unexpected: true },

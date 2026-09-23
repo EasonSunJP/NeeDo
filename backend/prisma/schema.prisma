@@ -2306,6 +2306,7 @@ model TechnicianProfile {
   currentOperatingShopId Int?                  @map("current_operating_shop_id")
   displayName         String                   @map("display_name") @db.VarChar(120)
   bio                 String?                  @db.Text
+  bioLocalesJson      Json?                    @map("bio_locales_json")
   city                String                   @db.VarChar(100)
   serviceArea         String?                  @map("service_area") @db.VarChar(255)
   serviceAreasJson    Json?                    @map("service_areas")
@@ -3775,6 +3776,7 @@ model TechnicianService {
   sourceShopServiceId Int?                          @map("source_shop_service_id")
   name                String                        @db.VarChar(160)
   description         String?                       @db.Text
+  localizedContentJson Json?                        @map("localized_content_json")
   categoryId          Int                           @map("category_id")
   priceAmount         Int                           @map("price_amount")
   currency            String                        @default("JPY") @db.VarChar(3)

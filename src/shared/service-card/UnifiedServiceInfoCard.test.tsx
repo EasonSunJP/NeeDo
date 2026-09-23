@@ -15,6 +15,19 @@ const formalService: UnifiedServiceInfoCardData = {
 };
 
 describe("UnifiedServiceInfoCard", () => {
+  it("renders authored service text for the selected language and falls back independently", () => {
+    const data = { ...formalService, localizedContent: {
+      en: { name: "Home cleaning", description: "Kitchen and bathroom care" },
+      ja: { name: "お掃除" }
+    } };
+    const english = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, { data, language: "en" })));
+    const japanese = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, { data, language: "ja" })));
+    expect(english).toContain("Home cleaning");
+    expect(english).toContain("Kitchen and bathroom care");
+    expect(japanese).toContain("お掃除");
+    expect(japanese).toContain(formalService.description);
+    expect(japanese).not.toContain("Kitchen and bathroom care");
+  });
   it("renders the only approved neon split-card skeleton and metric order", () => {
     const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, {
       actionSlot: createElement("button", { type: "button" }, "编辑服务"), data: formalService, detailTo: "/services/71"
@@ -44,6 +57,7 @@ describe("UnifiedServiceInfoCard", () => {
     }, -1);
     expect(text).not.toMatch(/利用次数|距离你|收藏|分享/u);
     expect(markup).toContain('data-app-icon="completed"');
+    expect(markup).toContain('class="sm:hidden" aria-hidden="true">✓</span>');
     expect(markup).not.toContain('data-app-icon="moments"');
   });
 
@@ -53,6 +67,15 @@ describe("UnifiedServiceInfoCard", () => {
     })));
     expect(markup).toContain('data-testid="unified-card-detail-arrow"');
     expect(markup).toContain('data-icon="chevron-right"');
+  });
+
+  it("keeps the unavailable state readable on narrow cards and in accessibility labels", () => {
+    const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, {
+      data: { ...formalService, isBookable: false }, language: "en"
+    })));
+    expect(markup).toContain('aria-label="Not bookable"');
+    expect(markup).toContain('class="sm:hidden" aria-hidden="true">×</span>');
+    expect(markup).toContain('class="sr-only sm:hidden">Not bookable</span>');
   });
 
   it("restores the duration and price overlays on the service image", () => {

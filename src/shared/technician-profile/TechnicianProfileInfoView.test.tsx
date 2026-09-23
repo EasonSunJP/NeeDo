@@ -66,7 +66,8 @@ function renderView(
     hasTestNdpWallet: true,
     ndp: { available: 12_500, frozen: 0 },
     testNdp: { available: 800, frozen: 0 }
-  }
+  },
+  language?: "zh" | "zh-Hant" | "ja" | "en" | "ko"
 ) {
   return renderToStaticMarkup(
     createElement(
@@ -74,6 +75,7 @@ function renderView(
       null,
       createElement(TechnicianProfileInfoView, {
         model: viewModel,
+        language,
         walletSummary,
         privacySlot: createElement("div", null, "隐私模式"),
         serviceAction: () => createElement("button", { type: "button" }, "编辑服务")
@@ -83,6 +85,13 @@ function renderView(
 }
 
 describe("TechnicianProfileInfoView", () => {
+  it("shows the authored bio for the active content language", () => {
+    const markup = renderView({ ...model, bioLocales: { "zh-CN": "中文护理介绍", ja: "日本語の紹介" } }, undefined, "zh");
+    expect(markup).toContain("中文护理介绍");
+    expect(markup).not.toContain("日本語の紹介");
+    expect(renderView({ ...model, bioLocales: { "zh-CN": "中文护理介绍", ja: "日本語の紹介" } }, undefined, "ja")).toContain("日本語の紹介");
+    expect(renderView({ ...model, bioLocales: { "zh-CN": "中文护理介绍" } }, undefined, "en")).toContain(model.bio);
+  });
   it("copies the formal technician ID when its row is clicked", async () => {
     clipboardMocks.copyTextToClipboard.mockReset().mockResolvedValue(true);
     const container = document.createElement("div");

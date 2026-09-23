@@ -12,6 +12,7 @@ import type {
 } from "@prisma/client";
 import { ContentLocale } from "@prisma/client";
 import type { ContentLocaleCode } from "../constants/content-locales";
+import { readLocalizedBioMap, readLocalizedServiceMap } from "../domain/technician-localized-content";
 import {
   calculateShopPlatformRating,
   calculateTechnicianPlatformRating
@@ -134,6 +135,7 @@ export interface ShopCardPayload {
 export interface PrimaryTechnicianServicePayload {
   id: number;
   name: string;
+  localizedContent?: Partial<Record<ContentLocaleCode, { name?: string; description?: string }>>;
   priceAmount: string;
   currency: string;
   durationMinutes: number;
@@ -217,6 +219,7 @@ export interface TechnicianDetailPayload extends TechnicianCardPayload {
   socialIdentityId: number;
   shop: ShopCardPayload | null;
   bio: string | null;
+  bioLocales?: Partial<Record<ContentLocaleCode, string>>;
   serviceArea: string | null;
   gender: "female" | "male" | "private";
   heightCm: number | null;
@@ -332,6 +335,7 @@ type TechnicianCardRecord = TechnicianProfile & {
   technicianServices: Array<{
     id: number;
     name: string;
+    localizedContentJson?: Prisma.JsonValue | null;
     priceAmount: number;
     currency: string;
     durationMinutes: number;
@@ -1126,6 +1130,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
         select: {
           id: true,
           name: true,
+          localizedContentJson: true,
           priceAmount: true,
           currency: true,
           durationMinutes: true
@@ -1797,6 +1802,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
         ? {
             id: primaryService.id,
             name: primaryService.name,
+            localizedContent: readLocalizedServiceMap(primaryService.localizedContentJson),
             priceAmount: String(primaryService.priceAmount),
             currency: primaryService.currency,
             durationMinutes: primaryService.durationMinutes
@@ -1865,6 +1871,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       socialIdentityId: socialIdentity.id,
       shop: technician.shop ? this.mapShopCard(technician.shop, origin) : null,
       bio: technician.bio,
+      bioLocales: readLocalizedBioMap(technician.bioLocalesJson),
       serviceArea: technician.serviceArea,
       gender:
         technician.gender === "female" || technician.gender === "male"

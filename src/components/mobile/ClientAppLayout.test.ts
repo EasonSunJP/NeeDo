@@ -198,7 +198,7 @@ describe("shared client application width", () => {
     expect(affiliateTaskDetailSource).not.toContain("max-w-[480px]");
     expect(userFavoritesSource).not.toContain("max-w-[480px]");
     expect(storeDetailSource).toContain(
-      'storeBottomActionRowClassName = "client-app-frame client-app-gutter flex items-center gap-3 pb-2"',
+      'storeBottomActionRowClassName = "client-app-frame client-app-gutter flex items-center gap-2 pb-2 sm:gap-3"',
     );
     expect(storeDetailSource).not.toContain("max-w-[888px]");
   });

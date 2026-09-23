@@ -1,5 +1,7 @@
 import { httpClient } from "../../api/httpClient";
 import { optimizeImageUpload } from "../../lib/image-upload";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
+import type { ContentLocale } from "../../shared/localized-content/localizedText";
 
 export type ShopPricingMode = "merchant" | "technician";
 export type ShopVisibility = "public" | "privateAll" | "limited" | "network";
@@ -34,6 +36,7 @@ export type TechnicianServicePayload = {
   sourceShopServiceId: number | null;
   name: string;
   description: string | null;
+  localizedContent?: Partial<Record<ContentLocale, { name?: string; description?: string }>>;
   categoryId: number;
   priceAmount: number;
   currency: string;
@@ -96,6 +99,7 @@ export type BookingNavigationResponse =
 
 export type TechnicianServiceBody = {
   sourceShopServiceId?: number | null;
+  localizedContent?: { locale: ContentLocale; name?: string; description?: string };
   name: string;
   description?: string | null;
   categoryId: number;
@@ -180,11 +184,16 @@ export const pricingModeApi = {
     });
   },
 
-  updateMyTechnicianService(serviceId: number, body: Partial<TechnicianServiceBody>) {
-    return httpClient.request<TechnicianServicePayload>(`/technicians/me/services/${serviceId}`, {
+  async updateMyTechnicianService(serviceId: number, body: Partial<TechnicianServiceBody>) {
+    const saved = await httpClient.request<TechnicianServicePayload>(`/technicians/me/services/${serviceId}`, {
       body,
       method: "PUT"
     });
+    await Promise.all([
+      persistentResourceCache.invalidate("public", `technician:public-profile-services:${saved.technicianId}`),
+      persistentResourceCache.invalidate("public", `core:technician:${saved.technicianId}`)
+    ]).catch(() => undefined);
+    return saved;
   },
 
   deleteMyTechnicianService(serviceId: number) {

@@ -15,7 +15,8 @@ import type {
 import type { TechnicianAutomationKindValue } from "../validators/technician-automation.validator";
 import { technicianAutomationRulesSchema } from "../validators/technician-automation.validator";
 import { evaluateTechnicianAutomationRules } from "../domain/technician-automation-rules";
-import { ExchangeClaimRepository } from "./exchange-claim.repository";
+import { ExchangeClaimRepository, exchangeClaimOptionBusinessKey } from "./exchange-claim.repository";
+import type { ExchangeClaimOptionPayload, ExchangeClaimServiceRef } from "../types/exchange-claim.types";
 import type {
   TechnicianAutomationCandidate,
   TechnicianAutomationProcessorRepositoryPort,
@@ -29,6 +30,22 @@ const kindToDatabase: Record<TechnicianAutomationKindValue, DatabaseTechnicianAu
 
 const kindFromDatabase = (kind: DatabaseTechnicianAutomationKind): TechnicianAutomationKindValue =>
   kind === DatabaseTechnicianAutomationKind.BOOKING ? "booking" : "request";
+
+interface RequestCandidateSlot {
+  id: number;
+  shopId: number;
+  technicianProfileId: number;
+  startsAt: Date;
+  endsAt: Date;
+  serviceId: number | null;
+  technicianServiceId: number | null;
+  serviceRef?: ExchangeClaimServiceRef;
+  technicianProfile: {
+    userId: number;
+    workStates: Array<{ shopId: number | null; status: string }>;
+    automationSettings: Array<{ id: number; version: number; rules: Prisma.JsonValue }>;
+  };
+}
 
 export class TechnicianAutomationRepository implements TechnicianAutomationRepositoryPort, TechnicianAutomationProcessorRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
@@ -328,13 +345,16 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     };
   }
 
-  public async loadRequestCandidates(postId: number): Promise<TechnicianRequestAutomationCandidate[]> {
+  public async loadRequestCandidates(
+    postId: number,
+    selection?: { technicianProfileId: number; scheduleSlotId: number; serviceRef?: ExchangeClaimServiceRef }
+  ): Promise<TechnicianRequestAutomationCandidate[]> {
     const now = new Date();
     const post = await this.client.exchangePost.findFirst({
       where: { id: postId, type: "DEMAND", status: "PUBLISHED", expiresAt: { gt: now }, deletedAt: null },
       include: { demand: true, servicePrepayment: true }
     });
-    if (!post?.demand) return [];
+    if (!post?.demand || post.serviceEndAt <= now) return [];
     const prepaymentBaseAmountJpy = post.demand.budgetMode === "PER_PROVIDER"
       ? post.demand.budgetMaxJpy * post.demand.targetProviderCount
       : post.demand.budgetMaxJpy;
@@ -345,8 +365,9 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     );
     const slotQuery = {
       where: {
-        technicianProfileId: { not: null },
-        startsAt: { gte: post.serviceStartAt },
+        ...(selection ? { id: selection.scheduleSlotId } : {}),
+        technicianProfileId: selection?.technicianProfileId ?? { not: null },
+        startsAt: { gte: post.serviceStartAt, gt: now },
         endsAt: { lte: post.serviceEndAt },
         status: "AVAILABLE",
         deletedAt: null,
@@ -411,8 +432,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       });
       slots.push(...page);
     }
-    if (slots.length === 0) return [];
-    const candidateAvailability = await this.client.availability.findMany({
+    const candidateAvailability = slots.length === 0 ? [] : await this.client.availability.findMany({
       where: {
         technicianProfileId: { in: slots.flatMap((slot) => slot.technicianProfileId ? [slot.technicianProfileId] : []) },
         isActive: true,
@@ -424,7 +444,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       },
       select: { id: true, technicianProfileId: true, startsAt: true, endsAt: true }
     });
-    const eligibleSlots: typeof slots = [];
+    const eligibleSlots: RequestCandidateSlot[] = [];
     for (const slot of slots) {
       const hasActiveShopAffiliation = slot.technicianProfile?.technicianShopAffiliations.some(
         (affiliation) => affiliation.shopId === slot.shopId
@@ -438,10 +458,29 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         ? slot.service.shopId === slot.shopId
         : slot.technicianService?.shopId === slot.shopId && slot.technicianService?.technicianId === slot.technicianProfileId;
       if (slot.technicianProfileId && hasActiveShopAffiliation && hasAvailability && serviceBelongsToSlot && slot.bookedCount < slot.capacity) {
-        eligibleSlots.push(slot);
+        eligibleSlots.push({
+          id: slot.id,
+          shopId: slot.shopId,
+          technicianProfileId: slot.technicianProfileId,
+          startsAt: slot.startsAt,
+          endsAt: slot.endsAt,
+          serviceId: slot.service?.id ?? null,
+          technicianServiceId: slot.technicianService?.id ?? null,
+          technicianProfile: {
+            userId: slot.technicianProfile!.userId,
+            workStates: slot.technicianProfile!.workStates,
+            automationSettings: slot.technicianProfile!.automationSettings
+          }
+        });
       }
     }
-    const technicianIds = [...new Set(eligibleSlots.map((slot) => slot.technicianProfileId!))];
+    if (!selection || selection.scheduleSlotId < 0) {
+      eligibleSlots.push(...await this.loadDynamicRequestSlots(
+        postId, post.authorUserId, post.serviceStartAt, post.serviceEndAt, now, eligibleSlots, selection
+      ));
+    }
+    eligibleSlots.sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime() || left.id - right.id);
+    const technicianIds = [...new Set(eligibleSlots.map((slot) => slot.technicianProfileId))];
     if (technicianIds.length === 0) return [];
     const identities = await this.client.userIdentity.findMany({
       where: { type: "technician", scopeType: "technician_profile", scopeId: { in: technicianIds }, isActive: true, deletedAt: null },
@@ -464,11 +503,11 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     const conflictsByWindow = new Map<string, Promise<boolean>>();
     const claimRepository = new ExchangeClaimRepository(this.client);
     for (const slot of eligibleSlots) {
-      const technicianProfileId = slot.technicianProfileId!;
+      const technicianProfileId = slot.technicianProfileId;
       if (matchedTechnicians.has(technicianProfileId)) continue;
       const identity = identityByTechnician.get(technicianProfileId);
-      const setting = slot.technicianProfile?.automationSettings[0];
-      if (!identity?.publicIdentifier || !setting || !slot.technicianProfile) continue;
+      const setting = slot.technicianProfile.automationSettings[0];
+      if (!identity?.publicIdentifier || !setting) continue;
       const rules = technicianAutomationRulesSchema.parse(setting.rules);
       const bufferStart = new Date(slot.startsAt.getTime() - rules.bufferMinutes * 60_000);
       const bufferEnd = new Date(slot.endsAt.getTime() + rules.bufferMinutes * 60_000);
@@ -490,7 +529,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         completedByTechnician.get(technicianProfileId)!
       ]);
       const contactIdentityId = contactByOwner.get(identity.id) ?? null;
-      const serviceId = slot.technicianService?.id ?? slot.service?.id ?? 0;
+      const serviceId = slot.technicianServiceId ?? slot.serviceId ?? 0;
       const candidate: TechnicianRequestAutomationCandidate = {
         settingId: setting.id,
         technicianProfileId,
@@ -500,6 +539,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         ruleVersion: setting.version,
         rules,
         scheduleSlotId: slot.id,
+        ...(slot.serviceRef ? { serviceRef: slot.serviceRef } : {}),
         quoteAmountJpy: post.demand.budgetMaxJpy,
         message: "NeeDo 自动应募",
         context: {
@@ -547,6 +587,175 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       if (matched) matchedTechnicians.add(technicianProfileId);
     }
     return [...resultByTechnician.values()];
+  }
+
+  private async loadDynamicRequestSlots(
+    postId: number,
+    authorUserId: number,
+    serviceStartAt: Date,
+    serviceEndAt: Date,
+    now: Date,
+    persistedSlots: RequestCandidateSlot[],
+    selection?: { technicianProfileId: number; scheduleSlotId: number; serviceRef?: ExchangeClaimServiceRef }
+  ): Promise<RequestCandidateSlot[]> {
+    if (serviceEndAt <= now) return [];
+    const persistedKeys = new Set(persistedSlots.map((slot) => exchangeClaimOptionBusinessKey(
+      slot.shopId, slot.technicianProfileId,
+      slot.serviceId ? `shop:${slot.serviceId}` : `technician:${slot.technicianServiceId!}`,
+      slot.startsAt.toISOString(), slot.endsAt.toISOString()
+    )));
+    const windows = await this.client.availability.findMany({
+      where: {
+        isScheduleControlWindow: true,
+        isActive: true,
+        deletedAt: null,
+        technicianProfileId: selection?.technicianProfileId ?? { not: null },
+        startsAt: { lt: serviceEndAt },
+        endsAt: { gt: new Date(Math.max(now.getTime(), serviceStartAt.getTime())) }
+      },
+      select: { technicianProfileId: true, shopId: true },
+      distinct: ["technicianProfileId", "shopId"]
+    });
+    const technicianIds = [...new Set(windows.flatMap((window) =>
+      window.technicianProfileId ? [window.technicianProfileId] : []))];
+    if (technicianIds.length === 0) return [];
+    const profiles = await this.client.technicianProfile.findMany({
+      where: {
+        id: selection?.technicianProfileId ?? { in: technicianIds },
+        status: "published",
+        verifiedAt: { not: null },
+        deletedAt: null,
+        user: { is: { isActive: true, deletedAt: null } },
+        automationSettings: { some: { kind: DatabaseTechnicianAutomationKind.REQUEST, enabled: true, deletedAt: null } },
+        technicianShopAffiliations: {
+          some: {
+            workStatus: "ACTIVE", activeKey: { not: null },
+            startsAt: { lte: now },
+            OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+            deletedAt: null,
+            shop: { is: { deletedAt: null } }
+          }
+        }
+      },
+      select: {
+        id: true, userId: true,
+        workStates: { where: { deletedAt: null }, select: { shopId: true, status: true } },
+        technicianShopAffiliations: {
+          where: {
+            workStatus: "ACTIVE", activeKey: { not: null },
+            startsAt: { lte: now },
+            OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+            deletedAt: null,
+            shop: { is: { deletedAt: null } }
+          },
+          select: { shopId: true }
+        },
+        automationSettings: {
+          where: { kind: DatabaseTechnicianAutomationKind.REQUEST, enabled: true, deletedAt: null },
+          select: { id: true, version: true, rules: true },
+          take: 1
+        }
+      }
+    });
+    const eligibleProfiles = new Map(profiles
+      .filter((profile) => profile.userId !== authorUserId && profile.automationSettings.length > 0)
+      .map((profile) => [profile.id, profile]));
+    const eligibleShopIds = [...new Set(windows.flatMap((window) => {
+      const profile = window.technicianProfileId
+        ? eligibleProfiles.get(window.technicianProfileId) : undefined;
+      return profile?.technicianShopAffiliations.some((affiliation) => affiliation.shopId === window.shopId)
+        ? [window.shopId] : [];
+    }))];
+    const claimRepository = new ExchangeClaimRepository(this.client);
+    const candidatesByWindow = new Map<string, RequestCandidateSlot>();
+    const fallbackByTechnician = new Map<number, RequestCandidateSlot>();
+    const candidateOrder = (left: RequestCandidateSlot, right: RequestCandidateSlot) =>
+      left.startsAt.getTime() - right.startsAt.getTime() || left.id - right.id ||
+      (left.serviceRef ?? "").localeCompare(right.serviceRef ?? "");
+    for (const shopId of eligibleShopIds) {
+      const shopProfiles = [...eligibleProfiles.values()]
+        .filter((profile) => profile.technicianShopAffiliations.some((affiliation) => affiliation.shopId === shopId));
+      const shopTechnicianIds = shopProfiles.map((profile) => profile.id);
+      const rulesByTechnician = new Map(shopProfiles.map((profile) => [profile.id,
+        technicianAutomationRulesSchema.parse(profile.automationSettings[0].rules)]));
+      const startWindows = [...rulesByTechnician.values()].map((rules) => rules.requestStartWindow);
+      const maximumStartMinutes = Math.max(...startWindows.map((window) => ({
+        immediate: 16, within_1_hour: 61, within_3_hours: 181,
+        today: 24 * 60, any: Number.POSITIVE_INFINITY
+      })[window]));
+      const latestStartAt = Number.isFinite(maximumStartMinutes)
+        ? new Date(now.getTime() + maximumStartMinutes * 60_000)
+        : undefined;
+      const input = {
+        postId,
+        shopId,
+        scope: selection
+          ? { kind: "technician" as const, technicianProfileId: selection.technicianProfileId }
+          : { kind: "merchant" as const, shopId },
+        page: 1,
+        pageSize: 200,
+        now,
+        ...(latestStartAt ? { latestStartAt } : {}),
+        ...(selection?.serviceRef ? { serviceRef: selection.serviceRef } : {})
+      };
+      const acceptOption = (option: ExchangeClaimOptionPayload) => {
+        if (selection && (option.scheduleSlotId !== selection.scheduleSlotId
+          || option.service.ref !== selection.serviceRef)) return;
+        const profile = eligibleProfiles.get(option.technician.profileId);
+        if (!profile ||
+          !profile.technicianShopAffiliations.some((affiliation) => affiliation.shopId === option.shop.id)) {
+          return;
+        }
+        const startsAt = new Date(option.startsAt);
+        const endsAt = new Date(option.endsAt);
+        if (startsAt <= now || startsAt < serviceStartAt || endsAt > serviceEndAt) return;
+        if (persistedKeys.has(exchangeClaimOptionBusinessKey(
+          option.shop.id, option.technician.profileId, option.service.ref,
+          option.startsAt, option.endsAt
+        ))) return;
+        const [kind, rawId] = option.service.ref.split(":") as ["shop" | "technician", string];
+        const serviceId = Number(rawId);
+        const candidate: RequestCandidateSlot = {
+          id: option.scheduleSlotId,
+          shopId: option.shop.id,
+          technicianProfileId: profile.id,
+          startsAt,
+          endsAt,
+          serviceId: kind === "shop" ? serviceId : null,
+          technicianServiceId: kind === "technician" ? serviceId : null,
+          serviceRef: option.service.ref,
+          technicianProfile: {
+            userId: profile.userId,
+            workStates: profile.workStates,
+            automationSettings: profile.automationSettings
+          }
+        };
+        const rules = rulesByTechnician.get(profile.id);
+        if (!rules) return;
+        const fallback = fallbackByTechnician.get(profile.id);
+        if (!fallback || candidateOrder(candidate, fallback) < 0) {
+          fallbackByTechnician.set(profile.id, candidate);
+        }
+        const key = `${profile.id}:${shopId}:${startsAt.getTime()}:${endsAt.getTime()}`;
+        const previous = candidatesByWindow.get(key);
+        const matchesService = rules.serviceIds.length === 0 || rules.serviceIds.includes(serviceId);
+        const previousMatchesService = previous && (rules.serviceIds.length === 0 ||
+          rules.serviceIds.includes(previous.technicianServiceId ?? previous.serviceId ?? 0));
+        if (!previous || (matchesService && !previousMatchesService) ||
+          (matchesService === previousMatchesService && candidateOrder(candidate, previous) < 0)) {
+          candidatesByWindow.set(key, candidate);
+          if (candidatesByWindow.size > 10_000) {
+            throw new Error("dynamic Request automation exceeds distinct candidate window limit");
+          }
+        }
+      };
+      await claimRepository.listDynamicOptions(input, 0, shopTechnicianIds, acceptOption);
+    }
+    const result = [...candidatesByWindow.values()];
+    for (const fallback of fallbackByTechnician.values()) {
+      if (!result.some((candidate) => candidate === fallback)) result.push(fallback);
+    }
+    return result;
   }
 
   public async reserveDecision(input: Parameters<TechnicianAutomationProcessorRepositoryPort["reserveDecision"]>[0]): Promise<boolean> {

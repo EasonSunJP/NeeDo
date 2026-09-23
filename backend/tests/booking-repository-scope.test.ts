@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { encodeDynamicAvailabilityId } from "../src/domain/dynamic-booking-window";
 import {
   BookingRepository,
   summarizeAvailableDates,
@@ -742,6 +743,69 @@ const createPendingReplacementHarness = (
 };
 
 describe("BookingRepository order list scope", () => {
+  it("stops an oversized Claim availability scan before generating its starts", async () => {
+    const startsAt = new Date(Date.now() + 3_600_000);
+    const endsAt = new Date(startsAt.getTime() + 30 * 24 * 3_600_000);
+    const repository = new BookingRepository({} as never);
+    const location = jest.spyOn(repository as never, "listShopsWithCurrentVerifiedServiceLocations" as never)
+      .mockResolvedValue([11] as never);
+    const transaction = {
+      service: { findFirst: jest.fn(async () => ({
+        id: 501, name: "Service", durationMinutes: 60, priceAmount: 1000, currency: "JPY"
+      })) },
+      shop: { findFirst: jest.fn(async () => ({ id: 11, name: "Shop", pricingMode: "MERCHANT" })) },
+      availability: { findMany: jest.fn(async () => [{
+        id: 81, shopId: 11, technicianProfileId: 31, startsAt, endsAt,
+        technicianProfile: { displayName: "Technician" }
+      }]) },
+      bookingOrder: { findMany: jest.fn(async () => []) },
+      exchangeMatchParticipant: { findMany: jest.fn(async () => []) }
+    };
+    try {
+      const read = repository as unknown as { readDynamicAvailableSlots: (...args: unknown[]) => Promise<unknown> };
+      await expect(read.readDynamicAvailableSlots(transaction, {
+        shopId: 11, serviceId: 501, from: startsAt, to: endsAt
+      }, {}, { id: 1, ruleSet: { dynamicAvailability: true, startIntervalMinutes: 1 } },
+      undefined, true)).rejects.toThrow("source limit");
+      expect(transaction.bookingOrder.findMany).toHaveBeenCalledTimes(1);
+    } finally {
+      location.mockRestore();
+    }
+  });
+
+  it("does not exempt any pending customer order while materializing a Claim slot", async () => {
+    const startsAt = new Date(Date.now() + 3_600_000);
+    const endsAt = new Date(startsAt.getTime() + 3_600_000);
+    const bookingOrder = { findFirst: jest.fn(async (args: { where: { OR: unknown[] } }) =>
+      args.where.OR.some((status) =>
+        JSON.stringify(status) === JSON.stringify({ status: "PENDING" }))
+        ? { id: 901 } : null) };
+    const scheduleSlot = { create: jest.fn(async () => ({ id: 902 })) };
+    const repository = new BookingRepository({
+      availability: { findFirst: jest.fn(async () => ({
+        id: 81, shopId: 11, technicianProfileId: 31, startsAt, endsAt
+      })) },
+      service: { findFirst: jest.fn(async () => ({ id: 501, durationMinutes: 60 })) },
+      bookingOrder,
+      exchangeMatchParticipant: { findFirst: jest.fn(async () => null) },
+      scheduleSlot
+    } as never);
+    const cycle = jest.spyOn(repository as never, "findDynamicAvailabilityCycle" as never)
+      .mockResolvedValue({ ruleSet: { dynamicAvailability: true } } as never);
+    const lock = jest.spyOn(repository as never, "lockScheduleOwner" as never)
+      .mockResolvedValue(undefined as never);
+    try {
+      await expect(repository.materializeDynamicSlotForClaim({
+        scheduleSlotId: encodeDynamicAvailabilityId(81, 0), serviceId: 501
+      })).resolves.toBeNull();
+      expect(bookingOrder.findFirst).toHaveBeenCalled();
+      expect(scheduleSlot.create).not.toHaveBeenCalled();
+    } finally {
+      cycle.mockRestore();
+      lock.mockRestore();
+    }
+  });
+
   it("materializes every dynamic selector before loading a technician-service bundle", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: 101 }]),
