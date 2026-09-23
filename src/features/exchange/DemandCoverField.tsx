@@ -22,7 +22,9 @@ export function DemandCoverField({
   onChange: (cover: DemandCoverDraft | null) => void;
 }) {
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [invalidSelection, setInvalidSelection] = useState(false);
   const sourceObjectUrl = useRef<string | null>(null);
+  const editorSession = useRef(0);
   const croppedBlob = useRef<Blob | null>(null);
   const activeUpload = useRef<AbortController | null>(null);
   const generation = useRef(0);
@@ -39,12 +41,19 @@ export function DemandCoverField({
   };
 
   useEffect(() => () => {
+    editorSession.current += 1;
     abortUpload();
     revokeSource();
   }, []);
 
   const selectFile = (file: File | undefined) => {
     if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setInvalidSelection(true);
+      return;
+    }
+    setInvalidSelection(false);
+    editorSession.current += 1;
     abortUpload();
     revokeSource();
     croppedBlob.current = null;
@@ -73,7 +82,9 @@ export function DemandCoverField({
     }
   };
 
-  const applyImage = async (dataUrl: string) => {
+  const applyImage = async (dataUrl: string, session: number) => {
+    if (session !== editorSession.current) return;
+    editorSession.current += 1;
     setSourceUrl(null);
     revokeSource();
     try {
@@ -86,12 +97,16 @@ export function DemandCoverField({
   };
 
   const remove = () => {
+    editorSession.current += 1;
     abortUpload();
     revokeSource();
     croppedBlob.current = null;
     setSourceUrl(null);
+    setInvalidSelection(false);
     onChange(null);
   };
+
+  const currentEditorSession = editorSession.current;
 
   return (
     <section className="grid gap-3 rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel" data-testid="exchange-demand-cover-field">
@@ -99,6 +114,7 @@ export function DemandCoverField({
       {value ? <img alt={t("demandCoverPreviewAlt")} className="aspect-video w-full rounded-2xl object-cover" src={value.previewUrl} /> : null}
       {value?.status === "uploading" ? <p role="status">{t("demandCoverUploading")}</p> : null}
       {value?.status === "failed" ? <p role="alert">{t("demandCoverFailed")}</p> : null}
+      {invalidSelection ? <p role="alert">{t("demandCoverInvalidImage")}</p> : null}
       <div className="flex flex-wrap gap-2">
         <label className="focus-within:ring-2 flex min-h-11 cursor-pointer items-center rounded-full border border-[color:var(--client-line)] px-4 text-sm font-bold text-[color:var(--client-text)]">
           {t(value ? "demandCoverReplace" : "demandCoverChoose")}
@@ -117,8 +133,8 @@ export function DemandCoverField({
           outputMimeType="image/webp"
           outputQuality={0.84}
           outputWidth={1280}
-          onApply={applyImage}
-          onCancel={() => { revokeSource(); setSourceUrl(null); }}
+          onApply={(dataUrl) => applyImage(dataUrl, currentEditorSession)}
+          onCancel={() => { editorSession.current += 1; revokeSource(); setSourceUrl(null); setInvalidSelection(false); }}
           source={sourceUrl}
           title={t("demandCoverEdit")}
         />

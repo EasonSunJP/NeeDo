@@ -10,6 +10,7 @@ const translations = {
   demandCoverPreviewAlt: { zh: "需求封面预览", "zh-Hant": "需求封面預覽", ja: "依頼カバーのプレビュー", en: "Request cover preview", ko: "요청 표지 미리보기" },
   demandCoverUploading: { zh: "封面正在上传，请稍候", "zh-Hant": "封面上傳中，請稍候", ja: "画像をアップロード中です", en: "Uploading cover. Please wait.", ko: "표지를 업로드하는 중입니다" },
   demandCoverFailed: { zh: "封面上传失败，请重试或移除", "zh-Hant": "封面上傳失敗，請重試或移除", ja: "画像をアップロードできませんでした。再試行するか削除してください", en: "Cover upload failed. Retry or remove it.", ko: "표지 업로드에 실패했습니다. 다시 시도하거나 제거해 주세요" },
+  demandCoverInvalidImage: { zh: "请选择 JPEG、PNG 或 WebP 图片", "zh-Hant": "請選擇 JPEG、PNG 或 WebP 圖片", ja: "JPEG、PNG、WebP の画像を選択してください", en: "Choose a JPEG, PNG, or WebP image.", ko: "JPEG, PNG 또는 WebP 이미지를 선택해 주세요" },
   intelligence: { zh: "情报", "zh-Hant": "情報", ja: "サービス情報", en: "Service posts", ko: "서비스 정보" },
   myDemand: { zh: "我的需求", "zh-Hant": "我的需求", ja: "自分の依頼", en: "My requests", ko: "내 요청" },
   customerIdentity: { zh: "用户", "zh-Hant": "用戶", ja: "利用者", en: "Customer", ko: "사용자" },

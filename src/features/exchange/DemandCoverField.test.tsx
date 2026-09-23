@@ -6,6 +6,9 @@ import type { Language } from "../../i18n/translations";
 import { uploadExchangeDemandCover } from "./api";
 import { DemandCoverField } from "./DemandCoverField";
 import type { DemandCoverDraft } from "./exchange-composer-model";
+import { exchangeText } from "./i18n";
+
+const delayedApplies: Array<(dataUrl: string) => void> = [];
 
 vi.mock("./api", () => ({ uploadExchangeDemandCover: vi.fn() }));
 vi.mock("../../components/ui/ImageAdjustmentEditor", () => ({
@@ -20,6 +23,7 @@ vi.mock("../../components/ui/ImageAdjustmentEditor", () => ({
   }) => (
     <div data-testid="cover-editor" data-source={source} data-aspect={aspectRatio} data-mime={outputMimeType} data-quality={outputQuality} data-width={outputWidth}>
       <button data-action="apply-cover" onClick={() => onApply("data:image/webp;base64,YQ==")}>Apply</button>
+      <button data-action="defer-cover" onClick={() => delayedApplies.push(onApply)}>Defer</button>
       <button data-action="cancel-cover" onClick={onCancel}>Cancel</button>
     </div>
   )
@@ -33,19 +37,16 @@ describe("DemandCoverField", () => {
   let container: HTMLDivElement;
   let root: Root;
   let lastCover: DemandCoverDraft | null;
-  let setCover: ((cover: DemandCoverDraft | null) => void) | undefined;
   let revoke: ReturnType<typeof vi.fn>;
 
   function Harness({ language }: { language: Language }) {
     const [cover, updateCover] = useState<DemandCoverDraft | null>(null);
     lastCover = cover;
-    setCover = updateCover;
     return <DemandCoverField language={language} value={cover} onChange={updateCover} />;
   }
 
-  async function chooseImage() {
+  async function chooseImage(file = new File(["image"], "cover.png", { type: "image/png" })) {
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
-    const file = new File(["image"], "cover.png", { type: "image/png" });
     await act(async () => {
       Object.defineProperty(input, "files", { configurable: true, value: [file] });
       input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -61,6 +62,7 @@ describe("DemandCoverField", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     vi.clearAllMocks();
+    delayedApplies.length = 0;
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:source"),
       revokeObjectURL: (revoke = vi.fn())
@@ -118,5 +120,36 @@ describe("DemandCoverField", () => {
     expect(lastCover).toMatchObject({ status: "ready", publicId: uploaded.publicId });
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="remove-cover"]')!.click());
     expect(lastCover).toBeNull();
+  });
+
+  it.each(["cancel", "remove", "replace", "unmount"] as const)("ignores a delayed crop callback after %s", async (action) => {
+    await act(async () => root.render(<Harness language="en" />));
+    await chooseImage();
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="defer-cover"]')!.click());
+    expect(delayedApplies).toHaveLength(1);
+    if (action === "replace") await chooseImage();
+    if (action === "cancel") await act(async () => container.querySelector<HTMLButtonElement>('[data-action="cancel-cover"]')!.click());
+    if (action === "remove") await act(async () => container.querySelector<HTMLButtonElement>('[data-action="remove-cover"]')!.click());
+    if (action === "unmount") await act(async () => root.render(null));
+    await act(async () => delayedApplies[0]("data:image/webp;base64,YQ=="));
+    expect(uploadExchangeDemandCover).not.toHaveBeenCalled();
+    expect(lastCover).toBeNull();
+  });
+
+  it.each([
+    ["image/gif", "animation.gif"],
+    ["image/svg+xml", "drawing.svg"],
+    ["application/octet-stream", "cover.bin"]
+  ])("rejects %s before replacing a valid cover", async (mimeType, filename) => {
+    await act(async () => root.render(<Harness language="ko" />));
+    await chooseImage();
+    await applyImage();
+    const current = lastCover;
+    const urlCount = vi.mocked(URL.createObjectURL).mock.calls.length;
+    await chooseImage(new File(["invalid"], filename, { type: mimeType }));
+    expect(lastCover).toEqual(current);
+    expect(vi.mocked(URL.createObjectURL)).toHaveBeenCalledTimes(urlCount);
+    expect(uploadExchangeDemandCover).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(exchangeText("demandCoverInvalidImage", "ko"));
   });
 });
