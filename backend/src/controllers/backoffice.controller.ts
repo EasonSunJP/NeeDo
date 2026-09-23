@@ -283,6 +283,13 @@ export class BackofficeController {
     )
   );
 
+  public platformTechnicianSummary = this.createListHandler((service, request, response) =>
+    service.getPlatformTechnicianSummary(
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
+  );
+
   public platformTechnicianRankings = this.createListHandler((service, request, response) =>
     service.listPlatformTechnicianRankings(
       getAuthenticatedAccess(response),

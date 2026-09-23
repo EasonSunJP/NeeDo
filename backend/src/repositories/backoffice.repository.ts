@@ -6,6 +6,7 @@ import {
 import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 import { buildManagedUserTierWhere } from "./managed-user-tier-filter";
 import { projectWorkStatuses } from './work-status.repository';
+import { shiftCalendarDate, startOfTokyoCalendarDate, toTokyoCalendarDate } from "../domain/dashboard-period";
 import {
   BookingOrderStatus,
   OrderServiceEventType,
@@ -74,6 +75,7 @@ import {
   type BackofficeShopMutationContext,
   type BackofficeShopPayload,
   type BackofficeTechnicianPayload,
+  type BackofficeTechnicianSummaryPayload,
   type BackofficeTechnicianRankingPayload,
   type BackofficeTechnicianDetailPayload,
   type BackofficeTechnicianServiceDetailPayload,
@@ -1083,6 +1085,38 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         campaignDiscountNdp: row?._sum.campaignDiscountNdp ?? 0
       };
     });
+  }
+
+  public async getPlatformTechnicianSummary(now: Date): Promise<BackofficeTechnicianSummaryPayload> {
+    const date = toTokyoCalendarDate(now);
+    const dayStart = startOfTokyoCalendarDate(date);
+    const dayEnd = startOfTokyoCalendarDate(shiftCalendarDate(date, 1));
+    const eligible: Prisma.TechnicianProfileWhereInput = {
+      deletedAt: null,
+      user: this.formalTechnicianUserWhere()
+    };
+    const [total, pendingReview, activeToday] = await Promise.all([
+      this.client.technicianProfile.count({ where: eligible }),
+      this.client.user.count({
+        where: {
+          deletedAt: null,
+          identities: { none: this.formalTechnicianIdentityWhere() },
+          identityApplications: {
+            some: { type: "technician", deletedAt: null, status: { in: ["submitted", "under_review"] }, technicianDetail: { is: { deletedAt: null } } }
+          }
+        }
+      }),
+      this.client.technicianProfile.count({
+        where: {
+          ...eligible,
+          OR: [
+            { workStates: { some: { status: "on_duty", deletedAt: null } } },
+            { workEvents: { some: { deletedAt: null, at: { gte: dayStart, lt: dayEnd, lte: now }, OR: [{ toStatus: "on_duty" }, { fromStatus: "on_duty" }] } } }
+          ]
+        }
+      })
+    ]);
+    return { total, pendingReview, activeToday, date, timeZone: "Asia/Tokyo" };
   }
 
   public async listTechnicians(
@@ -2832,7 +2866,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return {
       deletedAt: null,
       user: this.formalTechnicianUserWhere(),
-      ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}),
+      ...(scope.scope === "merchant" ? { shopId: scope.shopId } : input.shopId ? { shopId: input.shopId } : {}),
       ...(input.status ? { status: input.status } : {}),
       ...(input.keyword
         ? {

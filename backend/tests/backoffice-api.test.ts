@@ -621,6 +621,7 @@ const createFixture = async (
       page: 1,
       page_size: 20
     })),
+    getPlatformTechnicianSummary: jest.fn(async () => ({ total: 137, pendingReview: 4, activeToday: 9, date: "2026-09-23", timeZone: "Asia/Tokyo" })),
     listCustomers: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
     listServices: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
     listCustomerTimeline: jest.fn(async (input: { page: number; pageSize: number }) => ({
@@ -1069,6 +1070,20 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       .get("/api/v1/backoffice/customers/44/timeline?pageSize=101")
       .set("Authorization", `Bearer ${adminToken}`)
       .expect(400);
+  });
+
+  it("serves technician summary only through the protected operations route", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/technicians/summary")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(response.body.data).toMatchObject({ total: 137, pendingReview: 4, activeToday: 9, timeZone: "Asia/Tokyo" });
+    expect(fixture.backofficeRepository.getPlatformTechnicianSummary).toHaveBeenCalledTimes(1);
+
+    await request(fixture.app).get("/api/v1/backoffice/technicians/summary").expect(401);
   });
 
   it("updates persisted employment through the protected technician API", async () => {

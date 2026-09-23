@@ -888,7 +888,16 @@ export interface BackofficeNdpSummaryPayload {
 }
 
 export type BackofficeActivityAccount = Pick<BackofficeManagedUserDetailRecord, "id" | "displayName" | "avatarUrl" | "createdAt">;
+export interface BackofficeTechnicianSummaryPayload {
+  total: number;
+  pendingReview: number;
+  activeToday: number;
+  date: string;
+  timeZone: "Asia/Tokyo";
+}
+
 export interface BackofficeRepositoryPort {
+  getPlatformTechnicianSummary: (now: Date) => Promise<BackofficeTechnicianSummaryPayload>;
   findActivityAccount: (input: BackofficeScope & { subject: "users" | "technicians"; id: number }) => Promise<BackofficeActivityAccount | null>;
   getAccountAudit: (input: BackofficeScope & { account: BackofficeActivityAccount } & BackofficeManagedUserDetailQuery) => Promise<BackofficeManagedUserDetailRecord["audit"]>;
   getDashboard: (input: DashboardAggregateInput) => Promise<DashboardAggregateFacts>;
@@ -1871,6 +1880,14 @@ export class BackofficeService {
     await this.record(actor, context, "backoffice.technicians.list", "technician_profile");
 
     return this.repository.listTechnicians({ ...input, scope: "platform" });
+  }
+
+  public async getPlatformTechnicianSummary(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeTechnicianSummaryPayload> {
+    await this.record(actor, context, "backoffice.technicians.summary", "technician_profile");
+    return this.repository.getPlatformTechnicianSummary(this.now());
   }
 
   public async listPlatformTechnicianRankings(

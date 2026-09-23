@@ -7,7 +7,8 @@ import {
   mapBackofficeTechnician,
   type BackofficeShopPayload,
   type BackofficeTechnicianDetailPayload,
-  type BackofficeTechnicianPayload
+  type BackofficeTechnicianPayload,
+  type BackofficeTechnicianSummaryPayload
 } from "../../api/backofficeRealData";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { FormalTechnicianDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
@@ -43,6 +44,10 @@ export function TechniciansPage({ embeddedDetail }: {
   const languageRef = useRef(language);
   languageRef.current = language;
   const [technicians, setTechnicians] = useState<BackofficeTechnicianPayload[]>([]);
+  const [summary, setSummary] = useState<BackofficeTechnicianSummaryPayload | null>(null);
+  const [listTotal, setListTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [selectedShopId, setSelectedShopId] = useState<number | null>(null);
   const [shops, setShops] = useState<BackofficeShopPayload[]>([]);
   const [selectedTechnicianId, setSelectedTechnicianId] = useState<number | null>(null);
   const [selectedRanking, setSelectedRanking] = useState<TechnicianRankingSelection | null>(null);
@@ -68,20 +73,25 @@ export function TechniciansPage({ embeddedDetail }: {
         });
         if (requestId !== listRequest.current) return;
         setTechnicians([]);
+        setListTotal(0);
         setShops(shopPage.list);
         return;
       }
-      const [technicianPage, shopPage] = await Promise.all([
+      const [technicianPage, shopPage, technicianSummary] = await Promise.all([
         backofficeRealDataApi.technicians("backoffice", {
           keyword: searchKeyword || undefined,
-          page: 1,
-          pageSize: 100,
+          page,
+          pageSize: 10,
+          shopId: selectedShopId ?? undefined,
           status: isReviewMode ? "pending_review" : undefined
         }),
-        backofficeRealDataApi.shops("backoffice", { page: 1, pageSize: 100 })
+        backofficeRealDataApi.shops("backoffice", { page: 1, pageSize: 100 }),
+        isReviewMode ? Promise.resolve(null) : backofficeRealDataApi.technicianSummary()
       ]);
       if (requestId !== listRequest.current) return;
       setTechnicians(technicianPage.list);
+      setListTotal(technicianPage.total);
+      if (technicianSummary) setSummary(technicianSummary);
       setShops(shopPage.list);
     } catch (loadError) {
       if (requestId === listRequest.current) setError(loadError instanceof Error ? loadError.message : String(loadError));
@@ -89,7 +99,9 @@ export function TechniciansPage({ embeddedDetail }: {
     } finally {
       if (requestId === listRequest.current) setLoading(false);
     }
-  }, [isRankingMode, isReviewMode, embeddedDetail?.id, searchKeyword]);
+  }, [isRankingMode, isReviewMode, embeddedDetail?.id, page, searchKeyword, selectedShopId]);
+
+  useEffect(() => { setPage(1); }, [isReviewMode, searchKeyword, selectedShopId]);
 
   const technicianDetailRequest = useMemo(() => createFormalDetailRequestCoordinator<BackofficeTechnicianDetailPayload>({
     onError: (detailError) => {
@@ -258,7 +270,7 @@ export function TechniciansPage({ embeddedDetail }: {
         description={isRankingMode
           ? translate("按已完成订单核算技师业绩；服务金额包含已记账的加钟金额，同一订单只计一单，至少完成一单计为一个工作日。")
           : isReviewMode
-            ? "审核用户端提交的技师申请；这里只显示正式数据库中待审核的技师资料。"
+            ? "这里只显示已开通技师身份、资料状态为待审核的档案；身份开通申请由目标店铺审核。"
             : "只展示数据库中的真实技师账号；待审核、店铺归属、资料更新和软删除均写入正式 API。"}
       >
         {error ? <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
@@ -272,31 +284,40 @@ export function TechniciansPage({ embeddedDetail }: {
         ) : isReviewMode ? (
           !loading && !error && reviewTechnicians.length === 0 ? (
             <section className="rounded-lg border border-dashed border-line bg-white px-5 py-12 text-center shadow-panel">
-              <p className="text-base font-black text-ink">暂无待审核的技师申请</p>
-              <p className="mt-2 text-sm font-bold text-ink/50">用户端提交的新申请会进入这里。</p>
+              <p className="text-base font-black text-ink">暂无待审核的技师资料</p>
+              <p className="mt-2 text-sm font-bold text-ink/50">技师身份申请由目标店铺审核，不在此资料列表中。</p>
             </section>
           ) : reviewTechnicians.length > 0 ? (
+            <>
             <DataTable<BackofficeTechnicianPayload>
               columns={[
-                { key: "applicant", title: "申请人", render: (row) => <button className="font-black text-moss hover:underline" onClick={() => openTechnician(mapBackofficeTechnician(row))} type="button">{row.displayName}</button> },
+                { key: "technician", title: "技师", render: (row) => <button className="font-black text-moss hover:underline" onClick={() => openTechnician(mapBackofficeTechnician(row))} type="button">{row.displayName}</button> },
                 { key: "email", title: "邮箱", render: (row) => row.email },
                 { key: "city", title: "城市", render: (row) => row.city },
-                { key: "type", title: "申请类型", render: (row) => row.shopId ? row.shopName ?? "店铺所属技师" : "归属店铺待确认" },
+                { key: "shop", title: "主展示店铺", render: (row) => row.shopName ?? "未分配" },
                 { key: "submittedAt", title: "创建时间", render: (row) => row.createdAt },
                 { key: "status", title: "状态", render: () => <Badge tone="yellow">待审核</Badge> }
               ]}
               onView={(row) => openTechnician(mapBackofficeTechnician(row))}
               pageSize={10}
+              paginationMode="server"
               rows={reviewTechnicians}
+              showFooter={false}
               showFooterActions={false}
             />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper px-4 py-3"><span className="text-sm font-bold text-ink/55">服务器共 {listTotal} 条，第 {page} / {Math.max(1, Math.ceil(listTotal / 10))} 页</span><div className="flex gap-2"><Button disabled={page <= 1} onClick={() => setPage(page - 1)} size="sm" variant="secondary">上一页</Button><Button disabled={page * 10 >= listTotal} onClick={() => setPage(page + 1)} size="sm" variant="secondary">下一页</Button></div></div>
+            </>
           ) : null
         ) : (
           <>
             <section className="mb-4 grid gap-3 md:grid-cols-3">
-              {[{ label: "全部技师", value: technicians.length }, { label: "待审核", value: technicians.filter((item) => item.status === "pending_review").length }, { label: "已发布", value: technicians.filter((item) => item.status === "published").length }].map((metric) => <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={metric.label}><p className="text-sm font-bold text-ink/50">{metric.label}</p><strong className="mt-2 block text-3xl font-black">{metric.value}</strong></article>)}
+              {[
+                { label: "全部技师", value: summary?.total ?? "—", note: "已开通技师身份，包含所有店铺" },
+                { label: "待审核技师", value: summary?.pendingReview ?? "—", note: "申请开通技师身份，正在审核的用户" },
+                { label: "今日活跃", value: summary?.activeToday ?? "—", note: "东京时间今日曾处于可接单状态的技师" }
+              ].map((metric) => <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={metric.label}><p className="text-sm font-bold text-ink/50">{translate(metric.label)}</p><strong className="mt-2 block text-3xl font-black">{metric.value}</strong><p className="mt-2 text-xs font-bold text-ink/45">{translate(metric.note)}</p></article>)}
             </section>
-            <TechnicianListModule context="platform" onSelectTechnician={openTechnician} stores={mappedShops} technicians={mappedTechnicians} />
+            <TechnicianListModule context="platform" onSelectTechnician={openTechnician} stores={mappedShops} technicians={mappedTechnicians} page={page} total={listTotal} onPageChange={setPage} onShopFilterChange={setSelectedShopId} />
           </>
         )}
       </ModuleShell>

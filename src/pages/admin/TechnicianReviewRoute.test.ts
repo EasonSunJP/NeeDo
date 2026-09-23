@@ -17,12 +17,12 @@ describe("operations technician application review route", () => {
     expect(pageSource).toContain('title={isRankingMode ? translate("技师榜单") : isReviewMode ? "技师资料审核" : "技师管理"}');
     expect(pageSource).toContain("actions={isReviewMode || isRankingMode ? <></> : undefined}");
     expect(pageSource).toContain("DataTable<BackofficeTechnicianPayload>");
-    expect(pageSource).toContain('title: "申请人"');
+    expect(pageSource).toContain('title: "技师"');
     expect(pageSource).toContain('title: "创建时间"');
-    expect(pageSource).toContain("暂无待审核的技师申请");
+    expect(pageSource).toContain("暂无待审核的技师资料");
     expect(translationsSource).toContain('"技师资料审核":');
-    expect(translationsSource).toContain('"审核用户端提交的技师申请；这里只显示正式数据库中待审核的技师资料。":');
-    expect(translationsSource).toContain('"暂无待审核的技师申请":');
-    expect(translationsSource).toContain('"用户端提交的新申请会进入这里。":');
+    expect(translationsSource).toContain('"这里只显示已开通技师身份、资料状态为待审核的档案；身份开通申请由目标店铺审核。":');
+    expect(translationsSource).toContain('"暂无待审核的技师资料":');
+    expect(translationsSource).toContain('"技师身份申请由目标店铺审核，不在此资料列表中。":');
   });
 });

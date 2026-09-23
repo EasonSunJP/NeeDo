@@ -25450,6 +25450,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/backoffice/technicians/summary`]: {
+      get: {
+        tags: ["Step 12 Backoffice"],
+        summary: "Cross-shop technician identity, pending applicant, and Tokyo-day active counts",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Operations technician summary", {
+            type: "object",
+            required: ["total", "pendingReview", "activeToday", "date", "timeZone"],
+            properties: {
+              total: { type: "integer", minimum: 0 },
+              pendingReview: { type: "integer", minimum: 0 },
+              activeToday: { type: "integer", minimum: 0 },
+              date: { type: "string", format: "date" },
+              timeZone: { type: "string", enum: ["Asia/Tokyo"] }
+            }
+          })
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/technician-rankings`]: {
       get: {
         tags: ["Step 12 Backoffice"],

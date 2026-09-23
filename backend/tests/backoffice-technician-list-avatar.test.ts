@@ -85,6 +85,11 @@ describe("merchant technician list identity data", () => {
         })
       })
     );
+
+    await repository.listTechnicians({ scope: "platform", shopId: 22, page: 1, pageSize: 10 });
+    expect(client.technicianProfile.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ shopId: 22 }) })
+    );
   });
 
   it("returns no avatar instead of leaking an account avatar when technician media is absent", async () => {

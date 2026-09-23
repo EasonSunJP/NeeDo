@@ -248,6 +248,12 @@ export const createBackofficeRoutes = (
     controller.platformTechnicians
   );
   router.get(
+    "/backoffice/technicians/summary",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.technicians),
+    controller.platformTechnicianSummary
+  );
+  router.get(
     "/backoffice/technician-rankings/export",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.technicians),

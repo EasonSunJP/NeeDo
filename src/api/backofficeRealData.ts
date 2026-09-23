@@ -453,6 +453,14 @@ export interface BackofficeTechnicianPayload {
   createdAt: string;
 }
 
+export interface BackofficeTechnicianSummaryPayload {
+  total: number;
+  pendingReview: number;
+  activeToday: number;
+  date: string;
+  timeZone: "Asia/Tokyo";
+}
+
 export type TechnicianRankingPeriod =
   | "today"
   | "last7days"
@@ -1833,6 +1841,9 @@ export const backofficeRealDataApi = {
         query
       }
     );
+  },
+  technicianSummary() {
+    return httpClient.request<BackofficeTechnicianSummaryPayload>("/backoffice/technicians/summary");
   },
   technicianRankings(query?: TechnicianRankingQuery) {
     return httpClient.request<BackofficeTechnicianRankingPayload>(

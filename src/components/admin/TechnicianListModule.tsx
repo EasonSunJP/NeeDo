@@ -4,6 +4,7 @@ import { cn } from "../../lib/utils";
 import type { Technician } from "../../types/domain";
 import { AvatarImage } from "../ui/AvatarImage";
 import { Badge } from "../ui/Badge";
+import { Button } from "../ui/Button";
 import { DataTable, type Column } from "../ui/DataTable";
 import { FilterBar } from "../ui/FilterBar";
 import { TitleWithInfo } from "../ui/TitleWithInfo";
@@ -43,12 +44,20 @@ export function TechnicianListModule({
   context,
   technicians,
   stores,
-  onSelectTechnician
+  onSelectTechnician,
+  page,
+  total,
+  onPageChange,
+  onShopFilterChange
 }: {
   context: TechnicianListContext;
   technicians: Technician[];
   stores: StoreSummary[];
   onSelectTechnician: (technician: Technician) => void;
+  page?: number;
+  total?: number;
+  onPageChange?: (page: number) => void;
+  onShopFilterChange?: (shopId: number | null) => void;
 }) {
   const [scope, setScope] = useState<ScopeMode>("platform");
   const [storeId, setStoreId] = useState(stores[0]?.id ?? "");
@@ -59,9 +68,11 @@ export function TechnicianListModule({
     }
   }, [storeId, stores]);
 
-  const visibleTechnicians = context === "merchant" ? technicians : scope === "store" ? technicians.filter((technician) => technician.storeId === storeId) : technicians;
+  const visibleTechnicians = context === "merchant" || onShopFilterChange ? technicians : scope === "store" ? technicians.filter((technician) => technician.storeId === storeId) : technicians;
 
   const staffLabel = context === "merchant" ? "员工" : "技师";
+  const serverPaging = page !== undefined && total !== undefined && onPageChange !== undefined;
+  const totalPages = serverPaging ? Math.max(1, Math.ceil(total / 10)) : 1;
 
   const technicianColumns: Array<Column<Technician>> = [
     {
@@ -122,7 +133,7 @@ export function TechnicianListModule({
                     scope === value ? "border-ink bg-ink text-white" : "border-line bg-paper text-ink/60"
                   )}
                   key={value}
-                  onClick={() => setScope(value as ScopeMode)}
+                  onClick={() => { setScope(value as ScopeMode); onShopFilterChange?.(value === "store" && storeId ? Number(storeId.replace("store-", "")) : null); }}
                   type="button"
                 >
                   {label}
@@ -131,7 +142,7 @@ export function TechnicianListModule({
               {scope === "store" ? (
                 <select
                   className="h-10 rounded-lg border border-line bg-paper px-3 text-sm font-black outline-none"
-                  onChange={(event) => setStoreId(event.target.value)}
+                  onChange={(event) => { setStoreId(event.target.value); onShopFilterChange?.(Number(event.target.value.replace("store-", ""))); }}
                   value={storeId}
                 >
                   {stores.map((store) => (
@@ -165,7 +176,8 @@ export function TechnicianListModule({
         ]}
       />
 
-      <DataTable columns={technicianColumns} onView={onSelectTechnician} pageSize={10} rows={visibleTechnicians} />
+      <DataTable columns={technicianColumns} onView={onSelectTechnician} pageSize={10} paginationMode={serverPaging ? "server" : "client"} rows={visibleTechnicians} showFooter={!serverPaging} showFooterActions={false} />
+      {serverPaging ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper px-4 py-3"><span className="text-sm font-bold text-ink/55">服务器共 {total} 条，第 {page} / {totalPages} 页</span><div className="flex gap-2"><Button disabled={page <= 1} onClick={() => onPageChange(page - 1)} size="sm" variant="secondary">上一页</Button><Button disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} size="sm" variant="secondary">下一页</Button></div></div> : null}
     </div>
   );
 }
