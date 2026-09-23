@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { IdentityApplicationRepository } from "../src/repositories/identity-application.repository";
 
 const applicationRow = {
@@ -43,6 +43,36 @@ const applicationRow = {
 };
 
 describe("IdentityApplicationRepository", () => {
+  it("creates a technician invitation draft, notification, and audit in one transaction", async () => {
+    const transaction = {
+      identityApplication: { create: jest.fn().mockResolvedValue(applicationRow) },
+      userIdentity: { findFirst: jest.fn().mockResolvedValue({ id: 70 }) },
+      notification: { create: jest.fn().mockResolvedValue({ id: 4 }) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 5 }) }
+    };
+    const client = { $transaction: jest.fn(async (callback: (tx: typeof transaction) => Promise<unknown>) => callback(transaction)) } as unknown as PrismaClient;
+    const repository = new IdentityApplicationRepository(client);
+    const result = await repository.createTechnicianInvitation({
+      actorUserId: 9, userId: 3, activeKey: "3:technician",
+      detail: { targetShopId: 7, applicantName: "山本太郎", phone: null, city: null, serviceAreas: [], skills: [], yearsExperience: null, bio: null, gender: null, birthDate: null }
+    });
+    expect(result).toMatchObject({ id: 11, status: "draft", userId: 3 });
+    expect(client.$transaction).toHaveBeenCalledTimes(1);
+    expect(transaction.identityApplication.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ userId: 3, type: "technician", status: "draft" }) }));
+    expect(transaction.notification.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ recipientUserId: 3, recipientIdentityId: 70, actorUserId: 9, title: "identity.application.technician.invited.title" }) }));
+    expect(transaction.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ actorId: 9, targetType: "IdentityApplication", targetId: 11 }) }));
+  });
+
+  it("reports a concurrent invitation as a conflict", async () => {
+    const duplicate = new Prisma.PrismaClientKnownRequestError("duplicate", { code: "P2002", clientVersion: "test" });
+    const client = { $transaction: jest.fn().mockRejectedValue(duplicate) } as unknown as PrismaClient;
+    const repository = new IdentityApplicationRepository(client);
+    await expect(repository.createTechnicianInvitation({
+      actorUserId: 9, userId: 3, activeKey: "3:technician",
+      detail: { targetShopId: 7, applicantName: "山本太郎", phone: null, city: null, serviceAreas: [], skills: [], yearsExperience: null, bio: null, gender: null, birthDate: null }
+    })).rejects.toMatchObject({ statusCode: 409, message: "error.identity_application.conflict" });
+  });
+
   it("searches and returns the formal shop ID instead of padding its database key", async () => {
     const shop = { findMany: jest.fn().mockResolvedValue([{ id: 217, name: "麻布十番", city: "東京", address: "港区", publicIdentifier: { publicId: "shop1357924680" } }]), count: jest.fn().mockResolvedValue(1) };
     const client = { shop, $transaction: (operations: Promise<unknown>[]) => Promise.all(operations) } as unknown as PrismaClient;

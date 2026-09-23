@@ -39,6 +39,11 @@ export const createTechnicianApplicationBodySchema = z
   })
   .strict();
 
+export const inviteTechnicianApplicantBodySchema = z.object({
+  userNeedoId: z.string().trim().min(1).max(32),
+  targetShopId: z.number().int().positive()
+}).strict();
+
 export const updateTechnicianApplicationBodySchema = z
   .object({
     expectedVersion: z.number().int().positive(),

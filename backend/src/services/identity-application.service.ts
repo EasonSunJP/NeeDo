@@ -148,6 +148,7 @@ export interface CloseIdentityApplicationRepositoryInput {
 }
 
 export interface IdentityApplicationRepositoryPort {
+  findInvitableUserByNeedoId: (needoId: string) => Promise<{ id: number; username: string } | null>;
   listMine: (
     userId: number,
     query: IdentityApplicationListQuery
@@ -169,6 +170,9 @@ export interface IdentityApplicationRepositoryPort {
   createTechnicianDraft: (
     input: CreateTechnicianDraftRepositoryInput
   ) => Promise<IdentityApplicationRecord>;
+  createTechnicianInvitation: (
+    input: CreateTechnicianDraftRepositoryInput & { actorUserId: number }
+  ) => Promise<IdentityApplicationRecord>;
   createMerchantDraft: (
     input: CreateMerchantDraftRepositoryInput
   ) => Promise<IdentityApplicationRecord>;
@@ -187,6 +191,12 @@ export interface CreateTechnicianDraftInput {
   userId: number;
   targetShopId: number;
   applicantName: string;
+}
+
+export interface InviteTechnicianApplicantInput {
+  actorUserId: number;
+  userNeedoId: string;
+  targetShopId: number;
 }
 
 export interface CreateMerchantDraftInput {
@@ -279,6 +289,26 @@ export class IdentityApplicationService {
       userId: input.userId,
       activeKey: this.policy.buildActiveKey(input.userId, "technician", "draft")!,
       detail: emptyTechnicianDetail(input.targetShopId, input.applicantName)
+    });
+  }
+
+  public async inviteTechnicianApplicant(
+    input: InviteTechnicianApplicantInput
+  ): Promise<IdentityApplicationRecord> {
+    const user = await this.repository.findInvitableUserByNeedoId(input.userNeedoId.trim());
+    if (!user) {
+      throw new AppError({ code: ERROR_CODES.USER_NOT_FOUND, message: "error.user.not_found", statusCode: 404 });
+    }
+    if (await this.repository.hasActiveIdentity(user.id, "technician")) {
+      throw this.conflict("error.identity_application.identity_already_active");
+    }
+    await this.assertCanApply(user.id, "technician", input.targetShopId);
+    await this.assertEligibleShop(input.targetShopId);
+    return this.repository.createTechnicianInvitation({
+      actorUserId: input.actorUserId,
+      userId: user.id,
+      activeKey: this.policy.buildActiveKey(user.id, "technician", "draft")!,
+      detail: emptyTechnicianDetail(input.targetShopId, user.username)
     });
   }
 
