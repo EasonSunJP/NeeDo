@@ -8,6 +8,7 @@ const shop = () => ({
   city: "港区",
   address: "港区青山1-1",
   status: "published",
+  pricingMode: "MERCHANT",
   deletedAt: null,
   publicIdentifier: {
     publicId: "shop0000000011",
@@ -238,7 +239,7 @@ describe("Exchange Intelligence booking projection", () => {
       deletedAt: null,
       category: { name: "着付け", isActive: true, deletedAt: null },
       sourceShopService: { serviceMode: "store" },
-      shop: shop(),
+      shop: { ...shop(), pricingMode: "TECHNICIAN" },
       technicianProfile: {
         id: 81,
         displayName: "山田 花子",
@@ -375,6 +376,13 @@ describe("Exchange Intelligence booking projection", () => {
       expect.objectContaining({ available: false, unavailableReason: "publisher_unavailable" })
     );
     expect(detached.result?.intelligence?.publisherCard).toBeNull();
+
+    technicianService.technicianProfile.technicianShopAffiliations[0]!.workStatus = "ACTIVE";
+    technicianService.shop.pricingMode = "MERCHANT";
+    const changedPricingMode = await find(row);
+    expect(changedPricingMode.result?.intelligence?.booking).toEqual(
+      expect.objectContaining({ available: false, unavailableReason: "service_unavailable" })
+    );
   });
 
   it("keeps legacy unbound Intelligence readable without fabricating a booking target", async () => {
@@ -443,6 +451,18 @@ describe("Exchange Intelligence booking projection", () => {
     );
     expect(result?.intelligence?.serviceCard).toBeNull();
     expect(result?.intelligence?.publisherCard).toEqual(expect.objectContaining({ type: "shop" }));
+  });
+
+  it("does not offer booking when a shop switches away from merchant pricing", async () => {
+    const row = basePost();
+    row.intelligence.service.shop.pricingMode = "TECHNICIAN";
+
+    const { result } = await find(row);
+
+    expect(result?.intelligence?.booking).toEqual(
+      expect.objectContaining({ available: false, unavailableReason: "service_unavailable" })
+    );
+    expect(result?.intelligence?.serviceCard).toBeNull();
   });
 
   it("fails closed when the service window has already ended", async () => {

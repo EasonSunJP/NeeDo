@@ -1536,6 +1536,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         shopPublicId !== null;
       serviceAvailable =
         snapshotValid &&
+        service.shop.pricingMode === "MERCHANT" &&
         service.deletedAt === null &&
         service.status === "published" &&
         service.category.isActive &&
@@ -1597,6 +1598,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         technicianPublicId !== null;
       serviceAvailable =
         snapshotValid &&
+        shop?.pricingMode === "TECHNICIAN" &&
         service.deletedAt === null &&
         service.isActive &&
         service.isBookable &&
