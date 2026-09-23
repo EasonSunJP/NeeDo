@@ -11,7 +11,10 @@ import type { ExchangeInteractionCounts, ExchangePost, ExchangeViewerState } fro
 import { useExchangeFeed } from "./useExchangeFeed";
 import { ExchangeFeedPage, getDefaultExchangePostType } from "./ExchangeFeedPage";
 
-vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
+vi.mock("../../i18n/I18nProvider", () => ({
+  useI18n: () => ({ language: "zh" }),
+  useOptionalI18n: () => ({ language: "zh" })
+}));
 vi.mock("../../theme/ClientThemeProvider", () => ({ useClientTheme: () => ({ theme: "dark-green" }) }));
 vi.mock("./useExchangeFeed", () => ({ useExchangeFeed: vi.fn() }));
 vi.mock("./api", () => ({ likeExchangePost: vi.fn(), recordExchangeShare: vi.fn(), unlikeExchangePost: vi.fn() }));

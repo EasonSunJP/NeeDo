@@ -7,7 +7,10 @@ import { TechnicianApplicationPage } from "./TechnicianApplicationPage";
 import { identityApplicationsApi } from "./api";
 vi.mock("../../theme/ClientThemeProvider", () => ({ useClientTheme: () => ({ isNight: true, theme: "dark" }) }));
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ refreshSession: vi.fn(), switchPortal: vi.fn() }) }));
-vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
+vi.mock("../../i18n/I18nProvider", () => ({
+  useI18n: () => ({ language: "zh" }),
+  useOptionalI18n: () => ({ language: "zh" })
+}));
 vi.mock("../../components/client-ui/SettingsDirectory", () => ({
   SettingsDetailPage: ({ children, navItems, title }: { children: ReactNode; navItems: unknown[]; title?: ReactNode }) => (
     <main data-navigation-count={navItems.length}>{title}{children}</main>

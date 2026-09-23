@@ -24,7 +24,10 @@ const receivedClaimsMock = vi.hoisted(() => ({
 }));
 const claimPanelMock = vi.hoisted(() => ({ scrollIntoView: vi.fn() }));
 
-vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: mockI18n.language }) }));
+vi.mock("../../i18n/I18nProvider", () => ({
+  useI18n: () => ({ language: mockI18n.language }),
+  useOptionalI18n: () => ({ language: mockI18n.language })
+}));
 vi.mock("../../lib/share", () => ({ shareContent: vi.fn() }));
 vi.mock("../../theme/ClientThemeProvider", () => ({
   getClientThemeClassName: () => "client-theme-dark-green",

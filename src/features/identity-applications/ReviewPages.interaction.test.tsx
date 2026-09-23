@@ -11,7 +11,8 @@ import { identityApplicationsApi, type TechnicianReview } from "./api";
   .IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("../../i18n/I18nProvider", () => ({
-  useI18n: () => ({ language: "zh" })
+  useI18n: () => ({ language: "zh" }),
+  useOptionalI18n: () => ({ language: "zh" })
 }));
 
 vi.mock("../../components/client-ui/SettingsDirectory", () => ({
