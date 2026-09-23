@@ -15,6 +15,7 @@ import {
   subscribeAuthCredentialSnapshot
 } from "../../auth/authCredentialCoordinator";
 import { useAuth } from "../../auth/AuthProvider";
+import { AvatarImage } from "../ui/AvatarImage";
 import type { FeaturePermission } from "../../auth/featurePermissions";
 import {
   clearMerchantAdminPreview,
@@ -638,20 +639,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
 
           <section className="admin-profile mt-4 rounded-lg border border-line bg-paper p-3">
             <div className="flex items-center gap-3">
-              {session?.avatarUrl ? (
-                <img
-                  alt={accountName}
-                  className="avatar-shape h-11 w-11 object-cover"
-                  src={session.avatarUrl}
-                />
-              ) : (
-                <span
-                  className="avatar-shape grid h-11 w-11 shrink-0 place-items-center bg-moss text-sm font-black text-white"
-                  aria-hidden="true"
-                >
-                  {accountName.trim().slice(0, 1).toUpperCase() || "店"}
-                </span>
-              )}
+              <AvatarImage alt={accountName} className="h-11 w-11 object-cover" src={session?.avatarUrl ?? undefined} />
               <div className="min-w-0">
                 <p className="truncate text-sm font-black">{accountName}</p>
                 <p className="mt-1 text-xs text-ink/45">{shopStatus}</p>

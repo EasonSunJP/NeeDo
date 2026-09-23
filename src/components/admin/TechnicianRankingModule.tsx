@@ -19,6 +19,7 @@ import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { languageLocales, translateText } from "../../i18n/translations";
 import { downloadCsvExport } from "../../lib/downloadCsvExport";
 import { Badge } from "../ui/Badge";
+import { AvatarImage } from "../ui/AvatarImage";
 import { Button } from "../ui/Button";
 
 const periodOptions: Array<{ key: TechnicianRankingPeriod; label: string }> = [
@@ -89,9 +90,6 @@ function createEmptyRanking(): BackofficeTechnicianRankingPayload {
 
 function isValidRange(from: string, to: string) {
   return Boolean(from && to && from <= to);
-}
-function initials(value: string) {
-  return Array.from(value.trim()).slice(0, 2).join("").toUpperCase() || "ND";
 }
 function rankTone(rank: number) {
   if (rank === 1) return "border-[#D4A72C] bg-[#FFF7D6] text-[#765500]";
@@ -653,17 +651,7 @@ function RankingRow({
       </td>
       <td className="px-4 py-4 align-middle">
         <div className="flex items-center gap-3">
-          {row.avatarUrl ? (
-            <img
-              alt=""
-              className="h-10 w-10 rounded-full border border-line object-cover"
-              src={row.avatarUrl}
-            />
-          ) : (
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-ink text-xs font-black text-white">
-              {initials(row.displayName)}
-            </span>
-          )}
+          <AvatarImage alt="" className="h-10 w-10 rounded-full border border-line object-cover" src={row.avatarUrl ?? undefined} />
           <div className="min-w-0">
             <button
               className="block max-w-[230px] truncate font-black text-moss hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-moss"

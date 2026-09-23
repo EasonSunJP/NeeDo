@@ -14,6 +14,7 @@ import { ModuleShell } from "../../components/admin/ModuleShell";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
 import { PayrollSchedulePolicyEditor } from "../../components/merchant-admin/PayrollSchedulePolicyEditor";
 import { Badge } from "../../components/ui/Badge";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
 import { coreReadApi, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
@@ -287,13 +288,7 @@ export function MerchantAdminSettingsPage() {
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <div className="flex items-center gap-4 rounded-lg border border-line bg-paper p-4 sm:col-span-2">
-                  {shop.avatarUrl ? (
-                    <img alt={shop.name} className="h-20 w-20 shrink-0 rounded-[24px] object-cover" src={shop.avatarUrl} />
-                  ) : (
-                    <span className="grid h-20 w-20 shrink-0 place-items-center rounded-[24px] bg-moss/10 text-2xl font-black text-moss">
-                      {shop.name.trim().slice(0, 1) || "店"}
-                    </span>
-                  )}
+                  <AvatarImage alt={shop.name} className="h-20 w-20 shrink-0 rounded-[24px] object-cover" src={shop.avatarUrl ?? undefined} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-black text-ink">店铺身份头像</p>
                     <p className="mt-1 text-xs font-bold leading-5 text-ink/50">

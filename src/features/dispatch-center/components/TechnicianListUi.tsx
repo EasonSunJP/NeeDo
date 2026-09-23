@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { cn } from "../../../lib/utils";
 
@@ -18,17 +17,13 @@ export function TechnicianAvatarBadge({
   alt,
   src,
   className,
-  fallbackClassName,
   shape = "circle"
 }: {
   alt: string;
   src?: string;
   className?: string;
-  fallbackClassName?: string;
   shape?: "circle" | "roundedSquare";
 }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const fallbackLabel = alt.trim().charAt(0) || "技";
   const shapeClassName = shape === "roundedSquare" ? "rounded-[14px]" : "rounded-full";
 
   return (
@@ -39,16 +34,7 @@ export function TechnicianAvatarBadge({
         className
       )}
     >
-      {src && !imageFailed ? (
-        <AvatarImage
-          alt={alt}
-          className="h-full w-full"
-          onError={() => setImageFailed(true)}
-          src={src}
-        />
-      ) : (
-        <span className={cn("leading-none", fallbackClassName)}>{fallbackLabel}</span>
-      )}
+      <AvatarImage alt={alt} className="h-full w-full" src={src} />
     </span>
   );
 }

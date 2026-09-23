@@ -2,6 +2,7 @@ import { useState } from "react";
 import { translateText, type Language } from "../../i18n/translations";
 import { Button } from "../../components/ui/Button";
 import { Badge } from "../../components/ui/Badge";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { TableColumnHeader, type TableSortDirection } from "../../components/ui/TableColumnHeader";
 import { membershipTierText, platformUserManagementCopy, privacyModeText, privacyScopeText } from "./i18n";
 import type { PlatformIdentityType, PlatformManagedUser, UserListQuery } from "./types";
@@ -234,7 +235,7 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
         </tr></thead>
         <tbody className="divide-y divide-line">{rows.map((row) => (
           <tr className="hover:bg-paper/70" key={row.id}>
-            <td className="px-4 py-3"><div className="flex items-center gap-3">{row.avatarUrl ? <img alt="" className="h-10 w-10 rounded-full border border-line object-cover" src={row.avatarUrl} /> : <div aria-label={row.displayName} className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-moss/10 text-sm font-black text-moss">{row.displayName.trim().slice(0, 1).toUpperCase() || "?"}</div>}<div><p className="font-black text-ink">{row.displayName}</p><p className="text-xs text-ink/45">{row.needoId}</p></div></div></td>
+            <td className="px-4 py-3"><div className="flex items-center gap-3"><AvatarImage alt="" className="h-10 w-10 rounded-full border border-line object-cover" src={row.avatarUrl ?? undefined} /><div><p className="font-black text-ink">{row.displayName}</p><p className="text-xs text-ink/45">{row.needoId}</p></div></div></td>
             <td className="max-w-[220px] truncate px-4 py-3 font-bold">{row.email || "—"}</td>
             <td className="px-4 py-3">{row.city || "—"}</td>
             <td className="px-4 py-3"><UserIdentityBadges language={language} row={row} /></td>

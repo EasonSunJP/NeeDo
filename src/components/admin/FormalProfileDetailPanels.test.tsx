@@ -467,12 +467,12 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
     expect(markup).toContain("work-status-month-metrics");
   });
 
-  it("uses a neutral missing-avatar placeholder instead of deriving a fake identity", () => {
+  it("uses the system avatar instead of deriving a fake identity", () => {
     const markup = renderToStaticMarkup(
       <FormalTechnicianDetailPanel detail={{ ...technicianDetail, account: { ...technicianDetail.account, avatarUrl: null } }} />
     );
 
-    expect(markup).toContain('aria-label="未提供头像"');
+    expect(markup).toContain('/images/generated/profiles/dodo-default-avatar.webp');
     expect(markup).not.toContain("<span>运</span>");
     expect(source).not.toContain("displayName.slice");
     expect(source).not.toContain('|| "N"');

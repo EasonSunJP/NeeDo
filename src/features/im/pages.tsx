@@ -19,6 +19,7 @@ import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
 import { ClientActionDialog } from "../../components/ui/ClientActionDialog";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
@@ -7091,17 +7092,7 @@ export function ImConversationRoomPage({
                   onClick={() => void sendContactCard(candidate)}
                   type="button"
                 >
-                  {candidate.avatarUrl ? (
-                    <img
-                      alt=""
-                      className="h-11 w-11 shrink-0 rounded-full object-cover"
-                      src={candidate.avatarUrl}
-                    />
-                  ) : (
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[color:var(--client-elevated)] text-sm font-black text-[color:var(--client-muted)]">
-                      {candidate.nickname.slice(0, 1)}
-                    </span>
-                  )}
+                  <AvatarImage alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" src={candidate.avatarUrl ?? undefined} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[15px] font-black text-[color:var(--client-text)]">
                       {candidate.nickname}

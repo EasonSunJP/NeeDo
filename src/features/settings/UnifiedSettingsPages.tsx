@@ -2472,17 +2472,7 @@ function MerchantProfileSettingsPage({
           正式店铺资料
         </p>
         <div className="flex items-center gap-3">
-          {savedShop.avatarUrl ? (
-            <AvatarImage
-              alt={savedShop.name}
-              className="h-16 w-16 shrink-0 rounded-[20px] object-cover"
-              src={savedShop.avatarUrl}
-            />
-          ) : (
-            <span className="grid h-16 w-16 shrink-0 place-items-center rounded-[20px] bg-[color:var(--client-primary-soft)] text-xl font-black text-[color:var(--client-primary-strong)]">
-              {savedShop.name.slice(0, 1)}
-            </span>
-          )}
+          <AvatarImage alt={savedShop.name} className="h-16 w-16 shrink-0 rounded-[20px] object-cover" src={savedShop.avatarUrl ?? undefined} />
           <div className="min-w-0">
             <p className="truncate text-xl font-black text-[color:var(--client-text)]">{savedShop.name}</p>
             <p className="mt-1 text-sm text-[color:var(--client-muted)]">

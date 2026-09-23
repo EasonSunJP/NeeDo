@@ -77,6 +77,7 @@ describe("UnifiedEntityInfoCard", () => {
     const text = markup.replace(/<[^>]+>/gu, "");
 
     expect(markup).toContain('data-app-icon="completed"');
+    expect(markup).toContain('/images/generated/profiles/dodo-default-avatar.webp');
     expect(markup).not.toContain('data-app-icon="moments"');
     expect(text).toContain("1.8k");
     expect(text).not.toContain("123");

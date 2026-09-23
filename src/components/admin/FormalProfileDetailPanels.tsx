@@ -40,6 +40,7 @@ import {
   type ContactEventTimelineEntry
 } from "../mobile/ContactEventTimeline";
 import { NavigationPageIndicators } from "../ui/NavigationPageIndicators";
+import { AvatarImage } from "../ui/AvatarImage";
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { DetailGrid } from "./DetailGrid";
 import {
@@ -605,13 +606,7 @@ function FormalIdentityHeader({
       <div className="relative flex min-w-0 flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-start gap-4">
           <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-[18px] border border-white/20 bg-white/10 text-xl font-black shadow-[0_12px_32px_rgba(0,0,0,0.2)] sm:h-20 sm:w-20">
-            {avatarUrl ? (
-              <img alt={`${displayName} ${localization.t("头像")}`} className="h-full w-full object-cover" src={avatarUrl} />
-            ) : (
-              <span aria-label={localization.t("未提供头像")} role="img">
-                <NeutralProfileIcon />
-              </span>
-            )}
+            <AvatarImage alt={`${displayName} ${localization.t("头像")}`} className="h-full w-full object-cover" src={avatarUrl ?? undefined} />
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap gap-1.5">

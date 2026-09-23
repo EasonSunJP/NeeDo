@@ -4353,15 +4353,7 @@ function EventParticipantAvatar({
   participant: UnifiedCalendarParticipant;
   className?: string;
 }) {
-  if (participant.avatar) {
-    return <AvatarImage alt={participant.name} className={cn("border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)]", className)} src={participant.avatar} />;
-  }
-
-  return (
-    <span className={cn("grid place-items-center rounded-[14px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[12px] font-black text-[color:var(--client-muted)]", className)}>
-      {participant.name.trim().slice(0, 1) || "参"}
-    </span>
-  );
+  return <AvatarImage alt={participant.name} className={cn("rounded-[14px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)]", className)} src={participant.avatar ?? undefined} />;
 }
 
 function EventParticipantStack({ participants }: { participants: UnifiedCalendarParticipant[] }) {

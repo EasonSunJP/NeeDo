@@ -157,10 +157,9 @@ describe("AdminOperatorSummary", () => {
     expect(apiMocks.listReviews).not.toHaveBeenCalled();
   });
 
-  it("falls back to an initial when the profile avatar cannot be displayed", async () => {
+  it("falls back to the system avatar when the profile image cannot be displayed", async () => {
     await renderSummary();
     await act(async () => container.querySelector("img")?.dispatchEvent(new Event("error")));
-    expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector('[data-testid="admin-avatar-fallback"]')?.textContent).toBe("管");
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("/images/generated/profiles/dodo-default-avatar.webp");
   });
 });

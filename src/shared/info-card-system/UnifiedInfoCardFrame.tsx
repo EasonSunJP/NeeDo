@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AppIcon, type IconName } from "../../components/client-ui/AppScaffold";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import type { Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { getUnifiedCardCopy } from "./copy";
@@ -166,11 +167,13 @@ export function UnifiedInfoCardFrame({
 
 export function UnifiedCardImage({
   alt,
+  avatar = false,
   children,
   language = "zh",
   src,
 }: {
   alt: string;
+  avatar?: boolean;
   children?: ReactNode;
   language?: Language;
   src: string | null;
@@ -181,7 +184,9 @@ export function UnifiedCardImage({
       className="relative isolate aspect-square min-h-0 overflow-hidden rounded-[18px] bg-[color:var(--client-bg-soft)] sm:rounded-[24px]"
       data-testid="unified-card-image"
     >
-      {src ? (
+      {avatar ? (
+        <AvatarImage alt={alt} className="absolute inset-0 h-full w-full scale-[1.015] transform-gpu object-cover" loading="lazy" src={src ?? undefined} />
+      ) : src ? (
         <img
           alt={alt}
           className="absolute inset-0 h-full w-full scale-[1.015] transform-gpu object-cover"

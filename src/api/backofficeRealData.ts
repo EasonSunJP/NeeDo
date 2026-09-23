@@ -4,6 +4,7 @@ import { httpClient } from "./httpClient";
 import type { Merchant, Order, OrderStatus, Settlement, Store, Technician } from "../types/domain";
 import { formatSystemId } from "../lib/systemIds";
 import { optimizeImageUpload } from "../lib/image-upload";
+import { resolveAvatarUrl } from "../lib/defaultAvatar";
 
 export type BackofficeScope = "backoffice" | "merchant-admin";
 
@@ -2122,7 +2123,7 @@ export function mapBackofficeTechnician(row: BackofficeTechnicianPayload): Techn
     reviewCount: row.reviewCount,
     visible: row.visibility === undefined || row.visibility === "public",
     languages: ["日本語"],
-    avatar: row.avatarUrl ?? "/images/generated/profiles/profile-12.jpg",
+    avatar: resolveAvatarUrl(row.avatarUrl),
     accountUsername: row.email,
     identityLabel: row.shopId ? "店铺所属技师" : "待归属"
   };

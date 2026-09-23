@@ -67,25 +67,13 @@ export function resolveBookableServiceTechnicians(
 }
 
 export function ServiceReviewCard({ review }: { review: CoreServiceReview }) {
-  const reviewerInitial = review.reviewer.displayName.trim().slice(0, 1) || "用";
-
   return (
     <article className="flex items-start gap-3">
-      {review.reviewer.avatarUrl ? (
-        <AvatarImage
-          alt={review.reviewer.displayName}
-          className="h-11 w-11 shrink-0 !rounded-[14px] border border-[color:var(--client-line)]"
-          src={review.reviewer.avatarUrl}
-        />
-      ) : (
-        <div
-          aria-label={review.reviewer.displayName}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[color:var(--client-line)] bg-[color:var(--client-primary-soft)] text-sm font-black text-[color:var(--client-primary)]"
-          role="img"
-        >
-          {reviewerInitial}
-        </div>
-      )}
+      <AvatarImage
+        alt={review.reviewer.displayName}
+        className="h-11 w-11 shrink-0 !rounded-[14px] border border-[color:var(--client-line)]"
+        src={review.reviewer.avatarUrl ?? undefined}
+      />
       <div className="min-w-0 flex-1">
         <header>
           <h3 className="truncate text-[15px] font-black text-[color:var(--client-text)]">

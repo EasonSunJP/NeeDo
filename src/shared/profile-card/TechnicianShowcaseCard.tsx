@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { AppIcon, IconMetricAction, type IconName } from "../../components/client-ui/AppScaffold";
 import { translateText, type Language } from "../../i18n/translations";
-import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { cn } from "../../lib/utils";
 import type { ServiceItem, Technician } from "../../types/domain";
 import { getScopedProfileDetailPath } from "../profile-detail/paths";
@@ -475,21 +475,11 @@ export function TechnicianShowcaseCard({
   );
   const photoContent = (
     <div className="relative aspect-[3/4] min-h-[228px] overflow-hidden bg-black">
-      {photoUrl ? (
-        <img
-          alt={displayName}
-          className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
-          src={getGeneratedImageThumbnailUrl(photoUrl)}
-        />
-      ) : (
-        <div
-          aria-label={`${displayName} 暂无公开照片`}
-          className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_30%_20%,color-mix(in_srgb,var(--client-primary)_24%,transparent),transparent_42%),linear-gradient(145deg,#17242b,#071016)] text-[44px] font-black text-white/72"
-          role="img"
-        >
-          {Array.from(displayName)[0] ?? "·"}
-        </div>
-      )}
+      <AvatarImage
+        alt={displayName}
+        className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
+        src={photoUrl ?? undefined}
+      />
       <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/10" />
       <div className="absolute inset-x-0 bottom-0 h-[48%] bg-gradient-to-t from-black/84 via-black/48 to-transparent" />
 

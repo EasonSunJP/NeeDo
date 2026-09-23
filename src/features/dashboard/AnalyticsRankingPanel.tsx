@@ -12,6 +12,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { languageLocales, translateTextForContext } from "../../i18n/translations";
 import { DashboardFilterBar } from "./DashboardFilterBar";
 import { Drawer } from "../../components/ui/Drawer";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { DashboardTestBadge } from "./DashboardTestBadge";
 
 type RankingCategory = { id: number; name: string };
@@ -188,11 +189,7 @@ export function AnalyticsRankingPanel({
                 type="button"
               >
                 <strong className={`text-xl font-black ${item.rank <= 3 ? "text-moss" : "text-ink/35"}`} data-no-i18n>{item.rank}</strong>
-                {item.avatarUrl ? (
-                  <img alt="" className="h-10 w-10 rounded-full object-cover" src={item.avatarUrl} />
-                ) : (
-                  <span aria-hidden="true" className="grid h-10 w-10 place-items-center rounded-full bg-paper text-sm font-black text-ink/55">{item.displayName.slice(0, 1)}</span>
-                )}
+                <AvatarImage alt="" className="h-10 w-10 rounded-full object-cover" src={item.avatarUrl ?? undefined} />
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-2">
                     <p className={`${variant === "detail" ? "break-words" : "truncate"} text-sm font-black text-ink`} data-no-i18n>{item.displayName}</p>

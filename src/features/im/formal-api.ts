@@ -505,7 +505,7 @@ function parseV2ContactCardMetadata(
       userId: targetUserPublicId,
       needoId,
       displayName: nickname,
-      avatar: avatarUrl ?? "",
+      avatar: resolveAvatarUrl(avatarUrl),
       profileKind,
       ...(entityType ? { entityType } : {}),
       userIdLabel: needoId,
@@ -1287,7 +1287,7 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
       people: reaction.people.map((person) => ({
         id: String(person.userId),
         name: person.username,
-        avatar: person.avatarUrl ?? undefined,
+        avatar: resolveAvatarUrl(person.avatarUrl),
       })),
       reactedByMe: reaction.reactedByMe,
     })),
@@ -1448,7 +1448,7 @@ function toConversation(
     id: String(conversation.id),
     type: isDirect ? "single" : "group",
     title,
-    avatar: isDirect ? (otherParticipant?.avatarUrl ?? "") : "",
+    avatar: isDirect ? resolveAvatarUrl(otherParticipant?.avatarUrl) : "",
     memberIds: Array.from(
       new Set([
         ...conversation.participants.map((participant) =>

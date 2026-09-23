@@ -237,7 +237,7 @@ export function UnifiedEntityInfoCard({
           )}
           data-testid="unified-card-body"
         >
-          <UnifiedCardImage alt={data.name} language={language} src={data.imageUrl} />
+          <UnifiedCardImage alt={data.name} avatar={data.kind === "user" || data.kind === "technician"} language={language} src={data.imageUrl} />
           {details}
         </div>
       }

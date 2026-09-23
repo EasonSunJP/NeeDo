@@ -15,6 +15,7 @@ import { ApiClientError } from "../../api/httpClient";
 import { businessNavItems } from "../../components/mobile/businessNavItems";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { useI18n } from "../../i18n/I18nProvider";
 import { languageLocales } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
@@ -756,17 +757,7 @@ function AllianceCharter({
       <section className="rounded-[26px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5">
         <SectionHeading title={t("联盟所有者")} />
         <div className="mt-4 flex items-center gap-3 rounded-[20px] bg-[color:var(--client-elevated)] p-4">
-          {alliance.owner.avatarUrl ? (
-            <img
-              alt=""
-              className="h-12 w-12 rounded-[16px] object-cover"
-              src={alliance.owner.avatarUrl}
-            />
-          ) : (
-            <div className="grid h-12 w-12 rounded-[16px] bg-[color:var(--client-primary)] text-lg font-black text-[color:var(--client-primary-contrast)]">
-              <span className="m-auto">{alliance.owner.displayName.slice(0, 1)}</span>
-            </div>
-          )}
+          <AvatarImage alt="" className="h-12 w-12 rounded-[16px] object-cover" src={alliance.owner.avatarUrl ?? undefined} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-black text-[color:var(--client-text)]">
               {alliance.owner.displayName}
@@ -897,13 +888,7 @@ function PersonCard({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-[20px] bg-[color:var(--client-elevated)] p-4">
-      {person.avatarUrl ? (
-        <img alt="" className="h-11 w-11 rounded-[15px] object-cover" src={person.avatarUrl} />
-      ) : (
-        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[15px] bg-[color:var(--client-primary-soft)] text-sm font-black text-[color:var(--client-text)]">
-          {person.displayName.slice(0, 1)}
-        </div>
-      )}
+      <AvatarImage alt="" className="h-11 w-11 shrink-0 rounded-[15px] object-cover" src={person.avatarUrl ?? undefined} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-black text-[color:var(--client-text)]">{person.displayName}</p>
         <p className="mt-1 truncate font-mono text-[10px] font-bold text-[color:var(--client-primary)]">

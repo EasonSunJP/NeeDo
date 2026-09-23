@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { AppIcon } from "../../components/client-ui/AppScaffold";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import {
   entityEngagementApi,
   type EntityTarget,
@@ -148,16 +149,10 @@ export function EntityShareDestinationSheet({
                   type="checkbox"
                 />
                 <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-[#244047] text-[#b8ff4a]">
-                  {destination.avatarUrl ? (
-                    <img
-                      alt=""
-                      className="h-full w-full object-cover"
-                      src={destination.avatarUrl}
-                    />
+                  {destination.kind === "group" && !destination.avatarUrl ? (
+                    <AppIcon name="chat" />
                   ) : (
-                    <AppIcon
-                      name={destination.kind === "group" ? "chat" : "manager"}
-                    />
+                    <AvatarImage alt="" className="h-full w-full object-cover" src={destination.avatarUrl ?? undefined} />
                   )}
                 </span>
                 <span className="min-w-0 flex-1">

@@ -100,6 +100,7 @@ describe("TechnicianShowcaseCard recommendation tile", () => {
     );
 
     expect(markup).toContain("Mika Formal");
+    expect(markup).toContain('/images/generated/profiles/dodo-default-avatar.webp');
     expect(markup).toContain("4.9");
     expect(markup).toContain("31");
     expect(markup).toContain("6");

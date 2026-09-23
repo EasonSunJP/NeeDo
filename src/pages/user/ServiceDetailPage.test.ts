@@ -261,6 +261,21 @@ describe("ServiceDetailPage formal service routes", () => {
     expect(markup.indexOf("手法细致")).toBeLessThan(markup.indexOf("5.0 / 5"));
   });
 
+  it("shows the system avatar when a reviewer has none", () => {
+    const markup = renderToStaticMarkup(createElement(ServiceReviewCard, {
+      review: {
+        id: 902,
+        title: "",
+        comment: "很好",
+        rating: 5,
+        createdAt: "2026-09-01T10:00:00.000Z",
+        reviewer: { displayName: "小林", avatarUrl: null },
+        mediaAssets: []
+      }
+    }));
+    expect(markup).toContain('/images/generated/profiles/dodo-default-avatar.webp');
+  });
+
   it("keeps the shared glass header and fades its lower edge into the page background", () => {
     expect(serviceDetailSource).toContain('className="service-detail-header"');
     expect(serviceDetailSource).toContain("<ServiceDetailHeaderFade />");

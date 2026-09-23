@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../components/ui/Button";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { languageLocales, type Language } from "../../i18n/translations";
 import { type RealtimeSocialPost } from "../realtime/api";
@@ -30,7 +31,7 @@ export function UserPublishedPosts({ account }: { account: AccountActivitySubjec
     {state.loading ? <p className="p-4 text-sm text-ink/50">{text[1]}</p> : state.error ? <div role="alert" className="flex flex-wrap items-center gap-3 p-4 text-sm text-coral">{text[2]}<Button size="sm" variant="secondary" onClick={() => setRevision((value) => value + 1)}>{text[4]}</Button></div> : !state.list.length ? <p className="p-4 text-sm text-ink/50">{text[3]}</p> : state.list.map((item) => {
       const post = mapFormalSocialPost(item);
       return <article key={item.id} className="min-w-0 rounded-xl border border-line bg-white p-4">
-        <div className="mb-3 flex items-center gap-3">{item.author?.avatarUrl ? <img className="h-9 w-9 rounded-full object-cover" src={item.author.avatarUrl} alt="" /> : null}<div className="min-w-0"><p className="break-words text-sm font-bold">{item.author?.displayName}</p><time className="text-xs text-ink/50" dateTime={item.createdAt}>{new Intl.DateTimeFormat(languageLocales[language], { dateStyle: "medium", timeStyle: "medium" }).format(new Date(item.createdAt))}</time></div></div>
+        <div className="mb-3 flex items-center gap-3">{item.author ? <AvatarImage alt="" className="h-9 w-9 rounded-full object-cover" src={item.author.avatarUrl ?? undefined} /> : null}<div className="min-w-0"><p className="break-words text-sm font-bold">{item.author?.displayName}</p><time className="text-xs text-ink/50" dateTime={item.createdAt}>{new Intl.DateTimeFormat(languageLocales[language], { dateStyle: "medium", timeStyle: "medium" }).format(new Date(item.createdAt))}</time></div></div>
         <p className="whitespace-pre-wrap break-words text-sm leading-6">{item.content}</p>
         {post.media.length ? <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">{post.media.map((media) => media.type === "video" ? <video key={media.id} controls preload="metadata" className="max-h-96 w-full rounded-lg" src={media.url} /> : <a key={media.id} href={media.url} target="_blank" rel="noreferrer"><img alt={media.alt ?? ""} loading="lazy" className="max-h-96 w-full rounded-lg object-contain" src={media.url} /></a>)}</div> : null}
       </article>;

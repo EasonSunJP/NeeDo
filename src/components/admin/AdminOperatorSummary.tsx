@@ -6,6 +6,7 @@ import {
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
 import type { AuthSession } from "../../auth/rbac";
+import { AvatarImage } from "../ui/AvatarImage";
 import { ekycApplicationsApi, type EkycApplicationSummary } from "../../features/settings/ekycApplicationsApi";
 import type { Language } from "../../i18n/translations";
 import { translateText } from "../../i18n/translations";
@@ -97,7 +98,6 @@ function QueueMessage({
 }
 
 export function AdminOperatorSummary({ hasPermission, language, session }: Props) {
-  const [avatarFailed, setAvatarFailed] = useState(false);
   const [expanded, setExpanded] = useState<"orders" | null>(null);
   const [orderRevision, setOrderRevision] = useState(0);
   const [reviewRevision, setReviewRevision] = useState(0);
@@ -112,7 +112,6 @@ export function AdminOperatorSummary({ hasPermission, language, session }: Props
   const canReadReviews = hasPermission("ops:ekyc-application:read");
   const sessionKey = `${session?.id ?? "anonymous"}:${session?.activeIdentityId ?? "none"}`;
 
-  useEffect(() => setAvatarFailed(false), [session?.avatarUrl]);
 
   useEffect(() => {
     if (!canReadOrders || !isPlatformAdminSession(session)) {
@@ -162,7 +161,6 @@ export function AdminOperatorSummary({ hasPermission, language, session }: Props
   const t = (source: string) => translateText(source, language);
   const name = resolveAdminDisplayName(session);
   const roleLabel = resolveAdminRoleLabel(session, t("运营后台成员"));
-  const initial = Array.from(name.trim())[0]?.toLocaleUpperCase() ?? "?";
 
   const toggle = (queue: "orders") => {
     setExpanded((current) => (current === queue ? null : queue));
@@ -171,22 +169,7 @@ export function AdminOperatorSummary({ hasPermission, language, session }: Props
   return (
     <section className="admin-profile mt-4 shrink-0 rounded-lg border border-line bg-paper p-3">
       <div className="flex items-center gap-3">
-        {session.avatarUrl && !avatarFailed ? (
-          <img
-            alt={name}
-            className="avatar-shape h-11 w-11 object-cover"
-            onError={() => setAvatarFailed(true)}
-            src={session.avatarUrl}
-          />
-        ) : (
-          <span
-            aria-label={t("运营管理员头像")}
-            className="avatar-shape grid h-11 w-11 place-items-center bg-ink text-sm font-black text-white"
-            data-testid="admin-avatar-fallback"
-          >
-            {initial}
-          </span>
-        )}
+        <AvatarImage alt={name} className="h-11 w-11 object-cover" src={session.avatarUrl ?? undefined} />
         <div className="min-w-0">
           <p className="truncate text-sm font-black">{name}</p>
           <p className="mt-1 truncate text-xs text-ink/45">{roleLabel}</p>

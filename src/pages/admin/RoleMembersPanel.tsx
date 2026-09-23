@@ -6,6 +6,7 @@ import {
   type UserPayload
 } from "../../api/userManagement";
 import { Badge } from "../../components/ui/Badge";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
 
 export type RoleMembersCopy = {
@@ -97,13 +98,7 @@ export function RoleMembersPanel({ copy, role }: { copy: RoleMembersCopy; role: 
               );
               return (
                 <li className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-paper px-3 py-2.5" key={user.id}>
-                  {user.avatarUrl ? (
-                    <img alt="" className="h-9 w-9 rounded-full object-cover" src={user.avatarUrl} />
-                  ) : (
-                    <span className="grid h-9 w-9 place-items-center rounded-full bg-moss/15 text-sm font-black text-moss" aria-hidden="true">
-                      {user.username.slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
+                  <AvatarImage alt="" className="h-9 w-9 rounded-full object-cover" src={user.avatarUrl ?? undefined} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-black text-ink">{user.username}</p>
                     <p className="truncate text-xs font-semibold text-ink/45">{user.email}</p>

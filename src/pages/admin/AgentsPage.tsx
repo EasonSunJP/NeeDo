@@ -15,6 +15,7 @@ import {
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
 
 const inputClass =
@@ -155,17 +156,7 @@ function AgentSummaryCard({ agent }: { agent: AgentProfileListItem }) {
     <article className={cardClass}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
-          {agent.user.avatarUrl ? (
-            <img
-              alt=""
-              className="h-12 w-12 rounded-full object-cover"
-              src={agent.user.avatarUrl}
-            />
-          ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-moss/10 font-black text-moss">
-              代
-            </div>
-          )}
+          <AvatarImage alt="" className="h-12 w-12 rounded-full object-cover" src={agent.user.avatarUrl ?? undefined} />
           <div className="min-w-0">
             <h2 className="truncate text-lg font-black">
               {agent.user.nickname}
