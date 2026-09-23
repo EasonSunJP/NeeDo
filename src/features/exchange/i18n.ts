@@ -1,6 +1,15 @@
 import type { Language } from "../../i18n/translations";
 
 const translations = {
+  demandCoverEditDescription: { zh: "拖动图片调整位置，用滑块放大缩小。保存后会套用到当前图片。", "zh-Hant": "拖動圖片調整位置，用滑桿放大縮小。儲存後會套用到目前圖片。", ja: "画像をドラッグして位置を調整し、スライダーで拡大・縮小できます。保存すると現在の画像に適用されます。", en: "Drag the image to adjust its position and use the slider to zoom. Save to apply your changes.", ko: "이미지를 드래그하여 위치를 조정하고 슬라이더로 확대하거나 축소하세요. 저장하면 현재 이미지에 적용됩니다." },
+  demandCoverCloseEditor: { zh: "关闭图片编辑", "zh-Hant": "關閉圖片編輯", ja: "画像編集を閉じる", en: "Close image editor", ko: "이미지 편집 닫기" },
+  demandCoverZoom: { zh: "缩放", "zh-Hant": "縮放", ja: "ズーム", en: "Zoom", ko: "확대/축소" },
+  demandCoverBrightness: { zh: "亮度", "zh-Hant": "亮度", ja: "明るさ", en: "Brightness", ko: "밝기" },
+  demandCoverContrast: { zh: "对比度", "zh-Hant": "對比度", ja: "コントラスト", en: "Contrast", ko: "대비" },
+  demandCoverCancelCrop: { zh: "取消裁剪", "zh-Hant": "取消裁剪", ja: "キャンセル", en: "Cancel crop", ko: "자르기 취소" },
+  demandCoverReset: { zh: "还原", "zh-Hant": "還原", ja: "リセット", en: "Reset", ko: "초기화" },
+  demandCoverApply: { zh: "套用图片", "zh-Hant": "套用圖片", ja: "画像を適用", en: "Apply image", ko: "이미지 적용" },
+  demandCoverApplying: { zh: "套用中...", "zh-Hant": "套用中...", ja: "適用中...", en: "Applying...", ko: "적용 중..." },
   demand: { zh: "需求", "zh-Hant": "需求", ja: "依頼", en: "Requests", ko: "요청" },
   demandCover: { zh: "需求封面（可选）", "zh-Hant": "需求封面（選填）", ja: "依頼のカバー画像（任意）", en: "Request cover (optional)", ko: "요청 표지(선택)" },
   demandCoverChoose: { zh: "添加封面", "zh-Hant": "新增封面", ja: "画像を追加", en: "Add cover", ko: "표지 추가" },

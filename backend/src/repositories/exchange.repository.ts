@@ -942,21 +942,31 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     const publisher =
       input.input.type === "intelligence" ? intelligenceService!.publisher : input.actor;
     const coverPublicId = input.input.type === "demand" ? input.input.coverMediaAssetPublicId : undefined;
+    const pendingCoverWhere: Prisma.MediaAssetWhereInput = {
+      checksumSha256: coverPublicId,
+      ownerUserId: input.actor.userId,
+      ownerIdentityId: input.actor.identityId,
+      entityType: "exchange_demand_cover_pending",
+      usageType: "exchange_demand_cover_pending",
+      isActive: true,
+      deletedAt: null,
+      purgedAt: null,
+      exchangeDemandCover: null,
+      mimeType: { in: ["image/jpeg", "image/png", "image/webp"] }
+    };
     const coverMediaAsset = coverPublicId
       ? await this.client.mediaAsset.findFirst({
-          where: {
-            checksumSha256: coverPublicId,
-            ownerUserId: input.actor.userId,
-            ownerIdentityId: input.actor.identityId,
-            entityType: "exchange_demand_cover_pending",
-            usageType: "exchange_demand_cover_pending",
-            isActive: true,
-            deletedAt: null
-          },
+          where: pendingCoverWhere,
           select: { id: true }
         })
       : null;
-    if (coverPublicId && !coverMediaAsset) {
+    // Claim before creating the demand. Cleanup's conditional retirement competes
+    // for this row lock, which the publication transaction holds until commit.
+    const coverClaimed = coverMediaAsset ? await this.client.mediaAsset.updateMany({
+      where: { ...pendingCoverWhere, id: coverMediaAsset.id },
+      data: { entityType: "exchange_demand", purgeAt: null, updatedAt: input.now }
+    }) : null;
+    if (coverPublicId && coverClaimed?.count !== 1) {
       throw new AppError({
         code: ERROR_CODES.FORBIDDEN,
         message: "error.exchange.demand_cover_not_owned",

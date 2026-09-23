@@ -12,6 +12,7 @@ import type {
   CreateContentMediaRepositoryInput
 } from "../services/content-media.service";
 import { AppError } from "../utils/app-error";
+import { EXCHANGE_PENDING_COVER_TTL_MS, type ContentMediaPurgeRepositoryPort, type PendingContentMedia } from "../services/content-media-purge.service";
 
 interface AdvisoryLockRow {
   acquired: bigint | number | string | null;
@@ -51,12 +52,86 @@ export const createContentMediaAdvisoryLockConnectionFactory = (
   return async () => createConnection(connectionConfig);
 };
 
-export class ContentMediaRepository implements ContentMediaRepositoryPort {
+export class ContentMediaRepository implements ContentMediaRepositoryPort, ContentMediaPurgeRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
     private readonly connectionFactory: ContentMediaAdvisoryLockConnectionFactory = createContentMediaAdvisoryLockConnectionFactory(),
     private readonly lockTimeoutSeconds: number = DEFAULT_LOCK_TIMEOUT_SECONDS
   ) {}
+
+  public async listDuePendingCovers(input: { now: Date; limit: number; afterId?: number }): Promise<PendingContentMedia[]> {
+    const rows = await this.client.mediaAsset.findMany({
+      where: {
+        ...this.pendingPurgeWhere(input.now),
+        id: { gt: input.afterId ?? 0 },
+        checksumSha256: { not: null },
+        OR: [
+          { entityType: "exchange_demand_cover_pending", isActive: true },
+          { entityType: "exchange_demand_cover_purging", isActive: false }
+        ]
+      },
+      orderBy: { id: "asc" }, take: input.limit,
+      select: { id: true, checksumSha256: true, url: true }
+    });
+    return rows.flatMap((row) => row.checksumSha256 ? [{ ...row, checksumSha256: row.checksumSha256 }] : []);
+  }
+
+  public claimPendingCoverPurge(candidate: PendingContentMedia, now: Date): Promise<boolean> {
+    return this.client.$transaction(async (transaction) => {
+      const claimed = await transaction.mediaAsset.updateMany({
+        where: { ...this.pendingPurgeWhere(now), ...candidate, entityType: "exchange_demand_cover_pending", isActive: true },
+        data: { entityType: "exchange_demand_cover_purging", isActive: false, updatedAt: now }
+      });
+      if (claimed.count === 1) {
+        await this.createPurgeAudit(transaction, candidate, now, "exchange.demand_cover.purge_started");
+        return true;
+      }
+      return Boolean(await transaction.mediaAsset.findFirst({
+        where: { ...this.pendingPurgeWhere(now), ...candidate, entityType: "exchange_demand_cover_purging", isActive: false },
+        select: { id: true }
+      }));
+    });
+  }
+
+  public async hasContentMediaReferences(candidate: PendingContentMedia): Promise<boolean> {
+    // A fresh query after the retirement transaction commits avoids an old snapshot.
+    // The checksum lock also prevents new uploads until this check and unlink finish.
+    return await this.client.mediaAsset.count({ where: {
+      AND: [
+        { OR: [{ url: candidate.url }, { checksumSha256: candidate.checksumSha256 }] },
+        { OR: [{ isActive: true, deletedAt: null, purgedAt: null }, { exchangeDemandCover: { isNot: null } }] }
+      ]
+    } }) > 0;
+  }
+
+  public completePendingCoverPurge(candidate: PendingContentMedia, now: Date): Promise<void> {
+    return this.client.$transaction(async (transaction) => {
+      const completed = await transaction.mediaAsset.updateMany({
+        where: { ...this.pendingPurgeWhere(now), ...candidate, entityType: "exchange_demand_cover_purging", isActive: false },
+        data: { purgedAt: now, deletedAt: now, updatedAt: now }
+      });
+      if (completed.count === 1) await this.createPurgeAudit(transaction, candidate, now, "exchange.demand_cover.purged");
+    });
+  }
+
+  private pendingPurgeWhere(now: Date): Prisma.MediaAssetWhereInput {
+    return {
+      usageType: "exchange_demand_cover_pending", deletedAt: null, purgedAt: null, exchangeDemandCover: null,
+      // Covers uploaded before the pending TTL was introduced use their creation
+      // time as the same 24-hour deadline; no data backfill is required.
+      AND: [{ OR: [
+        { purgeAt: { lte: now } },
+        { purgeAt: null, createdAt: { lte: new Date(now.getTime() - EXCHANGE_PENDING_COVER_TTL_MS) } }
+      ] }]
+    };
+  }
+
+  private async createPurgeAudit(transaction: Prisma.TransactionClient, candidate: PendingContentMedia, now: Date, action: string): Promise<void> {
+    await transaction.auditLog.create({ data: {
+      actorId: null, action, targetType: "MediaAsset", targetId: candidate.id, ip: null, userAgent: null,
+      metadata: { publicId: candidate.checksumSha256, mediaAssetId: candidate.id }, createdAt: now
+    } });
+  }
 
   public async withChecksumLock<T>(
     checksumSha256: string,
@@ -156,6 +231,8 @@ export class ContentMediaRepository implements ContentMediaRepositoryPort {
         altText: input.altText,
         checksumSha256: input.checksumSha256,
         isActive: true,
+        purgeAt: input.entityType === "exchange_demand_cover_pending"
+          ? new Date(input.createdAt.getTime() + EXCHANGE_PENDING_COVER_TTL_MS) : null,
         createdAt: input.createdAt
       }
     });

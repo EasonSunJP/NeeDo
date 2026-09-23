@@ -49,6 +49,8 @@ import { ExchangeClaimService } from "./services/exchange-claim.service";
 import { ExchangeService } from "./services/exchange.service";
 import { ContentMediaFileStorage } from "./services/content-media.storage";
 import { ContentMediaService } from "./services/content-media.service";
+import { ContentMediaPurgeService } from "./services/content-media-purge.service";
+import { ContentMediaPurgeWorker } from "./workers/content-media-purge.worker";
 import { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
 import { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
@@ -125,11 +127,13 @@ const exchangeLedgerService = new LedgerService(
   undefined,
   userExperienceService
 );
-const contentMediaService = new ContentMediaService(
-  new ContentMediaRepository(),
-  new ContentMediaFileStorage(env.CONTENT_MEDIA_STORAGE_DIR, {
+const contentMediaRepository = new ContentMediaRepository();
+const contentMediaStorage = new ContentMediaFileStorage(env.CONTENT_MEDIA_STORAGE_DIR, {
     identityStorageDirectory: env.IDENTITY_APPLICATION_MEDIA_STORAGE_DIR
-  })
+  });
+const contentMediaService = new ContentMediaService(contentMediaRepository, contentMediaStorage);
+const contentMediaPurgeWorker = new ContentMediaPurgeWorker(
+  new ContentMediaPurgeService(contentMediaRepository, contentMediaStorage), logger
 );
 const exchangeService = new ExchangeService(
   new ExchangePostRepository(),
@@ -353,6 +357,7 @@ const server = app.listen(env.PORT, () => {
   }
   affiliateAllianceInvitationExpiryWorker.start();
   contentPublicationWorker.start();
+  contentMediaPurgeWorker.start();
   officialNoticeWorker.start();
   imPrivacyExpiryWorker.start();
   imServerRetentionWorker.start();
@@ -392,7 +397,7 @@ const shutdown = createShutdownHandler({
     identityApplicationPurgeWorker.stop();
     imPrivacyExpiryWorker.stop();
     imServerRetentionWorker.stop();
-    await Promise.all([merchantShopAuditOutboxWorker.stop(), officialNoticeWorker.stopAndDrain()]);
+    await Promise.all([merchantShopAuditOutboxWorker.stop(), officialNoticeWorker.stopAndDrain(), contentMediaPurgeWorker.stop()]);
     await workStatusWorker.stop();
   }
 });

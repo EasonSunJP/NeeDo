@@ -137,6 +137,14 @@ export function DemandCoverField({
           onCancel={() => { editorSession.current += 1; revokeSource(); setSourceUrl(null); setInvalidSelection(false); }}
           source={sourceUrl}
           title={t("demandCoverEdit")}
+          description={t("demandCoverEditDescription")}
+          previewAlt={t("demandCoverPreviewAlt")}
+          applyLabel={t("demandCoverApply")}
+          labels={{
+            close: t("demandCoverCloseEditor"), zoom: t("demandCoverZoom"),
+            brightness: t("demandCoverBrightness"), contrast: t("demandCoverContrast"),
+            cancel: t("demandCoverCancelCrop"), reset: t("demandCoverReset"), applying: t("demandCoverApplying")
+          }}
         />
       ) : null}
     </section>

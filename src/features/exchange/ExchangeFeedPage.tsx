@@ -220,7 +220,7 @@ function PostCard({
             ) : null}
           </div>
         }
-        image={post.demand?.cover.url}
+        image={post.type === "demand" ? post.demand?.cover.url : undefined}
         imageAlt={post.type === "demand" ? post.title : undefined}
         imageLabel={t(post.type)}
         imageLayout={post.type === "demand" ? "wide" : "thumbnail"}

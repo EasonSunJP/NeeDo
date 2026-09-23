@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { clampImageAdjustmentState, getImageAdjustmentCoverSize, getImageAdjustmentOffsetBounds, getImageAdjustmentRenderSize, type ImageAdjustmentFrame, type ImageAdjustmentState } from "./ImageAdjustmentEditor";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ImageAdjustmentEditor, clampImageAdjustmentState, getImageAdjustmentCoverSize, getImageAdjustmentOffsetBounds, getImageAdjustmentRenderSize, type ImageAdjustmentFrame, type ImageAdjustmentState } from "./ImageAdjustmentEditor";
 import editorSource from "./ImageAdjustmentEditor.tsx?raw";
 
 describe("ImageAdjustmentEditor UI contract", () => {
@@ -7,9 +9,12 @@ describe("ImageAdjustmentEditor UI contract", () => {
     expect(editorSource).toContain("MobileFullscreenCloseButton");
     expect(editorSource).toContain("formatImageAdjustmentPercent");
     expect(editorSource).toContain("Math.round(state.scale * 100)");
-    expect(editorSource).toContain('aria-label="缩放"');
-    expect(editorSource).toContain('aria-label="亮度"');
-    expect(editorSource).toContain('aria-label="对比度"');
+    const markup = renderToStaticMarkup(createElement(ImageAdjustmentEditor, {
+      source: "/cover.png", onApply: () => undefined, onCancel: () => undefined
+    }));
+    expect(markup).toContain('aria-label="缩放"');
+    expect(markup).toContain('aria-label="亮度"');
+    expect(markup).toContain('aria-label="对比度"');
   });
 
   it("renders the editor title as a large client title", () => {

@@ -28,6 +28,15 @@ export type ImageAdjustmentFrame = {
 
 export type ImageAdjustmentEditorProps = {
   applyLabel?: string;
+  labels?: Partial<{
+    close: string;
+    zoom: string;
+    brightness: string;
+    contrast: string;
+    cancel: string;
+    reset: string;
+    applying: string;
+  }>;
   aspectRatio?: number;
   description?: string;
   frameClassName?: string;
@@ -212,6 +221,7 @@ async function createAdjustedImageDataUrl({
 
 export function ImageAdjustmentEditor({
   applyLabel = "套用图片",
+  labels,
   aspectRatio = 1,
   description = "拖动图片调整位置，用滑块放大缩小。保存后会套用到当前图片。",
   frameClassName = "rounded-[28px]",
@@ -225,6 +235,10 @@ export function ImageAdjustmentEditor({
   source,
   title = "图片编辑"
 }: ImageAdjustmentEditorProps) {
+  const text = {
+    close: "关闭图片编辑", zoom: "缩放", brightness: "亮度", contrast: "对比度",
+    cancel: "取消裁剪", reset: "还原", applying: "套用中...", ...labels
+  };
   const frame = getImageAdjustmentFrame(aspectRatio, frameWidth);
   const [state, setState] = useState<ImageAdjustmentState>(() => createInitialImageAdjustmentState());
   const [applying, setApplying] = useState(false);
@@ -317,7 +331,7 @@ export function ImageAdjustmentEditor({
           </div>
           <MobileFullscreenCloseButton
             className="h-10 w-10 shrink-0 border-[color:color-mix(in_srgb,var(--client-line)_78%,var(--client-primary)_10%)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-primary)_12%)] text-[color:var(--client-primary)]"
-            label="关闭图片编辑"
+            label={text.close}
             onClose={onCancel}
           />
         </div>
@@ -353,13 +367,13 @@ export function ImageAdjustmentEditor({
           <div className="w-full min-w-0 space-y-3">
             <label className="block">
               <span className="mb-2 flex items-center justify-between gap-3 text-xs font-black text-[color:var(--client-muted)]">
-                <span>缩放</span>
+                <span>{text.zoom}</span>
                 <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-2 py-0.5 text-[color:var(--client-primary)]">
                   {formatImageAdjustmentPercent(scalePercent)}
                 </span>
               </span>
               <input
-                aria-label="缩放"
+                aria-label={text.zoom}
                 className="w-full accent-[color:var(--client-primary)]"
                 max="3"
                 min="1"
@@ -371,13 +385,13 @@ export function ImageAdjustmentEditor({
             </label>
             <label className="block">
               <span className="mb-2 flex items-center justify-between gap-3 text-xs font-black text-[color:var(--client-muted)]">
-                <span>亮度</span>
+                <span>{text.brightness}</span>
                 <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-2 py-0.5 text-[color:var(--client-primary)]">
                   {formatImageAdjustmentPercent(brightnessPercent)}
                 </span>
               </span>
               <input
-                aria-label="亮度"
+                aria-label={text.brightness}
                 className="w-full accent-[color:var(--client-primary)]"
                 max="130"
                 min="70"
@@ -389,13 +403,13 @@ export function ImageAdjustmentEditor({
             </label>
             <label className="block">
               <span className="mb-2 flex items-center justify-between gap-3 text-xs font-black text-[color:var(--client-muted)]">
-                <span>对比度</span>
+                <span>{text.contrast}</span>
                 <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-2 py-0.5 text-[color:var(--client-primary)]">
                   {formatImageAdjustmentPercent(contrastPercent)}
                 </span>
               </span>
               <input
-                aria-label="对比度"
+                aria-label={text.contrast}
                 className="w-full accent-[color:var(--client-primary)]"
                 max="140"
                 min="70"
@@ -407,13 +421,13 @@ export function ImageAdjustmentEditor({
             </label>
             <div className="grid grid-cols-3 gap-2">
               <button className={cn("rounded-[18px] border px-3 py-3 text-sm font-black", imageAdjustmentSecondaryButtonClassName)} onClick={onCancel} type="button">
-                取消裁剪
+                {text.cancel}
               </button>
               <button className={cn("rounded-[18px] border px-3 py-3 text-sm font-black", imageAdjustmentSecondaryButtonClassName)} onClick={resetAdjustments} type="button">
-                还原
+                {text.reset}
               </button>
               <button className={cn("rounded-[18px] border px-3 py-3 text-sm font-black", imageAdjustmentPrimaryButtonClassName)} disabled={applying} onClick={() => void applyAdjustments()} type="button">
-                {applying ? "套用中..." : applyLabel}
+                {applying ? text.applying : applyLabel}
               </button>
             </div>
           </div>

@@ -168,6 +168,10 @@ async function mountInteractiveDemandFeed() {
 }
 
 describe("ExchangeFeedPage", () => {
+  it("never renders a demand cover from an inconsistent intelligence payload", () => {
+    const markup = renderFeed({ posts: [{ ...intelligencePost, demand: demandPost.demand }] });
+    expect(markup).not.toContain(demandPost.demand!.cover.url);
+  });
   beforeEach(() => vi.clearAllMocks());
 
   it("shows a private My Requests tab to users and keeps both formal lists for merchant and technician portals", () => {

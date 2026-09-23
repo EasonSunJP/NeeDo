@@ -74,7 +74,8 @@ describe("ContentMediaRepository dedicated MariaDB advisory lock", () => {
 
     expect(transaction.mediaAsset.create).toHaveBeenCalledWith({ data: expect.objectContaining({
       entityType: "exchange_demand_cover_pending", entityId: 17, ownerUserId: 7,
-      ownerIdentityId: 17, usageType: "exchange_demand_cover_pending"
+      ownerIdentityId: 17, usageType: "exchange_demand_cover_pending",
+      purgeAt: new Date(now.getTime() + 24 * 60 * 60 * 1000)
     }) });
     expect(transaction.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
       action: "exchange.demand_cover.uploaded", targetType: "MediaAsset", targetId: 201

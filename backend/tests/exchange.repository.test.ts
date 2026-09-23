@@ -79,7 +79,7 @@ describe("ExchangePostRepository", () => {
 
   it("binds the exact actor's pending cover in the publication transaction", async () => {
     const transaction = {
-      mediaAsset: { findFirst: jest.fn(async () => ({ id: 81 })), update: jest.fn(async () => ({ id: 81 })) },
+      mediaAsset: { findFirst: jest.fn(async () => ({ id: 81 })), updateMany: jest.fn(async () => ({ count: 1 })), update: jest.fn(async () => ({ id: 81 })) },
       exchangePost: { create: jest.fn(async () => ({ id: 41, demand: { id: 51 } })) }
     };
     const client = { $transaction: jest.fn(async (handler: (tx: typeof transaction) => Promise<unknown>) => handler(transaction)) };
@@ -87,14 +87,34 @@ describe("ExchangePostRepository", () => {
     await repository.runInTransaction((tx) => tx.createPost(coverPublication()));
     expect(transaction.mediaAsset.findFirst).toHaveBeenCalledWith({
       where: { checksumSha256: "a".repeat(64), ownerUserId: 7, ownerIdentityId: 17,
-        entityType: "exchange_demand_cover_pending", usageType: "exchange_demand_cover_pending", isActive: true, deletedAt: null },
+        entityType: "exchange_demand_cover_pending", usageType: "exchange_demand_cover_pending", isActive: true, deletedAt: null,
+        purgedAt: null, exchangeDemandCover: null, mimeType: { in: ["image/jpeg", "image/png", "image/webp"] } },
       select: { id: true }
     });
     expect(transaction.exchangePost.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ demand: { create: expect.objectContaining({ coverMediaAssetId: 81 }) } })
     }));
+    expect(transaction.mediaAsset.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: 81, checksumSha256: "a".repeat(64), ownerUserId: 7, ownerIdentityId: 17,
+        entityType: "exchange_demand_cover_pending", usageType: "exchange_demand_cover_pending", isActive: true,
+        deletedAt: null, purgedAt: null, exchangeDemandCover: null }),
+      data: { entityType: "exchange_demand", purgeAt: null, updatedAt: now }
+    });
+    expect(transaction.mediaAsset.updateMany.mock.invocationCallOrder[0]).toBeLessThan(transaction.exchangePost.create.mock.invocationCallOrder[0]!);
     expect(transaction.mediaAsset.update).toHaveBeenCalledWith({ where: { id: 81 },
       data: { entityType: "exchange_demand", entityId: 51, purgeAt: null, updatedAt: now } });
+  });
+
+  it("rejects publication when cleanup wins the pending-cover conditional claim", async () => {
+    const client = {
+      mediaAsset: { findFirst: jest.fn(async () => ({ id: 81 })), updateMany: jest.fn(async () => ({ count: 0 })), update: jest.fn() },
+      exchangePost: { create: jest.fn(async () => ({ id: 41, demand: { id: 51 } })) }
+    };
+    await expect(new ExchangePostRepository(client as never).createPost(coverPublication())).rejects.toMatchObject({
+      message: "error.exchange.demand_cover_not_owned", statusCode: 403
+    });
+    expect(client.exchangePost.create).not.toHaveBeenCalled();
+    expect(client.mediaAsset.update).not.toHaveBeenCalled();
   });
 
   it("rejects a checksum outside the active owned pending scope before creating a post", async () => {

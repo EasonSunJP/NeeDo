@@ -309,6 +309,24 @@ describe("ContentMediaFileStorage", () => {
 });
 
 describe("ContentMediaService", () => {
+  it.each([
+    [validJpeg, "image/png" as const],
+    [validPng, "image/webp" as const],
+    [validWebp, "image/jpeg" as const]
+  ])("rejects valid Exchange image bytes declared as another accepted MIME type", async (bytes, mimeType) => {
+    const create = jest.fn();
+    const storage = new ContentMediaFileStorage("/unused");
+    const save = jest.spyOn(storage, "save");
+    const service = new ContentMediaService(repositoryWithCreate(create), storage);
+    await expect(service.upload(
+      { ...actor, currentIdentityId: 17, currentIdentityType: "customer", roles: ["customer"] },
+      context,
+      { bytes, mimeType, altText: null, now },
+      { entityType: "exchange_demand_cover_pending", entityId: 17, ownerIdentityId: 17, usageType: "exchange_demand_cover_pending" }
+    )).rejects.toMatchObject({ message: "error.exchange.demand_cover_invalid", statusCode: 400 });
+    expect(create).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
   it("stores an Exchange demand cover through the shared media pipeline with exact ownership", async () => {
     const create = jest.fn(async (input) => ({
       publicId: input.checksumSha256,
