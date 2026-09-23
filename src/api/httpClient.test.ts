@@ -949,13 +949,29 @@ describe("httpClient auth tokens", () => {
     await httpClient.request("/merchant-admin/orders");
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/merchant-admin/orders",
+      "/merchant-api/v1/merchant-admin/orders",
       expect.objectContaining({
         headers: expect.objectContaining({
           "X-NeeDo-Merchant-Preview-Shop-Id": "22"
         })
       })
     );
+  });
+
+  it("routes an operations preview to the merchant API", async () => {
+    Object.assign(window, { location: { pathname: "/pf-admin.html", hash: "#/merchant-admin" } });
+    setAuthTokens({ accessToken: "admin-access-token" });
+    window.sessionStorage.setItem("needo.merchant-admin.read-only-preview", JSON.stringify({
+      version: 1, subjectType: "shop", subjectId: 22, subjectName: "Kichijoji Family Care",
+      selectedShopId: 22, shops: [{ id: 22, name: "Kichijoji Family Care" }], returnTo: "/admin/merchants"
+    }));
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { list: [] } }));
+
+    await httpClient.request("/merchant-admin/manageable-shops");
+
+    expect(fetch).toHaveBeenCalledWith("/merchant-api/v1/merchant-admin/manageable-shops", expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: "Bearer admin-access-token", "X-NeeDo-Merchant-Preview-Shop-Id": "22" })
+    }));
   });
 
   it("blocks merchant-preview writes in the client before they reach the network", async () => {

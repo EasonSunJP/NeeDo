@@ -22,7 +22,7 @@ import { Drawer } from "../../components/ui/Drawer";
 import { Tabs } from "../../components/ui/Tabs";
 import { coreReadApi, type CoreCategory } from "../../features/core-read/api";
 import { translateMerchantBillingText } from "../../features/merchant-saas-billing/i18n";
-import type { MerchantAccountCard } from "../../features/merchant-saas-billing/model";
+import type { MerchantAccountCard, ShopCard } from "../../features/merchant-saas-billing/model";
 import { useI18n } from "../../i18n/I18nProvider";
 import { openMerchantAdminPreviewWindow, startMerchantAdminPreview } from "../../auth/merchantAdminPreview";
 import { yen } from "../../lib/utils";
@@ -79,7 +79,7 @@ export function MerchantsPage({ embeddedDetail }: {
   const [selectedShop, setSelectedShop] = useState<BackofficeShopPayload | null>(null);
   const [selectedService, setSelectedService] = useState<BackofficeServicePayload | null>(null);
   const [shopForm, setShopForm] = useState(emptyShopForm);
-  const [shopDraft, setShopDraft] = useState({ name: "", city: "", address: "" });
+  const [shopDraft, setShopDraft] = useState({ name: "", city: "", address: "", phone: "", description: "" });
   const [serviceForm, setServiceForm] = useState(emptyServiceForm);
   const [serviceDraft, setServiceDraft] = useState(emptyServiceForm);
   const [serviceShopId, setServiceShopId] = useState(0);
@@ -170,7 +170,30 @@ export function MerchantsPage({ embeddedDetail }: {
 
   const openShop = (shop: BackofficeShopPayload) => {
     setSelectedShop(shop);
-    setShopDraft({ name: shop.name, city: shop.city, address: shop.address });
+    setShopDraft({ name: shop.name, city: shop.city, address: shop.address, phone: shop.phone ?? "", description: shop.description ?? "" });
+  };
+
+  const editShop = async (shop: ShopCard) => {
+    setError("");
+    const loaded = shops.find((item) => item.id === shop.id);
+    if (loaded) {
+      openShop(loaded);
+      return;
+    }
+    try {
+      for (let page = 1; page <= 100; page += 1) {
+        const result = await backofficeRealDataApi.shops("backoffice", { keyword: shop.name, page, pageSize: 100 });
+        const found = result.list.find((item) => item.id === shop.id);
+        if (found) {
+          openShop(found);
+          return;
+        }
+        if (page * result.page_size >= result.total) break;
+      }
+      setError("未找到可访问的正式店铺");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : String(loadError));
+    }
   };
 
   useEffect(() => {
@@ -201,7 +224,11 @@ export function MerchantsPage({ embeddedDetail }: {
 
   const saveShop = () => {
     if (!selectedShop) return;
-    void mutate(async () => setSelectedShop(await backofficeRealDataApi.updateShop(selectedShop.id, shopDraft)));
+    void mutate(async () => setSelectedShop(await backofficeRealDataApi.updateShop(selectedShop.id, {
+      ...shopDraft,
+      phone: shopDraft.phone.trim() || null,
+      description: shopDraft.description.trim() || null
+    })));
   };
 
   const openService = useCallback((service: BackofficeServicePayload) => {
@@ -311,6 +338,7 @@ export function MerchantsPage({ embeddedDetail }: {
           <MerchantAccountCollection
             accounts={billingAccounts}
             onEditBilling={setBillingEditorCard}
+            onEditShop={(shop) => void editShop(shop)}
             onOpenBusinessSettings={setBusinessSettingsCard}
             onOpenMerchantAdminPreview={openMerchantAdminPreview}
             onViewDetails={openBillingDetails}
@@ -386,6 +414,8 @@ export function MerchantsPage({ embeddedDetail }: {
         {selectedShop ? <div className="space-y-5">
           <DetailGrid items={[{ label: "店铺 ID", value: selectedShop.id }, { label: "负责人账号", value: selectedShop.ownerEmail ?? "未绑定" }, { label: "状态", value: selectedShop.status }, { label: "电话", value: selectedShop.phone ?? "未设置" }, { label: "推荐", value: selectedShop.isRecommended ? "是" : "否" }, { label: "创建时间", value: selectedShop.createdAt }]} />
           {(["name", "city", "address"] as const).map((field) => <label className="block" key={field}><span className="mb-2 block text-sm font-black">{field}</span><input className={inputClassName} onChange={(event) => setShopDraft((current) => ({ ...current, [field]: event.target.value }))} value={shopDraft[field]} /></label>)}
+          <label className="block"><span className="mb-2 block text-sm font-black">电话</span><input className={inputClassName} onChange={(event) => setShopDraft((current) => ({ ...current, phone: event.target.value }))} value={shopDraft.phone} /></label>
+          <label className="block"><span className="mb-2 block text-sm font-black">简介</span><textarea className={inputClassName} onChange={(event) => setShopDraft((current) => ({ ...current, description: event.target.value }))} value={shopDraft.description} /></label>
           <div className="flex flex-wrap gap-2"><Button disabled={saving} onClick={saveShop}>保存资料</Button>{selectedShop.status !== "published" ? <Button disabled={saving} onClick={() => void mutate(async () => setSelectedShop(await backofficeRealDataApi.approveShop(selectedShop.id)))} variant="secondary">审核通过</Button> : null}<Button disabled={saving} onClick={() => void mutate(async () => { await backofficeRealDataApi.deleteShop(selectedShop.id); setSelectedShop(null); })} variant="danger">软删除</Button></div>
         </div> : null}
       </Drawer>

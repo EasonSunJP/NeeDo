@@ -507,6 +507,21 @@ describe("merchant SaaS billing backoffice API", () => {
     );
   });
 
+  it("accepts the displayed version zero when an older billing subject has no profile yet", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+    fixture.merchantSaasBillingRepository.findBillingProfile.mockResolvedValueOnce(null as never);
+
+    await request(fixture.app)
+      .patch("/api/v1/backoffice/merchant-accounts/5/billing-profile")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ billingCadence: "free", monthlyFeeJpy: 9800, cadenceLocked: true, amountLocked: true, version: 0 })
+      .expect(200);
+    expect(fixture.merchantSaasBillingRepository.updateBillingProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ subjectType: "merchant_account", subjectId: 5, version: 0 })
+    );
+  });
+
   it("returns validation errors before repository writes", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("admin@example.com");

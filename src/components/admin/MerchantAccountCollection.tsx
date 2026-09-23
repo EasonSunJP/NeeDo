@@ -9,6 +9,7 @@ import {
   type ShopCard,
 } from "../../features/merchant-saas-billing/model";
 import { Badge } from "../ui/Badge";
+import { Button } from "../ui/Button";
 import { DataTable } from "../ui/DataTable";
 import { MerchantBillingCard } from "./MerchantBillingCard";
 
@@ -22,6 +23,7 @@ type MerchantShopListRow = {
 type MerchantAccountCollectionProps = {
   accounts: MerchantAccountCard[];
   onEditBilling: (card: MerchantAccountCard) => void;
+  onEditShop?: (shop: ShopCard) => void;
   onOpenBusinessSettings: (card: MerchantAccountCard) => void;
   onOpenMerchantAdminPreview: (card: MerchantAccountCard, selectedShopId?: number) => void;
   onViewDetails: (card: MerchantAccountCard) => void;
@@ -67,6 +69,7 @@ function formatCreatedAt(value: string, language: ReturnType<typeof useI18n>["la
 export function MerchantAccountCollection({
   accounts,
   onEditBilling,
+  onEditShop,
   onOpenBusinessSettings,
   onOpenMerchantAdminPreview,
   onViewDetails,
@@ -129,7 +132,7 @@ export function MerchantAccountCollection({
             };
 
             if (!isMerchantGroup(card)) {
-              return <MerchantBillingCard card={card} key={`shop-${card.id}`} {...commonProps} />;
+              return <MerchantBillingCard card={card} key={`shop-${card.id}`} onEditShop={onEditShop ? () => onEditShop(card) : undefined} {...commonProps} />;
             }
 
             return (
@@ -152,6 +155,7 @@ export function MerchantAccountCollection({
                         key={`merchant-${card.id}-shop-${shop.id}`}
                         nested
                         onEditBilling={() => onEditBilling(shop)}
+                        onEditShop={onEditShop ? () => onEditShop(shop) : undefined}
                         onOpenBusinessSettings={() => onOpenBusinessSettings(shop)}
                         onOpenMerchantAdminPreview={() => onOpenMerchantAdminPreview(shop)}
                         onViewDetails={() => onViewDetails(shop)}
@@ -199,6 +203,7 @@ export function MerchantAccountCollection({
               width: "180px",
             },
             { key: "createdAt", title: t("添加时间"), render: ({ shop }) => formatCreatedAt(shop.createdAt, language), sortValue: ({ shop }) => shop.createdAt, width: "190px" },
+            ...(onEditShop ? [{ key: "edit", title: t("店铺资料"), render: ({ shop }: MerchantShopListRow) => <Button size="sm" variant="secondary" onClick={() => onEditShop(shop)}>{t("编辑店铺资料")}</Button>, width: "140px" }] : []),
           ]}
           footerPlacement="inline"
           frozenDetailLabel={t("详情")}

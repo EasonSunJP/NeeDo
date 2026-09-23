@@ -1382,9 +1382,14 @@ export class AuthService {
   public async authenticateAccessToken(
     token: string,
     requiredPermission?: string,
-    options: { allowDuringCompliance?: boolean } = {}
+    options: { allowDuringCompliance?: boolean; allowOperationsPreviewToken?: boolean } = {}
   ): Promise<AuthenticatedAccessContext> {
-    const payload = this.tokenService.verifyAccessToken(token);
+    const payload = this.tokenService.verifyAccessToken(
+      token,
+      options.allowOperationsPreviewToken && this.config.AUTH_TOKEN_AUDIENCE === "needo-merchant-api"
+        ? "needo-ops-api"
+        : undefined
+    );
 
     if (await this.sessionStore.isAccessTokenBlacklisted(payload.jti)) {
       throw new AppError({

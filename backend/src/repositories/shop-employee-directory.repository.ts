@@ -8,6 +8,12 @@ import type {
   ShopEmployeeDirectoryStatus
 } from "../services/shop-employee-directory.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
+import { AppError } from "../utils/app-error";
+import { ERROR_CODES } from "../constants/error-codes";
+import type { ShopEmployeeCreateBody } from "../validators/shop-employee-directory.validator";
+import { IdentifierAllocator, PublicIdentifierAllocationUnavailableError } from "../services/public-identifier.service";
+import { UserBootstrapKeyAllocator, UserBootstrapKeyAllocationExhaustedError } from "../services/user-bootstrap-key.service";
+import { PublicIdentifierRepository } from "./public-identifier.repository";
 
 const CURRENT_EMPLOYEE_STATUSES = ["ACTIVE", "ON_LEAVE", "SUSPENDED"] as const;
 const CURRENT_TECHNICIAN_STATUSES = ["ACTIVE", "ON_LEAVE", "SUSPENDED"] as const;
@@ -123,8 +129,77 @@ const statusToDatabase = (
 export class ShopEmployeeDirectoryRepository implements ShopEmployeeDirectoryRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
-    private readonly clock: () => Date = () => new Date()
+    private readonly clock: () => Date = () => new Date(),
+    private readonly bootstrapKeyAllocator = new UserBootstrapKeyAllocator(),
+    private readonly createIdentifierAllocator = (client: Prisma.TransactionClient) =>
+      new IdentifierAllocator(new PublicIdentifierRepository(client))
   ) {}
+
+  public async createEmployee(input: Omit<ShopEmployeeCreateBody, "password"> & { passwordHash: string; shopId: number; actorUserId: number; now: Date }): Promise<ShopEmployeeDirectoryItem> {
+    const notFound = (message: string) => new AppError({ code: ERROR_CODES.NOT_FOUND, message, statusCode: 404 });
+    try {
+      return await this.bootstrapKeyAllocator.withNewKey((bootstrapKey) => this.client.$transaction(async (tx) => {
+        const [shop, role, customerRole] = await Promise.all([
+          tx.shop.findFirst({ where: { id: input.shopId, status: { in: ["active", "published"] }, deletedAt: null }, select: { id: true } }),
+          tx.shopEmployeeRole.findFirst({ where: { shopId: null, code: input.roleCode, isTechnicianRole: false, activeKey: { not: null }, deletedAt: null }, select: { id: true } }),
+          tx.role.findFirst({ where: { code: "customer", deletedAt: null }, select: { id: true } })
+        ]);
+        if (!shop) throw notFound("error.shop_employee.shop_not_found");
+        if (!role) throw notFound("error.shop_employee.role_not_found");
+        if (!customerRole) throw notFound("error.role.not_found");
+
+        const user = await tx.user.create({ data: {
+          needoId: bootstrapKey,
+          username: input.displayName,
+          email: input.email,
+          passwordHash: input.passwordHash,
+          isActive: true
+        } });
+        const profile = await tx.customerProfile.create({ data: { userId: user.id, displayName: input.displayName } });
+        await tx.userExperienceAccount.create({ data: { userId: user.id, currentLevel: 1, totalExpUnits: 0n } });
+        const identity = await tx.userIdentity.create({ data: {
+          userId: user.id, type: "customer", scopeType: "customer_profile", scopeId: profile.id,
+          displayName: input.displayName, isDefault: true, isActive: true
+        } });
+        const identifier = await this.createIdentifierAllocator(tx).allocate({ kind: "U", userIdentityId: identity.id });
+        await tx.user.update({ where: { id: user.id }, data: { needoId: identifier.publicId } });
+        await tx.userRole.create({ data: { userId: user.id, roleId: customerRole.id, scopeType: "customer_profile", scopeId: profile.id } });
+
+        const created = await tx.shopEmployee.create({ data: {
+          shopId: input.shopId,
+          userId: user.id,
+          status: "ACTIVE",
+          startsAt: input.now,
+          activeKey: `shop:${input.shopId}:user:${user.id}`,
+          createdById: input.actorUserId,
+          updatedById: input.actorUserId
+        } });
+        await tx.shopEmployeeRoleAssignment.create({ data: {
+          shopEmployeeId: created.id,
+          shopEmployeeRoleId: role.id,
+          startsAt: input.now,
+          activeKey: `employee:${created.id}:role:${role.id}`,
+          createdById: input.actorUserId,
+          updatedById: input.actorUserId
+        } });
+        const record = await tx.shopEmployee.findFirst({
+          where: { id: created.id, deletedAt: null },
+          select: employeeDirectorySelect
+        });
+        if (!record) throw notFound("error.shop_employee.user_not_found");
+        return this.mapEmployee(record, input.now);
+      }));
+    } catch (error) {
+      if (error instanceof UserBootstrapKeyAllocationExhaustedError) throw new PublicIdentifierAllocationUnavailableError(error);
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        if (String(error.meta?.target).includes("email")) {
+          throw new AppError({ code: ERROR_CODES.EMAIL_ALREADY_EXISTS, message: "error.user.email_already_exists", statusCode: 409 });
+        }
+        throw new AppError({ code: ERROR_CODES.SHOP_EMPLOYEE_CONFLICT, message: "error.shop_employee.already_exists", statusCode: 409 });
+      }
+      throw error;
+    }
+  }
 
   public async listCurrentShopEmployees(input: ShopEmployeeDirectoryRepositoryInput) {
     const now = this.clock();

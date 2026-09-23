@@ -86,6 +86,44 @@ const setup = () => {
 };
 
 describe("ShopEmployeeDirectoryRepository", () => {
+  it("creates the employee and role assignment in one transaction", async () => {
+    const tx = {
+      shop: { findFirst: jest.fn(async () => ({ id: 16 })) },
+      role: { findFirst: jest.fn(async () => ({ id: 3 })) },
+      user: { create: jest.fn(async () => ({ id: 47 })), update: jest.fn(async () => ({ id: 47 })) },
+      customerProfile: { create: jest.fn(async () => ({ id: 48 })) },
+      userExperienceAccount: { create: jest.fn(async () => ({ id: 49 })) },
+      userIdentity: { create: jest.fn(async () => ({ id: 50 })) },
+      userRole: { create: jest.fn(async () => ({ id: 51 })) },
+      shopEmployeeRole: { findFirst: jest.fn(async () => ({ id: 5 })) },
+      shopEmployee: {
+        create: jest.fn(async () => ({ id: 91 })),
+        findFirst: jest.fn(async () => ({ ...ownerEmployeeRecord, status: "ACTIVE", roleAssignments: [role("STAFF")] }))
+      },
+      shopEmployeeRoleAssignment: { create: jest.fn(async () => ({ id: 92 })) }
+    };
+    const client = { $transaction: jest.fn(async (callback: (database: typeof tx) => unknown) => callback(tx)) };
+    const allocate = jest.fn(async () => ({ publicId: "u0000000086" }));
+    const repository = new ShopEmployeeDirectoryRepository(
+      client as never, () => now,
+      { withNewKey: async (callback: (key: string) => Promise<unknown>) => callback("pending:0123456789abcdef01234567") } as never,
+      () => ({ allocate }) as never
+    );
+
+    const result = await repository.createEmployee({ shopId: 16, displayName: "新员工", email: "new@example.com", passwordHash: "hashed-secret", roleCode: "STAFF", actorUserId: 7, now });
+
+    expect(tx.user.create).toHaveBeenCalledWith({ data: expect.objectContaining({ needoId: "pending:0123456789abcdef01234567", email: "new@example.com", passwordHash: "hashed-secret" }) });
+    expect(allocate).toHaveBeenCalledWith({ kind: "U", userIdentityId: 50 });
+    expect(tx.user.update).toHaveBeenCalledWith({ where: { id: 47 }, data: { needoId: "u0000000086" } });
+    expect(tx.shopEmployee.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      shopId: 16, userId: 47, activeKey: "shop:16:user:47", createdById: 7
+    }) });
+    expect(tx.shopEmployeeRoleAssignment.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      shopEmployeeId: 91, shopEmployeeRoleId: 5, activeKey: "employee:91:role:5"
+    }) });
+    expect(result).toMatchObject({ needoId: "u0000000086", status: "active", roles: [{ code: "STAFF" }] });
+    expect(result).not.toHaveProperty("id");
+  });
   it("uses one current-shop Prisma projection with pagination and formal filters", async () => {
     const { client, repository } = setup();
 

@@ -31,6 +31,16 @@ describe("AuthTokenService audience isolation", () => {
     );
   });
 
+  it("accepts an operations access audience only when explicitly requested for merchant preview", () => {
+    const opsTokens = new AuthTokenService(withAudience("needo-ops-api"));
+    const merchantTokens = new AuthTokenService(withAudience("needo-merchant-api"));
+    const accessToken = opsTokens.issueAccessToken({ id: 71, email: "ops@example.com" }).token;
+    const refreshToken = opsTokens.issueRefreshToken({ id: 71, email: "ops@example.com" }).token;
+
+    expect(merchantTokens.verifyAccessToken(accessToken, "needo-ops-api")).toMatchObject({ aud: "needo-ops-api" });
+    expect(() => merchantTokens.verifyRefreshToken(refreshToken)).toThrow("error.auth.token_invalid");
+  });
+
   it("allows audience-less legacy tokens only on the compatibility service", () => {
     const issuedAt = Math.floor(Date.now() / 1000);
     const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");

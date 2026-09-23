@@ -433,9 +433,31 @@ export class MerchantSaasBillingRepository implements MerchantSaasBillingReposit
     input: UpdateBillingProfileRepositoryInput
   ): Promise<{ before: SaasBillingProfileRecord; after: SaasBillingProfileRecord } | null> {
     return this.client.$transaction(async (tx) => {
-      const before = await this.loadBillingProfile(input.subjectType, input.subjectId, tx);
+      let before = await this.loadBillingProfile(input.subjectType, input.subjectId, tx);
 
-      if (!before || before.version !== input.version) {
+      if (!before && input.version === 0) {
+        const subjectExists = input.subjectType === "shop"
+          ? await tx.shop.findFirst({ where: { id: input.subjectId, deletedAt: null }, select: { id: true } })
+          : await tx.merchantAccount.findFirst({ where: { id: input.subjectId, deletedAt: null }, select: { id: true } });
+        if (!subjectExists) return null;
+        const created = await tx.saasBillingProfile.createMany({
+          data: {
+            subjectType: input.subjectType,
+            subjectId: input.subjectId,
+            ...(input.subjectType === "shop" ? { shopId: input.subjectId } : { merchantAccountId: input.subjectId }),
+            activeKey: `${input.subjectType === "shop" ? "shop" : "merchant"}:${input.subjectId}`,
+            billingCadence: "monthly",
+            monthlyFeeJpy: 9800,
+            trialStatus: "not_started",
+            paymentProvider: "manual"
+          },
+          skipDuplicates: true
+        });
+        if (created.count !== 1) return null;
+        before = await this.loadBillingProfile(input.subjectType, input.subjectId, tx);
+      }
+
+      if (!before || before.version !== (input.version === 0 ? 1 : input.version)) {
         return null;
       }
 
@@ -459,7 +481,7 @@ export class MerchantSaasBillingRepository implements MerchantSaasBillingReposit
       const updated = await tx.saasBillingProfile.updateMany({
         where: {
           id: before.id,
-          version: input.version,
+          version: before.version,
           activeKey: { not: null },
           deletedAt: null
         },

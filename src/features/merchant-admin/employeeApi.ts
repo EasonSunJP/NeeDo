@@ -70,6 +70,29 @@ export interface PaginatedMerchantEmployees {
   page_size: number;
 }
 
+export type ShopEmployeeRoleCode = "STAFF" | "ACCOUNTANT" | "DRIVER" | "GENERAL_AFFAIRS" | "CHEF";
+export type ShopEmployeeCreateInput = { displayName: string; email: string; password: string; roleCode: ShopEmployeeRoleCode };
+
+export interface ShopEmployeeDirectoryItem {
+  needoId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  email: string;
+  phone: string | null;
+  status: "active" | "on_leave" | "suspended";
+  startsAt: string;
+  endsAt: string | null;
+  roles: Array<{ code: string; names: { zhHans: string; zhHant: string; ja: string; en: string; ko: string }; isTechnicianRole: boolean }>;
+  technician: { needoId: string; relationshipType: "exclusive" | "partner"; workStatus: "active" | "on_leave" | "suspended" } | null;
+}
+
+export interface PaginatedShopEmployeeDirectory {
+  list: ShopEmployeeDirectoryItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export type EmployeeTimelineTone = "accent" | "green" | "red" | "neutral";
 
 export interface EmployeeTimelineEvent {
@@ -151,6 +174,21 @@ const employeePath = (needoId: string) =>
   `/merchant-admin/employees/${encodeURIComponent(needoId.trim())}`;
 
 export const merchantEmployeeApi = {
+  listDirectory(query: { page?: number; pageSize?: number; keyword?: string } = {}) {
+    return httpClient.request<PaginatedShopEmployeeDirectory>("/merchant-admin/employee-directory", { query });
+  },
+
+  createDirectoryEmployee(input: ShopEmployeeCreateInput) {
+    return httpClient.request<ShopEmployeeDirectoryItem>("/merchant-admin/employee-directory", { method: "POST", body: input });
+  },
+
+  listBackofficeDirectory(shopId: number, query: { page?: number; pageSize?: number; keyword?: string } = {}) {
+    return httpClient.request<PaginatedShopEmployeeDirectory>(`/backoffice/shops/${shopId}/employees`, { query });
+  },
+
+  createBackofficeEmployee(shopId: number, input: ShopEmployeeCreateInput) {
+    return httpClient.request<ShopEmployeeDirectoryItem>(`/backoffice/shops/${shopId}/employees`, { method: "POST", body: input });
+  },
   list(query: MerchantEmployeeListQuery = {}) {
     return httpClient.request<PaginatedMerchantEmployees>(
       "/merchant-admin/employees",

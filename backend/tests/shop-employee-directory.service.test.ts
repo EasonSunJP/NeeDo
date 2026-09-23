@@ -54,6 +54,7 @@ const directoryItem = (): ShopEmployeeDirectoryItem => ({
 
 const setup = () => {
   const repository: jest.Mocked<ShopEmployeeDirectoryRepositoryPort> = {
+    createEmployee: jest.fn().mockResolvedValue(directoryItem()),
     listCurrentShopEmployees: jest.fn().mockResolvedValue({
       list: [directoryItem()],
       total: 1,

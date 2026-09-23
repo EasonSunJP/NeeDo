@@ -64,6 +64,22 @@ export function getAnalyticsMetricInfoLabel(title: string, language: Language) {
 
 
 export const translations: TranslationMap = {
+  "新建员工": { "zh-Hant": "新增員工", ja: "スタッフを登録", en: "Add employee", ko: "직원 등록" },
+  "员工已新建": { "zh-Hant": "員工已新增", ja: "スタッフを登録しました", en: "Employee added", ko: "직원이 등록되었습니다" },
+  "员工 NeeDoID": { "zh-Hant": "員工 NeeDoID", ja: "スタッフのNeeDoID", en: "Employee NeeDoID", ko: "직원 NeeDoID" },
+  "创建后系统自动分配 NeeDoID。请设置员工姓名、邮箱与初始密码。": { "zh-Hant": "建立後系統自動分配 NeeDoID。請設定員工姓名、電子郵件及初始密碼。", ja: "登録後にNeeDoIDが自動発行されます。氏名、メールアドレス、初期パスワードを設定してください。", en: "A NeeDoID is assigned automatically. Enter the employee's name, email, and initial password.", ko: "생성 후 NeeDoID가 자동 발급됩니다. 직원 이름, 이메일, 초기 비밀번호를 입력하세요." },
+  "保存后自动生成": { "zh-Hant": "儲存後自動產生", ja: "保存後に自動発行", en: "Generated when saved", ko: "저장 후 자동 생성" },
+  "该邮箱已注册": { "zh-Hant": "此電子郵件已註冊", ja: "このメールアドレスは登録済みです", en: "This email is already registered", ko: "이미 등록된 이메일입니다" },
+  "未找到可用店铺或职务": { "zh-Hant": "找不到可用的店鋪或職務", ja: "利用可能な店舗または役職が見つかりません", en: "Shop or role not found", ko: "사용 가능한 매장 또는 직무를 찾을 수 없습니다" },
+  "当前身份没有新建员工的权限": { "zh-Hant": "目前身分沒有新增員工的權限", ja: "このアカウントにはスタッフ登録権限がありません", en: "You cannot add employees with this identity", ko: "현재 계정에는 직원 등록 권한이 없습니다" },
+  "搜索员工": { "zh-Hant": "搜尋員工", ja: "スタッフを検索", en: "Search employees", ko: "직원 검색" },
+  "姓名或 NeeDoID": { "zh-Hant": "姓名或 NeeDoID", ja: "氏名またはNeeDoID", en: "Name or NeeDoID", ko: "이름 또는 NeeDoID" },
+  "正在加载员工": { "zh-Hant": "正在載入員工", ja: "スタッフを読み込み中", en: "Loading employees", ko: "직원을 불러오는 중" },
+  "请先选择店铺": { "zh-Hant": "請先選擇店鋪", ja: "先に店舗を選択してください", en: "Select a shop first", ko: "먼저 매장을 선택하세요" },
+  "正式员工名录": { "zh-Hant": "正式員工名錄", ja: "正式なスタッフ名簿", en: "Employee directory", ko: "공식 직원 명부" },
+  "选择店铺后管理正式员工名录。": { "zh-Hant": "選擇店鋪後管理正式員工名錄。", ja: "店舗を選択して正式なスタッフ名簿を管理します。", en: "Select a shop to manage its employee directory.", ko: "매장을 선택하여 공식 직원 명부를 관리하세요." },
+  "搜索店铺": { "zh-Hant": "搜尋店鋪", ja: "店舗を検索", en: "Search shops", ko: "매장 검색" },
+  "正在加载店铺": { "zh-Hant": "正在載入店鋪", ja: "店舗を読み込み中", en: "Loading shops", ko: "매장을 불러오는 중" },
   "已取消订单不可变更业务数据。金额、支付手段和备注保持只读。": fourLanguageTranslation(
     "已取消訂單不可變更業務資料。金額、付款方式與備註保持唯讀。",
     "キャンセル済みの注文では業務データを変更できません。金額、支払方法、備考は読み取り専用です。",

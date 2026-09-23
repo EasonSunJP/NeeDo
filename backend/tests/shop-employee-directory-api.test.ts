@@ -40,6 +40,10 @@ const employee: ShopEmployeeDirectoryItem = {
 };
 
 const createRepository = (): jest.Mocked<ShopEmployeeDirectoryRepositoryPort> => ({
+  createEmployee: jest.fn(async (input: Parameters<ShopEmployeeDirectoryRepositoryPort["createEmployee"]>[0]) => {
+    void input;
+    return employee;
+  }),
   listCurrentShopEmployees: jest.fn(async (input) => {
     void input;
     return {
@@ -127,6 +131,35 @@ const createFixture = (
 };
 
 describe("shop employee directory HTTP API", () => {
+  it("creates a formal employee for the authenticated shop and audits the write", async () => {
+    const fixture = createFixture(["merchant-admin:employee-affiliation:write"]);
+    const app = createApp(undefined, fixture.dependencies as never);
+    await request(app).post("/api/v1/merchant-admin/employee-directory")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({ displayName: "新员工", email: "new@example.com", password: "Strong@123", roleCode: "STAFF" }).expect(201);
+    expect(fixture.repository.createEmployee).toHaveBeenCalledWith(expect.objectContaining({
+      shopId: 16, displayName: "新员工", email: "new@example.com", roleCode: "STAFF", actorUserId: 7
+    }));
+    expect(fixture.repository.createEmployee.mock.calls[0]?.[0].passwordHash).not.toBe("Strong@123");
+    expect(fixture.auditLogRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      action: "merchant_admin.employee_directory.create", targetType: "shop_employee"
+    }));
+  });
+
+  it("rejects forged shop scope and privileged role creation", async () => {
+    const fixture = createFixture(["merchant-admin:employee-affiliation:write"]);
+    const app = createApp(undefined, fixture.dependencies as never);
+    for (const body of [
+      { displayName: "新员工", email: "new@example.com", password: "Strong@123", roleCode: "STAFF", shopId: 99 },
+      { displayName: "新员工", email: "new@example.com", password: "Strong@123", roleCode: "STAFF", needoId: "u0000000047" },
+      { displayName: "新员工", email: "new@example.com", password: "Strong@123", roleCode: "OWNER" },
+      { displayName: "新员工", email: "new@example.com", password: "Strong@123", roleCode: "TECHNICIAN" }
+    ]) {
+      await request(app).post("/api/v1/merchant-admin/employee-directory")
+        .set("Authorization", `Bearer ${fixture.token}`).send(body).expect(400);
+    }
+    expect(fixture.repository.createEmployee).not.toHaveBeenCalled();
+  });
   it("requires authentication and the existing employee-affiliation read permission", async () => {
     const fixture = createFixture([]);
     const app = createApp(undefined, fixture.dependencies as never);
@@ -204,5 +237,45 @@ describe("shop employee directory HTTP API", () => {
     await request(createOpsApp(env, fixture.dependencies as never))
       .get("/api/v1/merchant-admin/employee-directory")
       .expect(404);
+  });
+
+  it("allows an operations token to read only the selected merchant preview shop", async () => {
+    const fixture = createFixture(["backoffice:merchant-accounts:read"]);
+    const user = await fixture.dependencies.authRepository.findUserById();
+    if (!user) throw new Error("Missing fixture user");
+    Object.assign(user.identities[0], { type: "platform", scopeType: "global", scopeId: null });
+    const operationsToken = new AuthTokenService({ ...env, AUTH_TOKEN_AUDIENCE: "needo-ops-api" })
+      .issueAccessToken({ id: 7, email: user.email, currentIdentityId: 70 }).token;
+    const app = createMerchantApp(env, fixture.dependencies as never);
+    const authorization = `Bearer ${operationsToken}`;
+
+    await request(app).get("/api/v1/merchant-admin/employee-directory")
+      .set("Authorization", authorization).expect(401);
+    await request(app).get("/api/v1/merchant-admin/employee-directory")
+      .set("Authorization", authorization)
+      .set("X-NeeDo-Merchant-Preview-Shop-Id", "16").expect(200);
+    await request(app).patch("/api/v1/merchant-admin/employees/u0000000047/profile")
+      .set("Authorization", authorization)
+      .set("X-NeeDo-Merchant-Preview-Shop-Id", "16")
+      .send({ displayName: "Forbidden" }).expect(401);
+  });
+
+  it("lets an authorized operator create an employee for an explicit shop", async () => {
+    const fixture = createFixture(["backoffice:shops:list", "backoffice:shops:write"]);
+    const user = await fixture.dependencies.authRepository.findUserById();
+    if (!user) throw new Error("Missing fixture user");
+    Object.assign(user.identities[0], { type: "platform", scopeType: "global", scopeId: null });
+    const token = new AuthTokenService({ ...env, AUTH_TOKEN_AUDIENCE: "needo-ops-api" })
+      .issueAccessToken({ id: 7, email: user.email, currentIdentityId: 70 }).token;
+    const app = createOpsApp(env, fixture.dependencies as never);
+
+    await request(app).get("/api/v1/backoffice/shops/16/employees")
+      .set("Authorization", `Bearer ${token}`).expect(200);
+    await request(app).post("/api/v1/backoffice/shops/16/employees")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ displayName: "新员工", email: "new@example.com", password: "Strong@123", roleCode: "CHEF" }).expect(201);
+    expect(fixture.repository.createEmployee).toHaveBeenCalledWith(expect.objectContaining({
+      shopId: 16, displayName: "新员工", email: "new@example.com", roleCode: "CHEF"
+    }));
   });
 });

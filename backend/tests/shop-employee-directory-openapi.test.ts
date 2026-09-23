@@ -58,4 +58,21 @@ describe("shop employee directory OpenAPI contract", () => {
       anyOf: [{ $ref: "#/components/schemas/ShopEmployeeDirectoryTechnician" }, { type: "null" }]
     });
   });
+
+  it("documents merchant and operations employee creation", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    const merchant = response.body.paths["/api/v1/merchant-admin/employee-directory"].post;
+    const operations = response.body.paths["/api/v1/backoffice/shops/{shopId}/employees"];
+
+    expect(merchant["x-permission"]).toBe("merchant-admin:employee-affiliation:write");
+    expect(merchant.requestBody.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/ShopEmployeeCreateBody"
+    });
+    expect(merchant.responses["201"]).toBeDefined();
+    expect(operations.get["x-permission"]).toBe("backoffice:shops:list");
+    expect(operations.post["x-permission"]).toBe("backoffice:shops:write");
+    expect(operations.post.parameters[0].name).toBe("shopId");
+    expect(response.body.components.schemas.ShopEmployeeCreateBody.required).toEqual(["displayName", "email", "password", "roleCode"]);
+    expect(response.body.components.schemas.ShopEmployeeCreateBody.properties).not.toHaveProperty("needoId");
+  });
 });

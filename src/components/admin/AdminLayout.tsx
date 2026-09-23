@@ -70,6 +70,7 @@ const navSections: AdminNavSection[] = [
     title: "技师",
     items: [
       { label: "技师列表", to: "/admin/technicians", icon: "技", children: ["平台全量", "店铺旗下", "信息卡"] },
+      { label: "员工管理", to: "/admin/employees", icon: "员", permission: "backoffice:shops:list", children: ["店铺员工", "新建员工"] },
       { label: "虚拟技师", to: "/admin/technicians?module=virtual", icon: "虚", children: ["测试账号", "冷启动", "可启停"] },
       { label: "技师榜单", to: "/admin/technicians?module=ranking", icon: "榜", children: ["服务金额", "完成订单", "工作天数"] },
       { label: "资料审核", to: "/admin/technicians?module=review", icon: "审", children: ["基本资料", "实名信息", "资质证书", "动态信息"] },

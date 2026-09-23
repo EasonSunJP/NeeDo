@@ -15376,6 +15376,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      ShopEmployeeCreateBody: {
+        type: "object",
+        additionalProperties: false,
+        required: ["displayName", "email", "password", "roleCode"],
+        properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          email: { type: "string", format: "email", maxLength: 255 },
+          password: { type: "string", minLength: 8, maxLength: 128, writeOnly: true },
+          roleCode: {
+            type: "string",
+            enum: ["STAFF", "ACCOUNTANT", "DRIVER", "GENERAL_AFFAIRS", "CHEF"]
+          }
+        }
+      },
       MerchantEmployeeTimelineEvent: {
         type: "object",
         additionalProperties: false,
@@ -19229,6 +19243,58 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "403": jsonErrorResponse(
             "error.identity.forbidden — missing permission or authenticated shop scope"
           )
+        }
+      },
+      post: {
+        tags: ["Merchant Employees"],
+        summary: "Create an employee account with an automatically assigned NeeDoID for the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:employee-affiliation:write",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ShopEmployeeCreateBody" } } }
+        },
+        responses: {
+          "201": jsonDataResponse("Created shop employee", { $ref: "#/components/schemas/ShopEmployeeDirectoryItem" }),
+          "400": jsonErrorResponse("error.validation — invalid employee details"),
+          "401": jsonErrorResponse("error.auth.token_invalid — missing or invalid access token"),
+          "403": jsonErrorResponse("error.identity.forbidden — missing permission or authenticated shop scope"),
+          "404": jsonErrorResponse("Shop or employee role not found"),
+          "409": jsonErrorResponse("Email address already registered")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/shops/{shopId}/employees`]: {
+      get: {
+        tags: ["Merchant Employees"],
+        summary: "List a shop's employees for operations",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:shops:list",
+        parameters: [idPathParameter("shopId")],
+        responses: {
+          "200": jsonDataResponse("Paginated shop employee directory", { $ref: "#/components/schemas/ShopEmployeeDirectoryPage" }),
+          "400": jsonErrorResponse("error.validation — invalid shop or directory query"),
+          "401": jsonErrorResponse("error.auth.token_invalid — missing or invalid access token"),
+          "403": jsonErrorResponse("error.identity.forbidden — missing permission")
+        }
+      },
+      post: {
+        tags: ["Merchant Employees"],
+        summary: "Create an employee account with an automatically assigned NeeDoID for a shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:shops:write",
+        parameters: [idPathParameter("shopId")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ShopEmployeeCreateBody" } } }
+        },
+        responses: {
+          "201": jsonDataResponse("Created shop employee", { $ref: "#/components/schemas/ShopEmployeeDirectoryItem" }),
+          "400": jsonErrorResponse("error.validation — invalid shop or employee details"),
+          "401": jsonErrorResponse("error.auth.token_invalid — missing or invalid access token"),
+          "403": jsonErrorResponse("error.identity.forbidden — missing permission"),
+          "404": jsonErrorResponse("Shop or employee role not found"),
+          "409": jsonErrorResponse("Email address already registered")
         }
       }
     },

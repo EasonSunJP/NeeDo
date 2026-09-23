@@ -26,6 +26,9 @@ import type { FormalTimelinePageSize } from "../../components/admin/FormalTimeli
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { EmployeeDetailCard } from "../../components/merchant-admin/EmployeeDetailCard";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
+import { ShopEmployeeDirectoryPanel } from "../../components/admin/ShopEmployeeDirectoryPanel";
+import { useAuth } from "../../auth/AuthProvider";
+import { getMerchantAdminPreview } from "../../auth/merchantAdminPreview";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
@@ -117,6 +120,7 @@ function describeEmployeeMutationError(error: unknown, language: Language) {
 }
 
 export function MerchantAdminPeoplePage() {
+  const { hasPermission } = useAuth();
   const [searchParams] = useSearchParams();
   const { language } = useOptionalI18n();
   const languageRef = useRef(language);
@@ -412,13 +416,14 @@ export function MerchantAdminPeoplePage() {
     setKeyword(keywordInput.trim());
   };
 
-  const openEmployee = (employee: MerchantEmployee) => {
+  const openEmployeeNeedoId = (needoId: string) => {
     closeCustomer();
-    selectedEmployeeNeedoIdRef.current = employee.needoId;
-    setSelectedEmployeeNeedoId(employee.needoId);
+    selectedEmployeeNeedoIdRef.current = needoId;
+    setSelectedEmployeeNeedoId(needoId);
     setEmployeeMutationError("");
-    void employeeDetailRequest.load(employee.needoId);
+    void employeeDetailRequest.load(needoId);
   };
+  const openEmployee = (employee: MerchantEmployee) => openEmployeeNeedoId(employee.needoId);
 
   const openCustomer = (customerId: number) => {
     closeEmployee();
@@ -637,6 +642,15 @@ export function MerchantAdminPeoplePage() {
               : "评价中心"
         }
       >
+        {module === "staff" ? <div className="mb-8 space-y-4">
+          <h2 className="text-lg font-black">{translateText("正式员工名录", language)}</h2>
+          <ShopEmployeeDirectoryPanel
+            canCreate={hasPermission("merchant-admin:employee-affiliation:write") && !getMerchantAdminPreview()}
+            onOpenTechnician={openEmployeeNeedoId}
+            scope="merchant"
+          />
+          <h2 className="pt-4 text-lg font-black">{translateText("技师档案", language)}</h2>
+        </div> : null}
         {module === "staff" ? (
           <form
             className="mb-4 flex gap-2 rounded-lg border border-line bg-white p-2 shadow-panel"

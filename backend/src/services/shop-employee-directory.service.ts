@@ -2,6 +2,10 @@ import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import { requireMerchantShopId } from "./merchant-shop-scope";
+import { AppError } from "../utils/app-error";
+import { ERROR_CODES } from "../constants/error-codes";
+import type { ShopEmployeeCreateBody } from "../validators/shop-employee-directory.validator";
+import { hash } from "bcryptjs";
 
 export type ShopEmployeeDirectoryStatus = "active" | "on_leave" | "suspended";
 export type ShopEmployeeDirectoryTechnicianRelationship = "exclusive" | "partner";
@@ -46,6 +50,7 @@ export interface ShopEmployeeDirectoryRepositoryInput extends ShopEmployeeDirect
 }
 
 export interface ShopEmployeeDirectoryRepositoryPort {
+  createEmployee(input: Omit<ShopEmployeeCreateBody, "password"> & { passwordHash: string; shopId: number; actorUserId: number; now: Date }): Promise<ShopEmployeeDirectoryItem>;
   listCurrentShopEmployees(
     input: ShopEmployeeDirectoryRepositoryInput
   ): Promise<PaginatedResponse<ShopEmployeeDirectoryItem>>;
@@ -74,5 +79,45 @@ export class ShopEmployeeDirectoryService {
       metadata: { shopId }
     });
     return result;
+  }
+
+  public async listShopEmployees(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    shopId: number,
+    input: ShopEmployeeDirectoryListInput
+  ): Promise<PaginatedResponse<ShopEmployeeDirectoryItem>> {
+    const result = await this.repository.listCurrentShopEmployees({ ...input, shopId });
+    await this.auditLogService.record({ actor, action: "backoffice.employee_directory.list", targetType: "shop_employee", context, metadata: { shopId } });
+    return result;
+  }
+
+  public async createEmployee(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: ShopEmployeeCreateBody,
+    shopId?: number
+  ): Promise<ShopEmployeeDirectoryItem> {
+    if (actor.isReadOnlyMerchantPreview) {
+      throw new AppError({ code: ERROR_CODES.FORBIDDEN, message: "error.merchant_preview.read_only", statusCode: 403 });
+    }
+    const effectiveShopId = shopId ?? requireMerchantShopId(actor);
+    const employee = await this.repository.createEmployee({
+      displayName: input.displayName,
+      email: input.email,
+      passwordHash: await hash(input.password, 12),
+      roleCode: input.roleCode,
+      shopId: effectiveShopId,
+      actorUserId: actor.userId,
+      now: new Date()
+    });
+    await this.auditLogService.record({
+      actor,
+      action: shopId === undefined ? "merchant_admin.employee_directory.create" : "backoffice.employee_directory.create",
+      targetType: "shop_employee",
+      context,
+      metadata: { shopId: effectiveShopId, needoId: employee.needoId, roleCode: input.roleCode }
+    });
+    return employee;
   }
 }

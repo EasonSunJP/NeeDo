@@ -33,6 +33,7 @@ import { ReviewsPage } from "./pages/admin/ReviewsPage";
 import { RolesPage } from "./pages/admin/RolesPage";
 import { PermissionsPage } from "./pages/admin/PermissionsPage";
 import { TechniciansPage } from "./pages/admin/TechniciansPage";
+import { EmployeesPage } from "./pages/admin/EmployeesPage";
 import { LegacyUserManagementRedirect } from "./features/platform-user-management/LegacyUserManagementRedirect";
 import { MerchantPortalPage, MerchantStaffDetailRoutePage } from "./pages/mobile/MerchantPortalPage";
 import { BusinessCpsPage } from "./pages/mobile/BusinessCpsPage";
@@ -1566,6 +1567,7 @@ export default function App() {
               <Route path="/admin/cities" element={protect("admin", <CitySettingsPage />)} />
               <Route path="/admin/badges" element={protect("admin", <AvatarBadgesPage />)} />
               <Route path="/admin/technicians" element={protect("admin", <TechniciansPage />)} />
+              <Route path="/admin/employees" element={protect("admin", <EmployeesPage />)} />
               <Route path="/admin/orders" element={protect("admin", <Suspense fallback={null}><OrdersAdminPage /></Suspense>)} />
               <Route path="/admin/orders/demands" element={protectPermission("admin", "backoffice:exchange:read", <NeedoDemandAdminPage />)} />
               <Route path="/admin/orders/info" element={protectPermission("admin", "backoffice:exchange:read", <NeedoInfoAdminPage />)} />
