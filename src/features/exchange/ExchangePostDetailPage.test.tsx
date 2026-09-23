@@ -16,6 +16,7 @@ import appSource from "../../App.tsx?raw";
 import type { MessageCenterContext } from "../../lib/messageCenter";
 import routeSource from "../../pages/mobile/NeedoRoutePages.tsx?raw";
 import detailSource from "./ExchangePostDetailPage.tsx?raw";
+import { shareContent } from "../../lib/share";
 
 const mockI18n = vi.hoisted(() => ({ language: "zh" as "zh" | "zh-Hant" | "ja" | "en" | "ko" }));
 const receivedClaimsMock = vi.hoisted(() => ({
@@ -324,6 +325,24 @@ describe("ExchangePostDetailPage", () => {
     expect(hero?.querySelector("img")?.getAttribute("src")).toBe("/media/content/exchange/aa.webp");
     expect(hero?.querySelector("img")?.className).toContain("object-cover");
     expect(hero?.innerHTML).not.toContain("/people/publisher.jpg");
+  });
+
+  it("shows the demand share count after success and after reloading the server projection", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(demandPost);
+    vi.mocked(shareContent).mockResolvedValue({ status: "copied", url: "https://needo.test/needo/posts/41" });
+    const counts = { ...demandPost.counts, shares: 7 };
+    vi.mocked(recordExchangeShare).mockResolvedValue(counts);
+    await renderDetail();
+    const shareButton = () => document.body.querySelector<HTMLButtonElement>('button[aria-label="转发"]');
+    await waitFor(() => expect(shareButton()?.textContent).toContain("6"));
+
+    await act(async () => shareButton()?.click());
+    await waitFor(() => expect(shareButton()?.textContent).toContain("7"));
+    expect(recordExchangeShare).toHaveBeenCalledOnce();
+
+    vi.mocked(getExchangePost).mockResolvedValue({ ...demandPost, counts });
+    await renderDetail();
+    await waitFor(() => expect(shareButton()?.textContent).toContain("7"));
   });
 
   it("renders the server-projected default demand cover in the hero", async () => {

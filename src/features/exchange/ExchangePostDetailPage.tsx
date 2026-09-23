@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
+import { floatingHeaderControlButtonClassName, IconMetricAction } from "../../components/client-ui/AppScaffold";
 import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
@@ -470,12 +470,27 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
               name="favorite"
               onClick={() => void toggleLike()}
             />
-            <HeaderActionButton
-              disabled={!active || actionPending !== null}
-              label={t("share")}
-              name="share"
-              onClick={() => void share()}
-            />
+            {post.type === "demand" ? (
+              <div data-action="detail-share">
+                <IconMetricAction
+                  className="!h-11"
+                  count={post.counts.shares}
+                  disabled={!active || actionPending !== null}
+                  icon="share"
+                  iconClassName="h-6 w-6"
+                  label={t("share")}
+                  onClick={() => void share()}
+                  shellClassName={floatingHeaderControlButtonClassName}
+                />
+              </div>
+            ) : (
+              <HeaderActionButton
+                disabled={!active || actionPending !== null}
+                label={t("share")}
+                name="share"
+                onClick={() => void share()}
+              />
+            )}
           </div>
         )}
         info={`${formatTime(post.serviceStartAt, language)}–${formatTime(post.serviceEndAt, language)} · ${post.areaLabel}`}

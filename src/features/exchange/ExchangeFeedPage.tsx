@@ -206,7 +206,7 @@ function PostCard({
           <div onClick={(event) => event.stopPropagation()}>
             <MomentActionBar
               bordered={false}
-              forwardLabel={t("shares")}
+              forwardLabel={post.type === "demand" ? `${t("shares")} ${post.counts.shares}` : t("shares")}
               likeCount={post.counts.likes}
               liked={post.viewer.liked}
               onForward={() => void share()}

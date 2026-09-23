@@ -246,6 +246,7 @@ describe("ExchangeFeedPage", () => {
     vi.mocked(recordExchangeShare).mockImplementationOnce(() => failed.promise).mockImplementationOnce(() => succeeded.promise);
     const feed = await mountInteractiveDemandFeed();
     try {
+      expect(feed.buttons()[2]?.textContent).toBe("转发 6");
       await act(async () => feed.buttons()[2]?.click());
       expect(recordExchangeShare).toHaveBeenCalledWith("41", "123e4567-e89b-42d3-a456-426614174000");
       expect(feed.currentPost().counts.shares).toBe(6);
@@ -261,6 +262,8 @@ describe("ExchangeFeedPage", () => {
       await act(async () => { succeeded.resolve({ comments: 6, likes: 21, shares: 7 }); await succeeded.promise; });
       expect(feed.replaceCounts).toHaveBeenCalledExactlyOnceWith(41, { comments: 6, likes: 21, shares: 7 }, { liked: false });
       expect(feed.currentPost().counts.shares).toBe(7);
+      await feed.render();
+      expect(feed.buttons()[2]?.textContent).toBe("转发 7");
     } finally {
       await feed.cleanup();
     }
