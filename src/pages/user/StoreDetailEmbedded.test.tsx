@@ -59,7 +59,8 @@ async function render() {
 async function renderFormalMerchantPreview(
   technicianCount = 1,
   scope: "merchant" | "user" = "merchant",
-  formalServiceId?: number
+  formalServiceId?: number,
+  dateKey?: string
 ) {
   const store = {
     id: "21",
@@ -105,7 +106,7 @@ async function renderFormalMerchantPreview(
   })) satisfies Technician[];
 
   await act(async () => root.render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={dateKey ? [`/?date=${dateKey}`] : undefined}>
       <StoreDetailExperience
         embedded
         formalApiOnly
@@ -780,4 +781,41 @@ it("routes an available technician selection to services using only 30-minute cu
     expect(bookingLink?.getAttribute("href")).toContain("time=10%3A00");
   });
   expect(container.textContent).not.toContain("暂无可预约服务");
+});
+
+it("keeps a returned day start selectable while the month date summary is pending", async () => {
+  const visitDate = new Date();
+  visitDate.setDate(visitDate.getDate() + 1);
+  const dateKey = [
+    visitDate.getFullYear(),
+    String(visitDate.getMonth() + 1).padStart(2, "0"),
+    String(visitDate.getDate()).padStart(2, "0")
+  ].join("-");
+  pricingModeMock.getBookingNavigation.mockResolvedValue({
+    shopId: 21,
+    pricingMode: "technician",
+    technicianPricingRatePercent: 0,
+    entry: "technician_list",
+    technicians: { list: [], total: 1, page: 1, page_size: 20 }
+  });
+  vi.spyOn(bookingApi, "listAvailability").mockImplementation(async (query) => {
+    if (query.summaryByDate) return new Promise(() => {});
+    return {
+      list: [{
+        startsAt: new Date(`${dateKey}T21:00:00+09:00`).toISOString(),
+        options: [{ scheduleSlotId: 951, technicianProfileId: 501, technicianServiceId: 201, serviceId: null }]
+      }],
+      total: 1,
+      page: 1,
+      page_size: 100
+    } as never;
+  });
+
+  await renderFormalMerchantPreview(1, "user", undefined, dateKey);
+  await vi.waitFor(() => {
+    const timeSelect = container.querySelectorAll<HTMLSelectElement>("select")[1];
+    expect(Array.from(timeSelect?.options ?? []).map((option) => option.value)).toEqual(["21:00"]);
+    expect(timeSelect?.disabled).toBe(false);
+  });
+  expect(container.querySelector<HTMLButtonElement>('button[aria-label="待选技师"]')?.disabled).toBe(false);
 });

@@ -111,6 +111,7 @@ export function AvailabilityCalendar({
   availabilityByDate,
   authoritativeAvailability = false,
   availabilityLoading = false,
+  timeAvailabilityLoading = availabilityLoading,
   alwaysAvailable = false,
   onViewMonthChange,
   technicianCountRelevant = true,
@@ -130,6 +131,7 @@ export function AvailabilityCalendar({
   availabilityByDate?: Readonly<Record<string, AvailabilityDateCapacity>>;
   authoritativeAvailability?: boolean;
   availabilityLoading?: boolean;
+  timeAvailabilityLoading?: boolean;
   alwaysAvailable?: boolean;
   onViewMonthChange?: (month: Date) => void;
   technicianCountRelevant?: boolean;
@@ -309,10 +311,10 @@ export function AvailabilityCalendar({
         <label className="grid grid-cols-[82px,1fr] items-center gap-2.5">
           <span className="text-[15px] font-black text-ink/72">时间</span>
           <span className="flex h-11 items-center justify-between border border-line bg-white px-4 text-[18px] font-black">
-            <select className="min-w-0 flex-1 appearance-none bg-transparent outline-none" disabled={availabilityLoading} onChange={(event) => onTimeChange(event.target.value)} value={time}>
+            <select className="min-w-0 flex-1 appearance-none bg-transparent outline-none" disabled={timeAvailabilityLoading} onChange={(event) => onTimeChange(event.target.value)} value={time}>
               {timeOptions.length === 0 ? (
                 <option value="">
-                  {availabilityLoading ? timeLoadingLabelByLanguage[language] : emptyTimeLabelByLanguage[language]}
+                  {timeAvailabilityLoading ? timeLoadingLabelByLanguage[language] : emptyTimeLabelByLanguage[language]}
                 </option>
               ) : null}
               {timeOptions.map((option) => (
