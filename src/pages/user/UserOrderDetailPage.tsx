@@ -55,6 +55,7 @@ import {
 import { useUserOrders } from "../../state/userOrderStore";
 
 registerTranslationEntries({
+  "查看同组预约": { "zh-Hant": "查看同組預約", ja: "同じグループの予約を見る", en: "View group booking", ko: "같은 단체 예약 보기" },
   "确认取消预约": { "zh-Hant": "確認取消預約", ja: "予約キャンセルの確認", en: "Confirm booking cancellation", ko: "예약 취소 확인" },
   "取消后，预约将立即变为已取消，服务方会收到状态更新。": { "zh-Hant": "取消後，預約將立即變為已取消，服務方會收到狀態更新。", ja: "キャンセルすると予約は直ちにキャンセル済みとなり、サービス提供者に状態更新が通知されます。", en: "Once cancelled, the booking is immediately marked cancelled and the service provider is notified.", ko: "취소하면 예약이 즉시 취소됨으로 변경되고 서비스 제공자에게 상태 변경이 통지됩니다." },
   "预约时间": { "zh-Hant": "預約時間", ja: "予約日時", en: "Appointment time", ko: "예약 시간" },
@@ -624,6 +625,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       ) : null}
       {queryStatus === "success" && order ? (
         <>
+          {order.bookingGroupPublicId ? <Link className="block rounded-[20px] bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-black text-[color:var(--client-primary)]" to={`/bookings/groups/${order.bookingGroupPublicId}`}>查看同组预约</Link> : null}
           <OrderDynamicStatusCard order={mapBookingOrderToDomainOrder(order)} providerName={order.shopName} />
 
           {profileLoadError ? <p className="rounded-[18px] bg-amber-500/10 px-4 py-3 text-xs font-black text-amber-500">{profileLoadError}</p> : null}

@@ -1034,7 +1034,7 @@ describe("formal checkout technician-card round trip", () => {
               "/origin",
               {
                 pathname: "/checkout/31",
-                search: "?date=2026-09-03&time=08%3A00&mode=store&people=2%E5%90%8D&remark=quiet&coupon=keep&technician=17",
+                search: "?date=2026-09-03&time=08%3A00&mode=store&people=1%E5%90%8D&remark=quiet&coupon=keep&technician=17",
                 state: { existingSource: "recommendation" }
               }
             ]}
@@ -1064,7 +1064,7 @@ describe("formal checkout technician-card round trip", () => {
       expect(current).toContain("time=11%3A30");
       expect(current).toContain("date=2026-09-03");
       expect(current).toContain("mode=store");
-      expect(current).toContain("people=2%E5%90%8D");
+      expect(current).toContain("people=1%E5%90%8D");
       expect(current).toContain("remark=quiet");
       expect(current).toContain("coupon=keep");
       expect(probe.dataset.checkoutScheduleSlotId).toBe("103");

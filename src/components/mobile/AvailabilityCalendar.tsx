@@ -103,6 +103,7 @@ export function AvailabilityCalendar({
   selectedDate,
   onSelectDate,
   people,
+  maxPeople = 4,
   onPeopleChange,
   time,
   onTimeChange,
@@ -123,6 +124,7 @@ export function AvailabilityCalendar({
   selectedDate?: Date;
   onSelectDate?: (date: Date) => void;
   people: string;
+  maxPeople?: number;
   onPeopleChange: (people: string) => void;
   time: string;
   onTimeChange: (time: string) => void;
@@ -142,7 +144,11 @@ export function AvailabilityCalendar({
     selectedDate ? new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1) : new Date(2026, 3, 1)
   );
   const weekLabels = weekdayLabelsByLanguage[language];
-  const peopleOptions = peopleOptionsByLanguage[language];
+  const peopleOptions = Array.from({ length: Math.max(1, Math.min(10, maxPeople)) }, (_, index) =>
+    peopleOptionsByLanguage[language][index] ?? (
+      language === "en" ? `${index + 1} people` : language === "ko" ? `${index + 1}명` : `${index + 1}名`
+    )
+  );
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();

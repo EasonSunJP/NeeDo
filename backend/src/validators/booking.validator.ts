@@ -255,6 +255,60 @@ export const bookingCreateBodySchema = z
     }
   });
 
+const groupAssignmentSchema = z.object({
+  technicianProfileId: serviceCatalogIdSchema,
+  serviceIds: z.array(serviceCatalogIdSchema).min(1).max(10).optional(),
+  technicianServiceIds: z.array(serviceCatalogIdSchema).min(1).max(10).optional(),
+  scheduleSlotIds: z.array(scheduleSlotSelectorSchema).min(1).max(10),
+  expectedPriceAmountJpy: z.number().int().nonnegative()
+}).strict().superRefine((value, context) => {
+  const serviceIds = value.serviceIds ?? value.technicianServiceIds;
+  if (Boolean(value.serviceIds) === Boolean(value.technicianServiceIds)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Exactly one service catalog is required", path: ["serviceIds"] });
+  }
+  if (serviceIds && (serviceIds.length !== value.scheduleSlotIds.length || new Set(serviceIds).size !== serviceIds.length)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Each distinct service requires one ordered slot", path: ["scheduleSlotIds"] });
+  }
+});
+
+export const bookingGroupCreateBodySchema = z.object({
+  shopId: serviceCatalogIdSchema,
+  startsAt: z.string().datetime({ offset: true }),
+  guests: z.array(z.object({
+    label: visibleTextSchema(60),
+    assignments: z.array(groupAssignmentSchema).min(1).max(10)
+  }).strict()).min(1).max(10),
+  paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
+  note: z.string().trim().max(500).optional()
+}).strict().superRefine((value, context) => {
+  const assignments = value.guests.flatMap((guest) => guest.assignments);
+  const technicianIds = assignments.map((assignment) => assignment.technicianProfileId);
+  const slotIds = assignments.flatMap((assignment) => assignment.scheduleSlotIds);
+  if (assignments.length > 10 || new Set(technicianIds).size !== technicianIds.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Each assignment requires a distinct technician", path: ["guests"] });
+  }
+  if (new Set(slotIds).size !== slotIds.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Schedule slots must be distinct", path: ["guests"] });
+  }
+  if (assignments.some((assignment) => Boolean(assignment.serviceIds) !== Boolean(assignments[0]?.serviceIds))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "A group uses one shop pricing catalog", path: ["guests"] });
+  }
+});
+
+export const bookingGroupRevisionBodySchema = z.object({
+  expectedUpdatedAt: z.string().datetime({ offset: true }),
+  assignment: groupAssignmentSchema
+}).strict();
+
+export const bookingGroupGuestRemovalBodySchema = z.object({
+  expectedOrders: z.array(z.object({
+    id: z.number().int().positive(),
+    updatedAt: z.string().datetime({ offset: true })
+  }).strict()).min(1).max(10)
+}).strict().refine((value) => new Set(value.expectedOrders.map((order) => order.id)).size === value.expectedOrders.length, {
+  message: "Order ids must be distinct", path: ["expectedOrders"]
+});
+
 export const technicianManualBookingBodySchema = z.object({
   customerIdentityId: z.coerce.number().int().positive(),
   expectedPriceAmountJpy: z.coerce.number().int().nonnegative(),
@@ -276,6 +330,18 @@ export const technicianManualBookingIdempotencySchema = idempotencyKeySchema;
 
 export const orderIdParamSchema = z.object({
   id: z.coerce.number().int().positive()
+});
+
+export const bookingGroupPublicIdParamSchema = z.object({
+  publicId: z.string().uuid()
+}).strict();
+
+export const bookingGroupOrderParamSchema = bookingGroupPublicIdParamSchema.extend({
+  orderId: z.coerce.number().int().positive()
+});
+
+export const bookingGroupGuestParamSchema = bookingGroupPublicIdParamSchema.extend({
+  guestId: z.coerce.number().int().positive()
 });
 
 export const orderAssignTechnicianBodySchema = z.object({

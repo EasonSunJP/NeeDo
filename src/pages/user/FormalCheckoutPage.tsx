@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { travelFareApi, type JapaneseRouteAddress, type RouteEstimate } from "../../api/travelFare";
@@ -15,6 +15,7 @@ import {
   createBookingIdempotencyKey,
   type AdministrativeRegionReference,
   type BookingScheduleSlot,
+  type CreateBookingGroupInput,
   type CreateBookingInput,
   type ManualPaymentMethod,
   type TechnicianServiceBookingContext
@@ -55,6 +56,7 @@ import {
   type CheckoutProgressKey
 } from "./formal-checkout/CheckoutProgressNav";
 import { CheckoutTimeRow } from "./formal-checkout/CheckoutTimeRow";
+import type { ReadyGroupBooking } from "./formal-checkout/GroupBookingEditor";
 import {
   useCheckoutText,
   type CheckoutTextKey,
@@ -73,6 +75,7 @@ import {
 } from "./formal-checkout/checkoutHomeAddress";
 
 type LoadStatus = "loading" | "success" | "error";
+const GroupBookingEditor = lazy(() => import("./formal-checkout/GroupBookingEditor").then((module) => ({ default: module.GroupBookingEditor })));
 type TechnicianLoadStatus = "idle" | "loading" | "error";
 export type CheckoutCatalogRef =
   | { type: "shop_service"; id: number }
@@ -136,6 +139,7 @@ function describeCheckoutError(
       return "slotConcurrentOccupancy";
     }
     if (error.message === "error.booking.slot_unavailable") return "invalidCheckoutSlot";
+    if (error.message === "error.booking.group_membership_limit") return "groupBookingMembershipLimit";
     if (error.status === 401) return "loginExpired";
     if (error.status === 403) return "permissionDenied";
     if (error.status === 404) return "serviceUnavailable";
@@ -323,6 +327,8 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [municipalitiesLoading, setMunicipalitiesLoading] = useState(false);
   const [note, setNote] = useState(searchParams.get("remark") ?? "");
   const [submitting, setSubmitting] = useState(false);
+  const [groupEditing, setGroupEditing] = useState(() => Number.parseInt(searchParams.get("people") ?? "1", 10) > 1);
+  const [groupReady, setGroupReady] = useState<ReadyGroupBooking | null>(null);
   const [submitError, setSubmitError] = useState<CheckoutTextKey | null>(null);
   const [contactingTechnician, setContactingTechnician] = useState(false);
   const [contactError, setContactError] = useState(false);
@@ -817,7 +823,12 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     selectedAdmin1Code,
     selectedAdmin2Code
   );
-  const canSubmitBooking = Boolean(selectedSlot) && (
+  const requestedGuestCount = Number.parseInt(searchParams.get("people") ?? "1", 10);
+  const invalidRequestedGuestCount = !Number.isInteger(requestedGuestCount) || requestedGuestCount < 1 || requestedGuestCount > 10;
+  const groupRequested = groupEditing || requestedGuestCount > 1;
+  const groupContextAvailable = fulfillmentMode === "store" && !exchangePostId &&
+    Boolean(selectedSlot?.shopId && selectedTechnicianProfileId);
+  const canSubmitBooking = Boolean(selectedSlot) && !invalidRequestedGuestCount && (!groupRequested || (groupContextAvailable && groupReady?.startsAt === selectedSlot?.startsAt && groupReady?.shopId === selectedSlot?.shopId)) && (
     technicianServiceIds.length <= 1 || Boolean(selectedSlot && bundleSlotIds[selectedSlot.id])
   ) && (
     fulfillmentMode === "store" ||
@@ -1006,6 +1017,10 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       navigate(`/login/user?redirect=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
       return;
     }
+    if (invalidRequestedGuestCount || (groupRequested && (!groupContextAvailable || !groupReady || groupReady.startsAt !== freshSelectedSlot.startsAt))) {
+      setSubmitError("groupBookingIncomplete");
+      return;
+    }
     if (fulfillmentMode === "home" && (!estimate || estimateStatus !== "success" || Date.parse(estimate.expiresAt) <= Date.now())) {
       setEstimateStatus(estimate ? "expired" : estimateStatus);
       setSubmitError("validEstimateRequired");
@@ -1025,6 +1040,15 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     setSubmitting(true);
     setSubmitError(null);
     try {
+      if (groupRequested && groupReady) {
+        const { totalPriceAmountJpy: _total, ...groupInput } = groupReady;
+        const input: CreateBookingGroupInput = { ...groupInput, paymentMethod, note: note.trim() || undefined };
+        const idempotency = resolveBookingIdempotencyKey(bookingIdempotencyRef.current, JSON.stringify(input));
+        bookingIdempotencyRef.current = idempotency;
+        const group = await bookingApi.createGroupBooking(input, idempotency.key);
+        navigate(`/bookings/groups/${group.publicId}`, { replace: true });
+        return;
+      }
       const fulfillment = fulfillmentMode === "home"
         ? { fulfillmentMode: "home" as const, serviceLocation: { countryCode: "JP" as const, admin1Code: selectedAdmin1Code, admin2Code: selectedAdmin2Code }, fulfillmentAddress: normalizeCheckoutHomeAddress(homeAddress), travelEstimatePublicId: estimate!.publicId }
         : { fulfillmentMode: "store" as const };
@@ -1072,6 +1096,10 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
         setSlotSelectionInvalid(errorKey !== "storeLocationUnavailable");
       }
       if (error instanceof ApiClientError && error.code === 41038) {
+        setRevision((current) => current + 1);
+      }
+      if (error instanceof ApiClientError && error.message === "error.booking.group_membership_limit") {
+        setGroupReady(null);
         setRevision((current) => current + 1);
       }
     } finally {
@@ -1304,6 +1332,25 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
             </div>
           </div>
 
+          {groupContextAvailable && !groupRequested ? (
+            <button className="w-full rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 py-3 text-left text-sm font-black text-[color:var(--client-primary)]" onClick={() => setGroupEditing(true)} type="button">
+              {t("groupBookingEdit")}
+            </button>
+          ) : null}
+          {invalidRequestedGuestCount ? <p role="alert" className="text-sm font-bold text-red-500">{t("groupBookingIncomplete")}</p> : null}
+          {groupRequested && groupContextAvailable && selectedSlot && selectedTechnicianProfileId ? (
+            <Suspense fallback={<p className="p-4 text-sm">{t("loadingCheckout")}</p>}><GroupBookingEditor
+              key={`${selectedSlot.startsAt}:${selectedSlot.shopId}:${catalogRef.type}:${revision}`}
+              catalog={catalogRef.type}
+              initialGuestCount={Math.max(1, Math.min(10, requestedGuestCount || 1))}
+              initialServiceIds={catalogRef.type === "shop_service" ? [catalogRef.id] : technicianServiceIds}
+              initialTechnicianId={selectedTechnicianProfileId}
+              onChange={setGroupReady}
+              shopId={selectedSlot.shopId}
+              startsAt={selectedSlot.startsAt}
+            /></Suspense>
+          ) : groupRequested ? <p role="alert" className="text-sm font-bold text-red-500">{t("groupBookingIncomplete")}</p> : null}
+
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[3] = node)}>
             <SectionTitle>{t("address")}</SectionTitle>
             <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
@@ -1463,7 +1510,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               <div className="grid grid-cols-[minmax(0,1fr),auto] items-end gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-black text-[color:color-mix(in_srgb,var(--client-text)_72%,var(--client-muted)_28%)]" data-no-i18n>{t("amountDue")}</p>
-                  <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(displayedServiceAmountJpy + (selectedTechnicianProfileId ? selectedSlot?.nominationFeeJpy ?? 0 : 0) + (fulfillmentMode === "home" && estimateStatus === "success" ? estimate?.fareAmountJpy ?? 0 : 0))}</strong>
+                  <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{groupRequested && !groupReady ? "—" : yen(groupRequested ? groupReady!.totalPriceAmountJpy : displayedServiceAmountJpy + (selectedTechnicianProfileId ? selectedSlot?.nominationFeeJpy ?? 0 : 0) + (fulfillmentMode === "home" && estimateStatus === "success" ? estimate?.fareAmountJpy ?? 0 : 0))}</strong>
                   {selectedTechnicianProfileId ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("includesNominationFee", { amount: yen(selectedSlot?.nominationFeeJpy ?? 0) })}</span> : null}
                   {fulfillmentMode === "home" ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("serviceAndTravelFee")}</span> : null}
                 </div>
@@ -1491,7 +1538,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                 <SecondaryButton className={cn("w-full", contactingTechnician && "pointer-events-none opacity-50")} onClick={() => contactingTechnician ? undefined : void openContactConversation()}><span data-no-i18n>{t("contact")}</span></SecondaryButton>
                 <button
                   className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!canSubmitBooking || submitting}
+                  disabled={(isAuthenticated ? !canSubmitBooking : !selectedSlot) || submitting}
                   onClick={() => void submitBooking()}
                   type="button"
                 >
