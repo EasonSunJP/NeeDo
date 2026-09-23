@@ -16,3 +16,10 @@ export function contentLocaleForLanguage(language: Language): ContentLocale {
 export function localizedText(fallback: string | null, translations: Partial<Record<ContentLocale, string>> | undefined, language: Language): string | null {
   return translations?.[contentLocaleForLanguage(language)]?.trim() || fallback;
 }
+
+export function localizedServiceName(
+  service: { name: string; localizedContent?: Partial<Record<ContentLocale, { name?: string }>> },
+  language: Language
+): string {
+  return service.localizedContent?.[contentLocaleForLanguage(language)]?.name?.trim() || service.name;
+}

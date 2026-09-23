@@ -68,6 +68,7 @@ import { SocialEmptyState, SocialPostItem } from "../../features/social/componen
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
+import { localizedServiceName } from "../../shared/localized-content/localizedText";
 import { registerTranslationEntries, translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
@@ -1404,7 +1405,7 @@ function StoreTechnicianServiceListRow({
   const favoriteCount = Math.max(0, technician.orderCount);
   const shareCount = 0;
   const statusLabel = technician.status === "available" ? "可预约" : technician.status === "busy" ? "预约确认中" : "休息中";
-  const headline = [technician.age ? `${technician.age}岁` : "", technician.height ?? "", technician.skills[0], technician.serviceAreas[0]]
+  const headline = [technician.age ? `${technician.age}岁` : "", technician.height ?? "", technician.primaryService ? localizedServiceName(technician.primaryService, language) : technician.skills[0], technician.serviceAreas[0]]
     .filter(Boolean)
     .join(" / ");
   const showSelectionAction = !isMerchantEditable && typeof selected === "boolean" && Boolean(onSelect);
