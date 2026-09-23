@@ -5,13 +5,17 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExchangePost } from "./types";
+import { likeExchangePost, recordExchangeShare } from "./api";
+import { shareContent } from "../../lib/share";
+import type { ExchangeInteractionCounts, ExchangePost, ExchangeViewerState } from "./types";
 import { useExchangeFeed } from "./useExchangeFeed";
 import { ExchangeFeedPage, getDefaultExchangePostType } from "./ExchangeFeedPage";
 
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
 vi.mock("../../theme/ClientThemeProvider", () => ({ useClientTheme: () => ({ theme: "dark-green" }) }));
 vi.mock("./useExchangeFeed", () => ({ useExchangeFeed: vi.fn() }));
+vi.mock("./api", () => ({ likeExchangePost: vi.fn(), recordExchangeShare: vi.fn(), unlikeExchangePost: vi.fn() }));
+vi.mock("../../lib/share", () => ({ shareContent: vi.fn() }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const demandPost: ExchangePost = {
@@ -170,6 +174,68 @@ describe("ExchangeFeedPage", () => {
     expect(markup).toContain('data-no-i18n="true"');
     expect(markup).toContain('data-post-id="41"');
     expect(markup).toContain("转发");
+  });
+
+  it("passes persisted like and share counts from the demand card to the feed", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    document.body.appendChild(container);
+    let currentPost = demandPost;
+    const replaceCounts = vi.fn((postId: number, counts: ExchangeInteractionCounts, viewer?: Partial<ExchangeViewerState>) => {
+      if (postId === currentPost.id) currentPost = { ...currentPost, counts, viewer: { ...currentPost.viewer, ...viewer } };
+    });
+    vi.mocked(useExchangeFeed).mockImplementation(() => ({ ...baseResource, posts: [currentPost], replaceCounts }));
+    vi.mocked(likeExchangePost).mockResolvedValue({ comments: 6, likes: 30, shares: 6 });
+    vi.mocked(shareContent).mockResolvedValue({ status: "copied", url: "https://needo.test/needo/posts/41" });
+    vi.mocked(recordExchangeShare).mockResolvedValue({ comments: 6, likes: 30, shares: 7 });
+    vi.stubGlobal("crypto", { randomUUID: vi.fn().mockReturnValue("123e4567-e89b-42d3-a456-426614174000") });
+
+    try {
+      await act(async () => root.render(<MemoryRouter><ExchangeFeedPage context="user" /></MemoryRouter>));
+      const buttons = container.querySelectorAll<HTMLButtonElement>('[data-post-id="41"] .flex.items-center.justify-between button');
+      expect(buttons).toHaveLength(3);
+      await act(async () => buttons[0]?.click());
+      expect(replaceCounts).toHaveBeenCalledWith(41, { comments: 6, likes: 30, shares: 6 }, { liked: true });
+      await act(async () => root.render(<MemoryRouter><ExchangeFeedPage context="user" /></MemoryRouter>));
+      await act(async () => buttons[2]?.click());
+      expect(recordExchangeShare).toHaveBeenCalledWith("41", "123e4567-e89b-42d3-a456-426614174000");
+      expect(replaceCounts).toHaveBeenCalledWith(41, { comments: 6, likes: 30, shares: 7 }, { liked: true });
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("opens the matching demand detail from the comment action and does not record cancelled shares", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    document.body.appendChild(container);
+    vi.mocked(useExchangeFeed).mockReturnValue(baseResource);
+    vi.mocked(shareContent).mockResolvedValue({ status: "cancelled", url: "https://needo.test/needo/posts/41" });
+    function Destination() {
+      return <div data-testid="destination">{useLocation().pathname}</div>;
+    }
+
+    try {
+      await act(async () => root.render(
+        <MemoryRouter initialEntries={["/needo"]}>
+          <Routes>
+            <Route path="/needo" element={<ExchangeFeedPage context="user" />} />
+            <Route path="/needo/posts/:id" element={<Destination />} />
+          </Routes>
+        </MemoryRouter>
+      ));
+      const buttons = container.querySelectorAll<HTMLButtonElement>('[data-post-id="41"] .flex.items-center.justify-between button');
+      expect(buttons).toHaveLength(3);
+      await act(async () => buttons[2]?.click());
+      expect(recordExchangeShare).not.toHaveBeenCalled();
+      await act(async () => buttons[1]?.click());
+      expect(container.querySelector('[data-testid="destination"]')?.textContent).toBe("/needo/posts/41");
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
   });
 
   it("renders the projected demand cover in a wide frame without using the publisher avatar", () => {

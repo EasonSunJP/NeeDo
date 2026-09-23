@@ -1416,6 +1416,38 @@ describe("ExchangePostRepository", () => {
     expect(result).toMatchObject({ kind: "success", value: { author: { publicId: "s0000000001", avatarUrl: "https://example.test/technician.jpg" }, authorProfilePath: "/moments/users/9?identityId=19" } });
   });
 
+  it("replays one comment key without a second row and lists its persisted public identity", async () => {
+    let stored: Record<string, unknown> | null = null;
+    const transaction = {
+      exchangeComment: {
+        findUnique: jest.fn(async () => stored),
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          stored = { id: 305, ...data, authorIdentity: null };
+          return stored;
+        }),
+        findMany: jest.fn(async () => stored ? [stored] : []),
+        count: jest.fn(async () => Number(stored !== null))
+      },
+      exchangePost: { findFirst: jest.fn(async () => ({ id: 41 })) },
+      auditLog: { create: jest.fn(async () => ({})) }
+    };
+    const repository = new ExchangePostRepository({
+      ...transaction,
+      $transaction: (run: (tx: typeof transaction) => Promise<unknown>) => run(transaction)
+    } as never);
+    const input = {
+      actor: { userId: 7, identityId: 17, identityType: "customer", scopeType: "customer_profile", scopeId: 27, publicId: "u0000000007", displayName: "佐藤 美咲", avatarUrl: "https://example.test/customer.jpg", isTestAccount: false, customerMembership: null, shopScope: null },
+      postId: 41, input: { content: "時間を教えてください" }, idempotencyKey: "comment-identity-305", now,
+      audit: { actorId: 7, action: "exchange.post.comment", targetType: "ExchangePost", targetId: 41 }
+    } as const;
+
+    await expect(repository.createComment(input)).resolves.toMatchObject({ kind: "success", value: { author: { publicId: "u0000000007", identityType: "customer", displayName: "佐藤 美咲", avatarUrl: "https://example.test/customer.jpg" } } });
+    await expect(repository.createComment(input)).resolves.toMatchObject({ kind: "replayed", value: { id: 305, author: { publicId: "u0000000007" } } });
+    await expect(repository.listComments(41, { page: 1, pageSize: 20 })).resolves.toMatchObject({ total: 1, list: [{ id: 305, content: "時間を教えてください", author: { publicId: "u0000000007" } }] });
+    expect(transaction.exchangeComment.create).toHaveBeenCalledTimes(1);
+    expect(transaction.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+
   it("exposes transaction-bound publication primitives with persisted fingerprint and audit", async () => {
     const transaction = {
       exchangePost: {
@@ -1661,6 +1693,56 @@ describe("ExchangePostRepository", () => {
     });
     expect(transaction.auditLog.create).toHaveBeenCalledTimes(1);
     expect(client.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps like state separate for two identities of one account and returns transaction counts", async () => {
+    const likes = new Map<number, { id: number; deletedAt: Date | null }>();
+    const transaction = {
+      exchangePost: { findFirst: jest.fn(async () => ({ id: 41 })) },
+      exchangeLike: {
+        findUnique: jest.fn(async ({ where }: { where: { postId_actorIdentityId: { actorIdentityId: number } } }) => likes.get(where.postId_actorIdentityId.actorIdentityId) ?? null),
+        create: jest.fn(async ({ data }: { data: { actorIdentityId: number } }) => { likes.set(data.actorIdentityId, { id: data.actorIdentityId, deletedAt: null }); }),
+        update: jest.fn(async ({ where, data }: { where: { id: number }; data: { deletedAt: Date | null } }) => { likes.set(where.id, { id: where.id, deletedAt: data.deletedAt }); }),
+        count: jest.fn(async () => 29 + [...likes.values()].filter((like) => like.deletedAt === null).length)
+      },
+      exchangeComment: { count: jest.fn(async () => 6) },
+      exchangeShare: { count: jest.fn(async () => 6) },
+      auditLog: { create: jest.fn(async () => ({})) }
+    };
+    const repository = new ExchangePostRepository({ $transaction: (run: (tx: typeof transaction) => Promise<unknown>) => run(transaction) } as never);
+    const actor = { userId: 7, identityId: 17, identityType: "customer", scopeType: "customer_profile", scopeId: 27, publicId: "u0000000007", displayName: "顧客", avatarUrl: null, isTestAccount: false, customerMembership: null, shopScope: null } as const;
+    const input = { actor, postId: 41, liked: true, idempotencyKey: "like-identity-17", now, audit: { actorId: 7, action: "exchange.post.like", targetType: "ExchangePost", targetId: 41 } };
+
+    await expect(repository.setLike(input)).resolves.toEqual({ kind: "success", value: { comments: 6, likes: 30, shares: 6 } });
+    await expect(repository.setLike(input)).resolves.toEqual({ kind: "replayed", value: { comments: 6, likes: 30, shares: 6 } });
+    await expect(repository.setLike({ ...input, actor: { ...actor, identityId: 18, identityType: "scout", publicId: "a0000000007" }, idempotencyKey: "like-identity-18" })).resolves.toEqual({ kind: "success", value: { comments: 6, likes: 31, shares: 6 } });
+    expect(likes.size).toBe(2);
+    expect(transaction.exchangeLike.create).toHaveBeenCalledTimes(2);
+    expect(transaction.auditLog.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("records one share per identity and returns counts from the same transaction", async () => {
+    const shares = new Map<number, { id: number; idempotencyKey: string }>();
+    const transaction = {
+      exchangePost: { findFirst: jest.fn(async () => ({ id: 41 })) },
+      exchangeShare: {
+        findFirst: jest.fn(async ({ where }: { where: { OR: [{ idempotencyKey: string }, { actorIdentityId: number }] } }) => [...shares.values()].find((share) => share.idempotencyKey === where.OR[0].idempotencyKey || share.id === where.OR[1].actorIdentityId) ?? null),
+        create: jest.fn(async ({ data }: { data: { actorIdentityId: number; idempotencyKey: string } }) => { shares.set(data.actorIdentityId, { id: data.actorIdentityId, idempotencyKey: data.idempotencyKey }); }),
+        count: jest.fn(async () => 6 + shares.size)
+      },
+      exchangeComment: { count: jest.fn(async () => 7) },
+      exchangeLike: { count: jest.fn(async () => 30) },
+      auditLog: { create: jest.fn(async () => ({})) }
+    };
+    const repository = new ExchangePostRepository({ $transaction: (run: (tx: typeof transaction) => Promise<unknown>) => run(transaction) } as never);
+    const actor = { userId: 7, identityId: 17, identityType: "customer", scopeType: "customer_profile", scopeId: 27, publicId: "u0000000007", displayName: "顧客", avatarUrl: null, isTestAccount: false, customerMembership: null, shopScope: null } as const;
+    const input = { actor, postId: 41, idempotencyKey: "share-identity-17", now, audit: { actorId: 7, action: "exchange.post.share", targetType: "ExchangePost", targetId: 41 } };
+
+    await expect(repository.recordShare(input)).resolves.toEqual({ kind: "success", value: { comments: 7, likes: 30, shares: 7 } });
+    await expect(repository.recordShare(input)).resolves.toEqual({ kind: "replayed", value: { comments: 7, likes: 30, shares: 7 } });
+    expect(shares.size).toBe(1);
+    expect(transaction.exchangeShare.create).toHaveBeenCalledTimes(1);
+    expect(transaction.auditLog.create).toHaveBeenCalledTimes(1);
   });
 
   it("locks a live post before exposing its terminal financial state", async () => {

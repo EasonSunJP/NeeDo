@@ -152,6 +152,31 @@ describe("ExchangeInteractions", () => {
     expect(onCountsChange).toHaveBeenCalledWith({ comments: 4, likes: 10, shares: 2 }, { liked: false });
   });
 
+  it("shows the returned comment first and reloads its persisted identity projection", async () => {
+    const created: ExchangeComment = {
+      ...comments[0],
+      id: 9,
+      author: { publicId: "s2433935375", identityType: "technician", displayName: "担当技師", avatarUrl: "https://example.test/technician.jpg" },
+      authorProfilePath: "/moments/users/9?identityId=19",
+      content: "新しい正式コメント"
+    };
+    vi.mocked(createExchangeComment).mockResolvedValue(created);
+    await renderInteractions();
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[name="comment"]');
+    if (!textarea) throw new Error("missing comment textarea");
+    await act(async () => setTextareaValue(textarea, created.content));
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="comment"]')?.click());
+    expect(container.querySelectorAll("article")[0]?.textContent).toContain(created.content);
+    expect(onCountsChange).toHaveBeenCalledWith({ comments: 4, likes: 10, shares: 2 }, { liked: false });
+
+    vi.mocked(listExchangeComments).mockResolvedValue({ list: [created, ...comments], total: 4, page: 1, page_size: 20 });
+    await renderInteractions({ ...post, id: 42, counts: { ...post.counts, comments: 4 } });
+    await renderInteractions(post);
+    expect(container.querySelectorAll("article")[0]?.textContent).toContain("s2433935375");
+    expect(container.querySelector('a[href="/moments/users/9?identityId=19"] img')?.getAttribute("src")).toBe("https://example.test/technician.jpg");
+  });
+
   it("uses server counts for like and unlike", async () => {
     vi.mocked(likeExchangePost).mockResolvedValue({ comments: 3, likes: 11, shares: 2 });
     vi.mocked(unlikeExchangePost).mockResolvedValue({ comments: 3, likes: 10, shares: 2 });

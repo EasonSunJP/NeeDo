@@ -1315,6 +1315,29 @@ describe("ExchangeService", () => {
     }
   });
 
+  it("returns repository counts and scopes interaction writes to the resolved active identity", async () => {
+    const repository = createRepository();
+    const service = new ExchangeService(repository, () => now);
+    const technician: ExchangeActorRecord = {
+      ...actor, identityId: 18, identityType: "technician", scopeType: "technician_profile",
+      scopeId: 28, publicId: "s2433935375", displayName: "担当技師",
+      avatarUrl: "https://example.test/technician.jpg", customerMembership: null
+    };
+    const technicianAccess: AuthenticatedAccessContext = {
+      ...access, currentIdentityId: 18, currentIdentityType: "technician",
+      currentIdentityScopeType: "technician_profile", currentIdentityScopeId: 28,
+      currentPublicId: "s2433935375", roles: ["technician"]
+    };
+    repository.resolveActor.mockResolvedValueOnce(technician).mockResolvedValueOnce(technician);
+    repository.setLike.mockResolvedValueOnce({ kind: "success", value: { comments: 6, likes: 30, shares: 6 } });
+    repository.recordShare.mockResolvedValueOnce({ kind: "success", value: { comments: 6, likes: 30, shares: 7 } });
+
+    await expect(service.like(technicianAccess, 41, "like-technician-01")).resolves.toEqual({ comments: 6, likes: 30, shares: 6 });
+    await expect(service.share(technicianAccess, 41, "share-technician-1")).resolves.toEqual({ comments: 6, likes: 30, shares: 7 });
+    expect(repository.setLike).toHaveBeenCalledWith(expect.objectContaining({ actor: technician, postId: 41, liked: true, idempotencyKey: "like-technician-01" }));
+    expect(repository.recordShare).toHaveBeenCalledWith(expect.objectContaining({ actor: technician, postId: 41, idempotencyKey: "share-technician-1" }));
+  });
+
   it("captures the full held fee when the owner withdraws", async () => {
     const repository = createRepository();
     repository.cancelActiveClaimsByPost.mockResolvedValue(2);

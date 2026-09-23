@@ -582,16 +582,23 @@ describe("formal Exchange routes", () => {
     const token = await login("customer@example.test");
     const auth = { Authorization: `Bearer ${token}`, "Idempotency-Key": "interaction-key-001" };
 
-    await request(app).get("/api/v1/exchange/posts/41/comments").set(auth).expect(200);
-    await request(app)
+    const listed = await request(app).get("/api/v1/exchange/posts/41/comments").set(auth).expect(200);
+    const created = await request(app)
       .post("/api/v1/exchange/posts/41/comments")
       .set(auth)
       .send({ content: "詳細を教えてください。" })
       .expect(201);
-    await request(app).put("/api/v1/exchange/posts/41/like").set(auth).expect(200);
-    await request(app).delete("/api/v1/exchange/posts/41/like").set(auth).expect(200);
-    await request(app).post("/api/v1/exchange/posts/41/shares").set(auth).expect(200);
+    const liked = await request(app).put("/api/v1/exchange/posts/41/like").set(auth).expect(200);
+    const unliked = await request(app).delete("/api/v1/exchange/posts/41/like").set(auth).expect(200);
+    const shared = await request(app).post("/api/v1/exchange/posts/41/shares").set(auth).expect(200);
     await request(app).post("/api/v1/exchange/posts/41/withdraw").set(auth).expect(200);
+
+    expect(listed.body.data).toMatchObject({ list: [], total: 0 });
+    expect(created.body.data).toMatchObject({ id: 301, postId: 41, content: "詳細を教えてください。", author: { publicId: "NC12345678", identityType: "customer" } });
+    expect(liked.body.data).toEqual({ comments: 4, likes: 22, shares: 5 });
+    expect(unliked.body.data).toEqual({ comments: 4, likes: 21, shares: 5 });
+    expect(shared.body.data).toEqual({ comments: 4, likes: 21, shares: 6 });
+    expect(service.comment).toHaveBeenCalledWith(expect.objectContaining({ userId: 7, currentIdentityId: 17 }), 41, { content: "詳細を教えてください。" }, "interaction-key-001");
 
     expect(service.comment).toHaveBeenCalledTimes(1);
     expect(service.like).toHaveBeenCalledTimes(1);
