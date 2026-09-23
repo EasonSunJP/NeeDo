@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { floatingHeaderControlButtonClassName, IconMetricAction } from "../../components/client-ui/AppScaffold";
-import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
+import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { ServiceFlowSection } from "../../components/mobile/ServiceFlowSection";
@@ -659,8 +659,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
         <ExchangeInteractions context={context} onCountsChange={updateCounts} post={post} showActionBar={false} variant="detail" />
       </main>
 
-      <ClientEdgeMask className="z-10" edge="bottom" mode="absolute" />
-      <footer className="client-app-gutter absolute inset-x-0 bottom-0 z-20 grid grid-cols-[1fr,auto] items-center gap-3 border-t border-transparent bg-[color:color-mix(in_srgb,var(--client-bg)_84%,transparent)] pb-[max(env(safe-area-inset-bottom),12px)] pt-4 backdrop-blur-xl">
+      <MobileBottomActionBar className="client-app-gutter" contentClassName="grid grid-cols-[1fr,auto] items-center gap-3">
         <div data-no-i18n="true">
           <p className="text-xs font-bold text-[color:var(--client-muted)]">{t(post.type === "demand" ? "budget" : "price")}</p>
           <strong className="text-xl font-black text-[color:var(--client-primary)]">{price}</strong>
@@ -697,7 +696,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
                 : t("bookingDeferred")}
           </button>
         )}
-      </footer>
+      </MobileBottomActionBar>
     </MobileFullscreenPage>
   );
 }

@@ -729,6 +729,16 @@ describe("ExchangePostDetailPage", () => {
     expect(claimPanelMock.scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
   });
 
+  it("uses the themed translucent bottom mask without a solid action bar", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(demandPost);
+    await renderDetail();
+    await waitFor(() => expect(document.body.querySelector(".client-edge-mask--bottom")).not.toBeNull());
+
+    const footer = document.body.querySelector("footer:has([data-action='matching-inbox'])");
+    expect(footer?.className).toContain("pointer-events-none");
+    expect(footer?.className).not.toContain("bg-[color:");
+  });
+
   it.each([
     ["zh", "不能参与自己发布的需求"],
     ["zh-Hant", "不能參與自己發布的需求"],
