@@ -35,7 +35,7 @@ export const shopPresentationContentSchema = z.object({
   routeGuide: trimmedText(2000),
   paymentMethods: stringListSchema,
   equipment: stringListSchema,
-  carousel: z.array(carouselItemSchema).min(1).max(5),
+  carousel: z.array(carouselItemSchema).max(5),
   serviceMenus: z.array(serviceMenuSchema).max(5)
 }).strict().superRefine((value, context) => {
   const mediaIds = value.carousel.map((item) => item.mediaAssetPublicId);

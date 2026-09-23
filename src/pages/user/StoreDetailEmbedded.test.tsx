@@ -152,6 +152,44 @@ async function waitForText(text: string) {
   }
   expect(container.textContent).toContain(text);
 }
+
+it("moves merchant editing between localized shop tabs and ends it on non-shop tabs", async () => {
+  const content = {
+    storeName: "正式店铺", description: "正式资料", address: "港区", area: "東京都", rankLabel: "",
+    businessHours: "10:00-20:00", subtitle: "介绍", station: "站点", distance: "步行 3 分钟",
+    parking: "", routeGuide: "", paymentMethods: [], equipment: [], carousel: [], serviceMenus: [{
+      serviceId: 31, name: "正式服务", description: "服务说明", audience: "", tags: [], highlights: [], coverMediaAssetPublicId: null
+    }]
+  };
+  backofficeMock.merchantShopPresentation.mockResolvedValue({
+    shopId: 21,
+    locales: Object.fromEntries(["ja", "en", "ko", "zh-CN", "zh-TW"].map((code) => [code, {
+      locale: code, lockVersion: 0, content, updatedAt: "2026-09-01T00:00:00.000Z"
+    }])),
+    media: {}, services: [{
+      id: 31, name: "正式服务", description: "服务说明", priceAmount: "8800", currency: "JPY", durationMinutes: 60, coverMediaAssetPublicId: null
+    }]
+  });
+  await renderFormalMerchantPreview(1, "merchant", 31);
+  const click = async (label: string) => {
+    const button = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.textContent?.trim() === label);
+    expect(button).toBeDefined();
+    await act(async () => button!.click());
+  };
+  await click("编辑");
+  await vi.waitFor(() => expect(container.querySelector('[data-testid="shop-presentation-locale-rail"]')).not.toBeNull());
+  await click("环境");
+  expect(container.textContent).toContain("完成修改");
+  await click("菜单");
+  expect(container.textContent).toContain("完成修改");
+  await click("地图");
+  expect(container.textContent).toContain("完成修改");
+  expect(container.querySelector('[data-testid="shop-presentation-locale-rail"]')).not.toBeNull();
+  await click("情报");
+  expect(container.querySelector('[data-testid="shop-presentation-locale-rail"]')).toBeNull();
+  expect(container.querySelector('[aria-label="编辑情报展示"]')).toBeNull();
+  expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent?.trim() === "编辑资料")).toBe(false);
+});
 it("keeps unavailable shop loading and retry inside the drawer", async () => {
   const request = vi.spyOn(coreReadApi, "getShopDetail").mockRejectedValue(new Error("shop unavailable"));
   await render();

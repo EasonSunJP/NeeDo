@@ -2831,6 +2831,8 @@ function EnvironmentGalleryCard({
   onOpen,
   editor,
   editing = false,
+  captionEditing = false,
+  onCaptionChange,
   onReplace
 }: {
   image: string;
@@ -2838,6 +2840,8 @@ function EnvironmentGalleryCard({
   onOpen: () => void;
   editor?: ReactNode;
   editing?: boolean;
+  captionEditing?: boolean;
+  onCaptionChange?: (caption: string) => void;
   onReplace?: (files: FileList | null) => void;
 }) {
   return (
@@ -2862,7 +2866,9 @@ function EnvironmentGalleryCard({
           </label>
         ) : null}
       </div>
-      <figcaption className="px-0.5 text-[12px] font-semibold leading-5 text-[color:var(--client-text)]">{caption}</figcaption>
+      <figcaption className="px-0.5 text-[12px] font-semibold leading-5 text-[color:var(--client-text)]">
+        <InlineEditableText editing={captionEditing} onChange={(value) => onCaptionChange?.(value)} value={caption} />
+      </figcaption>
     </figure>
   );
 }
@@ -3128,13 +3134,14 @@ export function StoreDetailExperience({
       images.map((image, index) => ({
         id: `${store.id}-environment-${index}`,
         image,
-        caption:
+        caption: config.galleryCaptions?.[index] || (formalApiOnly ? config.subtitle : (
           seatCards[index]?.description ??
           seatCards[index % Math.max(1, seatCards.length)]?.description ??
           store.tags[index % Math.max(1, store.tags.length)] ??
           config.subtitle
+        ))
       })),
-    [config.subtitle, images, seatCards, store.id, store.tags]
+    [config.galleryCaptions, config.subtitle, formalApiOnly, images, seatCards, store.id, store.tags]
   );
   const timeOptions = useMemo(() => buildTimeOptions(industry, store.nextSlot, store.alwaysBookable), [industry, store.alwaysBookable, store.nextSlot]);
   const routeTechnicianId = searchParams.get("technician")?.trim() ?? "";
@@ -3575,18 +3582,6 @@ export function StoreDetailExperience({
       presentation: normalizeStorePresentationConfig({ ...current.presentation, [key]: value }, industry)
     }));
   };
-  const updateOfferField = <Key extends keyof StoreOfferConfig>(offerIndex: number, key: Key, value: StoreOfferConfig[Key]) => {
-    setEditableStore((current) => ({
-      ...current,
-      presentation: normalizeStorePresentationConfig(
-        {
-          ...current.presentation,
-          offers: normalizeStorePresentationConfig(current.presentation, industry).offers.map((offer, index) => (index === offerIndex ? { ...offer, [key]: value } : offer))
-        },
-        industry
-      )
-    }));
-  };
   const updateMenuCards = (nextMenuCards: MenuCard[]) => {
     setEditableStore((current) => ({
       ...current,
@@ -3845,13 +3840,14 @@ export function StoreDetailExperience({
     setPresentationSaveState("idle");
     setPresentationError("");
   };
+  const fallbackImageUrls = new Set([sourceStore.cover, ...sourceStore.gallery]);
   const savePresentationLocale = async () => {
     if (!presentationWorkspace) return;
     setPresentationSaveState("saving");
     setPresentationError("");
     try {
       const publicIdByUrl = new Map(Object.entries(presentationWorkspace.media).map(([publicId, item]) => [item.url, publicId]));
-      const content = buildShopPresentationContent(editableStore, publicIdByUrl);
+      const content = buildShopPresentationContent(editableStore, publicIdByUrl, fallbackImageUrls);
       const saved = await backofficeRealDataApi.updateMerchantShopPresentationLocale(
         presentationLocale,
         presentationWorkspace.locales[presentationLocale].lockVersion,
@@ -3874,7 +3870,7 @@ export function StoreDetailExperience({
     setPresentationError("");
     try {
       const publicIdByUrl = new Map(Object.entries(presentationWorkspace.media).map(([publicId, media]) => [media.url, publicId]));
-      const content = buildShopPresentationContent(editableStore, publicIdByUrl);
+      const content = buildShopPresentationContent(editableStore, publicIdByUrl, fallbackImageUrls);
       const expectedLockVersions = Object.fromEntries(
         shopPresentationLocales.map(({ code }) => [code, presentationWorkspace.locales[code].lockVersion])
       ) as Record<ShopPresentationLocale, number>;
@@ -3938,7 +3934,7 @@ export function StoreDetailExperience({
     }
     return null;
   };
-  const presentationLocaleRail = isMerchantEditable && activeEditor ? (
+  const presentationLocaleRail = isMerchantEditable && activeEditor && activeTab !== "moments" && activeTab !== "offers" ? (
     <aside
       aria-label="店铺展示语言"
       className="fixed right-2 top-1/2 z-[70] flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur"
@@ -4187,10 +4183,30 @@ export function StoreDetailExperience({
     }
   }, [activeTab, tabs]);
 
+  const changeStoreTab = (nextTab: StoreTab) => {
+    setActiveTab(nextTab);
+    if (!isMerchantEditable) return;
+    if (nextTab === "menu") setServicePackageMenuCollapsed(false);
+    setActiveEditor((current) => {
+      if (!current) return null;
+      if (nextTab === "home") return heroBlock.visible
+        ? { mode: "gallery", target: "hero-gallery" }
+        : { mode: "basic", target: "basic-card" };
+      if (nextTab === "seats") return environmentGalleryItems[0]
+        ? { mode: "gallery", target: `gallery-${environmentGalleryItems[0].id}` }
+        : null;
+      if (nextTab === "menu") return menuCards[0]
+        ? { mode: "menu", target: `menu-${menuCards[0].id}` }
+        : null;
+      if (nextTab === "map") return { mode: "basic", target: "map-location" };
+      return null;
+    });
+  };
+
   const tabSwitcher = (
     <FeatureSegmentedTabs
       items={tabs}
-      onChange={setActiveTab}
+      onChange={changeStoreTab}
       value={activeTab}
     />
   );
@@ -4547,9 +4563,11 @@ export function StoreDetailExperience({
                   <div className="grid gap-2" key={item.id}>
                     <EnvironmentGalleryCard
                       caption={item.caption}
+                      captionEditing={isMerchantEditorActive(editorTarget) && formalPresentationMediaUrls.has(item.image)}
                       editing={isMerchantEditorActive(editorTarget)}
                       editor={renderMerchantEditor("gallery", "编辑图片", undefined, "default", editorTarget)}
                       image={item.image}
+                      onCaptionChange={(caption) => updatePresentationField("galleryCaptions", environmentGalleryItems.map((entry, position) => position === index ? caption : entry.caption))}
                       onOpen={() => setLightboxIndex(index)}
                       onReplace={(files) => {
                         void replaceGalleryImage(index, files);
@@ -4597,60 +4615,28 @@ export function StoreDetailExperience({
             <div className="mt-3 grid gap-2.5">
               {config.offers.map((offer, index) => {
                 const coverImage = menuCards[index % Math.max(1, menuCards.length)]?.cover ?? images[index % Math.max(1, images.length)];
-                const editorTarget = `offer-${offer.id}`;
-                const offerEditorActive = isMerchantEditorActive(editorTarget);
 
                 return (
                   <div className="grid gap-2" key={offer.id}>
                     <OfferInfoCard
-                      cornerBadge={
-                        isMerchantEditable ? <AppIcon className={cn("h-4 w-4", offerEditorActive && "!text-[#06100b]")} name={offerEditorActive ? "check" : "edit"} /> : canForwardOfferToNeedo ? <ShareNetworkIcon className="h-4 w-4" /> : undefined
-                      }
-                      cornerBadgeAriaLabel={isMerchantEditable ? (offerEditorActive ? "完成修改" : "编辑情报展示") : canForwardOfferToNeedo ? "付费转发到 NeeDo 情报页" : undefined}
-                      cornerBadgeClassName={
-                        isMerchantEditable
-                          ? cn(
-                              "grid h-10 w-10 place-items-center !border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] !bg-[color:color-mix(in_srgb,var(--client-surface)_92%,transparent)] px-0 py-0 !text-[color:var(--client-text)] !shadow-[0_10px_22px_rgba(0,0,0,0.12)] backdrop-blur-xl",
-                              offerEditorActive && "!border-[color:var(--client-primary)] !bg-[color:var(--client-primary)] !text-[#06100b]"
-                            )
-                          : canForwardOfferToNeedo
-                            ? "grid h-10 w-10 place-items-center px-0 py-0"
-                          : undefined
-                      }
+                      cornerBadge={canForwardOfferToNeedo ? <ShareNetworkIcon className="h-4 w-4" /> : undefined}
+                      cornerBadgeAriaLabel={canForwardOfferToNeedo ? "付费转发到 NeeDo 情报页" : undefined}
+                      cornerBadgeClassName={canForwardOfferToNeedo ? "grid h-10 w-10 place-items-center px-0 py-0" : undefined}
                       expiryValue={
-                        <InlineEditableText
-                          className="text-[13px] font-semibold"
-                          editing={offerEditorActive}
-                          onChange={(value) => updateOfferField(index, "validUntil", value)}
-                          value={offer.validUntil}
-                        />
+                        <span className="text-[13px] font-semibold">{offer.validUntil}</span>
                       }
                       expiryCountdown={formatOfferCountdown(offer.validUntil, offersNowMs)}
                       fields={[
                         {
                           label: "利用条件",
                           value: (
-                            <InlineEditableText
-                              className="text-[13px] font-semibold leading-5"
-                              editing={offerEditorActive}
-                              multiline
-                              onChange={(value) => updateOfferField(index, "conditions", value)}
-                              rows={2}
-                              value={offer.conditions}
-                            />
+                            <span className="text-[13px] font-semibold leading-5">{offer.conditions}</span>
                           )
                         },
                         {
                           label: "适用范围",
                           value: (
-                            <InlineEditableText
-                              className="text-[13px] font-semibold leading-5"
-                              editing={offerEditorActive}
-                              multiline
-                              onChange={(value) => updateOfferField(index, "applicable", value)}
-                              rows={2}
-                              value={offer.applicable}
-                            />
+                            <span className="text-[13px] font-semibold leading-5">{offer.applicable}</span>
                           )
                         }
                       ]}
@@ -4678,35 +4664,14 @@ export function StoreDetailExperience({
                       imageAlt={`${offer.title} 缩略图`}
                       imageLabel="情报"
                       noteValue={
-                        <InlineEditableText
-                          className="text-[13px] font-semibold leading-6"
-                          editing={offerEditorActive}
-                          multiline
-                          onChange={(value) => updateOfferField(index, "stackingRule", value)}
-                          rows={2}
-                          value={offer.stackingRule}
-                        />
+                        <span className="text-[13px] font-semibold leading-6">{offer.stackingRule}</span>
                       }
-                      onCornerBadgeClick={
-                        isMerchantEditable
-                          ? () => handleMerchantEditFocus("presentation", editorTarget)
-                          : canForwardOfferToNeedo
-                            ? () => forwardOfferToNeedo(offer, coverImage)
-                            : undefined
-                      }
+                      onCornerBadgeClick={canForwardOfferToNeedo ? () => forwardOfferToNeedo(offer, coverImage) : undefined}
                       titleBadge="NEW"
                       title={
-                        <InlineEditableText
-                          className="text-[20px] font-black leading-[1.24] tracking-[-0.03em]"
-                          editing={offerEditorActive}
-                          multiline
-                          onChange={(value) => updateOfferField(index, "title", value)}
-                          rows={2}
-                          value={offer.title}
-                        />
+                        <span className="text-[20px] font-black leading-[1.24] tracking-[-0.03em]">{offer.title}</span>
                       }
                     />
-                    {renderActiveInlineEditor(editorTarget)}
                   </div>
                 );
               })}
@@ -4969,7 +4934,9 @@ export function StoreDetailExperience({
     return (
       <div className="space-y-4 pb-6">
         <section className="relative z-50 space-y-3 overflow-visible">
-          {renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")}
+          {activeTab !== "moments" && activeTab !== "offers"
+            ? renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")
+            : null}
           <div className={cn("relative", hasMerchantControls && "min-h-[112px]")}>
             <div className="min-w-0 pr-12">
               <p className="truncate text-[11px] font-black tracking-[0.08em] text-[color:var(--client-muted)]">
@@ -5117,37 +5084,43 @@ function formatFormalServicePrice(service: CoreShopDetail["services"][number]) {
 }
 
 function buildFormalStorePresentation(shop: CoreShopDetail, store: Store): StorePresentationConfig {
+  const content = shop.presentationContent;
+  const menuByServiceId = new Map(content?.serviceMenus.map((menu) => [menu.serviceId, menu]) ?? []);
   return {
-    subtitle: shop.description?.trim() || shop.name,
+    subtitle: content?.subtitle ?? shop.description?.trim() ?? shop.name,
+    galleryCaptions: shop.mediaAssets.map((asset) => asset.altText ?? ""),
     favoriteCount: 0,
-    distance: shop.address,
-    station: shop.city,
-    access: shop.address,
+    distance: content?.distance ?? shop.address,
+    station: content?.station ?? shop.city,
+    access: content?.routeGuide ?? shop.address,
     seatLabel: "环境",
     menuLabel: "服务项目",
     peopleLabel: "预约人数",
-    paymentMethods: [],
-    equipment: [],
-    parking: "未公开",
-    routeGuide: shop.address,
+    paymentMethods: content?.paymentMethods ?? [],
+    equipment: content?.equipment ?? [],
+    parking: content?.parking ?? "未公开",
+    routeGuide: content?.routeGuide ?? shop.address,
     seatFilters: [],
     offers: [],
-    menuCards: shop.services.map((service) => ({
-      id: `api-service-${service.id}`,
-      sourceServiceId: String(service.id),
-      name: service.name,
-      subtitle: service.description?.trim() || service.category.name,
-      duration: `${service.durationMinutes} 分钟`,
-      priceLabel: formatFormalServicePrice(service),
-      audience: service.city,
-      tags: Array.from(new Set([
-        service.category.name,
-        service.category.nameJa,
-        ...service.reviewSummary.highlights
-      ].filter((value): value is string => Boolean(value)))).slice(0, 4),
-      cover: service.coverUrl || store.cover,
-      highlights: service.reviewSummary.highlights.slice(0, 3)
-    }))
+    menuCards: shop.services.map((service) => {
+      const menu = menuByServiceId.get(service.id);
+      return {
+        id: `api-service-${service.id}`,
+        sourceServiceId: String(service.id),
+        name: menu?.name ?? service.name,
+        subtitle: menu?.description ?? service.description?.trim() ?? service.category.name,
+        duration: `${service.durationMinutes} 分钟`,
+        priceLabel: formatFormalServicePrice(service),
+        audience: menu?.audience ?? service.city,
+        tags: menu?.tags ?? Array.from(new Set([
+          service.category.name,
+          service.category.nameJa,
+          ...service.reviewSummary.highlights
+        ].filter((value): value is string => Boolean(value)))).slice(0, 4),
+        cover: service.coverUrl || store.cover,
+        highlights: menu?.highlights ?? service.reviewSummary.highlights.slice(0, 3)
+      };
+    })
   };
 }
 
@@ -5195,6 +5168,15 @@ export function UnifiedFormalStoreDetail({
   }
 
   const store = mapCoreShopToStore(query.data);
+  const menuByServiceId = new Map(query.data.presentationContent?.serviceMenus.map((menu) => [menu.serviceId, menu]) ?? []);
+  const serviceCards = query.data.services.map((service) => {
+    const card = mapCoreServiceCardToUnifiedData(service);
+    const menu = menuByServiceId.get(service.id);
+    return menu ? {
+      ...card,
+      tags: [menu.audience, ...menu.tags, ...menu.highlights].filter(Boolean).slice(0, 8)
+    } : card;
+  });
   const technicians = query.data.technicians.map((technician) => ({
     ...mapCoreTechnicianToTechnician(technician),
     storeId: store.id
@@ -5208,7 +5190,7 @@ export function UnifiedFormalStoreDetail({
       notice={notice}
       presentationOverride={buildFormalStorePresentation(query.data, store)}
       scope={scope}
-      serviceCardsOverride={query.data.services.map(mapCoreServiceCardToUnifiedData)}
+      serviceCardsOverride={serviceCards}
       store={store}
       techniciansOverride={technicians}
     />

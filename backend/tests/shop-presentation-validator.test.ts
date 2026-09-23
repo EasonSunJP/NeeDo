@@ -47,12 +47,12 @@ describe("shop presentation validators", () => {
     expect(() => shopPresentationLocaleUpdateBodySchema.parse({ ...validBody, shopId: 99 })).toThrow();
   });
 
-  it("requires one to five unique carousel media references", () => {
+  it("accepts text-only drafts and up to five unique carousel media references", () => {
     expect(shopPresentationLocaleUpdateBodySchema.parse(validBody)).toEqual(validBody);
-    expect(() => shopPresentationLocaleUpdateBodySchema.parse({
+    expect(shopPresentationLocaleUpdateBodySchema.parse({
       ...validBody,
       content: { ...validBody.content, carousel: [] }
-    })).toThrow();
+    }).content.carousel).toEqual([]);
     expect(() => shopPresentationLocaleUpdateBodySchema.parse({
       ...validBody,
       content: {
