@@ -92,6 +92,7 @@ const makeProfile = (): MerchantProfilePayload => ({
   heightCm: 163,
   languages: ["日本語"],
   bio: "商户负责人",
+  bioLocales: {},
   visibility: "public",
   createdAt: now.toISOString(),
   updatedAt: now.toISOString()

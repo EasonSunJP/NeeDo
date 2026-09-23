@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { localizedServiceName } from "./localizedText";
+import { contentLocaleForLanguage, localizedServiceName, localizedText } from "./localizedText";
+
+describe("localized content follows the app UI language", () => {
+  const slots = {
+    "zh-CN": "简体槽",
+    "zh-TW": "繁體槽",
+    ja: "日本語のみでご案内します。",
+    en: "English slot",
+    ko: "한국어 슬롯"
+  };
+
+  it.each([
+    ["zh", "zh-CN"],
+    ["zh-Hant", "zh-TW"],
+    ["ja", "ja"],
+    ["en", "en"],
+    ["ko", "ko"]
+  ] as const)("maps UI %s to content %s", (language, locale) => {
+    expect(contentLocaleForLanguage(language)).toBe(locale);
+    expect(localizedText("fallback", slots, language)).toBe(slots[locale]);
+  });
+
+  it("allows Japanese text copied into every slot without inspecting its language", () => {
+    const copied = Object.fromEntries(Object.keys(slots).map((locale) => [locale, slots.ja]));
+    expect(localizedText("fallback", copied, "en")).toBe(slots.ja);
+  });
+});
 
 describe("localizedServiceName", () => {
   const service = {

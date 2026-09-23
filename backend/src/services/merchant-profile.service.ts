@@ -89,6 +89,7 @@ export class MerchantProfileService {
       ...(input.heightCm !== undefined ? { heightCm: input.heightCm } : {}),
       ...(input.languages !== undefined ? { languages: input.languages } : {}),
       ...(input.bio !== undefined ? { bio: input.bio } : {}),
+      ...(input.localizedBio !== undefined ? { localizedBio: input.localizedBio } : {}),
       ...(input.visibility !== undefined ? { visibility: input.visibility } : {})
     };
     if (input.avatarDataUrl) {

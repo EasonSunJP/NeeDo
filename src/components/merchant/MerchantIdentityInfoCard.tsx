@@ -18,6 +18,9 @@ import { AvatarCropEditor, createCroppedAvatarDataUrl, type AvatarCropState } fr
 import { KycVerifiedBadge } from "../ui/KycVerifiedBadge";
 import { PrivacyModeConfirmDialog } from "../ui/PrivacyModeConfirmDialog";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
+import { LocalizedTextEditor } from "../../shared/localized-content/LocalizedTextEditor";
+import { localizedText } from "../../shared/localized-content/localizedText";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
 
 const languages = ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"];
 const genders: Array<{ value: MerchantProfileGender; label: string }> = [
@@ -86,6 +89,7 @@ function privacySummary(visibility: MerchantProfileVisibility) {
 }
 
 export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?: (editing: boolean) => void }) {
+  const { language } = useOptionalI18n();
   const [profile, setProfile] = useState<MerchantIdentityProfile | null>(null);
   const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -272,12 +276,19 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
             </div>
             <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>语言能力</p><div className="mt-2 flex flex-wrap gap-1.5">{languages.map((language) => <button className={cn("rounded-full border px-2.5 py-1 text-xs font-black", draft.languages.includes(language) ? surface.chip : surface.metric)} key={language} onClick={() => toggleLanguage(language)} type="button">{language}</button>)}</div></div>
             <label className={cn(surface.panel, "block overflow-hidden rounded-[24px] border px-5 py-4")}><span className={cn(surface.muted, "text-xs font-bold")}>自我介绍</span><textarea className="mt-2 min-h-[132px] w-full resize-none bg-transparent text-sm font-bold leading-6 outline-none" onChange={(event) => update({ bio: event.target.value })} value={draft.bio} /></label>
+            <LocalizedTextEditor
+              fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
+              fallback={{ bio: profile.bio ?? "" }}
+              translations={Object.fromEntries(Object.entries(profile.bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
+              onSave={async (locale, values) => setProfile(await merchantProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } }))}
+              onSyncAll={async (locale, values) => setProfile(await merchantProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } }))}
+            />
           </div>
         ) : (
           <div className="mt-3 space-y-3">
             <div className="grid grid-cols-3 gap-2">{[["性别", genderLabel(profile.gender)], ["年龄", profile.age ?? "未设置"], ["身高（cm）", profile.heightCm ?? "未设置"]].map(([label, value]) => <div className={cn(surface.panel, "rounded-[18px] border p-3")} key={label}><p className={cn(surface.muted, "text-xs font-bold")}>{label}</p><strong className="mt-1 block truncate text-sm">{value}</strong></div>)}</div>
             <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>语言能力</p><div className="mt-2 flex flex-wrap gap-1.5">{profile.languages.length ? profile.languages.map((language) => <span className={cn(surface.chip, "rounded-full border px-2.5 py-1 text-xs font-black")} key={language}>{language}</span>) : <span className={cn(surface.muted, "text-sm font-bold")}>未设置</span>}</div></div>
-            <div className={cn(surface.panel, "overflow-hidden rounded-[24px] border px-5 py-4")}><p className={cn(surface.muted, "text-xs font-bold")}>自我介绍</p><p className={cn(surface.muted, "mt-2 text-sm leading-6")}>{profile.bio || "未设置"}</p></div>
+            <div className={cn(surface.panel, "overflow-hidden rounded-[24px] border px-5 py-4")}><p className={cn(surface.muted, "text-xs font-bold")}>自我介绍</p><p className={cn(surface.muted, "mt-2 text-sm leading-6")} data-no-i18n={Boolean(localizedText(profile.bio, profile.bioLocales, language))}>{localizedText(profile.bio, profile.bioLocales, language) || "未设置"}</p></div>
           </div>
         )}
         <div className="mt-3">{privacyControl}</div>

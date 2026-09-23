@@ -23,7 +23,7 @@ import { AppError } from "../utils/app-error";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
-import { readLocalizedServiceMap } from "../domain/technician-localized-content";
+import { mergeLocalizedService, readLocalizedServiceMap } from "../domain/technician-localized-content";
 
 type DecimalLike = {
   toFixed: (decimalPlaces?: number) => string;
@@ -696,16 +696,11 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
           where: { id: input.serviceId, technicianId: input.technicianId, deletedAt: null, ...(input.shopId ? { shopId: input.shopId } : {}) }
         });
         if (!current) return null;
-        const { locale, name, description } = localizedEdit;
-        const localizedContent = readLocalizedServiceMap(current.localizedContentJson);
         await transaction.technicianService.update({
           where: { id: current.id },
           data: {
             ...this.technicianServiceUpdateData(input),
-            localizedContentJson: {
-              ...localizedContent,
-              [locale]: { ...localizedContent[locale], ...(name !== undefined ? { name } : {}), ...(description !== undefined ? { description } : {}) }
-            }
+            localizedContentJson: mergeLocalizedService(current.localizedContentJson, localizedEdit)
           }
         });
         const service = await transaction.technicianService.findUniqueOrThrow({ where: { id: current.id }, include: technicianServiceCardInclude });

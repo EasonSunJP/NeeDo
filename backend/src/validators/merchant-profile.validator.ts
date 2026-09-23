@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONTENT_LOCALES } from "../constants/content-locales";
 
 const avatarDataUrlSchema = z
   .string()
@@ -21,6 +22,7 @@ export const merchantProfileUpdateBodySchema = z
     heightCm: z.number().min(30).max(250).nullable().optional(),
     languages: z.array(z.string().trim().min(1).max(40)).max(10).optional(),
     bio: z.string().trim().max(2_000).nullable().optional(),
+    localizedBio: z.object({ locale: z.enum(CONTENT_LOCALES), bio: z.string().trim().max(2_000), syncAll: z.boolean().optional() }).strict().optional(),
     visibility: merchantProfileVisibilitySchema.optional()
   })
   .strict()

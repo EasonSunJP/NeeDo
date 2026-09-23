@@ -22,6 +22,8 @@ import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { LocalizedTextEditor } from "../../shared/localized-content/LocalizedTextEditor";
+import { localizedText } from "../../shared/localized-content/localizedText";
 import type { Language } from "../../i18n/translations";
 import {
   bookingApi,
@@ -508,6 +510,7 @@ function FormalUserCenterDataGate({
   return (
     <CompleteUserCenterPage
       formalData={formalData}
+      key={formalData.profile.id}
       onFormalProfileUpdated={(profile) => {
         if (!cacheScope) return;
         void persistentResourceCache.write(cacheScope, cacheKey, {
@@ -551,6 +554,7 @@ function CompleteUserCenterPage({
   const [avatarCrop, setAvatarCrop] = useState<AvatarCropState | null>(null);
   const [profileToastMessage, setProfileToastMessage] = useState("");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [bioLocales, setBioLocales] = useState(formalData.profile.bioLocales);
   const visibleProfile = profileDraft
     ? {
         avatar: profileDraft.avatar,
@@ -1122,7 +1126,7 @@ function CompleteUserCenterPage({
                   }
                   age={visibleProfile.age ? Number(visibleProfile.age) : null}
                   avatarUrl={visibleProfile.avatar || null}
-                  bio={visibleProfile.bio}
+                  bio={localizedText(visibleProfile.bio, bioLocales, language) ?? ""}
                   credit={`${creditScore} /5`}
                   displayName={displayName}
                   ekycVerified={formalData.membership.ekycVerified}
@@ -1538,6 +1542,21 @@ function CompleteUserCenterPage({
                             ref={bioInputRef}
                           />
                         </label>
+                        <LocalizedTextEditor
+                          fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
+                          fallback={{ bio: formalData.profile.bio ?? "" }}
+                          translations={Object.fromEntries(Object.entries(bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
+                          onSave={async (locale, values) => {
+                            const saved = await customerProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } });
+                            setBioLocales(saved.bioLocales);
+                            onFormalProfileUpdated(saved);
+                          }}
+                          onSyncAll={async (locale, values) => {
+                            const saved = await customerProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } });
+                            setBioLocales(saved.bioLocales);
+                            onFormalProfileUpdated(saved);
+                          }}
+                        />
                       </div>
                     ) : (
                       <>
@@ -1630,8 +1649,9 @@ function CompleteUserCenterPage({
                               "mt-2 text-sm leading-6",
                               membershipSurface.muted,
                             )}
+                            data-no-i18n={Boolean(localizedText(visibleProfile.bio, bioLocales, language))}
                           >
-                            {visibleProfile.bio || "未设置"}
+                            {localizedText(visibleProfile.bio, bioLocales, language) || "未设置"}
                           </p>
                         </div>
                       </>

@@ -73,7 +73,7 @@ export type TechnicianSelfProfileUpdate = Partial<Pick<
   | "paymentMethods"
   | "serviceBase"
   | "visibility"
->> & { avatarDataUrl?: string; localizedBio?: { locale: ContentLocale; bio: string } };
+>> & { avatarDataUrl?: string; localizedBio?: { locale: ContentLocale; bio: string; syncAll?: boolean } };
 
 export type TechnicianPersonalCenterUpdate = Pick<
   TechnicianSelfProfile,

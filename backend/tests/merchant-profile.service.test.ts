@@ -17,6 +17,7 @@ const profile: MerchantProfilePayload = {
   heightCm: 163,
   languages: ["日本語"],
   bio: "商户负责人",
+  bioLocales: {},
   visibility: "public",
   createdAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z"

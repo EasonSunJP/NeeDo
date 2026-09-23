@@ -38,6 +38,14 @@ describe("shared platform membership cards", () => {
     expect(privacy).toBeGreaterThan(labels);
   });
 
+  it("protects authored biography text from runtime UI translation", () => {
+    const markup = renderToStaticMarkup(
+      <PlatformMembershipDetailCard {...profile} bio="日本語のみでご案内します。" theme={theme} />
+    );
+
+    expect(markup).toMatch(/<p[^>]*data-no-i18n[^>]*>日本語のみでご案内します。<\/p>/);
+  });
+
   it("keeps formal NDP primary and renders Test NDP as a secondary balance", () => {
     const markup = renderToStaticMarkup(
       <PlatformMembershipDetailCard

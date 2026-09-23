@@ -2727,6 +2727,7 @@ model CustomerProfile {
   userId                        Int                             @unique @map("user_id")
   displayName                   String                          @map("display_name") @db.VarChar(120)
   bio                           String?                         @db.Text
+  bioLocalesJson                Json?                           @map("bio_locales_json")
   city                          String?                         @db.VarChar(100)
   membershipLevel               String                          @default("standard") @map("membership_level") @db.VarChar(50)
   membershipGrantMode           CustomerMembershipGrantMode     @default(SELF_SERVICE) @map("membership_grant_mode")
@@ -2801,6 +2802,7 @@ model MerchantIdentityProfile {
   heightCm    Decimal?  @map("height_cm") @db.Decimal(5, 2)
   languages   Json?
   bio         String?   @db.Text
+  bioLocalesJson Json?  @map("bio_locales_json")
   visibility  String    @default("public") @db.VarChar(20)
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")

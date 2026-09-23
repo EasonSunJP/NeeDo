@@ -12,6 +12,14 @@ export function readLocalizedBioMap(value: unknown): Partial<Record<ContentLocal
   return Object.fromEntries(CONTENT_LOCALES.flatMap((locale) => typeof source[locale] === "string" ? [[locale, source[locale]]] : []));
 }
 
+export function mergeLocalizedBio(
+  value: unknown,
+  edit: { locale: ContentLocaleCode; bio: string; syncAll?: boolean }
+): Partial<Record<ContentLocaleCode, string>> {
+  if (edit.syncAll) return Object.fromEntries(CONTENT_LOCALES.map((locale) => [locale, edit.bio]));
+  return { ...readLocalizedBioMap(value), [edit.locale]: edit.bio };
+}
+
 export function readLocalizedServiceMap(value: unknown): Partial<Record<ContentLocaleCode, TechnicianServiceLocalizedText>> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const result: Partial<Record<ContentLocaleCode, TechnicianServiceLocalizedText>> = {};
@@ -28,4 +36,17 @@ export function readLocalizedServiceMap(value: unknown): Partial<Record<ContentL
     }
   }
   return result;
+}
+
+export function mergeLocalizedService(
+  value: unknown,
+  edit: { locale: ContentLocaleCode; name?: string; description?: string; syncAll?: boolean }
+): Partial<Record<ContentLocaleCode, TechnicianServiceLocalizedText>> {
+  const current = readLocalizedServiceMap(value);
+  const next = {
+    ...(edit.name !== undefined ? { name: edit.name } : {}),
+    ...(edit.description !== undefined ? { description: edit.description } : {})
+  };
+  if (edit.syncAll) return Object.fromEntries(CONTENT_LOCALES.map((locale) => [locale, { ...current[edit.locale], ...next }]));
+  return { ...current, [edit.locale]: { ...current[edit.locale], ...next } };
 }
