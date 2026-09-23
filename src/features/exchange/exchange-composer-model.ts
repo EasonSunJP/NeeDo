@@ -10,6 +10,7 @@ export type ExchangeComposerErrorKey =
   | "required"
   | "invalidWindow"
   | "invalidRequestWindow"
+  | "applicationDeadlinePassed"
   | "invalidBudget"
   | "invalidPrice"
   | "serviceRequired"
@@ -105,7 +106,8 @@ export function applyRequestDraftPatch(current: RequestComposerDraft, patch: Par
 
 export function normalizeRequestDraft(
   draft: RequestComposerDraft,
-  context: ExchangeRequestPublicationContext
+  context: ExchangeRequestPublicationContext,
+  nowMs?: number
 ): { ok: true; value: PublishExchangeDemandInput } | { ok: false; errorKey: ExchangeComposerErrorKey } {
   if (draft.cover?.status === "uploading") return { ok: false, errorKey: "demandCoverUploading" };
   if (draft.cover && (
@@ -142,6 +144,9 @@ export function normalizeRequestDraft(
   if (!(expiresAt < serviceStartAt && serviceStartAt < serviceEndAt)
     || ![draft.serviceStartTime, draft.serviceEndTime, draft.expiresTime].every((time) => /^\d{2}:(?:00|30)$/.test(time))) {
     return { ok: false, errorKey: "invalidRequestWindow" };
+  }
+  if (nowMs !== undefined && Date.parse(expiresAt) <= nowMs) {
+    return { ok: false, errorKey: "applicationDeadlinePassed" };
   }
   if (budgetMinJpy !== null && budgetMinJpy > budgetMaxJpy) {
     return { ok: false, errorKey: "invalidBudget" };

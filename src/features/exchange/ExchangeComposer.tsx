@@ -297,7 +297,7 @@ export function ExchangeComposer({
         setErrorKey("requestNotAllowed");
         return;
       }
-      result = normalizeRequestDraft(requestDraft, requestContext);
+      result = normalizeRequestDraft(requestDraft, requestContext, Date.now());
     } else {
       const selectedService = intelligenceServiceOptions.find(
         (option) => option.serviceRef === intelligenceDraft.serviceRef
@@ -328,6 +328,12 @@ export function ExchangeComposer({
 
   const publish = async () => {
     if (!normalizedPayload || pending) return;
+    if (normalizedPayload.type === "demand" && Date.parse(normalizedPayload.expiresAt) <= Date.now()) {
+      setErrorKey("applicationDeadlinePassed");
+      setNormalizedPayload(null);
+      setStep("edit");
+      return;
+    }
     setErrorKey(null);
     setPending(true);
     try {

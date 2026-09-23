@@ -86,6 +86,7 @@ describe("RequestComposerFields formal publication contract", () => {
   let root: Root;
 
   beforeEach(() => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-30T00:00:00.000Z"));
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -104,6 +105,7 @@ describe("RequestComposerFields formal publication contract", () => {
     await act(async () => root.unmount());
     document.body.querySelectorAll(".client-mobile-fullscreen-page,.client-action-dialog-overlay").forEach((node) => node.remove());
     container.remove();
+    vi.restoreAllMocks();
   });
 
   async function renderAndOpen() {

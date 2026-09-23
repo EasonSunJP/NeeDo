@@ -43,6 +43,15 @@ describe("Request composer application deadline", () => {
     }
   });
 
+  it("stops review when the application deadline has already passed", () => {
+    const valid = normalizeRequestDraft(draft, context);
+    expect(valid.ok).toBe(true);
+    if (!valid.ok) return;
+    const deadlineMs = Date.parse(valid.value.expiresAt);
+    expect(normalizeRequestDraft(draft, context, deadlineMs - 1).ok).toBe(true);
+    expect(normalizeRequestDraft(draft, context, deadlineMs)).toEqual({ ok: false, errorKey: "applicationDeadlinePassed" });
+  });
+
   it("defaults the application deadline to thirty minutes before service starts", () => {
     const emptyDeadline = { ...draft, expiresDate: "", expiresTime: "" };
     expect(applyRequestDraftPatch(emptyDeadline, { serviceStartTime: "10:00" })).toMatchObject({

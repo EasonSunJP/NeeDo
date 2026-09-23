@@ -218,6 +218,7 @@ describe("ExchangeComposer publication", () => {
   let root: Root;
 
   beforeEach(() => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-30T00:00:00.000Z"));
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -240,6 +241,7 @@ describe("ExchangeComposer publication", () => {
     await act(async () => root.unmount());
     container.remove();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("defaults the Request application deadline thirty minutes before service starts", async () => {
@@ -316,6 +318,21 @@ describe("ExchangeComposer publication", () => {
     await waitFor(() => expect(publishExchangePost).toHaveBeenCalledTimes(2));
     expect(vi.mocked(publishExchangePost).mock.calls[0]?.[1]).toBe("123e4567-e89b-42d3-a456-426614174000");
     expect(vi.mocked(publishExchangePost).mock.calls[1]?.[1]).toBe("123e4567-e89b-42d3-a456-426614174000");
+  });
+
+  it("returns to editing if the application deadline passes during review", async () => {
+    await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
+    await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
+    fillDemandForm(document.body);
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
+    expect(document.body.querySelector('[data-testid="exchange-publication-review"]')).not.toBeNull();
+
+    vi.mocked(Date.now).mockReturnValue(Date.parse("2026-08-31T03:30:00.000Z"));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-publish"]')?.click());
+    expect(document.body.textContent).toContain("应募截止时间已过");
+    expect(document.body.querySelector('[data-testid="exchange-publication-review"]')).toBeNull();
+    expect(publishExchangePost).not.toHaveBeenCalled();
   });
 
   it("returns to edit and refreshes a stale Request target limit without losing the draft", async () => {

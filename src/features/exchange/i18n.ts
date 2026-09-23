@@ -198,6 +198,7 @@ const translations = {
   required: { zh: "请填写所有必填字段", "zh-Hant": "請填寫所有必填欄位", ja: "「＊」のついた必須項目を必ずご記入ください。", en: "Complete every required field", ko: "필수 항목을 모두 입력해 주세요" },
   invalidWindow: { zh: "请确认服务开始、结束和有效期的先后顺序", "zh-Hant": "請確認服務開始、結束與有效期的先後順序", ja: "開始・終了・掲載期限の順序を確認してください", en: "Check the start, end, and expiry order", ko: "시작, 종료, 게시 기한 순서를 확인해 주세요" },
   invalidRequestWindow: { zh: "应募截止须至少早于服务开始30分钟，服务结束须晚于开始；时间请选择整点或半点", "zh-Hant": "應募截止須至少早於服務開始30分鐘，服務結束須晚於開始；時間請選整點或半點", ja: "応募締切はサービス開始の30分以上前、終了は開始後に設定し、時刻は00分か30分を選んでください", en: "Set the application deadline at least 30 minutes before service starts, the end after the start, and use half-hour times", ko: "지원 마감은 서비스 시작보다 최소 30분 전, 종료는 시작 후로 설정하고 30분 단위 시간을 선택해 주세요" },
+  applicationDeadlinePassed: { zh: "应募截止时间已过，请设置更晚的服务开始时间或截止时间", "zh-Hant": "應募截止時間已過，請設定較晚的服務開始時間或截止時間", ja: "応募締切を過ぎています。サービス開始時刻または締切を後に設定してください", en: "The application deadline has passed. Choose a later service start or deadline.", ko: "지원 마감 시간이 지났습니다. 서비스 시작 또는 마감 시간을 더 늦게 설정해 주세요" },
   invalidBudget: { zh: "最低预算不能高于最高预算", "zh-Hant": "最低預算不能高於最高預算", ja: "最低予算は最高予算以下にしてください", en: "Minimum budget must not exceed maximum", ko: "최소 예산은 최대 예산보다 클 수 없습니다" },
   invalidPrice: { zh: "服务价格不能高于原价", "zh-Hant": "服務價格不能高於原價", ja: "サービス価格は通常価格以下にしてください", en: "Service price must not exceed original price", ko: "서비스 가격은 정상가보다 클 수 없습니다" },
   targetProviderLimit: { zh: "所需人数超出当前发布上限", "zh-Hant": "所需人數超出目前發布上限", ja: "必要人数が現在の投稿上限を超えています", en: "The requested provider count exceeds your current limit", ko: "요청 인원이 현재 게시 한도를 초과합니다" },
