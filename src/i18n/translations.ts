@@ -4637,6 +4637,7 @@ export const translations: TranslationMap = {
   "技师头像预览": { "zh-Hant": "技師頭像預覽", ja: "技術者のプロフィール画像プレビュー", en: "Technician profile image preview", ko: "기술자 프로필 사진 미리보기" },
   "正在读取头像": { "zh-Hant": "正在讀取頭像", ja: "プロフィール画像を読み込み中", en: "Loading profile image", ko: "프로필 사진을 불러오는 중" },
   "头像读取失败，请重新选择图片": { "zh-Hant": "頭像讀取失敗，請重新選擇圖片", ja: "プロフィール画像を読み込めませんでした。画像を選び直してください。", en: "Could not read the profile image. Choose another image.", ko: "프로필 사진을 읽을 수 없습니다. 다른 이미지를 선택해 주세요." },
+  "头像过大，请重新选择图片": { "zh-Hant": "頭像過大，請重新選擇圖片", ja: "プロフィール画像が大きすぎます。別の画像を選んでください。", en: "The profile image is too large. Choose another image.", ko: "프로필 사진이 너무 큽니다. 다른 이미지를 선택해 주세요." },
   "更换图片": { "zh-Hant": "更換圖片", ja: "画像を変更", en: "Change image", ko: "이미지 변경" },
   "更看重评分与履约稳定度。": { "zh-Hant": "更看重評分與履約穩定度。", ja: "彼らは格付けと契約履行の安定性をより重視する。", en: "They place greater emphasis on ratings and contract performance stability.", ko: "그들은 신용 등급과 계약 이행 안정성에 더 큰 비중을 둡니다." },
   "更新": { "zh-Hant": "更新", ja: "更新", en: "Update", ko: "업데이트" },

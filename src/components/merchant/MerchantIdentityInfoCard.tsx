@@ -8,11 +8,13 @@ import {
   type MerchantProfileVisibility
 } from "../../features/core-read/merchantProfileApi";
 import { copyTextToClipboard } from "../../lib/share";
+import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
 import { formatWalletAmount, hasTestNdpWallet } from "../../features/wallet/presentation";
 import { IconButton, StickyBottomBar } from "../client-ui/AppScaffold";
 import { AvatarImage } from "../ui/AvatarImage";
+import { AvatarCropEditor, createCroppedAvatarDataUrl, type AvatarCropState } from "../ui/AvatarCropEditor";
 import { KycVerifiedBadge } from "../ui/KycVerifiedBadge";
 import { PrivacyModeConfirmDialog } from "../ui/PrivacyModeConfirmDialog";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
@@ -78,15 +80,6 @@ function profileError(error: unknown) {
   return "商户信息卡保存失败，请稍后重试";
 }
 
-function fileDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("invalid file"));
-    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
-    reader.readAsDataURL(file);
-  });
-}
-
 function privacySummary(visibility: MerchantProfileVisibility) {
   if (visibility === "public") return "公开可见";
   return privacyOptions.find((option) => option.value === visibility)?.label ?? "隐私模式";
@@ -99,6 +92,8 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [readingAvatar, setReadingAvatar] = useState(false);
+  const [avatarCrop, setAvatarCrop] = useState<AvatarCropState | null>(null);
   const [error, setError] = useState("");
   const [privacyMenuOpen, setPrivacyMenuOpen] = useState(false);
   const [privacyConfirmOpen, setPrivacyConfirmOpen] = useState(false);
@@ -133,8 +128,10 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
     setCopyStatus(await copyTextToClipboard(profile.publicId) ? "copied" : "failed");
   };
   const cancelEditing = () => {
+    if (readingAvatar) return;
     if (profile) setDraft(toDraft(profile));
     setEditing(false);
+    setAvatarCrop(null);
     setPrivacyMenuOpen(false);
     setPrivacyConfirmOpen(false);
     setError("");
@@ -149,7 +146,32 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    try { update({ avatarDataUrl: await fileDataUrl(file) }); } catch { setError("头像读取失败，请重新选择"); }
+    setReadingAvatar(true);
+    setError("");
+    try {
+      const source = await readImageFileAsDataUrl(file, { maxDimension: 1800, maxStoredBytes: 1_200_000 });
+      setAvatarCrop({ source, scale: 1, offsetX: 0, offsetY: 0, naturalWidth: 0, naturalHeight: 0 });
+    } catch {
+      setError("头像读取失败，请重新选择");
+    } finally {
+      setReadingAvatar(false);
+    }
+  };
+  const applyAvatarCrop = async () => {
+    if (!avatarCrop || saving) return;
+    try {
+      const avatarDataUrl = await createCroppedAvatarDataUrl(avatarCrop);
+      if (avatarDataUrl.length > 900_000) {
+        setAvatarCrop(null);
+        setError("头像过大，请重新选择图片");
+        return;
+      }
+      update({ avatarDataUrl });
+      setAvatarCrop(null);
+      setError("");
+    } catch {
+      setError("头像读取失败，请重新选择");
+    }
   };
   const updatePrivacyEnabled = (enabled: boolean) => {
     if (enabled) { setPrivacyConfirmOpen(true); return; }
@@ -162,7 +184,7 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
     setPrivacyMenuOpen(true);
   };
   const save = async () => {
-    if (!draft || saving) return;
+    if (!draft || saving || readingAvatar || avatarCrop) return;
     const age = nullableNumber(draft.age);
     const heightCm = nullableNumber(draft.heightCm);
     if (!draft.displayName.trim() || (age !== null && (!Number.isInteger(age) || age < 18 || age > 150)) || (heightCm !== null && (heightCm < 30 || heightCm > 250))) {
@@ -219,12 +241,12 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
           className={cn("absolute right-4 top-4 z-10 shadow-[0_14px_30px_rgba(0,0,0,0.22)]", editing ? "border-red-400 bg-red-500 text-white" : surface.metric)}
           icon={editing ? "x" : "edit"}
           label={editing ? "取消编辑" : "编辑资料"}
-          onClick={saving ? undefined : editing ? cancelEditing : startEditing}
+          onClick={saving || readingAvatar ? undefined : editing ? cancelEditing : startEditing}
         />
         <div className="flex min-w-0 items-start gap-3 pr-11">
           <div className="relative h-36 w-36 shrink-0">
             {avatar ? <AvatarImage alt={profile.displayName} className="h-36 w-36 rounded-[28px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] object-cover" src={avatar} /> : <span className="grid h-36 w-36 place-items-center rounded-[28px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] bg-[color:var(--client-primary-soft)] text-4xl font-black text-[color:var(--client-primary-strong)]">{profile.displayName.slice(0, 1)}</span>}
-            {editing ? <><input accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleAvatar} ref={avatarInputRef} type="file" /><IconButton className={cn(surface.metric, "absolute bottom-2 right-2 h-10 w-10 text-white")} icon="edit" label="更换头像" onClick={() => avatarInputRef.current?.click()} /></> : null}
+            {editing ? <><input accept="image/jpeg,image/png,image/webp" className="hidden" disabled={saving || readingAvatar} onChange={handleAvatar} ref={avatarInputRef} type="file" /><IconButton className={cn(surface.metric, "absolute bottom-2 right-2 h-10 w-10 text-white")} icon="edit" label="更换头像" onClick={saving || readingAvatar ? undefined : () => avatarInputRef.current?.click()} /></> : null}
           </div>
           <div className="flex min-h-36 min-w-0 flex-1 flex-col">
             {editing ? <input aria-label="商户姓名" className="min-w-0 border-0 bg-transparent text-lg font-black outline-none" onChange={(event) => update({ displayName: event.target.value })} value={draft.displayName} /> : <h1 className="break-words text-lg font-black leading-tight">{profile.displayName}<KycVerifiedBadge className="ml-1 inline-flex align-middle" size="label" /></h1>}
@@ -261,7 +283,8 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
         <div className="mt-3">{privacyControl}</div>
         {error ? <p className="mt-3 text-sm font-black text-red-500" role="alert">{error}</p> : null}
       </section>
-      {editing ? <StickyBottomBar><button className="w-full rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-60" disabled={saving} onClick={() => void save()} type="button">{saving ? "正在保存资料" : "保存并退出编辑模式"}</button></StickyBottomBar> : null}
+      {avatarCrop ? <AvatarCropEditor crop={avatarCrop} onApply={() => void applyAvatarCrop()} onCancel={() => setAvatarCrop(null)} onChange={setAvatarCrop} /> : null}
+      {editing ? <StickyBottomBar><button className="w-full rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-60" disabled={saving || readingAvatar || Boolean(avatarCrop)} onClick={() => void save()} type="button">{saving ? "正在保存资料" : "保存并退出编辑模式"}</button></StickyBottomBar> : null}
     </>
   );
 }
