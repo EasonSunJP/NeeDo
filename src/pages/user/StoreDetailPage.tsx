@@ -68,6 +68,7 @@ import { SocialEmptyState, SocialPostItem } from "../../features/social/componen
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
+import { localizedServiceName } from "../../shared/localized-content/localizedText";
 import { registerTranslationEntries, translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
@@ -1404,7 +1405,7 @@ function StoreTechnicianServiceListRow({
   const favoriteCount = Math.max(0, technician.orderCount);
   const shareCount = 0;
   const statusLabel = technician.status === "available" ? "可预约" : technician.status === "busy" ? "预约确认中" : "休息中";
-  const headline = [technician.age ? `${technician.age}岁` : "", technician.height ?? "", technician.skills[0], technician.serviceAreas[0]]
+  const headline = [technician.age ? `${technician.age}岁` : "", technician.height ?? "", technician.primaryService ? localizedServiceName(technician.primaryService, language) : technician.skills[0], technician.serviceAreas[0]]
     .filter(Boolean)
     .join(" / ");
   const showSelectionAction = !isMerchantEditable && typeof selected === "boolean" && Boolean(onSelect);
@@ -1768,7 +1769,7 @@ function InlineEditableText({
   value: string;
 }) {
   if (!editing) {
-    return <span className={className}>{value}</span>;
+    return <span className={className} data-no-i18n>{value}</span>;
   }
 
   if (multiline) {
@@ -4262,7 +4263,7 @@ export function StoreDetailExperience({
                         {slide.caption ? (
                           <>
                             <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/72 via-black/34 to-transparent" />
-                            <p className="absolute inset-x-4 bottom-8 max-w-[76%] text-[13px] font-bold leading-5 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)]">
+                            <p className="absolute inset-x-4 bottom-8 max-w-[76%] text-[13px] font-bold leading-5 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)]" data-no-i18n>
                               {slide.caption}
                             </p>
                           </>
@@ -4969,8 +4970,8 @@ export function StoreDetailExperience({
               <p className="truncate text-[11px] font-black tracking-[0.08em] text-[color:var(--client-muted)]">
                 <span>店铺 ID</span> <span data-no-i18n>{store.systemId}</span>
               </p>
-              <h2 className="text-[24px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h2>
-              <p className="mt-1 text-sm text-[color:var(--client-muted)]">{store.address}</p>
+              <h2 className="text-[24px] font-black tracking-[-0.04em] text-[color:var(--client-text)]" data-no-i18n>{store.name}</h2>
+              <p className="mt-1 text-sm text-[color:var(--client-muted)]" data-no-i18n>{store.address}</p>
             </div>
             {hasMerchantControls ? (
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -5013,8 +5014,8 @@ export function StoreDetailExperience({
                 <AppIcon className="h-5 w-5" name="back" />
               </button>
               <div className="min-w-0 flex-1 pt-2">
-                <h1 className="truncate text-[22px] font-black leading-none tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h1>
-                <p className="mt-2 truncate text-[12px] font-semibold leading-none text-[color:var(--client-muted)]">{store.address}</p>
+                <h1 className="truncate text-[22px] font-black leading-none tracking-[-0.04em] text-[color:var(--client-text)]" data-no-i18n>{store.name}</h1>
+                <p className="mt-2 truncate text-[12px] font-semibold leading-none text-[color:var(--client-muted)]" data-no-i18n>{store.address}</p>
               </div>
               <div className="flex h-[54px] shrink-0 items-start gap-2">
                 <IconMetricAction

@@ -71,6 +71,13 @@ const record = () => ({
 });
 
 describe("TechnicianServiceBookingContextRepository", () => {
+  it("includes saved service text for UI-locale rendering on the detail page", async () => {
+    const technicianService = { ...record(), localizedContentJson: { ja: { name: "和装", description: "日本語の説明" }, en: { name: "Kimono dressing", description: "English description" } } };
+    const repository = new TechnicianServiceBookingContextRepository({
+      technicianService: { findFirst: jest.fn(async () => technicianService) }
+    } as unknown as PrismaClient);
+    await expect(repository.findContext(701, now)).resolves.toMatchObject({ serviceCard: { localizedContent: technicianService.localizedContentJson } });
+  });
   it("never substitutes the account bootstrap avatar for the technician card", async () => {
     const technicianService = record();
     technicianService.technicianProfile.mediaAssets = [];

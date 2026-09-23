@@ -143,4 +143,23 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
       displayName: "更新后的资料"
     });
   });
+
+  it("persists one-language content in all five slots within the customer profile", async () => {
+    await repository.updateMine(userId, profileId, identityId, {
+      localizedBio: { locale: "ja", bio: "日本語で対応します", syncAll: true }
+    }, {
+      action: "customer_profile.self_update",
+      actorId: userId,
+      targetId: profileId,
+      targetType: "CustomerProfile"
+    });
+    const profile = await repository.findMine(userId, profileId);
+    expect(profile?.bioLocales).toEqual({
+      "zh-CN": "日本語で対応します",
+      "zh-TW": "日本語で対応します",
+      ja: "日本語で対応します",
+      en: "日本語で対応します",
+      ko: "日本語で対応します"
+    });
+  });
 });

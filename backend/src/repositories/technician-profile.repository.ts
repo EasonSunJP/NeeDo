@@ -4,7 +4,7 @@ import { prisma } from "../prisma/client";
 import { AppError } from "../utils/app-error";
 import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
-import { readLocalizedBioMap } from "../domain/technician-localized-content";
+import { mergeLocalizedBio, readLocalizedBioMap } from "../domain/technician-localized-content";
 import type { ContentLocaleCode } from "../constants/content-locales";
 import { syncPersonalDisplayName } from "./personal-display-name.repository";
 import {
@@ -47,7 +47,7 @@ export interface TechnicianProfileMutation {
   heightCm?: number | null;
   languages?: string[];
   bio?: string | null;
-  localizedBio?: { locale: ContentLocaleCode; bio: string };
+  localizedBio?: { locale: ContentLocaleCode; bio: string; syncAll?: boolean };
   serviceAreas?: string[];
   canServeForeigners?: boolean;
   bidBudgetMinJpy?: number | null;
@@ -193,10 +193,7 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
         data: {
           ...this.profileData(mutation),
           ...(mutation.localizedBio ? {
-            bioLocalesJson: {
-              ...readLocalizedBioMap(current.bioLocalesJson),
-              [mutation.localizedBio.locale]: mutation.localizedBio.bio
-            }
+            bioLocalesJson: mergeLocalizedBio(current.bioLocalesJson, mutation.localizedBio)
           } : {})
         }
       });

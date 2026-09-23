@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 import { prisma } from "../prisma/client";
 import type { TechnicianServiceBookingContextPayload } from "../types/technician-service-booking-context.types";
+import { readLocalizedServiceMap } from "../domain/technician-localized-content";
 
 const cardMedia = {
   where: { deletedAt: null, isActive: true },
@@ -184,6 +185,7 @@ export class TechnicianServiceBookingContextRepository {
         : null;
     const servicesPath =
       `/stores/${shopPublicId}/technicians/${technicianPublicId}/services`;
+    const localizedContent = readLocalizedServiceMap(record.localizedContentJson);
 
     return {
       target: { type: "technician_service", id: record.id },
@@ -192,6 +194,7 @@ export class TechnicianServiceBookingContextRepository {
         publicId: record.publicId,
         name: record.name,
         description: record.description,
+        ...(Object.keys(localizedContent).length ? { localizedContent } : {}),
         coverUrl: record.coverImageUrl?.trim() || serviceImageUrls[0] || null,
         imageUrls: serviceImageUrls,
         tags: this.stringList(record.tagsJson),

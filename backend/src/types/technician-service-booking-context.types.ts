@@ -1,10 +1,12 @@
 import type { ExchangeServiceMode } from "./exchange.types";
+import type { ContentLocaleCode } from "../constants/content-locales";
 
 export interface TechnicianServiceBookingContextServiceCardPayload {
   targetType: "technician_service";
   publicId: string;
   name: string;
   description: string | null;
+  localizedContent?: Partial<Record<ContentLocaleCode, { name?: string; description?: string }>>;
   coverUrl: string | null;
   imageUrls: string[];
   tags: string[];

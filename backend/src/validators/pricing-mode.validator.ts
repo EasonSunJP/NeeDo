@@ -58,6 +58,7 @@ export const technicianServiceBodySchema = z.object({
   description: z.string().trim().max(2000).nullable().optional(),
   localizedContent: z.object({
     locale: z.enum(CONTENT_LOCALES),
+    syncAll: z.boolean().optional(),
     name: z.string().trim().max(160).optional(),
     description: z.string().trim().max(2000).optional()
   }).strict().refine((value) => value.name !== undefined || value.description !== undefined).optional(),

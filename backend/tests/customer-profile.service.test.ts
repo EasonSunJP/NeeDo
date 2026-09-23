@@ -23,6 +23,7 @@ const updatedProfile: CustomerProfilePayload = {
   heightCm: null,
   languages: ["日本語", "English"],
   bio: null,
+  bioLocales: {},
   visibility: "network",
   isPublic: false,
   createdAt: "2026-08-26T00:00:00.000Z",

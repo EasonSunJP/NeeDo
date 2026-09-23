@@ -1,9 +1,9 @@
-import type {
-  CustomerProfile,
-  MediaAsset,
+import {
   Prisma,
-  PrismaClient,
-  UserExperienceAccount
+  type CustomerProfile,
+  type MediaAsset,
+  type PrismaClient,
+  type UserExperienceAccount
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
@@ -12,6 +12,8 @@ import { AppError } from "../utils/app-error";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
 import { syncPersonalDisplayName } from "./personal-display-name.repository";
+import { mergeLocalizedBio, readLocalizedBioMap } from "../domain/technician-localized-content";
+import type { ContentLocaleCode } from "../constants/content-locales";
 
 export interface CustomerProfileMutation {
   displayName?: string;
@@ -20,6 +22,7 @@ export interface CustomerProfileMutation {
   heightCm?: number | null;
   languages?: string[];
   bio?: string | null;
+  localizedBio?: { locale: ContentLocaleCode; bio: string; syncAll?: boolean };
   visibility?: "public" | "privateAll" | "limited" | "network";
   isPublic?: boolean;
   avatar?: { url: string; mimeType: string };
@@ -39,6 +42,7 @@ export interface CustomerProfilePayload {
   heightCm: number | null;
   languages: string[];
   bio: string | null;
+  bioLocales: Partial<Record<ContentLocaleCode, string>>;
   visibility: "public" | "privateAll" | "limited" | "network";
   isPublic: boolean;
   createdAt: string;
@@ -96,6 +100,9 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
     auditLog: AuditLogCreateInput
   ): Promise<CustomerProfilePayload> {
     const profile = await this.client.$transaction(async (transaction) => {
+      if (mutation.localizedBio) {
+        await transaction.$queryRaw(Prisma.sql`SELECT id FROM customer_profiles WHERE id = ${profileId} AND user_id = ${userId} AND deleted_at IS NULL FOR UPDATE`);
+      }
       const current = await transaction.customerProfile.findFirst({
         where: { id: profileId, userId, deletedAt: null }
       });
@@ -106,7 +113,10 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
 
       const updated = await transaction.customerProfile.update({
         where: { id: current.id },
-        data: this.profileData(mutation),
+        data: {
+          ...this.profileData(mutation),
+          ...(mutation.localizedBio ? { bioLocalesJson: mergeLocalizedBio(current.bioLocalesJson, mutation.localizedBio) } : {})
+        },
         include: {
           mediaAssets: this.avatarMediaInclude(),
           user: {
@@ -204,6 +214,7 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
       heightCm: profile.heightCm === null ? null : Number(profile.heightCm),
       languages: this.fromJsonStringArray(profile.languages),
       bio: profile.bio,
+      bioLocales: readLocalizedBioMap(profile.bioLocalesJson),
       visibility: this.toVisibility(profile.visibility),
       isPublic: profile.isPublic,
       createdAt: profile.createdAt.toISOString(),

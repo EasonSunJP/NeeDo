@@ -238,6 +238,7 @@ export interface CustomerProfilePayload {
   displayName: string;
   city: string | null;
   bio: string | null;
+  bioLocales: Partial<Record<ContentLocaleCode, string>>;
   avatarUrl: string | null;
   gender: "female" | "male" | "private";
   age: number | null;
@@ -1895,6 +1896,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       displayName: customer.displayName,
       city: customer.city,
       bio: customer.bio,
+      bioLocales: readLocalizedBioMap(customer.bioLocalesJson),
       avatarUrl:
         this.findMediaUrl(customer.mediaAssets, "avatar") ??
         customer.user.avatarUrl ??

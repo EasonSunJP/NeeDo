@@ -15,6 +15,18 @@ afterEach(async () => {
 });
 
 describe("LocalizedTextEditor", () => {
+  it("copies Japanese text into every locale without checking its script", async () => {
+    const onSyncAll = vi.fn(async () => undefined);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push({ root, container });
+    await act(async () => root.render(<LocalizedTextEditor fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]} fallback={{ bio: "" }} onSave={async () => undefined} onSyncAll={onSyncAll} translations={{ ja: { bio: "日本語でのみ対応します" } }} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[role="tab"]:nth-child(3)')?.click());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="同步到全部语言版本"]')?.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('[role="alertdialog"] button:last-child')?.click());
+    expect(onSyncAll).toHaveBeenCalledWith("ja", { bio: "日本語でのみ対応します" });
+  });
   it("saves the selected language and retains another language's authored draft", async () => {
     const onSave = vi.fn(async () => undefined);
     const container = document.createElement("div");

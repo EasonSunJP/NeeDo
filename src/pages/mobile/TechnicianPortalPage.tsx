@@ -546,6 +546,7 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
               fallback={{ bio: profile.bio ?? "" }}
               translations={Object.fromEntries(Object.entries(profile.bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
               onSave={async (locale, values) => onSaved(await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } }))}
+              onSyncAll={async (locale, values) => onSaved(await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } }))}
             />
             <TechnicianReviewTagSummaryView model={editModel} />
             <section className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-profile-privacy-control">
@@ -852,6 +853,12 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
           fields={[{ key: "name", label: "服务名称", maxLength: 160 }, { key: "description", label: "服务描述", maxLength: 2000, multiline: true }]}
           fallback={{ name: editorService.name, description: editorService.description ?? "" }}
           translations={editorService.localizedContent}
+          onSyncAll={async (locale, values) => {
+            const saved = await pricingModeApi.updateMyTechnicianService(editorService.id, {
+              localizedContent: { locale, name: values.name, description: values.description, syncAll: true }
+            });
+            setServices((current) => upsertTechnicianService(current, saved));
+          }}
           onSave={async (locale, values) => {
             const saved = await pricingModeApi.updateMyTechnicianService(editorService.id, {
               localizedContent: { locale, name: values.name, description: values.description }

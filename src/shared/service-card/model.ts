@@ -48,4 +48,5 @@ export type TechnicianServiceBookingContextServiceCardProjection = Omit<
 > & {
   targetType: "technician_service";
   serviceAreas: string[];
+  localizedContent?: UnifiedServiceInfoCardData["localizedContent"];
 };

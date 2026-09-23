@@ -10,9 +10,12 @@ import { useCoreReadQuery } from "../../features/core-read/hooks";
 import type { SocialPortalScope } from "../../features/social/types";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { yen } from "../../lib/utils";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { contentLocaleForLanguage } from "../../shared/localized-content/localizedText";
 import { buildTechnicianServiceCheckoutRoute } from "./formal-checkout/checkoutServiceRoute";
 
 export function TechnicianServiceDetailPage({ scope = "user" }: { scope?: SocialPortalScope } = {}) {
+  const { language } = useOptionalI18n();
   const { id } = useParams();
   const navigate = useNavigate();
   const serviceId = isBookingApiId(id) ? Number(id) : null;
@@ -27,6 +30,9 @@ export function TechnicianServiceDetailPage({ scope = "user" }: { scope?: Social
   );
   const context = query.data;
   const service = context?.serviceCard;
+  const localized = service?.localizedContent?.[contentLocaleForLanguage(language)];
+  const serviceName = localized?.name?.trim() || service?.name || "";
+  const serviceDescription = localized?.description?.trim() || service?.description;
   const closePage = () => navigate(scope === "user" ? "/" : `/${scope}`);
 
   return (
@@ -48,20 +54,20 @@ export function TechnicianServiceDetailPage({ scope = "user" }: { scope?: Social
           ) : (
             <>
               <section className="relative h-[230px] overflow-hidden rounded-[28px] bg-black text-white shadow-soft">
-                {service.coverUrl ? <img alt={service.name} className="absolute inset-0 h-full w-full object-cover opacity-72" src={getGeneratedImageThumbnailUrl(service.coverUrl)} /> : null}
+                {service.coverUrl ? <img alt={serviceName} className="absolute inset-0 h-full w-full object-cover opacity-72" src={getGeneratedImageThumbnailUrl(service.coverUrl)} /> : null}
                 <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-black/20 to-black/84" />
                 <div className="relative flex h-full flex-col justify-end p-5">
                   <div className="mb-3 flex flex-wrap gap-2">
                     <Badge tone="green">技师服务</Badge>
                     <Badge tone="blue">{service.durationMinutes}分钟</Badge>
                   </div>
-                  <h1 className="text-[26px] font-black leading-tight">{service.name}</h1>
+                  <h1 className="text-[26px] font-black leading-tight" data-no-i18n>{serviceName}</h1>
                   <strong className="mt-2 text-[22px] font-black text-[color:var(--client-primary)]">{yen(service.catalogPriceJpy)}</strong>
                 </div>
               </section>
               <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5 shadow-panel">
                 <h2 className="text-base font-black">服务介绍</h2>
-                <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-7 text-[color:var(--client-muted)]">{service.description || "当前服务暂未填写公开介绍。"}</p>
+                <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-7 text-[color:var(--client-muted)]" data-no-i18n={Boolean(serviceDescription)}>{serviceDescription || "当前服务暂未填写公开介绍。"}</p>
                 {service.tags.length > 0 ? <div className="mt-4 flex flex-wrap gap-2">{service.tags.map((tag) => <span className="rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-line))] px-3 py-1.5 text-xs font-black text-[color:var(--client-primary)]" key={tag}>{tag}</span>)}</div> : null}
               </section>
               <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5 shadow-panel">

@@ -14,6 +14,7 @@ import { UnifiedSimpleProfileCard } from "../../shared/profile-card";
 import { resolveCustomerMembership } from "../../shared/profile-card/customerMembership";
 import { formatCustomerGenderLabel } from "../../shared/profile-card/customerProfileLabels";
 import { normalizeProfileLanguageLabels } from "../../shared/profile-card/profileLanguages";
+import { localizedText } from "../../shared/localized-content/localizedText";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { TechnicianProfileInfoView, fromCoreTechnicianDetail } from "../../shared/technician-profile";
 
@@ -223,7 +224,7 @@ function CustomerApiProfilePage({ id }: { id: number }) {
       <CustomerCreditReview language={language} profile={query.data} />
       <SurfacePanel>
         <h2 className="text-lg font-black text-[color:var(--client-text)]">公开资料</h2>
-        <p className="mt-2 text-sm leading-7 text-[color:var(--client-muted)]">{query.data.bio ?? "当前用户暂未填写公开简介。"}</p>
+        <p className="mt-2 text-sm leading-7 text-[color:var(--client-muted)]" data-no-i18n={Boolean(localizedText(query.data.bio, query.data.bioLocales, language))}>{localizedText(query.data.bio, query.data.bioLocales, language) ?? "当前用户暂未填写公开简介。"}</p>
       </SurfacePanel>
     </PageScaffold>
   );

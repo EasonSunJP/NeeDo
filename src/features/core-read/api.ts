@@ -177,6 +177,7 @@ export type CoreCustomerProfile = {
   displayName: string;
   city: string | null;
   bio: string | null;
+  bioLocales?: Partial<Record<ContentLocale, string>>;
   avatarUrl: string | null;
   gender: "female" | "male" | "private";
   age: number | null;

@@ -1,9 +1,11 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
 import { AppError } from "../utils/app-error";
 import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
+import { mergeLocalizedBio, readLocalizedBioMap } from "../domain/technician-localized-content";
+import type { ContentLocaleCode } from "../constants/content-locales";
 
 export type MerchantProfileGender = "female" | "male" | "private";
 export type MerchantProfileVisibility = "public" | "privateAll" | "limited" | "network";
@@ -15,6 +17,7 @@ export interface MerchantProfileMutation {
   heightCm?: number | null;
   languages?: string[];
   bio?: string | null;
+  localizedBio?: { locale: ContentLocaleCode; bio: string; syncAll?: boolean };
   visibility?: MerchantProfileVisibility;
   avatar?: { url: string; mimeType: string };
 }
@@ -31,6 +34,7 @@ export interface MerchantProfilePayload {
   heightCm: number | null;
   languages: string[];
   bio: string | null;
+  bioLocales: Partial<Record<ContentLocaleCode, string>>;
   visibility: MerchantProfileVisibility;
   createdAt: string;
   updatedAt: string;
@@ -79,6 +83,9 @@ export class MerchantProfileRepository implements MerchantProfileRepositoryPort 
     auditLog: AuditLogCreateInput
   ): Promise<MerchantProfilePayload> {
     const result = await this.client.$transaction(async (transaction) => {
+      if (mutation.localizedBio) {
+        await transaction.$queryRaw(Prisma.sql`SELECT id FROM merchant_identity_profiles WHERE identity_id = ${identityId} AND user_id = ${userId} AND deleted_at IS NULL FOR UPDATE`);
+      }
       const current = await transaction.merchantIdentityProfile.findFirst({
         where: { userId, identityId, deletedAt: null }
       });
@@ -86,7 +93,10 @@ export class MerchantProfileRepository implements MerchantProfileRepositoryPort 
 
       await transaction.merchantIdentityProfile.update({
         where: { id: current.id },
-        data: this.profileData(mutation)
+        data: {
+          ...this.profileData(mutation),
+          ...(mutation.localizedBio ? { bioLocalesJson: mergeLocalizedBio(current.bioLocalesJson, mutation.localizedBio) } : {})
+        }
       });
       if (mutation.avatar) {
         await persistIdentityAvatar(transaction, {
@@ -166,6 +176,7 @@ export class MerchantProfileRepository implements MerchantProfileRepositoryPort 
       heightCm: profile.heightCm === null ? null : Number(profile.heightCm),
       languages: this.stringArray(profile.languages),
       bio: profile.bio,
+      bioLocales: readLocalizedBioMap(profile.bioLocalesJson),
       visibility: this.visibility(profile.visibility),
       createdAt: profile.createdAt.toISOString(),
       updatedAt: profile.updatedAt.toISOString()

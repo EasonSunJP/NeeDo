@@ -10,7 +10,9 @@ import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type TechnicianServicePayload } from "../../features/pricing-mode/api";
 import { socialPaths } from "../../features/social/paths";
 import type { SocialPortalScope } from "../../features/social/types";
+import { useI18n } from "../../i18n/I18nProvider";
 import { cn } from "../../lib/utils";
+import { localizedServiceName } from "../../shared/localized-content/localizedText";
 import { mapTechnicianServiceToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
 import { useEntityStore } from "../../state/entityStore";
 import { buildTechnicianServiceCheckoutRoute, getTechnicianServiceDetailPath } from "./formal-checkout/checkoutServiceRoute";
@@ -64,6 +66,7 @@ function ServiceSelectionButton({
 }
 
 export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPortalScope } = {}) {
+  const { language } = useI18n();
   const { shopId, technicianId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -165,7 +168,7 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
                     <ServiceSelectionButton
                       disabled={!service.isBookable}
                       locked={service.id === primaryServiceId}
-                      name={service.name}
+                      name={localizedServiceName(service, language)}
                       onToggle={() => toggleServiceSelection(service.id)}
                       selected={selected}
                     />

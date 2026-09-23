@@ -2375,6 +2375,10 @@ function TechnicianProfileSettingsPage({
             fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
             fallback={{ bio: profile.bio ?? "" }}
             translations={Object.fromEntries(Object.entries(bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
+            onSyncAll={async (locale, values) => {
+              const saved = await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } });
+              setBioLocales(saved.bioLocales);
+            }}
             onSave={async (locale, values) => {
               const saved = await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } });
               setBioLocales(saved.bioLocales);

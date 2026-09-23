@@ -1,6 +1,7 @@
 import { httpClient } from "../../api/httpClient";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
+import type { ContentLocale } from "../../shared/localized-content/localizedText";
 export type CustomerProfileVisibility = "public" | "privateAll" | "limited" | "network";
 
 export type CustomerSelfProfile = {
@@ -10,6 +11,7 @@ export type CustomerSelfProfile = {
   displayName: string;
   city: string | null;
   bio: string | null;
+  bioLocales?: Partial<Record<ContentLocale, string>>;
   avatarUrl: string | null;
   membershipLevel: string;
   level: number;
@@ -31,6 +33,7 @@ export type CustomerSelfProfileUpdate = {
   heightCm?: number | null;
   languages?: string[];
   bio?: string | null;
+  localizedBio?: { locale: ContentLocale; bio: string; syncAll?: boolean };
   visibility?: CustomerProfileVisibility;
 };
 

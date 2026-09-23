@@ -124,6 +124,7 @@ const makeProfile = (): CustomerProfilePayload => ({
   heightCm: null,
   languages: ["日本語"],
   bio: null,
+  bioLocales: {},
   visibility: "public",
   isPublic: true,
   createdAt: now.toISOString(),

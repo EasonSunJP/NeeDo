@@ -32,7 +32,7 @@ export const technicianProfileUpdateBodySchema = z
     heightCm: z.number().min(30).max(250).nullable().optional(),
     languages: stringList(10, 40).optional(),
     bio: z.string().trim().max(2_000).nullable().optional(),
-    localizedBio: z.object({ locale: z.enum(CONTENT_LOCALES), bio: z.string().trim().max(2_000) }).strict().optional(),
+    localizedBio: z.object({ locale: z.enum(CONTENT_LOCALES), bio: z.string().trim().max(2_000), syncAll: z.boolean().optional() }).strict().optional(),
     serviceAreas: stringList(20, 80).optional(),
     canServeForeigners: z.boolean().optional(),
     bidBudgetMinJpy: z.number().int().min(0).max(100_000_000).nullable().optional(),

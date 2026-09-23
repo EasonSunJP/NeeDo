@@ -99,7 +99,7 @@ export type BookingNavigationResponse =
 
 export type TechnicianServiceBody = {
   sourceShopServiceId?: number | null;
-  localizedContent?: { locale: ContentLocale; name?: string; description?: string };
+  localizedContent?: { locale: ContentLocale; name?: string; description?: string; syncAll?: boolean };
   name: string;
   description?: string | null;
   categoryId: number;
