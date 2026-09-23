@@ -280,8 +280,23 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
     try {
       const withdrawn = await withdrawExchangeClaim(String(targetClaimId), attempt.key);
       if (activePostIdRef.current !== requestedPostId) return;
-      setClaim(withdrawn);
+      if (withdrawn.status !== "withdrawn") throw new Error("error.exchange.claim_invalid_state");
+      setClaim(null);
+      setOptions([]);
+      setReadError(false);
+      setSelectedOptionKey(null);
+      setQuote("");
+      setMessage("");
       withdrawAttemptRef.current = null;
+      try {
+        const result = await listExchangeClaimOptions(String(requestedPostId), { page: 1, pageSize: 20 });
+        if (activePostIdRef.current !== requestedPostId) return;
+        setOptions(result.list);
+        setPage(result.page);
+        setTotal(result.total);
+      } catch {
+        if (activePostIdRef.current === requestedPostId) setReadError(true);
+      }
     } catch {
       if (activePostIdRef.current === requestedPostId) setWithdrawError(true);
     } finally {

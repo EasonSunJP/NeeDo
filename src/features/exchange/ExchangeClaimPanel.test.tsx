@@ -71,10 +71,11 @@ const activeClaim: ExchangeClaim = {
   id: 73,
   exchangePostId: 41,
   status: "active",
+  source: "manual",
   provider: { publicId: "NT00000012", displayName: "山田 美咲", avatarUrl: null },
-  shop: option.shop,
+  shop: { ...option.shop, publicId: "shop0000000007" },
   technician: option.technician,
-  service: option.service,
+  service: { ...option.service, publicId: "service0000000031" },
   scheduleSlotId: 91,
   quoteAmountJpy: 15_000,
   currency: "JPY",
@@ -360,7 +361,10 @@ describe("ExchangeClaimPanel", () => {
 
     expect(listExchangeClaimOptions).not.toHaveBeenCalled();
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="withdraw-claim"]')!.click());
-    await waitFor(() => expect(document.body.textContent).toContain("已撤回"));
+    await waitFor(() => expect(listExchangeClaimOptions).toHaveBeenCalled());
+    expect(document.body.textContent).not.toContain("已撤回");
+    expect(document.body.textContent).not.toContain("抢单已提交");
+    expect(document.body.querySelector('[data-action="submit-claim"]')).not.toBeNull();
 
     expect(globalThis.confirm).toHaveBeenCalled();
     expect(withdrawExchangeClaim).toHaveBeenCalledWith("73", "exchange-claim-ui-0001");

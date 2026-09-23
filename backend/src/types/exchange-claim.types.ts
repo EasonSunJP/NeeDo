@@ -10,6 +10,7 @@ export type ExchangeClaimStatus =
   | "matching_closed";
 
 export type ExchangeClaimServiceRef = `shop:${number}` | `technician:${number}`;
+export type ExchangeClaimSource = "automatic" | "manual" | "shop_dispatch";
 
 export interface ExchangeClaimOptionPayload {
   scheduleSlotId: number;
@@ -35,6 +36,7 @@ export interface ExchangeClaimPayload {
   id: number;
   exchangePostId: number;
   status: ExchangeClaimStatus;
+  source: ExchangeClaimSource;
   provider: {
     publicId: string;
     displayName: string;
@@ -43,6 +45,7 @@ export interface ExchangeClaimPayload {
   shop: {
     id: number;
     name: string;
+    publicId: string | null;
   };
   technician: {
     profileId: number;
@@ -51,6 +54,7 @@ export interface ExchangeClaimPayload {
   };
   service: {
     ref: ExchangeClaimServiceRef;
+    publicId: string;
     name: string;
     durationMinutes: number;
   };

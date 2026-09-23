@@ -58,6 +58,8 @@ describe("technician automation shop-affiliation gates", () => {
       customerProfile: { findUnique: jest.fn(async () => null) },
       bookingOrder: { count: jest.fn(async () => 0) },
       technicianAutomationSetting: { findMany: jest.fn(async (): Promise<Array<{ technicianProfileId: number; rules: ReturnType<typeof defaultTechnicianAutomationRules> }>> => []) },
+      technicianService: { findMany: jest.fn(async () => Array.from({ length: 52 }, (_, index) => ({ id: 701 + index, priceAmount: 8_800 }))) },
+      service: { findMany: jest.fn(async () => []) },
       ekycVerification: { count: jest.fn(async () => 0) },
       contact: { findMany: jest.fn(async () => []) }
     };
@@ -68,7 +70,8 @@ describe("technician automation shop-affiliation gates", () => {
       expect(candidates).toEqual(expect.arrayContaining([expect.objectContaining({
         scheduleSlotId: -1048578 - 31,
         serviceRef: "technician:701",
-        technicianProfileId: 31
+        technicianProfileId: 31,
+        quoteAmountJpy: 8_800
       })]));
       expect(listDynamic).toHaveBeenCalledTimes(1);
       expect(listDynamic).toHaveBeenCalledWith(expect.objectContaining({

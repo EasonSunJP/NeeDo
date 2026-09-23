@@ -159,7 +159,7 @@ export class ExchangeClaimService {
     input: CreateExchangeClaimBody,
     rawIdempotencyKey: string,
     context: AuthRequestContext,
-    options: { suppressQuickMatching?: boolean } = {}
+    options: { suppressQuickMatching?: boolean; source?: "automatic" } = {}
   ): Promise<ExchangeClaimPayload> {
     const idempotencyKey = exchangeIdempotencyKeySchema.parse(rawIdempotencyKey);
     const at = this.now();
@@ -238,6 +238,7 @@ export class ExchangeClaimService {
           technicianServiceId: option.technicianServiceId,
           scheduleSlotId: option.scheduleSlotId,
           quoteAmountJpy: input.quoteAmountJpy,
+          source: options.source ?? (scope.kind === "merchant" ? "shop_dispatch" : "manual"),
           message: input.message,
           idempotencyKey,
           payloadFingerprint: fingerprint,

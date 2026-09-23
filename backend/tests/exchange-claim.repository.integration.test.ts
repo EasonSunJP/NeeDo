@@ -274,6 +274,7 @@ describeIntegration("ExchangeClaimRepository guarded concurrency", () => {
             technicianServiceId: null,
             scheduleSlotId: slot.id,
             quoteAmountJpy: 15_000,
+            source: "shop_dispatch",
             message: null,
             idempotencyKey: `claim-it:${marker}:${suffix}`,
             payloadFingerprint: suffix.repeat(64).slice(0, 64),

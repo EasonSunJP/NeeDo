@@ -33,6 +33,7 @@ const claimRow = {
   technicianServiceId: null,
   scheduleSlotId: 91,
   quoteAmountJpy: 15_000,
+  source: "shop_dispatch",
   currency: "JPY",
   message: null,
   status: "ACTIVE",
@@ -51,7 +52,7 @@ const claimRow = {
     publicIdentifier: { publicId: "M000000017" },
     user: { username: "aoyama", avatarUrl: null }
   },
-  shop: { id: 11, name: "Aoyama Care" },
+  shop: { id: 11, name: "Aoyama Care", publicIdentifier: { publicId: "shop0000000011" } },
   technicianProfile: {
     id: 81,
     displayName: "山田 花子",
@@ -64,7 +65,7 @@ const claimRow = {
       ]
     }
   },
-  service: { id: 501, name: "ヘアセット", durationMinutes: 60 },
+  service: { id: 501, publicId: "service0000000501", name: "ヘアセット", durationMinutes: 60 },
   technicianService: null,
   scheduleSlot: {
     id: 91,
@@ -789,6 +790,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
         technicianServiceId: null,
         scheduleSlotId: 91,
         quoteAmountJpy: 15_000,
+        source: "shop_dispatch",
         message: null,
         idempotencyKey: "claim-key-00000001",
         payloadFingerprint: "a".repeat(64),
@@ -1033,5 +1035,26 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     expect(auditCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({ action: "exchange.claim.withdraw", targetId: 301 })
     });
+  });
+
+  it("hides withdrawn claims from participant and publisher reads while retaining the withdrawal row for idempotency", async () => {
+    const findFirst = jest.fn(async () => null);
+    const findMany = jest.fn(async () => []);
+    const count = jest.fn(async () => 0);
+    const repository = new ExchangeClaimRepository({
+      exchangeClaim: { findFirst, findMany, count }
+    } as unknown as PrismaClient);
+
+    await expect(repository.findMine(41, 17)).resolves.toBeNull();
+    await expect(repository.listReceived(41, 21, { page: 1, pageSize: 20 })).resolves.toMatchObject({ total: 0, list: [] });
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ exchangePostId: 41, claimantIdentityId: 17, status: { not: "WITHDRAWN" } })
+    }));
+    expect(count).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: { not: "WITHDRAWN" } })
+    }));
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: { not: "WITHDRAWN" } })
+    }));
   });
 });

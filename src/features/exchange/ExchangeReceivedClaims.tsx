@@ -4,6 +4,7 @@ import { ApiClientError } from "../../api/httpClient";
 import type { Language } from "../../i18n/translations";
 import type { MessageCenterContext } from "../../lib/messageCenter";
 import { getScheduleOrderDetailRoute } from "../../lib/scheduleDetailTarget";
+import { getScopedProfileDetailPath, getScopedTechnicianServiceListPath } from "../../shared/profile-detail/paths";
 import {
   confirmQuickExchangeBudget,
   createExchangeMatchingBookings,
@@ -111,18 +112,35 @@ function readAdjustmentPreview(
 
 function ClaimCard({
   claim,
+  context,
   language,
   onToggle,
   selectable,
   selected
 }: {
   claim: ExchangeClaim;
+  context: MessageCenterContext;
   language: Language;
   onToggle: () => void;
   selectable: boolean;
   selected: boolean;
 }) {
   const t = (key: ExchangeTextKey) => exchangeText(key, language);
+  const [expanded, setExpanded] = useState(false);
+  const shopPath = claim.shop.publicId ? getScopedProfileDetailPath(context, "shop", claim.shop.publicId) : null;
+  const providerPath = claim.provider.publicId === claim.technician.publicId
+    ? getScopedProfileDetailPath(context, "technician", claim.provider.publicId)
+    : shopPath;
+  const servicePath = claim.service.ref.startsWith("shop:")
+    ? `/services/${encodeURIComponent(claim.service.publicId)}`
+    : claim.shop.publicId
+      ? getScopedTechnicianServiceListPath(context, claim.shop.publicId, claim.technician.publicId)
+      : null;
+  const sourceKey: ExchangeTextKey = claim.source === "automatic"
+    ? "claimSourceAutomatic"
+    : claim.source === "shop_dispatch"
+      ? "claimSourceShopDispatch"
+      : "claimSourceManual";
   return (
     <article
       className={`overflow-hidden rounded-[24px] border bg-[color:var(--client-bg-soft)] transition-colors ${selected ? "border-[color:var(--client-primary)] ring-2 ring-[color:var(--client-primary-soft)]" : "border-[color:var(--client-line)]"}`}
@@ -163,31 +181,43 @@ function ClaimCard({
           <strong className="shrink-0 text-xl font-black text-[color:var(--client-primary)]">¥{claim.quoteAmountJpy.toLocaleString("ja-JP")}</strong>
         </div>
 
-        <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
-          <div className="min-w-0 rounded-2xl bg-[color:var(--client-bg)] p-3">
-            <dt className="font-black text-[color:var(--client-muted)]">{t("claimShop")}</dt>
-            <dd className="mt-1 truncate font-bold text-[color:var(--client-text)]">{claim.shop.name}</dd>
-          </div>
-          <div className="min-w-0 rounded-2xl bg-[color:var(--client-bg)] p-3">
-            <dt className="font-black text-[color:var(--client-muted)]">{t("claimTechnician")}</dt>
-            <dd className="mt-1 truncate font-bold text-[color:var(--client-text)]">{claim.technician.displayName}</dd>
-          </div>
-        </dl>
-
-        <div className="mt-3 flex items-center gap-3 rounded-2xl border-l-2 border-[color:var(--client-primary)] bg-[color:var(--client-bg)] px-3 py-3">
-          <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full bg-[color:var(--client-primary)] shadow-[0_0_14px_color-mix(in_srgb,var(--client-primary)_70%,transparent)]" />
-          <div>
-            <p className="text-[10px] font-black text-[color:var(--client-muted)]">{t("claimEstimatedTime")}</p>
-            <p className="mt-0.5 text-xs font-black text-[color:var(--client-text)]">{formatWindow(claim.estimatedStartsAt, claim.estimatedEndsAt, language)}</p>
-          </div>
-        </div>
-
-        {claim.message ? (
-          <div className="mt-3 rounded-2xl bg-[color:var(--client-bg)] px-3 py-3">
-            <p className="text-[10px] font-black text-[color:var(--client-muted)]">{t("claimMessageOptional")}</p>
-            <p className="mt-1 whitespace-pre-wrap text-xs font-semibold leading-5 text-[color:var(--client-text)]">{claim.message}</p>
+        {expanded ? (
+          <div className="mt-4 grid gap-3" id={`claim-details-${claim.id}`}>
+            <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-bg)] p-3 text-xs">
+              <p className="font-black text-[color:var(--client-muted)]">{t("claimService")}</p>
+              <p className="mt-1 font-black text-[color:var(--client-text)]">{claim.service.name} · {claim.service.durationMinutes} min</p>
+              {servicePath ? <a className="focus-ring mt-2 inline-block font-black text-[color:var(--client-primary)]" href={servicePath}>{t("claimShowDetails")}</a> : null}
+            </div>
+            <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-bg)] p-3 text-xs">
+              <p className="font-black text-[color:var(--client-muted)]">{t("claimProvider")}</p>
+              <div className="mt-2 flex items-center gap-3">
+                <AvatarImage alt={claim.provider.displayName} className="h-10 w-10 rounded-xl object-cover" src={claim.provider.avatarUrl ?? undefined} />
+                <div><p className="font-black text-[color:var(--client-text)]">{claim.provider.displayName}</p><p className="font-mono text-[color:var(--client-muted)]">{claim.provider.publicId}</p></div>
+              </div>
+              {claim.provider.publicId !== claim.technician.publicId ? <p className="mt-2 font-bold text-[color:var(--client-text)]">{t("claimTechnician")} · {claim.technician.displayName}</p> : null}
+              {providerPath ? <a className="focus-ring mt-2 inline-block font-black text-[color:var(--client-primary)]" href={providerPath}>{t("claimShowDetails")}</a> : null}
+            </div>
+            <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-bg)] p-3 text-xs">
+              <p className="font-black text-[color:var(--client-muted)]">{t("claimShop")}</p>
+              <p className="mt-1 font-black text-[color:var(--client-text)]">{claim.shop.name}</p>
+              {claim.shop.publicId ? <p className="mt-1 font-mono text-[color:var(--client-muted)]">{claim.shop.publicId}</p> : null}
+              {shopPath ? <a className="focus-ring mt-2 inline-block font-black text-[color:var(--client-primary)]" href={shopPath}>{t("claimShowDetails")}</a> : null}
+            </div>
+            <dl className="grid gap-3 text-xs">
+              <div className="rounded-2xl bg-[color:var(--client-bg)] p-3"><dt className="font-black text-[color:var(--client-muted)]">{t("claimEstimatedTime")}</dt><dd className="mt-1 font-bold text-[color:var(--client-text)]">{formatWindow(claim.estimatedStartsAt, claim.estimatedEndsAt, language)}</dd></div>
+              <div className="rounded-2xl bg-[color:var(--client-bg)] p-3"><dt className="font-black text-[color:var(--client-muted)]">{t("claimSource")}</dt><dd className="mt-1 font-bold text-[color:var(--client-text)]">{t(sourceKey)}</dd></div>
+              {claim.message ? <div className="rounded-2xl bg-[color:var(--client-bg)] p-3"><dt className="font-black text-[color:var(--client-muted)]">{t("claimMessageOptional")}</dt><dd className="mt-1 whitespace-pre-wrap font-semibold leading-5 text-[color:var(--client-text)]">{claim.message}</dd></div> : null}
+            </dl>
           </div>
         ) : null}
+        <button
+          aria-controls={`claim-details-${claim.id}`}
+          aria-expanded={expanded}
+          className="focus-ring mt-3 min-h-11 w-full text-center text-xs font-black text-[color:var(--client-primary)]"
+          data-action={expanded ? "hide-claim-details" : "show-claim-details"}
+          onClick={() => setExpanded((current) => !current)}
+          type="button"
+        >{t(expanded ? "claimHideDetails" : "claimShowDetails")}</button>
       </div>
     </article>
   );
@@ -688,6 +718,7 @@ export function ExchangeReceivedClaims({
         {claims.map((claim) => (
           <ClaimCard
             claim={claim}
+            context={context}
             key={claim.id}
             language={language}
             onToggle={() => toggleClaim(claim.id)}
