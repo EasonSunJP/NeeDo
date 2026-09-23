@@ -314,6 +314,20 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.innerHTML).toContain('data-no-i18n="true"');
   });
 
+  it("shows the authored system-language version in the detail without a translate button", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      contentLocale: "ja",
+      title: "日本語タイトル",
+      detail: "日本語説明",
+      contentTranslations: { "zh-CN": { title: "中文标题", detail: "中文说明" } }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("中文标题"));
+    expect(document.body.textContent).toContain("中文说明");
+    expect(document.body.querySelector('[data-action="detail-translate"]')).toBeNull();
+  });
+
   it("renders the projected demand cover in a 16:9 hero without using the publisher avatar", async () => {
     vi.mocked(getExchangePost).mockResolvedValue({
       ...demandPost,
@@ -737,6 +751,13 @@ describe("ExchangePostDetailPage", () => {
     const footer = document.body.querySelector("footer:has([data-action='matching-inbox'])");
     expect(footer?.className).toContain("pointer-events-none");
     expect(footer?.className).not.toContain("bg-[color:");
+  });
+
+  it("does not show a translation action in demand or intelligence headers", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(demandPost);
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain(demandPost.title));
+    expect(document.body.querySelector('[data-action="detail-translate"]')).toBeNull();
   });
 
   it.each([

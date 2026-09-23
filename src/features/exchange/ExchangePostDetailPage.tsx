@@ -7,7 +7,6 @@ import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPa
 import { ServiceFlowSection } from "../../components/mobile/ServiceFlowSection";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
-import { TranslationIcon } from "../../components/ui/LanguageSwitcher";
 import { ShareNetworkIconPath } from "../../components/ui/ShareNetworkIcon";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
@@ -28,6 +27,7 @@ import { ExchangeInteractions } from "./ExchangeInteractions";
 import { ExchangeReceivedClaims } from "./ExchangeReceivedClaims";
 import { ExchangeMatchedBookingCard } from "./ExchangeMatchedBookingCard";
 import { exchangeText } from "./i18n";
+import { localizedExchangePostText } from "./localized-post";
 import type { ExchangeInteractionCounts, ExchangePost } from "./types";
 
 const fallbackPublisherImage = "/icons/needo-nav-button-dark.png";
@@ -130,7 +130,7 @@ function intelligenceUnavailableTextKey(reason: NonNullable<ExchangePost["intell
   return "intelligenceServiceUnavailable" as const;
 }
 
-type HeaderActionName = "translate" | "favorite" | "share";
+type HeaderActionName = "favorite" | "share";
 
 function HeaderActionButton({
   active = false,
@@ -156,9 +156,7 @@ function HeaderActionButton({
       title={label}
       type="button"
     >
-      {name === "translate" ? (
-        <TranslationIcon className="h-6 w-6" />
-      ) : name === "favorite" ? (
+      {name === "favorite" ? (
         <svg aria-hidden="true" className="h-6 w-6" fill={active ? "currentColor" : "none"} viewBox="0 0 24 24">
           <path d="M12 19.2s-6.8-4.3-8.6-8.3C2 7.8 4 5.2 7 5.2c1.8 0 3.2.8 5 2.9 1.8-2.1 3.2-2.9 5-2.9 3 0 5 2.6 3.6 5.7-1.8 4-8.6 8.3-8.6 8.3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
         </svg>
@@ -275,6 +273,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
   const validPostId = Boolean(postId && /^[1-9]\d*$/u.test(postId));
   const [post, setPost] = useState<ExchangePost | null>(null);
+  const displayText = post ? localizedExchangePostText(post, language) : null;
   const [effectiveBudgetMaxJpy, setEffectiveBudgetMaxJpy] = useState<number | null>(null);
   const [loading, setLoading] = useState(validPostId);
   const [error, setError] = useState(!validPostId);
@@ -283,7 +282,6 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
   const [withdrawError, setWithdrawError] = useState(false);
   const [actionPending, setActionPending] = useState<"like" | "share" | null>(null);
   const [actionError, setActionError] = useState(false);
-  const [originalNotice, setOriginalNotice] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const withdrawKeyRef = useRef<string | null>(null);
 
@@ -371,8 +369,8 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     setActionError(false);
     try {
       const result = await shareContent({
-        title: post.title,
-        text: post.detail,
+        title: displayText?.title ?? post.title,
+        text: displayText?.detail ?? post.detail,
         url: typeof window === "undefined" ? "" : window.location.href
       });
       if (result.status !== "shared" && result.status !== "copied") return;
@@ -410,6 +408,8 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
       </div>
     );
   }
+
+  const displayPost = { ...post, ...localizedExchangePostText(post, language) };
 
   const price = priceLabel(post, effectiveBudgetMaxJpy);
   const active = post.status === "published";
@@ -462,7 +462,6 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
       <MobileFullscreenHeader
         action={(
           <div className="flex items-center gap-1.5">
-            <HeaderActionButton label={t("showOriginal")} name="translate" onClick={() => setOriginalNotice((current) => !current)} />
             <HeaderActionButton
               active={post.viewer.liked}
               disabled={!active || actionPending !== null}
@@ -504,16 +503,13 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
         className="client-app-gutter scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+9.5rem)] pt-[calc(env(safe-area-inset-top)+86px)]"
         data-testid="exchange-detail-page"
       >
-        {originalNotice ? (
-          <p className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 py-3 text-xs font-bold text-[color:var(--client-muted)]">{t("originalContentNotice")}</p>
-        ) : null}
         {actionError ? <p className="text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("interactionFailed")}</p> : null}
 
-        <DetailHero label={t(post.type)} post={post} publisherAlt={t("publisherHidden")} />
+        <DetailHero label={t(post.type)} post={displayPost} publisherAlt={t("publisherHidden")} />
 
         <section className={detailCardClassName} data-no-i18n="true">
           <p className="text-[11px] font-black text-[color:var(--client-muted)]">{t("introduction")}</p>
-          <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-7 text-[color:var(--client-text)]">{post.detail}</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-7 text-[color:var(--client-text)]">{displayPost.detail}</p>
           <div className="mt-4 rounded-[18px] bg-[color:var(--client-bg-soft)] px-3.5 py-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] font-black text-[color:var(--client-muted)]">{t("deadline")}</p>
@@ -656,7 +652,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
           </div>
         </section>
 
-        <ExchangeInteractions context={context} onCountsChange={updateCounts} post={post} showActionBar={false} variant="detail" />
+        <ExchangeInteractions context={context} onCountsChange={updateCounts} post={displayPost} showActionBar={false} variant="detail" />
       </main>
 
       <MobileBottomActionBar className="client-app-gutter" contentClassName="grid grid-cols-[1fr,auto] items-center gap-3">

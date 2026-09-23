@@ -185,6 +185,7 @@ export interface ExchangePostPayload {
   title: string;
   detail: string;
   contentLocale: ContentLocaleCode;
+  contentTranslations: Partial<Record<ContentLocaleCode, { title: string; detail: string }>>;
   areaLabel: string;
   serviceStartAt: string;
   serviceEndAt: string;

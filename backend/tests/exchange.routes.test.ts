@@ -73,6 +73,7 @@ const post: ExchangePostPayload = {
   title: "渋谷でヘアセットをお願いしたい",
   detail: "イベント前にお願いします。",
   contentLocale: "ja",
+  contentTranslations: {},
   areaLabel: "渋谷区",
   serviceStartAt: "2026-08-31T00:00:00.000Z",
   serviceEndAt: "2026-08-31T01:00:00.000Z",

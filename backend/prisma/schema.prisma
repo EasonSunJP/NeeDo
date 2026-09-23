@@ -6280,6 +6280,7 @@ model ExchangePost {
   title                 String             @db.VarChar(120)
   detail                String             @db.Text
   contentLocale         ContentLocale      @map("content_locale")
+  contentTranslationsJson Json?             @map("content_translations_json")
   areaLabel             String             @map("area_label") @db.VarChar(120)
   serviceStartAt        DateTime           @map("service_start_at")
   serviceEndAt          DateTime           @map("service_end_at")

@@ -171,6 +171,13 @@ async function mountInteractiveDemandFeed() {
 }
 
 describe("ExchangeFeedPage", () => {
+  it("shows the authored system-language version in the feed", () => {
+    const markup = renderFeed({ posts: [{ ...demandPost, contentLocale: "ja", title: "日本語タイトル", detail: "日本語説明", contentTranslations: { "zh-CN": { title: "中文标题", detail: "中文说明" } } }] });
+    expect(markup).toContain("中文标题");
+    expect(markup).toContain("中文说明");
+    expect(markup).not.toContain("日本語タイトル");
+  });
+
   it("never renders a demand cover from an inconsistent intelligence payload", () => {
     const markup = renderFeed({ posts: [{ ...intelligencePost, demand: demandPost.demand }] });
     expect(markup).not.toContain(demandPost.demand!.cover.url);

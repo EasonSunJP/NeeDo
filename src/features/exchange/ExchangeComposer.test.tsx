@@ -20,7 +20,7 @@ const { authHasPermission } = vi.hoisted(() => ({
 vi.mock("../../auth/AuthProvider", () => ({
   useOptionalAuth: () => ({ hasPermission: authHasPermission })
 }));
-vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
+vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }), useOptionalI18n: () => ({ language: "zh" }) }));
 vi.mock("../../theme/ClientThemeProvider", () => ({
   getClientThemeClassName: () => "client-theme-dark-green",
   useClientTheme: () => ({ theme: "dark-green", isNight: true })
@@ -259,6 +259,43 @@ describe("ExchangeComposer publication", () => {
     expect(document.body.querySelector<HTMLSelectElement>('[name="expiresTime"]')?.value).toBe("22:30");
   });
 
+  it("keeps each authored language separate and publishes its completed translations", async () => {
+    await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
+    await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
+    await act(async () => fillDemandForm(document.body));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-testid="exchange-composer-locale-rail"] [aria-label="English"]')?.click());
+    expect(document.body.querySelector<HTMLInputElement>('[name="title"]')?.value).toBe("");
+    await act(async () => setInputValue(document.body.querySelector<HTMLInputElement>('[name="title"]')!, "English request"));
+    await act(async () => setInputValue(document.body.querySelector<HTMLTextAreaElement>('[name="detail"]')!, "English details"));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-testid="exchange-composer-locale-rail"] [aria-label="简体中文"]')?.click());
+    expect(document.body.querySelector<HTMLInputElement>('[name="title"]')?.value).toBe("正式发布的需求");
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
+    expect(document.body.querySelector('[data-testid="exchange-publication-review"]')).not.toBeNull();
+    expect(publishExchangePost).not.toHaveBeenCalled();
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-publish"]')?.click());
+    await waitFor(() => expect(publishExchangePost).toHaveBeenCalledWith(
+      expect.objectContaining({ contentLocale: "zh-CN", contentTranslations: { en: { title: "English request", detail: "English details" } } }),
+      expect.any(String)
+    ));
+  });
+
+  it("copies the selected draft text to all other language versions after confirmation", async () => {
+    await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
+    await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
+    await act(async () => fillDemandForm(document.body));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-testid="exchange-composer-locale-rail"] [aria-label="同步到全部语言版本"]')?.click());
+    expect(document.body.textContent).toContain("当前版本的文字会覆盖其他四个版本");
+    await act(async () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.includes("确认同步"))?.click());
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-publish"]')?.click());
+    await waitFor(() => expect(publishExchangePost).toHaveBeenCalled());
+    expect(vi.mocked(publishExchangePost).mock.calls[0]?.[0].contentTranslations).toEqual(Object.fromEntries(
+      ["ja", "en", "ko", "zh-TW"].map((locale) => [locale, { title: "正式发布的需求", detail: "持久化正文" }])
+    ));
+  });
+
   it("validates on Next, then submits a customer demand with a fresh key and no actor selector", async () => {
     const onPublished = vi.fn();
     vi.mocked(publishExchangePost).mockResolvedValue(publishedPost);
@@ -267,9 +304,7 @@ describe("ExchangeComposer publication", () => {
 
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
 
-    await act(async () =>
-      setInputValue(document.body.querySelector<HTMLSelectElement>('select[name="contentLocale"]')!, "ja")
-    );
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-testid="exchange-composer-locale-rail"] [aria-label="日本語"]')?.click());
     fillDemandForm(document.body);
 
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());

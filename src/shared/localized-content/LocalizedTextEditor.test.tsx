@@ -22,6 +22,7 @@ describe("LocalizedTextEditor", () => {
     roots.push({ root, container });
     await act(async () => root.render(<LocalizedTextEditor fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]} fallback={{ bio: "" }} onSave={async () => undefined} onSyncAll={async () => undefined} translations={{}} />));
     expect(container.querySelector('[data-testid="localized-content-locale-rail"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="localized-content-locale-rail"]')?.className).toContain("fixed right-");
     expect(container.querySelector('[data-testid="localized-content-locale-rail"] [role="tablist"]')?.querySelectorAll('[role="tab"]')).toHaveLength(5);
     expect(container.querySelector('[data-testid="localized-content-locale-rail"] button[aria-label="同步到全部语言版本"]')).not.toBeNull();
   });

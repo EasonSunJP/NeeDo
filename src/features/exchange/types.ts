@@ -320,6 +320,7 @@ export type ExchangePost = {
   title: string;
   detail: string;
   contentLocale: ExchangeContentLocale;
+  contentTranslations?: Partial<Record<ExchangeContentLocale, { title: string; detail: string }>>;
   areaLabel: string;
   serviceStartAt: string;
   serviceEndAt: string;
@@ -363,6 +364,7 @@ type ExchangePublishCommon = {
   title: string;
   detail: string;
   contentLocale: ExchangeContentLocale;
+  contentTranslations?: Partial<Record<ExchangeContentLocale, { title: string; detail: string }>>;
   serviceStartAt: string;
   serviceEndAt: string;
   expiresAt: string;

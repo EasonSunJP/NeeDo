@@ -55,8 +55,23 @@ export type DemandCoverDraft = {
   uploadedUrl: string | null;
 };
 
+type ContentTranslations = Partial<Record<ExchangeContentLocale, { title: string; detail: string }>>;
+
+function normalizeContentTranslations(translations: ContentTranslations | undefined): ContentTranslations | null {
+  const normalized: ContentTranslations = {};
+  for (const [locale, value] of Object.entries(translations ?? {}) as Array<[ExchangeContentLocale, { title: string; detail: string }]>) {
+    const title = value.title.trim();
+    const detail = value.detail.trim();
+    if (!title && !detail) continue;
+    if (!title || !detail) return null;
+    normalized[locale] = { title, detail };
+  }
+  return normalized;
+}
+
 export type RequestComposerDraft = {
   contentLocale: ExchangeContentLocale;
+  contentTranslations?: Partial<Record<ExchangeContentLocale, { title: string; detail: string }>>;
   cover: DemandCoverDraft | null;
   title: string;
   detail: string;
@@ -109,6 +124,8 @@ export function normalizeRequestDraft(
   context: ExchangeRequestPublicationContext,
   nowMs?: number
 ): { ok: true; value: PublishExchangeDemandInput } | { ok: false; errorKey: ExchangeComposerErrorKey } {
+  const contentTranslations = normalizeContentTranslations(draft.contentTranslations);
+  if (!contentTranslations) return { ok: false, errorKey: "required" };
   if (draft.cover?.status === "uploading") return { ok: false, errorKey: "demandCoverUploading" };
   if (draft.cover && (
     draft.cover.status !== "ready"
@@ -161,6 +178,7 @@ export function normalizeRequestDraft(
       title: draft.title.trim(),
       detail: draft.detail.trim(),
       contentLocale: draft.contentLocale,
+      ...(Object.keys(contentTranslations).length > 0 ? { contentTranslations } : {}),
       serviceStartAt,
       serviceEndAt,
       expiresAt,
@@ -182,6 +200,7 @@ export function normalizeRequestDraft(
 
 export type IntelligenceComposerDraft = {
   contentLocale: ExchangeContentLocale;
+  contentTranslations?: Partial<Record<ExchangeContentLocale, { title: string; detail: string }>>;
   title: string;
   detail: string;
   serviceRef: string;
@@ -201,6 +220,8 @@ export function normalizeIntelligenceDraft(
   catalogPriceJpy: number | null,
   nowMs?: number
 ): { ok: true; value: PublishExchangeIntelligenceInput } | { ok: false; errorKey: ExchangeComposerErrorKey } {
+  const contentTranslations = normalizeContentTranslations(draft.contentTranslations);
+  if (!contentTranslations) return { ok: false, errorKey: "required" };
   const serviceStartAt = combineLocalDateTime(draft.serviceStartDate, draft.serviceStartTime);
   const serviceEndAt = combineLocalDateTime(draft.serviceEndDate, draft.serviceEndTime);
   const expiresAt = combineLocalDateTime(draft.expiresDate, draft.expiresTime);
@@ -242,6 +263,7 @@ export function normalizeIntelligenceDraft(
       title: draft.title.trim(),
       detail: draft.detail.trim(),
       contentLocale: draft.contentLocale,
+      ...(Object.keys(contentTranslations).length > 0 ? { contentTranslations } : {}),
       serviceRef: draft.serviceRef as PublishExchangeIntelligenceInput["serviceRef"],
       serviceStartAt,
       serviceEndAt,

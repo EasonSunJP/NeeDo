@@ -5,6 +5,10 @@ import type { ExchangeIntelligenceServiceRef } from "../types/exchange-intellige
 const MAX_MONEY_JPY = 1_000_000_000;
 
 const authoredText = (maximum: number) => z.string().trim().min(1).max(maximum);
+const translatedPostText = z.object({ title: authoredText(120), detail: authoredText(10_000) }).strict();
+const contentTranslations = z.object(Object.fromEntries(
+  CONTENT_LOCALES.map((locale) => [locale, translatedPostText.optional()])
+) as Record<(typeof CONTENT_LOCALES)[number], z.ZodOptional<typeof translatedPostText>>).strict().optional();
 export const exchangeDemandCoverQuerySchema = z.object({
   alt_text: authoredText(255).optional()
 }).strict();
@@ -17,6 +21,7 @@ const commonPostShape = {
   title: authoredText(120),
   detail: authoredText(10_000),
   contentLocale: z.enum(CONTENT_LOCALES),
+  contentTranslations,
   serviceStartAt: explicitOffsetDate,
   serviceEndAt: explicitOffsetDate,
   expiresAt: explicitOffsetDate
@@ -102,6 +107,9 @@ export const exchangeIdempotencyKeySchema = z.string().trim().min(16).max(191);
 export const publishExchangePostSchema = z
   .discriminatedUnion("type", [demandPostSchema, intelligencePostSchema])
   .superRefine((value, context) => {
+    if (value.contentTranslations?.[value.contentLocale]) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "source locale must use title and detail", path: ["contentTranslations", value.contentLocale] });
+    }
     if (value.serviceStartAt.getTime() >= value.serviceEndAt.getTime()) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

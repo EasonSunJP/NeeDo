@@ -99,6 +99,18 @@ describe("formal NeeDo Exchange validators", () => {
     );
   });
 
+  it("accepts bounded optional language versions for both post types", () => {
+    const versions = { en: { title: "  Hair styling  ", detail: "  Before the event.  " } };
+    for (const post of [validDemand(), validIntelligence()]) {
+      expect(publishExchangePostSchema.parse({ ...post, contentTranslations: versions }).contentTranslations)
+        .toEqual({ en: { title: "Hair styling", detail: "Before the event." } });
+      expect(publishExchangePostSchema.safeParse({ ...post, contentTranslations: { fr: versions.en } }).success).toBe(false);
+      expect(publishExchangePostSchema.safeParse({ ...post, contentTranslations: { en: { title: "", detail: "Text" } } }).success).toBe(false);
+      expect(publishExchangePostSchema.safeParse({ ...post, contentTranslations: { en: { title: "x".repeat(121), detail: "Text" } } }).success).toBe(false);
+      expect(publishExchangePostSchema.safeParse({ ...post, contentTranslations: { ja: versions.en } }).success).toBe(false);
+    }
+  });
+
   it("accepts an absent minimum but rejects a minimum above the maximum", () => {
     expect(publishExchangePostSchema.safeParse(validDemand({ budgetMinJpy: null })).success).toBe(
       true

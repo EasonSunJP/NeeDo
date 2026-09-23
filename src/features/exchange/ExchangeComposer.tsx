@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useOptionalAuth } from "../../auth/AuthProvider";
 import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
+import { DangerConfirmDialog } from "../../components/ui/DangerConfirmDialog";
 import { useI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import type { Language } from "../../i18n/translations";
 import type { MessageCenterContext } from "../../lib/messageCenter";
+import { LocalizedContentLocaleRail } from "../../shared/localized-content/LocalizedContentLocaleRail";
+import { contentLocales } from "../../shared/localized-content/localizedText";
 import {
   getRequestPublicationContext,
   listExchangeIntelligenceServiceOptions,
@@ -171,6 +175,9 @@ export function ExchangeComposer({
   const canPublishDefaultType = context !== "merchant" || merchantCanPublishIntelligence;
   const contentLocale = contentLocaleForLanguage(language);
   const [open, setOpen] = useState(false);
+  const [editingLocale, setEditingLocale] = useState<ExchangeContentLocale>(contentLocale);
+  const [savedLocale, setSavedLocale] = useState<ExchangeContentLocale | null>(null);
+  const [syncOpen, setSyncOpen] = useState(false);
   const [step, setStep] = useState<ExchangeComposerStep>("edit");
   const [pending, setPending] = useState(false);
   const [requestDraft, setRequestDraft] = useState<RequestComposerDraft>(() => createEmptyRequestDraft(contentLocale));
@@ -249,6 +256,8 @@ export function ExchangeComposer({
   }, [open, intelligenceServicesVersion, type]);
 
   const openComposer = () => {
+    setEditingLocale(contentLocale);
+    setSavedLocale(null);
     setRequestDraft((current) => hasRequestDraftContent(current) ? current : createEmptyRequestDraft(contentLocale));
     setIntelligenceDraft((current) => hasIntelligenceDraftContent(current) ? current : createEmptyIntelligenceDraft(contentLocale));
     if (type === "demand") {
@@ -270,6 +279,8 @@ export function ExchangeComposer({
   };
 
   const resetDrafts = () => {
+    setSyncOpen(false);
+    setSavedLocale(null);
     setRequestDraft(createEmptyRequestDraft(contentLocale));
     setIntelligenceDraft(createEmptyIntelligenceDraft(contentLocale));
     setRequestContext(null);
@@ -363,6 +374,56 @@ export function ExchangeComposer({
   const title = t(type === "demand" ? "sendDemand" : "sendIntelligence");
   const introTitle = t(type === "demand" ? "tellPlatform" : "fillIntelligence");
   const introDescription = t(type === "demand" ? "demandComposerIntro" : "intelligenceComposerIntro");
+  const activeDraft = type === "demand" ? requestDraft : intelligenceDraft;
+  const editingContent = editingLocale === activeDraft.contentLocale
+    ? { title: activeDraft.title, detail: activeDraft.detail }
+    : activeDraft.contentTranslations?.[editingLocale] ?? { title: "", detail: "" };
+  const selectedDraft = { ...activeDraft, ...editingContent };
+  const selectLocale = (locale: ExchangeContentLocale) => {
+    setSavedLocale(null);
+    if (!activeDraft.title && !activeDraft.detail && !Object.values(activeDraft.contentTranslations ?? {}).some((value) => value?.title || value?.detail)) {
+      if (type === "demand") setRequestDraft((current) => ({ ...current, contentLocale: locale }));
+      else setIntelligenceDraft((current) => ({ ...current, contentLocale: locale }));
+    }
+    setEditingLocale(locale);
+  };
+  const editRequest = (patch: Partial<RequestComposerDraft>) => {
+    setSavedLocale(null);
+    setRequestDraft((current) => {
+      if (editingLocale === current.contentLocale) return applyRequestDraftPatch(current, patch);
+      const { title, detail, ...rest } = patch;
+      const localized = current.contentTranslations?.[editingLocale] ?? { title: "", detail: "" };
+      return applyRequestDraftPatch(current, {
+        ...rest,
+        ...((title !== undefined || detail !== undefined) ? {
+          contentTranslations: { ...current.contentTranslations, [editingLocale]: { title: title ?? localized.title, detail: detail ?? localized.detail } }
+        } : {})
+      });
+    });
+  };
+  const editIntelligence = (patch: Partial<IntelligenceComposerDraft>) => {
+    setSavedLocale(null);
+    setIntelligenceDraft((current) => {
+      if (editingLocale === current.contentLocale) return { ...current, ...patch };
+      const { title, detail, ...rest } = patch;
+      const localized = current.contentTranslations?.[editingLocale] ?? { title: "", detail: "" };
+      return {
+        ...current, ...rest,
+        ...((title !== undefined || detail !== undefined) ? {
+          contentTranslations: { ...current.contentTranslations, [editingLocale]: { title: title ?? localized.title, detail: detail ?? localized.detail } }
+        } : {})
+      };
+    });
+  };
+  const syncAll = () => {
+    const content = { title: editingContent.title, detail: editingContent.detail };
+    const translations = Object.fromEntries(contentLocales
+      .filter(({ code }) => code !== activeDraft.contentLocale)
+      .map(({ code }) => [code, content]));
+    if (type === "demand") setRequestDraft((current) => ({ ...current, ...content, contentTranslations: translations }));
+    else setIntelligenceDraft((current) => ({ ...current, ...content, contentTranslations: translations }));
+    setSyncOpen(false);
+  };
 
   const review = normalizedPayload ? (
     <>
@@ -476,6 +537,15 @@ export function ExchangeComposer({
           step={step}
           title={title}
         >
+          <LocalizedContentLocaleRail
+            ariaLabel={t("authoredLanguage")}
+            locale={editingLocale}
+            onSelect={selectLocale}
+            saveAction={{ label: translateText("保存", language), ariaLabel: translateText("保存当前语言", language), onClick: () => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); setSavedLocale(editingLocale); } }}
+            syncAction={{ label: translateText("同步", language), ariaLabel: translateText("同步到全部语言版本", language), disabled: !editingContent.title.trim() || !editingContent.detail.trim(), onClick: () => setSyncOpen(true) }}
+            testId="exchange-composer-locale-rail"
+          />
+          {savedLocale === editingLocale ? <p className="sr-only" role="status">{translateText("当前语言已保存到草稿", language)}</p> : null}
           {errorKey && step === "edit" ? (
             <p className="rounded-2xl bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]" role="alert">
               {t(errorKey)}
@@ -491,9 +561,9 @@ export function ExchangeComposer({
                 />
                 <RequestComposerFields
                   context={requestContext}
-                  draft={requestDraft}
+                  draft={selectedDraft as RequestComposerDraft}
                   language={language}
-                  onChange={(patch) => setRequestDraft((current) => applyRequestDraftPatch(current, patch))}
+                  onChange={editRequest}
                 />
               </>
             ) : (
@@ -518,16 +588,24 @@ export function ExchangeComposer({
             )
           ) : (
             <IntelligenceComposerFields
-              draft={intelligenceDraft}
+              draft={selectedDraft as IntelligenceComposerDraft}
               language={language}
               onRetryServiceOptions={() => setIntelligenceServicesVersion((version) => version + 1)}
-              onChange={(patch) => setIntelligenceDraft((current) => ({ ...current, ...patch }))}
+              onChange={editIntelligence}
               serviceOptions={intelligenceServiceOptions}
               serviceOptionsStatus={intelligenceServicesStatus === "idle" ? "loading" : intelligenceServicesStatus}
             />
           )}
         </ExchangeComposerShell>
       ) : null}
+      {syncOpen ? <DangerConfirmDialog
+        confirmLabel={translateText("确认同步", language)}
+        description={translateText("当前版本的文字会覆盖其他四个版本。", language)}
+        onCancel={() => setSyncOpen(false)}
+        onConfirm={syncAll}
+        open={syncOpen}
+        title={translateText("同步到全部语言版本", language)}
+      /> : null}
     </>
   );
 }

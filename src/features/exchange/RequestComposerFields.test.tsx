@@ -145,12 +145,12 @@ describe("RequestComposerFields formal publication contract", () => {
     await renderAndOpen();
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
 
-    const locale = document.body.querySelector<HTMLSelectElement>('select[name="contentLocale"]');
+    const locale = document.body.querySelector<HTMLElement>('[data-testid="exchange-composer-locale-rail"]');
     expect(locale).not.toBeNull();
-    expect(locale?.disabled).toBe(false);
+    expect(locale?.className).toContain("fixed right-");
     expect(document.body.querySelector('[data-testid="exchange-post-type-selector"]')).toBeNull();
 
-    await act(async () => setInputValue(locale!, "ja"));
+    await act(async () => locale?.querySelector<HTMLButtonElement>('[aria-label="日本語"]')?.click());
     fillValidRequestDraft();
     await act(async () => clickAction("composer-next"));
 
@@ -159,13 +159,13 @@ describe("RequestComposerFields formal publication contract", () => {
 
   it("treats a language-only change as a dirty draft before closing", async () => {
     await renderAndOpen();
-    await waitFor(() => expect(document.body.querySelector('select[name="contentLocale"]')).not.toBeNull());
+    await waitFor(() => expect(document.body.querySelector('[data-testid="exchange-composer-locale-rail"]')).not.toBeNull());
 
-    await act(async () => setInputValue(document.body.querySelector<HTMLSelectElement>('select[name="contentLocale"]')!, "ja"));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-testid="exchange-composer-locale-rail"] [aria-label="日本語"]')?.click());
     await act(async () => document.body.querySelector<HTMLButtonElement>('[aria-label="关闭"]')?.click());
 
     expect(document.body.textContent).toContain("放弃本次编辑？");
-    expect(document.body.querySelector('select[name="contentLocale"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-testid="exchange-composer-locale-rail"]')).not.toBeNull();
   });
 
   it("does not offer pre-match disclosure controls for exact address lines", async () => {

@@ -10,6 +10,7 @@ import {
   exchangeOperationsOpenApiSchemas
 } from "./exchange-operations.openapi";
 import { fieldJobOpenApiPaths, fieldJobOpenApiSchemas } from "./field-job.openapi";
+
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "../config/env";
@@ -20,6 +21,20 @@ import { MAX_MEMBERSHIP_ANALYTICS_PAGE } from "../domain/membership-analytics";
 import { ERROR_CODES } from "../constants/error-codes";
 import { MAX_ANALYTICS_RANKING_PAGE } from "../domain/analytics-ranking";
 import { FINANCE_SETTLEMENT_STATUSES } from "../validators/backoffice.validator";
+
+const exchangeContentTranslationsSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: Object.fromEntries(["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => [locale, {
+    type: "object",
+    additionalProperties: false,
+    required: ["title", "detail"],
+    properties: {
+      title: { type: "string", minLength: 1, maxLength: 120 },
+      detail: { type: "string", minLength: 1, maxLength: 10000 }
+    }
+  }]))
+};
 
 type OpenApiDocument = Record<string, unknown>;
 const safeIntegerMaximum = PRISMA_INT_MAX;
@@ -5660,6 +5675,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "title",
           "detail",
           "contentLocale",
+          "contentTranslations",
           "areaLabel",
           "serviceStartAt",
           "serviceEndAt",
@@ -5678,6 +5694,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           title: { type: "string", minLength: 1, maxLength: 120 },
           detail: { type: "string", minLength: 1, maxLength: 10000 },
           contentLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          contentTranslations: exchangeContentTranslationsSchema,
           areaLabel: {
             type: "string",
             minLength: 1,
@@ -6281,6 +6298,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             example: "午後のイベント前に、自然なアップスタイルを希望します。"
           },
           contentLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          contentTranslations: exchangeContentTranslationsSchema,
           serviceStartAt: { type: "string", format: "date-time", description: "Service start; must be on a 30-minute boundary." },
           serviceEndAt: { type: "string", format: "date-time", description: "Service end; must be on a 30-minute boundary." },
           expiresAt: { type: "string", format: "date-time", description: "Application deadline; must be on a 30-minute boundary and at least 30 minutes before serviceStartAt." },
@@ -6342,6 +6360,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             example: "落ち着いた個室で施術します。事前相談も可能です。"
           },
           contentLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          contentTranslations: exchangeContentTranslationsSchema,
           serviceRef: {
             type: "string",
             pattern: "^(?:shop|technician):[1-9][0-9]*$"

@@ -188,7 +188,7 @@ describe("ExchangeComposer approved shared shell", () => {
     await waitFor(() =>
       expect(document.body.querySelector('[data-service-ref="technician:31"]')).not.toBeNull()
     );
-    await act(async () => setInputValue(document.body.querySelector<HTMLSelectElement>('select[name="contentLocale"]')!, "ja"));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-testid="exchange-composer-locale-rail"] [aria-label="日本語"]')?.click());
     await act(async () =>
       document.body.querySelector<HTMLButtonElement>('[data-service-ref="technician:31"]')?.click()
     );

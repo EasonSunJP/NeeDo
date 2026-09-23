@@ -13,6 +13,7 @@ import { likeExchangePost, recordExchangeShare, unlikeExchangePost } from "./api
 import { ExchangeComposer } from "./ExchangeComposer";
 import { ExchangeIntelligenceShopCard } from "./ExchangeIntelligenceShopCard";
 import { exchangeText } from "./i18n";
+import { localizedExchangePostText } from "./localized-post";
 import type { ExchangeInteractionCounts, ExchangePost, ExchangePostType } from "./types";
 import { useExchangeFeed, type ExchangeFeedError } from "./useExchangeFeed";
 
@@ -108,6 +109,7 @@ function matchesSearch(post: ExchangePost, query: string) {
   return [
     post.title,
     post.detail,
+    ...Object.values(post.contentTranslations ?? {}).flatMap((value) => value ? [value.title, value.detail] : []),
     post.areaLabel,
     post.type === "demand" ? post.publisher?.displayName ?? "" : post.intelligence?.publisherCard?.type === "shop" ? post.intelligence.publisherCard.name : "",
     post.type === "demand" ? post.publisher?.publicId ?? "" : "",
@@ -132,6 +134,7 @@ function PostCard({
   const [pending, setPending] = useState<"like" | "share" | null>(null);
   const [actionError, setActionError] = useState(false);
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
+  const displayText = localizedExchangePostText(post, language);
   const detailPath = `${exchangeBasePath(context)}/posts/${post.id}`;
   const openDetail = () => navigate(detailPath);
 
@@ -159,7 +162,7 @@ function PostCard({
       const url = typeof window === "undefined"
         ? detailPath
         : `${window.location.origin}${window.location.pathname}#${detailPath}`;
-      const result = await shareContent({ title: post.title, text: post.detail, url });
+      const result = await shareContent({ title: displayText.title, text: displayText.detail, url });
       if (result.status !== "shared" && result.status !== "copied") return;
       const counts = await recordExchangeShare(String(post.id), globalThis.crypto.randomUUID());
       onCountsChange(post.id, counts, post.viewer.liked);
@@ -221,14 +224,14 @@ function PostCard({
           </div>
         }
         image={post.type === "demand" ? post.demand?.cover.url : undefined}
-        imageAlt={post.type === "demand" ? post.title : undefined}
+        imageAlt={post.type === "demand" ? displayText.title : undefined}
         imageLabel={t(post.type)}
         imageLayout={post.type === "demand" ? "wide" : "thumbnail"}
         noteLabel={t("note")}
-        noteValue={<span data-no-i18n="true">{post.detail}</span>}
+        noteValue={<span data-no-i18n="true">{displayText.detail}</span>}
         supplementaryContent={post.type === "intelligence" ? <ExchangeIntelligenceShopCard context={context} language={language} post={post} /> : undefined}
         tags={postTags(post, language)}
-        title={<span data-no-i18n="true">{post.title}</span>}
+        title={<span data-no-i18n="true">{displayText.title}</span>}
         titleBadge={nowMs - new Date(post.publishedAt).getTime() <= 86_400_000 ? "NEW" : undefined}
         tone={post.type === "demand" ? "demand" : "default"}
         topRightAction={

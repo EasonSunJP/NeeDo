@@ -1,17 +1,11 @@
 import { useState } from "react";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
-import { registerTranslationEntries, translateText } from "../../i18n/translations";
+import { translateText } from "../../i18n/translations";
 import { DangerConfirmDialog } from "../../components/ui/DangerConfirmDialog";
 import { contentLocaleForLanguage, type ContentLocale } from "./localizedText";
 import { LocalizedContentLocaleRail } from "./LocalizedContentLocaleRail";
 
 type Field = { key: string; label: string; maxLength: number; multiline?: boolean };
-
-registerTranslationEntries({
-  "同步到全部语言版本": { "zh-Hant": "同步到全部語言版本", ja: "すべての言語版に同期", en: "Copy to all language versions", ko: "모든 언어 버전에 복사" },
-  "确认同步": { "zh-Hant": "確認同步", ja: "同期を確認", en: "Confirm copy", ko: "복사 확인" },
-  "当前版本的文字会覆盖其他四个版本。": { "zh-Hant": "目前版本的文字會覆蓋其他四個版本。", ja: "現在の版のテキストで他の4つの版を上書きします。", en: "This text will replace the other four versions.", ko: "현재 버전의 텍스트가 다른 네 버전을 덮어씁니다." }
-});
 
 export function LocalizedTextEditor({ fields, fallback, translations, onSave, onSyncAll, disabled = false }: {
   fields: readonly Field[];
@@ -65,7 +59,7 @@ export function LocalizedTextEditor({ fields, fallback, translations, onSave, on
       ariaLabel={t("内容语言")}
       locale={locale}
       onSelect={(next) => { setLocale(next); setError(""); }}
-      saveAction={{ label: saving ? t("保存中…") : t("保存当前语言"), disabled: disabled || saving || !changed, onClick: () => void save() }}
+      saveAction={{ label: saving ? t("保存中…") : t("保存"), ariaLabel: t("保存当前语言"), disabled: disabled || saving || !changed, onClick: () => void save() }}
       syncAction={onSyncAll ? { label: t("同步"), ariaLabel: "同步到全部语言版本", disabled: disabled || saving, onClick: () => setSyncOpen(true) } : undefined}
       testId="localized-content-locale-rail"
     />

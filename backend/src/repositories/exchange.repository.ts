@@ -13,7 +13,7 @@ import {
   ExchangeServiceMode as DatabaseExchangeServiceMode
 } from "@prisma/client";
 import { Prisma, type PrismaClient } from "@prisma/client";
-import type { ContentLocaleCode } from "../constants/content-locales";
+import { CONTENT_LOCALES, type ContentLocaleCode } from "../constants/content-locales";
 import { prisma } from "../prisma/client";
 import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
 import type {
@@ -58,6 +58,21 @@ import { AppError } from "../utils/app-error";
 import { ERROR_CODES } from "../constants/error-codes";
 import { projectExchangeRequestAddress } from "../domain/exchange-address-privacy";
 import { ShopVisibilityRepository, type ShopVisibilityViewer } from "./shop-visibility.repository";
+
+function readPostTranslations(value: Prisma.JsonValue | null): ExchangePostPayload["contentTranslations"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const source = value as Record<string, unknown>;
+  const result: ExchangePostPayload["contentTranslations"] = {};
+  for (const locale of CONTENT_LOCALES) {
+    const entry = source[locale];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const { title, detail } = entry as Record<string, unknown>;
+    if (typeof title === "string" && title.trim() && typeof detail === "string" && detail.trim()) {
+      result[locale] = { title, detail };
+    }
+  }
+  return result;
+}
 
 const typeToDatabase: Record<ExchangePostType, DatabaseExchangePostType> = {
   demand: DatabaseExchangePostType.DEMAND,
@@ -987,6 +1002,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         title: input.input.title,
         detail: input.input.detail,
         contentLocale: localeToDatabase[input.input.contentLocale],
+        contentTranslationsJson: input.input.contentTranslations ?? Prisma.JsonNull,
         areaLabel:
           input.input.type === "demand"
             ? input.input.addressLine1
@@ -1964,6 +1980,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       title: row.title,
       detail: row.detail,
       contentLocale: localeFromDatabase[row.contentLocale],
+      contentTranslations: readPostTranslations(row.contentTranslationsJson),
       areaLabel: projectedRequestAddress?.areaLabel ?? row.areaLabel,
       serviceStartAt: row.serviceStartAt.toISOString(),
       serviceEndAt: row.serviceEndAt.toISOString(),

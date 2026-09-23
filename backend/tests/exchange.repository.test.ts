@@ -17,6 +17,7 @@ const demandRow = {
   title: "渋谷でヘアセットをお願いしたい",
   detail: "イベント前にお願いします。",
   contentLocale: "JA",
+  contentTranslationsJson: { en: { title: "Hair styling in Shibuya", detail: "Please help before the event." } },
   areaLabel: "渋谷区",
   serviceStartAt: new Date("2026-08-31T00:00:00.000Z"),
   serviceEndAt: new Date("2026-08-31T01:00:00.000Z"),
@@ -66,7 +67,7 @@ describe("ExchangePostRepository", () => {
     },
     input: {
       type: "demand", serviceMode: "store", title: demandRow.title, detail: demandRow.detail,
-      contentLocale: "ja", serviceStartAt: demandRow.serviceStartAt, serviceEndAt: demandRow.serviceEndAt,
+      contentLocale: "ja", contentTranslations: { en: { title: "Hair styling in Shibuya", detail: "Please help before the event." } }, serviceStartAt: demandRow.serviceStartAt, serviceEndAt: demandRow.serviceEndAt,
       expiresAt: demandRow.expiresAt, targetProviderCount: 1, matchMode: "quick", budgetMode: "total",
       budgetMinJpy: null, budgetMaxJpy: 12000, addressLine1: "渋谷区", addressLine2: null,
       addressLine3: null, addressLine2Public: false, addressLine3Public: false,
@@ -92,7 +93,7 @@ describe("ExchangePostRepository", () => {
       select: { id: true }
     });
     expect(transaction.exchangePost.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ demand: { create: expect.objectContaining({ coverMediaAssetId: 81 }) } })
+      data: expect.objectContaining({ contentTranslationsJson: { en: { title: "Hair styling in Shibuya", detail: "Please help before the event." } }, demand: { create: expect.objectContaining({ coverMediaAssetId: 81 }) } })
     }));
     expect(transaction.mediaAsset.updateMany).toHaveBeenCalledWith({
       where: expect.objectContaining({ id: 81, checksumSha256: "a".repeat(64), ownerUserId: 7, ownerIdentityId: 17,
@@ -801,6 +802,7 @@ describe("ExchangePostRepository", () => {
           title: "渋谷でヘアセットをお願いしたい",
           detail: "イベント前にお願いします。",
           contentLocale: "ja",
+          contentTranslations: { en: { title: "Hair styling in Shibuya", detail: "Please help before the event." } },
           areaLabel: "渋谷区",
           serviceStartAt: "2026-08-31T00:00:00.000Z",
           serviceEndAt: "2026-08-31T01:00:00.000Z",

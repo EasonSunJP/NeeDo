@@ -94,14 +94,6 @@ function VisibilitySwitch({
   );
 }
 
-const localeLabels: Record<RequestComposerDraft["contentLocale"], string> = {
-  "zh-CN": "简体中文",
-  "zh-TW": "繁體中文",
-  ja: "日本語",
-  en: "English",
-  ko: "한국어"
-};
-
 export function RequestComposerFields({
   context,
   draft,
@@ -120,20 +112,6 @@ export function RequestComposerFields({
       data-testid="exchange-request-composer-fields"
     >
       <div className="grid gap-4">
-        <Field label={t("authoredLanguage")} required>
-          <select
-            aria-label={t("authoredLanguage")}
-            className={fieldClassName}
-            name="contentLocale"
-            onChange={(event) => onChange({ contentLocale: event.target.value as RequestComposerDraft["contentLocale"] })}
-            value={draft.contentLocale}
-          >
-            {Object.entries(localeLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </Field>
-
         <Field label={t("postType")} required>
           <div className="flex min-h-12 items-center rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-4 text-sm font-black text-[color:var(--client-text)]">
             {t("demand")}

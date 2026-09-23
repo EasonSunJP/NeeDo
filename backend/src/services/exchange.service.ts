@@ -849,6 +849,7 @@ export class ExchangeService {
       title: input.title,
       detail: input.detail,
       contentLocale: input.contentLocale,
+      contentTranslations: input.contentTranslations ?? {},
       serviceStartAt: input.serviceStartAt.toISOString(),
       serviceEndAt: input.serviceEndAt.toISOString(),
       expiresAt: input.expiresAt.toISOString()
