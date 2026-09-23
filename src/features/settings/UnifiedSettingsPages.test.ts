@@ -420,8 +420,11 @@ describe("UnifiedSettingsPage fullscreen exit", () => {
   );
 
   it("uses the shared close control to leave the current portal settings home", () => {
-    expect(settingsHomeSource).toContain("closeTo={getPortalMePath(portal)}");
+    expect(settingsHomeSource).toContain("closeTo={getPortalEntry(portal)}");
     expect(settingsHomeComponentSource).toContain("closeTo={closeTo}");
+    expect(getPortalEntry("user")).toBe("/");
+    expect(getPortalEntry("technician")).toBe("/technician");
+    expect(getPortalEntry("merchant")).toBe("/merchant");
   });
 
   it("removes the bottom navigation and its safe-area reservation from settings home", () => {
