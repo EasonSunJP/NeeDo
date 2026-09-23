@@ -184,7 +184,7 @@ describe("formal customer checkout", () => {
   });
 
   it("requires all checkout submission gates", () => {
-    expect(formalSource).toContain("disabled={!canSubmitBooking || submitting}");
+    expect(formalSource).toContain("disabled={(isAuthenticated ? !canSubmitBooking : !selectedSlot) || submitting}");
   });
 
   it("uses formal JP prefecture and municipality selectors for home service", () => {

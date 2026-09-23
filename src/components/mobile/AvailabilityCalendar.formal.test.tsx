@@ -57,6 +57,16 @@ it("enables only dates present in the authoritative availability index", async (
   expect(container.textContent).not.toContain("TEL");
 });
 
+it("limits the guest selector to the supplied eligible count", async () => {
+  await act(async () => root.render(<AvailabilityCalendar
+    maxPeople={2} onPeopleChange={() => undefined} onSelectDay={() => undefined}
+    onTimeChange={() => undefined} people="1名" selectedDay={14} time="10:00"
+    timeOptions={["10:00"]} title="来店日"
+  />));
+  const options = Array.from(container.querySelectorAll("select"))[0]?.querySelectorAll("option");
+  expect(Array.from(options ?? []).map((option) => option.textContent)).toEqual(["1名", "2名"]);
+});
+
 it("renders a triangle when fewer than four technicians or starts remain", async () => {
   await act(async () => {
     root.render(

@@ -58,6 +58,7 @@ import {
 } from "../../features/booking/window-loaders";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
+import { platformMembershipSelfApi } from "../../features/platform-membership/api";
 import { mapBookingNavigationServiceToMenuCard } from "../../features/pricing-mode/bookingServiceCards";
 import { canAddShopService, SHOP_SERVICE_LIMIT } from "../../features/pricing-mode/shopServiceLimit";
 import { loadCurrentMerchantShopServices } from "../../features/pricing-mode/shopServiceCatalog";
@@ -3173,6 +3174,15 @@ export function StoreDetailExperience({
     () => new Date(selectedVisitDate.getFullYear(), selectedVisitDate.getMonth(), 1)
   );
   const [selectedPeople, setSelectedPeople] = useState(industry === "dining" ? "2名" : "1名");
+  const [canBookGroup, setCanBookGroup] = useState(false);
+  useEffect(() => {
+    if (!session) { setCanBookGroup(false); return; }
+    let active = true;
+    void platformMembershipSelfApi.getMine()
+      .then((membership) => { if (active) setCanBookGroup(membership.tierCode === "black_diamond"); })
+      .catch(() => { if (active) setCanBookGroup(false); });
+    return () => { active = false; };
+  }, [session]);
   const [selectedTime, setSelectedTime] = useState(routeTime ?? timeOptions[0] ?? nextSlotTime(store.nextSlot));
   const [selectedMenuCardId, setSelectedMenuCardId] = useState(primaryCheckoutTarget);
   const [selectedTechnicianId, setSelectedTechnicianId] = useState(routeTechnicianId);
@@ -3401,6 +3411,13 @@ export function StoreDetailExperience({
     () => formalSelectedDateStarts.find((summary) => getTokyoSlotParts(summary.startsAt)?.time === selectedTime) ?? null,
     [formalSelectedDateStarts, selectedTime]
   );
+  const maxBookablePeople = industry === "dining" ? 4 : canBookGroup && selectedFormalStart
+    ? Math.max(1, Math.min(10, new Set(selectedFormalStart.options.map((option) => option.technicianProfileId).filter(Boolean)).size))
+    : 1;
+  useEffect(() => {
+    if (Number.parseInt(selectedPeople, 10) <= maxBookablePeople) return;
+    setSelectedPeople(language === "en" ? "1 person" : language === "ko" ? "1명" : "1名");
+  }, [language, maxBookablePeople, selectedPeople]);
   const selectedFormalOption = useMemo(
     () => selectedFormalStart?.options.find(
       (option) => !selectedTechnicianId || String(option.technicianProfileId ?? "") === selectedTechnicianId
@@ -4453,6 +4470,7 @@ export function StoreDetailExperience({
                     authoritativeAvailability={formalApiOnly}
                     onViewMonthChange={selectFormalAvailabilityViewMonth}
                     people={selectedPeople}
+                    maxPeople={maxBookablePeople}
                     selectedDate={selectedVisitDate}
                     selectedDay={selectedVisitDate.getDate()}
                     technicianCountRelevant={isTechnicianPricingActive}

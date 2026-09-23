@@ -226,6 +226,7 @@ const TechnicianPortalPage = lazy(() => import("./pages/mobile/TechnicianPortalP
 const MerchantAutoDispatchRoutePage = lazy(() => import("./pages/mobile/MerchantAutoDispatchRoutePage").then((module) => ({ default: module.MerchantAutoDispatchRoutePage })));
 const UserFavoritesRoutePage = lazy(() => import("./pages/user/UserFavoritesPage").then((module) => ({ default: module.UserFavoritesRoutePage })));
 const UserOrderDetailPage = lazy(() => import("./pages/user/UserOrderDetailPage").then((module) => ({ default: module.UserOrderDetailPage })));
+const BookingGroupPage = lazy(() => import("./pages/user/BookingGroupPage").then((module) => ({ default: module.BookingGroupPage })));
 const DashboardPage = lazy(() => import("./pages/admin/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const FinancePage = lazy(() => import("./pages/admin/FinancePage").then((module) => ({ default: module.FinancePage })));
 const LiveDashboardPage = lazy(() => import("./pages/admin/LiveDashboardPage").then((module) => ({ default: module.LiveDashboardPage })));
@@ -1333,6 +1334,7 @@ export default function App() {
               <Route path="/business-admin/*" element={<LegacyNdaAdminRedirect />} />
               <Route path="/orders" element={protect("user", <UserOrdersPage />)} />
               <Route path="/orders/:orderId" element={protect("user", <Suspense fallback={null}><UserOrderDetailPage /></Suspense>)} />
+              <Route path="/bookings/groups/:publicId" element={protect("user", <Suspense fallback={null}><BookingGroupPage /></Suspense>)} />
               <Route path="/me" element={protect("user", <UserCenterPage />)} />
               <Route path="/me/benefits" element={protect("user", <CurrentMembershipBenefitsPage />)} />
               <Route path="/me/addresses" element={protect("user", <UserAddressesPage />)} />
