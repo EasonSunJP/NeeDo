@@ -25,6 +25,8 @@ export type GroupBookingSlot = {
   bookedCount: number;
   capacity: number;
   priceAmountJpy: number;
+  currency: string;
+  durationMinutes: number;
   nominationFeeJpy: number;
 };
 
@@ -68,6 +70,10 @@ export function planGroupBooking(
             (assignment.serviceIds ? slot.serviceId : slot.technicianServiceId) !== selectedServices[position] ||
             slot.bookedCount >= slot.capacity || slot.capacity < 1 ||
             slot.startsAt >= slot.endsAt ||
+            slot.currency !== "JPY" ||
+            !Number.isSafeInteger(slot.priceAmountJpy) || slot.priceAmountJpy < 0 ||
+            !Number.isSafeInteger(slot.durationMinutes) || slot.durationMinutes < 1 ||
+            slot.endsAt.getTime() - slot.startsAt.getTime() !== slot.durationMinutes * 60_000 ||
             (slot.occupiedStartsAt ?? slot.startsAt) > slot.startsAt ||
             (slot.occupiedEndsAt ?? slot.endsAt) < slot.endsAt) {
           throw new Error("slot_unavailable");

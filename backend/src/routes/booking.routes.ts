@@ -36,6 +36,8 @@ import {
   availabilityWindowUpdateBodySchema,
   availabilityListQuerySchema,
   bookingCreateBodySchema,
+  bookingGroupCreateBodySchema,
+  bookingGroupPublicIdParamSchema,
   createOrderAddOnBodySchema,
   confirmReceiptBodySchema,
   endServiceBodySchema,
@@ -213,6 +215,20 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.create),
     validateRequest({ body: bookingCreateBodySchema }),
     controller.createBooking
+  );
+  router.post(
+    "/bookings/groups",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.create),
+    validateRequest({ body: bookingGroupCreateBodySchema }),
+    controller.createGroupBooking
+  );
+  router.get(
+    "/bookings/groups/:publicId",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.getOrder),
+    validateRequest({ params: bookingGroupPublicIdParamSchema }),
+    controller.getGroupBooking
   );
   router.post(
     "/bookings/:id/service-prepayment",

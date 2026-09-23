@@ -23249,6 +23249,55 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/bookings/groups`]: {
+      post: {
+        tags: ["Booking"],
+        summary: "Atomically create technician-backed bookings for one to ten guests",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "booking:create",
+        parameters: [{ name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", minLength: 16, maxLength: 191 } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object", additionalProperties: false,
+            required: ["shopId", "startsAt", "guests"],
+            properties: {
+              shopId: { type: "integer", minimum: 1 },
+              startsAt: { type: "string", format: "date-time" },
+              paymentMethod: { type: "string", enum: ["onsite", "bank_transfer"], default: "onsite" },
+              note: { type: "string", maxLength: 500 },
+              guests: { type: "array", minItems: 1, maxItems: 10, items: {
+                type: "object", additionalProperties: false, required: ["label", "assignments"],
+                properties: {
+                  label: { type: "string", minLength: 1, maxLength: 60 },
+                  assignments: { type: "array", minItems: 1, maxItems: 10, items: {
+                    type: "object", additionalProperties: false,
+                    required: ["technicianProfileId", "scheduleSlotIds", "expectedPriceAmountJpy"],
+                    oneOf: [{ required: ["serviceIds"] }, { required: ["technicianServiceIds"] }],
+                    properties: {
+                      technicianProfileId: { type: "integer", minimum: 1 },
+                      serviceIds: { type: "array", minItems: 1, maxItems: 10, items: { type: "integer", minimum: 1 } },
+                      technicianServiceIds: { type: "array", minItems: 1, maxItems: 10, items: { type: "integer", minimum: 1 } },
+                      scheduleSlotIds: { type: "array", minItems: 1, maxItems: 10, items: { type: "integer", not: { const: 0 } } },
+                      expectedPriceAmountJpy: { type: "integer", minimum: 0 }
+                    }
+                  } }
+                }
+              } }
+            }
+          } } }
+        },
+        responses: { "201": { description: "Group and real per-assignment orders" }, "403": { description: "Membership or identity restriction" }, "409": { description: "Availability, price, or idempotency conflict" } }
+      }
+    },
+    [`${config.API_PREFIX}/bookings/groups/{publicId}`]: {
+      get: {
+        tags: ["Booking"], summary: "Read visible group orders for the purchaser or an authorized provider",
+        security: [{ bearerAuth: [] }], "x-permission": "order:read",
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Group with guest and authorized order projections" }, "404": { description: "Group unavailable or no visible orders" } }
+      }
+    },
     [`${config.API_PREFIX}/bookings`]: {
       post: {
         tags: ["Booking"],

@@ -318,6 +318,10 @@ export const orderIdParamSchema = z.object({
   id: z.coerce.number().int().positive()
 });
 
+export const bookingGroupPublicIdParamSchema = z.object({
+  publicId: z.string().uuid()
+}).strict();
+
 export const orderAssignTechnicianBodySchema = z.object({
   technicianProfileId: z.coerce.number().int().positive()
 }).strict();

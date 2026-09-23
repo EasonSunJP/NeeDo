@@ -14,6 +14,8 @@ const slot = (id: number, technicianProfileId: number, serviceId: number, minute
   bookedCount: 0,
   capacity: 1,
   priceAmountJpy: 8_000,
+  currency: "JPY",
+  durationMinutes: 60,
   nominationFeeJpy: 500
 });
 const group = {
@@ -56,5 +58,11 @@ describe("planGroupBooking", () => {
     const bundle = { ...group, guests: [{ label: "A", assignments: [{ technicianProfileId: 11, serviceIds: [101, 103], scheduleSlotIds: [201, 203], expectedPriceAmountJpy: 16_500 }] }] };
     expect(() => planGroupBooking(bundle, [slots[0]!, slot(203, 11, 103, 90)], "free")).toThrow("slot_unavailable");
     expect(planGroupBooking(bundle, [slots[0]!, slot(203, 11, 103, 60)], "free").orders[0]?.scheduleSlotIds).toEqual([201, 203]);
+  });
+
+  it("rejects a slot that does not cover the catalog duration or JPY price", () => {
+    const one = { ...group, guests: group.guests.slice(0, 1) };
+    expect(() => planGroupBooking(one, [{ ...slots[0]!, durationMinutes: 90 }], "free")).toThrow("slot_unavailable");
+    expect(() => planGroupBooking(one, [{ ...slots[0]!, currency: "USD" }], "free")).toThrow("slot_unavailable");
   });
 });

@@ -10,6 +10,8 @@ import {
   availabilityWindowUpdateBodySchema,
   availabilityListQuerySchema,
   bookingCreateBodySchema,
+  bookingGroupCreateBodySchema,
+  bookingGroupPublicIdParamSchema,
   createOrderAddOnBodySchema,
   confirmReceiptBodySchema,
   endServiceBodySchema,
@@ -153,6 +155,28 @@ export class BookingController {
     } catch (error) {
       next(error);
     }
+  };
+
+  public createGroupBooking = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      const body = bookingGroupCreateBodySchema.parse(request.body);
+      const created = await this.bookingService.createGroupBooking(
+        this.getActor(response), body, request.get("Idempotency-Key") ?? ""
+      );
+      if (!created.idempotentReplay) {
+        for (const order of created.guests.flatMap((guest) => guest.orders)) {
+          await this.automationProcessor?.processBooking(order.id).catch(() => undefined);
+        }
+      }
+      response.status(201).json(successResponse(created));
+    } catch (error) { next(error); }
+  };
+
+  public getGroupBooking = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { publicId } = bookingGroupPublicIdParamSchema.parse(request.params);
+      response.status(200).json(successResponse(await this.bookingService.getGroupBooking(this.getActor(response), publicId)));
+    } catch (error) { next(error); }
   };
 
   public createTechnicianManualBooking = async (

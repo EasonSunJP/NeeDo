@@ -10,6 +10,8 @@ import type {
   AvailabilityListInput,
   BookingCreateRepositoryOptions,
   BookingCreateRepositoryInput,
+  BookingGroupCreateRepositoryInput,
+  BookingGroupPayload,
   BookingOrderPayload,
   BookingOrderStatusPayload,
   BookingRepositoryPort,
@@ -106,6 +108,11 @@ export type BookingCreateInput = BookingCreateBaseInput &
         serviceLocation: { countryCode: "JP"; admin1Code: string; admin2Code: string };
       }
   );
+
+export type BookingGroupCreateInput = Omit<
+  BookingGroupCreateRepositoryInput,
+  "customerUserId" | "idempotencyKey" | "startsAt"
+> & { startsAt: string };
 
 export type TechnicianManualBookingInput = {
   customerIdentityId: number;
@@ -401,6 +408,77 @@ export class BookingService {
     for (const order of affected) {
       await this.transition(actor, order.id, "cancel", reason);
     }
+  }
+
+  public async createGroupBooking(
+    actor: AuthenticatedBookingActor,
+    input: BookingGroupCreateInput,
+    rawIdempotencyKey: string
+  ): Promise<BookingGroupPayload> {
+    if (!this.isCustomerSharedIdentity(actor)) {
+      throw new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.auth.identity_forbidden", statusCode: 403 });
+    }
+    const parsedKey = exchangeIdempotencyKeySchema.safeParse(rawIdempotencyKey);
+    if (!parsedKey.success) {
+      throw new AppError({ code: ERROR_CODES.VALIDATION, message: "error.validation", statusCode: 400 });
+    }
+    if (!this.repository.createGroupBooking) throw this.dependencyUnavailableError();
+    await this.userPolicyEnforcementService?.assertServiceEkyc(actor.userId, "store", this.now());
+    await this.assertShopVisible(input.shopId, actor);
+    await this.assertShopNotSuspended(input.shopId);
+    let group: BookingGroupPayload;
+    try {
+      group = await this.repository.createGroupBooking({
+        ...input,
+        startsAt: new Date(input.startsAt),
+        customerUserId: actor.userId,
+        idempotencyKey: parsedKey.data
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "membership_limit") {
+        throw new AppError({ code: ERROR_CODES.VALIDATION, message: "error.booking.group_membership_limit", statusCode: 403 });
+      }
+      if (error instanceof Error && error.message === "price_changed") {
+        throw new AppError({ code: ERROR_CODES.BOOKING_PRICE_CHANGED, message: "error.booking.price_changed", statusCode: 409 });
+      }
+      if (error instanceof Error && error.message === "idempotency_conflict") {
+        throw new AppError({ code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED, message: "error.booking.idempotency_conflict", statusCode: 409 });
+      }
+      if (error instanceof Error && ["slot_unavailable", "shop_unavailable"].includes(error.message)) throw this.slotUnavailableError();
+      throw error;
+    }
+    if (group.idempotentReplay) return group;
+    for (const order of group.guests.flatMap((guest) => guest.orders)) {
+      const recipients = await this.repository.findOrderRealtimeRecipients?.(order.id);
+      await this.notifyOrderStatusChangedBestEffort({
+        actorUserId: actor.userId,
+        orderId: order.id,
+        orderNo: order.orderNo,
+        fromStatus: "none",
+        toStatus: "pending",
+        serviceName: order.serviceName,
+        recipientUserIds: recipients?.map((recipient) => recipient.userId) ?? [actor.userId]
+      });
+    }
+    await this.publishLiveDashboardChangesBestEffort(group.guests.flatMap((guest) => guest.orders.map((order) => order.id)));
+    return group;
+  }
+
+  public async getGroupBooking(actor: AuthenticatedBookingActor, publicId: string): Promise<BookingGroupPayload> {
+    if (!this.repository.findGroupBooking) throw this.dependencyUnavailableError();
+    const group = await this.repository.findGroupBooking(publicId);
+    if (!group) throw this.notFoundError();
+    if (group.customerUserId === actor.userId && this.isCustomerSharedIdentity(actor)) return group;
+    const guests = group.guests.flatMap((guest) => {
+      const orders = guest.orders.filter((order) => this.canAccessOrder(actor, order));
+      return orders.length ? [{ ...guest, orders }] : [];
+    });
+    if (!guests.length) throw this.notFoundError();
+    return {
+      ...group,
+      guests,
+      totalPriceAmountJpy: guests.reduce((sum, guest) => sum + guest.orders.reduce((total, order) => total + Number(order.priceAmount), 0), 0)
+    };
   }
 
   public async createBooking(
