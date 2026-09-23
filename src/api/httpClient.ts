@@ -144,10 +144,14 @@ function getApiBaseUrl() {
   return resolvePortalApiBaseUrl(resolveAuthPersistenceScope(), import.meta.env);
 }
 
-function getRequestBaseUrl(baseUrl?: string) {
+function getRequestBaseUrl(baseUrl?: string, path?: string) {
   const configured = baseUrl?.trim();
 
-  return configured ? trimTrailingSlash(configured) : getApiBaseUrl();
+  if (configured) return trimTrailingSlash(configured);
+  if (path?.startsWith("/merchant-admin/") && getMerchantAdminPreview()) {
+    return resolvePortalApiBaseUrl("merchant-admin", import.meta.env);
+  }
+  return getApiBaseUrl();
 }
 
 function appendQuery(url: string, query?: HttpClientRequestOptions["query"]) {
@@ -177,7 +181,7 @@ export function buildApiUrl(
   query?: HttpClientRequestOptions["query"],
   baseUrl?: string
 ) {
-  return appendQuery(`${getRequestBaseUrl(baseUrl)}${normalizePath(path)}`, query);
+  return appendQuery(`${getRequestBaseUrl(baseUrl, path)}${normalizePath(path)}`, query);
 }
 
 function isJsonContentType(contentType: string) {

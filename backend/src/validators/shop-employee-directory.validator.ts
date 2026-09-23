@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { strongPasswordSchema } from "./auth.validator";
 
 export const shopEmployeeDirectoryQuerySchema = z
   .object({
@@ -11,3 +12,14 @@ export const shopEmployeeDirectoryQuerySchema = z
   .strict();
 
 export type ParsedShopEmployeeDirectoryQuery = z.output<typeof shopEmployeeDirectoryQuerySchema>;
+
+export const shopEmployeeCreateBodySchema = z.object({
+  displayName: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().max(255).transform((value) => value.toLowerCase()),
+  password: strongPasswordSchema,
+  roleCode: z.enum(["STAFF", "ACCOUNTANT", "DRIVER", "GENERAL_AFFAIRS", "CHEF"])
+}).strict();
+
+export const shopEmployeeShopParamSchema = z.object({ shopId: z.coerce.number().int().positive() });
+
+export type ShopEmployeeCreateBody = z.output<typeof shopEmployeeCreateBodySchema>;

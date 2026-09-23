@@ -32,6 +32,7 @@ export function MerchantBillingCard({
   nested = false,
   onToggleExpanded,
   onEditBilling,
+  onEditShop,
   onOpenBusinessSettings,
   onOpenMerchantAdminPreview,
   onViewDetails
@@ -41,6 +42,7 @@ export function MerchantBillingCard({
   nested?: boolean;
   onToggleExpanded?: () => void;
   onEditBilling: () => void;
+  onEditShop?: () => void;
   onOpenBusinessSettings: () => void;
   onOpenMerchantAdminPreview: () => void;
   onViewDetails: () => void;
@@ -145,6 +147,7 @@ export function MerchantBillingCard({
           <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
             <Button size="sm" onClick={onViewDetails}>{t("查看详情")}</Button>
             <Button size="sm" variant="secondary" onClick={onEditBilling}>{t("计费设置")}</Button>
+            {shop && onEditShop ? <Button size="sm" variant="secondary" onClick={onEditShop}>{t("编辑店铺资料")}</Button> : null}
             <Button size="sm" variant={card.suspension ? "danger" : "secondary"} onClick={onOpenBusinessSettings}>{t("营业设置")}</Button>
             <Button
               disabled={Boolean(group && group.shops.length === 0)}

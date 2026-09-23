@@ -133,3 +133,19 @@ it("opens the selected shop in the existing detail flow from the frozen detail a
   await act(async () => detailButton!.click());
   expect(onViewDetails).toHaveBeenCalledWith(secondShop);
 });
+
+it("opens formal shop editing from the shop card", async () => {
+  const onEditShop = vi.fn();
+  await act(async () => root.render(
+    <MerchantAccountCollection accounts={[group, standaloneShop]}
+      onEditBilling={() => undefined} onEditShop={onEditShop}
+      onOpenBusinessSettings={() => undefined} onOpenMerchantAdminPreview={() => undefined}
+      onViewDetails={() => undefined} />
+  ));
+  const shopCard = container.querySelector('[data-merchant-type="single_shop"]');
+  const editButton = Array.from(shopCard?.querySelectorAll("button") ?? [])
+    .find((button) => button.textContent === "编辑店铺资料");
+  expect(editButton).toBeDefined();
+  await act(async () => editButton!.click());
+  expect(onEditShop).toHaveBeenCalledWith(standaloneShop);
+});

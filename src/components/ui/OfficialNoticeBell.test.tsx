@@ -76,6 +76,7 @@ describe("OfficialNoticeBell", () => {
     expect(state.listInbox).toHaveBeenCalledWith({ locale: "ja", unreadOnly: true, page: 1, pageSize: 1 });
     expect(container.textContent).toContain("3");
     expect(container.textContent).not.toContain("7");
+    expect(container.querySelector("a span")?.className).toContain("-right-2 -top-2");
 
     state.notifications = 8;
     state.listInbox.mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 1 });

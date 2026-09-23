@@ -99,7 +99,8 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toContain(
       "createFormalDetailRequestCoordinator<MerchantEmployee, string>",
     );
-    expect(source).toContain("employeeDetailRequest.load(employee.needoId)");
+    expect(source).toContain("employeeDetailRequest.load(needoId)");
+    expect(source).toContain("<ShopEmployeeDirectoryPanel");
     expect(source).toContain("employeeDetailRequest.retry()");
     expect(source).toContain("employeeDetailRequest.invalidate()");
     expect(source).toContain("employeeDetailRequest.activate()");

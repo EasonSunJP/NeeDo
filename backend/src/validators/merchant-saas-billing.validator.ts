@@ -53,7 +53,7 @@ export const updateBillingProfileBodySchema = z.object({
   cadenceLocked: z.boolean(),
   amountLocked: z.boolean(),
   paymentProvider: z.enum(["manual", "stripe"]).optional(),
-  version
+  version: z.number().int().nonnegative()
 });
 
 export const updatePaymentResponsibilityBodySchema = z.object({

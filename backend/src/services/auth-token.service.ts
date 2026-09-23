@@ -95,8 +95,8 @@ export class AuthTokenService {
     return this.issueToken(subject, "refresh", this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS);
   }
 
-  public verifyAccessToken(token: string): AuthTokenPayload {
-    return this.verifyToken(token, "access");
+  public verifyAccessToken(token: string, additionalAudience?: "needo-ops-api"): AuthTokenPayload {
+    return this.verifyToken(token, "access", additionalAudience);
   }
 
   public verifyRefreshToken(token: string): AuthTokenPayload {
@@ -143,7 +143,7 @@ export class AuthTokenService {
     return `${signingInput}.${signature}`;
   }
 
-  private verifyToken(token: string, expectedType: AuthTokenType): AuthTokenPayload {
+  private verifyToken(token: string, expectedType: AuthTokenType, additionalAudience?: "needo-ops-api"): AuthTokenPayload {
     const [encodedHeader, encodedPayload, signature, extra] = token.split(".");
 
     if (!encodedHeader || !encodedPayload || !signature || extra) {
@@ -163,7 +163,7 @@ export class AuthTokenService {
 
       const isCompatibilityToken =
         payload.aud === undefined && this.config.AUTH_TOKEN_AUDIENCE === "needo-backend";
-      if (!isCompatibilityToken && payload.aud !== this.config.AUTH_TOKEN_AUDIENCE) {
+      if (!isCompatibilityToken && payload.aud !== this.config.AUTH_TOKEN_AUDIENCE && !(additionalAudience && payload.aud === additionalAudience)) {
         throw new AppError({
           code: ERROR_CODES.TOKEN_INVALID,
           message: "error.auth.token_invalid",

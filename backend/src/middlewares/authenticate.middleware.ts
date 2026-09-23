@@ -16,7 +16,10 @@ export const createAuthenticateMiddleware =
     try {
       const token = getBearerToken(request);
       const auth = await authService.authenticateAccessToken(token, options.requiredPermission, {
-        allowDuringCompliance: options.allowDuringCompliance
+        allowDuringCompliance: options.allowDuringCompliance,
+        allowOperationsPreviewToken: request.method.toUpperCase() === "GET" &&
+          request.path.startsWith("/merchant-admin/") &&
+          Boolean(request.get(merchantPreviewHeader))
       });
       response.locals.auth = applyReadOnlyMerchantPreview(request, auth);
       next();

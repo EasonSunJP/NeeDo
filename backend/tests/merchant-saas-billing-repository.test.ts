@@ -2,6 +2,43 @@ import type { PrismaClient } from "@prisma/client";
 import { MerchantSaasBillingRepository } from "../src/repositories/merchant-saas-billing.repository";
 
 describe("MerchantSaasBillingRepository billing transitions", () => {
+  it("initializes a legacy group profile only for version zero and then applies the edit", async () => {
+    const changedAt = new Date("2026-09-23T00:00:00.000Z");
+    const base = {
+      id: 25, subjectType: "merchant_account", subjectId: 5, billingCadence: "monthly",
+      monthlyFeeJpy: 9800, cadenceLocked: false, amountLocked: false,
+      trialStatus: "not_started", trialStartedAt: null, trialEndsAt: null, trialUsedAt: null,
+      paidThrough: null, paymentProvider: "manual", version: 1, freePeriods: []
+    };
+    const tx = {
+      merchantAccount: { findFirst: jest.fn(async () => ({ id: 5 })) },
+      saasBillingProfile: {
+        findFirst: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(base)
+          .mockResolvedValueOnce({ ...base, billingCadence: "free", version: 2, freePeriods: [] }),
+        createMany: jest.fn(async () => ({ count: 1 })),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      },
+      saasFreePeriod: { create: jest.fn(async () => ({ id: 1 })) }
+    };
+    const client = { $transaction: jest.fn(async (callback: (database: typeof tx) => unknown) => callback(tx)) } as unknown as PrismaClient;
+    const repository = new MerchantSaasBillingRepository(client);
+
+    const result = await repository.updateBillingProfile({
+      subjectType: "merchant_account", subjectId: 5, billingCadence: "free",
+      monthlyFeeJpy: 9800, cadenceLocked: true, amountLocked: true,
+      paymentProvider: "manual", version: 0, actorUserId: 1, changedAt
+    });
+
+    expect(tx.saasBillingProfile.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      skipDuplicates: true,
+      data: expect.objectContaining({ merchantAccountId: 5, activeKey: "merchant:5" })
+    }));
+    expect(tx.saasBillingProfile.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 25, version: 1 }),
+      data: expect.objectContaining({ billingCadence: "free" })
+    }));
+    expect(result?.after.version).toBe(2);
+  });
   it("interrupts an active trial and opens an auditable manual-free period", async () => {
     const changedAt = new Date("2026-09-10T03:00:00.000Z");
     const before = {

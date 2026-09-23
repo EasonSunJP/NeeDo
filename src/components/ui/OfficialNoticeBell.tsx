@@ -66,7 +66,7 @@ export function OfficialNoticeBell({ to }: { to: string }) {
       </svg>
       {unreadCount > 0 ? (
         <NotificationBadge
-          className="absolute right-1.5 top-1.5"
+          className="pointer-events-none absolute -right-2 -top-2 z-10"
           count={unreadCount}
           size="sm"
         />

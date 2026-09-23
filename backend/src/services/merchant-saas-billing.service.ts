@@ -528,10 +528,12 @@ export class MerchantSaasBillingService {
     subjectId: number,
     input: UpdateBillingProfileBody
   ): Promise<BillingCardPayload> {
-    const current = await this.getProfile(subjectType, subjectId);
+    const current = await this.repository.findBillingProfile(subjectType, subjectId);
+    const activeTechnicians = current?.activeTechnicians ??
+      (subjectType === "shop" ? (await this.repository.getShopAccount(subjectId))?.technicianCount : undefined);
     if (
       subjectType === "shop" &&
-      (current.activeTechnicians ?? 0) <= 1 &&
+      (activeTechnicians ?? 0) <= 1 &&
       (input.cadenceLocked || input.amountLocked)
     ) {
       throw this.conflict("error.saas_billing.single_shop_lock_forbidden");

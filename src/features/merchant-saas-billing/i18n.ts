@@ -1,6 +1,8 @@
 import { translateText, type Language, type TranslationEntry } from "../../i18n/translations";
 
 export const merchantSaasBillingTranslations: Record<string, TranslationEntry> = {
+  "编辑店铺资料": { "zh-Hant": "編輯店鋪資料", ja: "店舗情報を編集", en: "Edit shop details", ko: "매장 정보 수정" },
+  "店铺资料": { "zh-Hant": "店鋪資料", ja: "店舗情報", en: "Shop details", ko: "매장 정보" },
   "账号类型": { "zh-Hant": "帳號類型", ja: "アカウント種別", en: "Account type", ko: "계정 유형" },
   "付费模式": { "zh-Hant": "付費模式", ja: "料金プラン", en: "Payment mode", ko: "결제 방식" },
   "集团以 1 张卡片显示；展开后可在同一边框内管理集团与旗下店铺。": { "zh-Hant": "集團以 1 張卡片顯示；展開後可在同一邊框內管理集團與旗下店鋪。", ja: "グループは1枚のカードで表示し、展開後は同じ枠内でグループと傘下店舗を管理できます。", en: "Each group appears as one card; expand it to manage the group and its shops within one boundary.", ko: "그룹은 카드 1장으로 표시되며 펼치면 같은 테두리 안에서 그룹과 산하 매장을 관리할 수 있습니다." },

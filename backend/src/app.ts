@@ -893,6 +893,7 @@ export const createApp = (
   mount("backoffice", createExchangeOperationsRoutes(config, resolvedDependencies));
   mount("merchant-admin", createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   mount("merchant-admin", createShopEmployeeDirectoryRoutes(config, resolvedDependencies));
+  mount("backoffice", createShopEmployeeDirectoryRoutes(config, resolvedDependencies, "backoffice"));
   mount("backoffice", createPlatformPartnerRoutes(config, resolvedDependencies));
   mount("backoffice", createAgentCommissionRuleRoutes(config, resolvedDependencies));
   mount("backoffice", createOperatingCostRoutes(config, resolvedDependencies));
