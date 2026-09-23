@@ -497,6 +497,22 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       return requiredMinutes === undefined || hasRequestBookingAutomationLead(slot.startsAt, now, requiredMinutes);
     });
     candidateSlots.sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime() || left.id - right.id);
+    const shopServiceIds = [...new Set(candidateSlots.flatMap((slot) => slot.serviceId ? [slot.serviceId] : []))];
+    const technicianServiceIds = [...new Set(candidateSlots.flatMap((slot) => slot.technicianServiceId ? [slot.technicianServiceId] : []))];
+    const [shopServicePrices, technicianServicePrices] = await Promise.all([
+      shopServiceIds.length ? this.client.service.findMany({
+        where: { id: { in: shopServiceIds }, status: "published", currency: "JPY", deletedAt: null },
+        select: { id: true, priceAmount: true }
+      }) : [],
+      technicianServiceIds.length ? this.client.technicianService.findMany({
+        where: { id: { in: technicianServiceIds }, isActive: true, isBookable: true, reviewStatus: "APPROVED", currency: "JPY", deletedAt: null },
+        select: { id: true, priceAmount: true }
+      }) : []
+    ]);
+    const priceByRef = new Map<string, number>([
+      ...shopServicePrices.map((service) => [`shop:${service.id}`, Number(service.priceAmount)] as const),
+      ...technicianServicePrices.map((service) => [`technician:${service.id}`, service.priceAmount] as const)
+    ]);
     const technicianIds = [...new Set(candidateSlots.map((slot) => slot.technicianProfileId))];
     if (technicianIds.length === 0) return [];
     const identities = await this.client.userIdentity.findMany({
@@ -525,6 +541,11 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       const identity = identityByTechnician.get(technicianProfileId);
       const setting = slot.technicianProfile.automationSettings[0];
       if (!identity?.publicIdentifier || !setting) continue;
+      const serviceRef = slot.serviceId ? `shop:${slot.serviceId}` : `technician:${slot.technicianServiceId}`;
+      const quoteAmountJpy = priceByRef.get(serviceRef);
+      if (!Number.isSafeInteger(quoteAmountJpy) || !quoteAmountJpy || quoteAmountJpy <= 0 ||
+        quoteAmountJpy > post.demand.budgetMaxJpy ||
+        (post.demand.budgetMinJpy !== null && quoteAmountJpy < post.demand.budgetMinJpy)) continue;
       const rules = technicianAutomationRulesSchema.parse(setting.rules);
       const bufferStart = new Date(slot.startsAt.getTime() - rules.bufferMinutes * 60_000);
       const bufferEnd = new Date(slot.endsAt.getTime() + rules.bufferMinutes * 60_000);
@@ -557,7 +578,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         rules,
         scheduleSlotId: slot.id,
         ...(slot.serviceRef ? { serviceRef: slot.serviceRef } : {}),
-        quoteAmountJpy: post.demand.budgetMaxJpy,
+        quoteAmountJpy,
         message: "NeeDo 自动应募",
         context: {
           now,
@@ -568,7 +589,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           hardBlockReasons: [],
           areaCode: post.areaLabel,
           distanceKm: null,
-          grossAmountJpy: post.demand.budgetMaxJpy,
+          grossAmountJpy: quoteAmountJpy,
           netAmountJpy: null,
           prepaidServiceAmountJpy: confirmedPrepayment ? post.servicePrepayment!.confirmedAmountJpy : 0,
           prepaymentBaseAmountJpy,

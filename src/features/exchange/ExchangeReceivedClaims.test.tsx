@@ -30,9 +30,10 @@ function claim(id: number, message: string, quoteAmountJpy = 10_000 + id): Excha
     exchangePostId: 41,
     status: "active",
     provider: { publicId: `NT000000${id}`, displayName: `服务者 ${id}`, avatarUrl: null },
-    shop: { id: 7, name: "GINZA Calm Body Lab" },
+    shop: { id: 7, name: "GINZA Calm Body Lab", publicId: "shop0000000007" },
     technician: { profileId: id, publicId: `NT000000${id}`, displayName: `技师 ${id}` },
-    service: { ref: `technician:${id}`, name: `真实服务 ${id}`, durationMinutes: 60 },
+    service: { ref: `technician:${id}`, publicId: `service-${id}`, name: `真实服务 ${id}`, durationMinutes: 60 },
+    source: "manual",
     scheduleSlotId: 90 + id,
     quoteAmountJpy,
     currency: "JPY",
@@ -112,13 +113,55 @@ describe("ExchangeReceivedClaims", () => {
 
     expect(listReceivedExchangeClaims).toHaveBeenCalledWith("41", expect.objectContaining({ page: 1, pageSize: 10 }));
     expect(document.body.textContent).toContain("NT0000001");
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="show-claim-details"]')!.click());
     expect(document.body.textContent).toContain("GINZA Calm Body Lab");
-    expect(document.body.textContent).toContain("技师 1");
+    expect(document.body.textContent).toContain("服务者 1");
     expect(document.body.textContent).toContain("真实服务 1");
     expect(document.body.textContent).toContain("I can arrive early. 原文のままです。");
     expect(document.body.querySelector('[data-claim-id="1"]')).not.toBeNull();
     expect(document.body.querySelector('[data-match-claim-id="1"]')).not.toBeNull();
     expect(Array.from(document.body.querySelectorAll("button")).map((button) => button.textContent).join(" ")).not.toMatch(/追加预算|预约|支付/u);
+  });
+
+  it("keeps a compact quote card and expands claimant, service, shop, time, source and message in place", async () => {
+    vi.mocked(listReceivedExchangeClaims).mockResolvedValue({
+      list: [{ ...claim(1, "可在约定时间到店", 8_800), source: "manual" }],
+      total: 1, page: 1, page_size: 10
+    });
+    await act(async () => root.render(<ExchangeReceivedClaims language="zh" postId="41" />));
+    await waitFor(() => expect(document.body.querySelector('[data-claim-id="1"]')).not.toBeNull());
+    const card = document.body.querySelector<HTMLElement>('[data-claim-id="1"]')!;
+    expect(card.textContent).toContain("¥8,800");
+    expect(card.textContent).toContain("真实服务 1");
+    expect(card.textContent).not.toContain("GINZA Calm Body Lab");
+    expect(card.textContent).not.toContain("可在约定时间到店");
+    await act(async () => card.querySelector<HTMLButtonElement>('[data-action="show-claim-details"]')!.click());
+    expect(card.textContent).toContain("GINZA Calm Body Lab");
+    expect(card.textContent).toContain("服务者 1");
+    expect(card.textContent).toContain("手动抢单");
+    expect(card.textContent).toContain("可在约定时间到店");
+    expect(card.querySelector('a[href="/profiles/technician/NT0000001"]')).not.toBeNull();
+    expect(card.querySelector('a[href="/profiles/shop/shop0000000007"]')).not.toBeNull();
+    expect(card.querySelector('a[href="/stores/shop0000000007/technicians/NT0000001/services"]')).not.toBeNull();
+    await act(async () => card.querySelector<HTMLButtonElement>('[data-action="hide-claim-details"]')!.click());
+    expect(card.textContent).not.toContain("GINZA Calm Body Lab");
+  });
+
+  it("shows the persisted automatic and shop dispatch sources without guessing from the message", async () => {
+    vi.mocked(listReceivedExchangeClaims).mockResolvedValue({
+      list: [
+        { ...claim(1, "自定义留言", 9_000), source: "automatic" },
+        { ...claim(2, "自定义留言", 9_500), source: "shop_dispatch" }
+      ],
+      total: 2, page: 1, page_size: 10
+    });
+    await act(async () => root.render(<ExchangeReceivedClaims language="zh" postId="41" />));
+    await waitFor(() => expect(document.body.querySelector('[data-claim-id="2"]')).not.toBeNull());
+    for (const id of [1, 2]) {
+      const card = document.body.querySelector<HTMLElement>(`[data-claim-id="${id}"]`)!;
+      await act(async () => card.querySelector<HTMLButtonElement>('[data-action="show-claim-details"]')!.click());
+      expect(card.textContent).toContain(id === 1 ? "自动抢单" : "店铺派单");
+    }
   });
 
   it("shows the exact Quick budget decision without provider selection controls and confirms all claims", async () => {
@@ -191,8 +234,9 @@ describe("ExchangeReceivedClaims", () => {
     ).toContain("w-full");
     expect(document.body.querySelector('[data-match-claim-id="1"]')).toBeNull();
     expect(document.body.querySelector('[data-match-claim-id="2"]')).toBeNull();
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="show-claim-details"]')!.click());
     expect(document.body.textContent).toContain("GINZA Calm Body Lab");
-    expect(document.body.textContent).toContain("技师 1");
+    expect(document.body.textContent).toContain("服务者 1");
     expect(document.body.textContent).toContain("真实服务 2");
     expect(document.body.textContent).toContain("一号技师原文留言");
     expect(document.body.textContent).toContain("¥30,000 → ¥31,000");

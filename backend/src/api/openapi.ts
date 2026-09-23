@@ -5744,7 +5744,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["id", "name"],
         properties: {
           id: { type: "integer", minimum: 1 },
-          name: { type: "string", minLength: 1, maxLength: 160 }
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          publicId: { type: ["string", "null"] }
         }
       },
       ExchangeClaimTechnician: {
@@ -5763,6 +5764,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["ref", "name", "durationMinutes"],
         properties: {
           ref: { type: "string", pattern: "^(?:shop|technician):[1-9][0-9]*$" },
+          publicId: { type: "string" },
           name: { type: "string", minLength: 1, maxLength: 160 },
           durationMinutes: { type: "integer", minimum: 1 }
         }
@@ -5808,6 +5810,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "id",
           "exchangePostId",
           "status",
+          "source",
           "provider",
           "shop",
           "technician",
@@ -5837,6 +5840,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "matching_closed"
             ]
           },
+          source: { type: "string", enum: ["automatic", "manual", "shop_dispatch"] },
           provider: { $ref: "#/components/schemas/ExchangeClaimProvider" },
           shop: { $ref: "#/components/schemas/ExchangeClaimShop" },
           technician: { $ref: "#/components/schemas/ExchangeClaimTechnician" },

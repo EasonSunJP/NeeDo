@@ -48,6 +48,7 @@ export type ExchangeClaimStatus =
   | "matching_closed";
 
 export type ExchangeClaimServiceRef = `shop:${number}` | `technician:${number}`;
+export type ExchangeClaimSource = "automatic" | "manual" | "shop_dispatch";
 
 export type ExchangeClaimOption = {
   scheduleSlotId: number;
@@ -62,10 +63,11 @@ export type ExchangeClaim = {
   id: number;
   exchangePostId: number;
   status: ExchangeClaimStatus;
+  source: ExchangeClaimSource;
   provider: { publicId: string; displayName: string; avatarUrl: string | null };
-  shop: { id: number; name: string };
+  shop: { id: number; name: string; publicId: string | null };
   technician: { profileId: number; publicId: string; displayName: string };
-  service: { ref: ExchangeClaimServiceRef; name: string; durationMinutes: number };
+  service: { ref: ExchangeClaimServiceRef; publicId: string; name: string; durationMinutes: number };
   scheduleSlotId: number;
   quoteAmountJpy: number;
   currency: "JPY";

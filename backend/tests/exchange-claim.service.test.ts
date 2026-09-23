@@ -74,13 +74,14 @@ const claim: ExchangeClaimPayload = {
   exchangePostId: 41,
   status: "active",
   provider: { publicId: merchantActor.publicId, displayName: "青山店", avatarUrl: null },
-  shop: { id: 11, name: "Aoyama Care" },
+  shop: { id: 11, name: "Aoyama Care", publicId: "shop0000000011" },
   technician: {
     profileId: 81,
     publicId: technicianActor.publicId,
     displayName: "山田 花子"
   },
-  service: { ref: "shop:501", name: "ヘアセット", durationMinutes: 60 },
+  service: { ref: "shop:501", publicId: "service0000000501", name: "ヘアセット", durationMinutes: 60 },
+  source: "shop_dispatch",
   scheduleSlotId: 91,
   quoteAmountJpy: 15_000,
   currency: "JPY",
@@ -309,6 +310,7 @@ describe("ExchangeClaimService", () => {
         requestContext
       )
     ).resolves.toEqual(claim);
+    expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({ source: "shop_dispatch", quoteAmountJpy: 15_000 }));
     expect(events).toEqual([
       "lock-request",
       "lock-matching",
@@ -354,6 +356,16 @@ describe("ExchangeClaimService", () => {
       now,
       "shop:501"
     );
+  });
+
+  it("records a technician's manual or automatic claim source without accepting it from the public request body", async () => {
+    const repository = createRepository();
+    const service = new ExchangeClaimService(repository, { resolveActor: jest.fn(async () => technicianActor) }, () => now);
+    const input = { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: null };
+    await service.createClaim(technicianAccess, 41, input, "claim-source-manual-0001", requestContext);
+    expect(repository.create).toHaveBeenLastCalledWith(expect.objectContaining({ source: "manual", quoteAmountJpy: 15_000 }));
+    await service.createClaim(technicianAccess, 41, input, "claim-source-auto-00001", requestContext, { source: "automatic", suppressQuickMatching: true });
+    expect(repository.create).toHaveBeenLastCalledWith(expect.objectContaining({ source: "automatic", quoteAmountJpy: 15_000 }));
   });
 
   it("rejects a shop claim that selects the Request author's own technician profile", async () => {

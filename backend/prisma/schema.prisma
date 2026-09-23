@@ -6358,6 +6358,7 @@ model ExchangeClaim {
   technicianServiceId          Int?                @map("technician_service_id")
   scheduleSlotId               Int                 @map("schedule_slot_id")
   quoteAmountJpy               Int                 @map("quote_amount_jpy")
+  source                       String              @default("manual") @db.VarChar(24)
   currency                     String              @default("JPY") @db.VarChar(3)
   message                      String?             @db.VarChar(1000)
   status                       ExchangeClaimStatus @default(ACTIVE)

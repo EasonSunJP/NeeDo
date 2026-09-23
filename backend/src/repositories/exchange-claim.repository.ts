@@ -20,6 +20,7 @@ import type {
   ExchangeClaimOptionPayload,
   ExchangeClaimPage,
   ExchangeClaimPayload,
+  ExchangeClaimSource,
   ExchangeClaimServiceRef
 } from "../types/exchange-claim.types";
 import {
@@ -95,6 +96,7 @@ export interface ExchangeClaimCreateRepositoryInput {
   technicianServiceId: number | null;
   scheduleSlotId: number;
   quoteAmountJpy: number;
+  source: ExchangeClaimSource;
   message: string | null;
   idempotencyKey: string;
   payloadFingerprint: string;
@@ -151,7 +153,7 @@ const claimInclude = {
       user: { select: { username: true, avatarUrl: true } }
     }
   },
-  shop: { select: { id: true, name: true } },
+  shop: { select: { id: true, name: true, publicIdentifier: { select: { publicId: true } } } },
   technicianProfile: {
     select: {
       id: true,
@@ -170,8 +172,8 @@ const claimInclude = {
       }
     }
   },
-  service: { select: { id: true, name: true, durationMinutes: true } },
-  technicianService: { select: { id: true, name: true, durationMinutes: true } },
+  service: { select: { id: true, publicId: true, name: true, durationMinutes: true } },
+  technicianService: { select: { id: true, publicId: true, name: true, durationMinutes: true } },
   scheduleSlot: { select: { id: true, startsAt: true, endsAt: true } }
 } satisfies Prisma.ExchangeClaimInclude;
 
@@ -1119,6 +1121,7 @@ export class ExchangeClaimRepository {
         technicianServiceId: input.technicianServiceId,
         scheduleSlotId: input.scheduleSlotId,
         quoteAmountJpy: input.quoteAmountJpy,
+        source: input.source,
         currency: "JPY",
         message: input.message,
         status: DatabaseExchangeClaimStatus.ACTIVE,
@@ -1148,7 +1151,7 @@ export class ExchangeClaimRepository {
     claimantIdentityId: number
   ): Promise<ExchangeClaimPayload | null> {
     const row = await this.client.exchangeClaim.findFirst({
-      where: { exchangePostId, claimantIdentityId, deletedAt: null },
+      where: { exchangePostId, claimantIdentityId, status: { not: DatabaseExchangeClaimStatus.WITHDRAWN }, deletedAt: null },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       include: claimInclude
     });
@@ -1175,6 +1178,7 @@ export class ExchangeClaimRepository {
     const where = {
       exchangePostId,
       exchangePost: { is: { ownerIdentityId, deletedAt: null } },
+      status: { not: DatabaseExchangeClaimStatus.WITHDRAWN },
       deletedAt: null
     } satisfies Prisma.ExchangeClaimWhereInput;
     const [total, rows] = await Promise.all([
@@ -1311,12 +1315,13 @@ export class ExchangeClaimRepository {
                   : row.status === DatabaseExchangeClaimStatus.NOT_SELECTED
                     ? "not_selected"
                     : "matching_closed",
+      source: row.source as ExchangeClaimSource,
       provider: {
         publicId: providerPublicId,
         displayName: row.claimantIdentity.displayName ?? row.claimantIdentity.user.username,
         avatarUrl: row.claimantIdentity.user.avatarUrl
       },
-      shop: row.shop,
+      shop: { id: row.shop.id, name: row.shop.name, publicId: row.shop.publicIdentifier?.publicId ?? null },
       technician: {
         profileId: row.technicianProfile.id,
         publicId: technicianPublicId,
@@ -1324,6 +1329,7 @@ export class ExchangeClaimRepository {
       },
       service: {
         ref: row.service ? `shop:${row.service.id}` : `technician:${row.technicianService!.id}`,
+        publicId: selectedService.publicId,
         name: selectedService.name,
         durationMinutes: selectedService.durationMinutes
       },

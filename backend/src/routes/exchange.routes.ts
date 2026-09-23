@@ -122,7 +122,7 @@ export const createExchangeRequestAutomationProcessor = (
           },
           input.idempotencyKey,
           { ip: "127.0.0.1", userAgent: "technician-automation" },
-          { suppressQuickMatching: true }
+          { suppressQuickMatching: true, source: "automatic" }
         );
       }
     }

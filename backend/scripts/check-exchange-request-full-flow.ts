@@ -175,9 +175,26 @@ async function main() {
         }, `${marker}:manual-claim:${i}`, context);
         createdClaims.push(claim);
       }
+      const withdrawn = await claims.withdrawClaim(
+        providers[0].actor, createdClaims[0].id, `${marker}:withdraw`, context
+      );
+      assert.equal(withdrawn.status, "withdrawn");
+      assert.equal(await claims.getMine(providers[0].actor, postId), null);
+      const visibleAfterWithdrawal = await claims.listReceived(customer, postId, { page: 1, page_size: 20 });
+      assert.equal(visibleAfterWithdrawal.total, 1);
+      assert(visibleAfterWithdrawal.list.every((claim) => claim.id !== withdrawn.id));
+      const availableAgain = await claims.listOptions(providers[0].actor, postId, { page: 1, page_size: 20 });
+      assert(availableAgain.list.some((option) => option.scheduleSlotId === providers[0].slotId));
+      createdClaims[0] = await claims.createClaim(providers[0].actor, postId, {
+        scheduleSlotId: providers[0].slotId, quoteAmountJpy: 12_000,
+        message: "online manual reapplication"
+      }, `${marker}:manual-reclaim`, context);
+      assert.notEqual(createdClaims[0].id, withdrawn.id);
+      console.log(JSON.stringify({ step: "withdrawn-hidden-and-reapplied", withdrawn: withdrawn.id, replacement: createdClaims[0].id }));
       const persistedClaims = await tx.exchangeClaim.findMany({ where: { exchangePostId: postId } });
-      assert.equal(persistedClaims.length, 2);
-      assert(persistedClaims.every((claim) => claim.status === "ACTIVE"));
+      assert.equal(persistedClaims.length, 3);
+      assert.equal(persistedClaims.filter((claim) => claim.status === "ACTIVE").length, 2);
+      assert.equal(persistedClaims.filter((claim) => claim.status === "WITHDRAWN").length, 1);
       const offlineState = await tx.technicianWorkState.findUniqueOrThrow({ where: {
         technicianProfileId_shopId: { technicianProfileId: providers[1].profileId, shopId: fixture.shopId }
       } });
