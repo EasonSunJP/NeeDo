@@ -186,7 +186,7 @@ function ClaimCard({
             <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-bg)] p-3 text-xs">
               <p className="font-black text-[color:var(--client-muted)]">{t("claimService")}</p>
               <p className="mt-1 font-black text-[color:var(--client-text)]">{claim.service.name} · {claim.service.durationMinutes} min</p>
-              {servicePath ? <a className="focus-ring mt-2 inline-block font-black text-[color:var(--client-primary)]" href={servicePath}>{t("claimShowDetails")}</a> : null}
+              {servicePath ? <a className="focus-ring mt-2 inline-block font-black text-[color:var(--client-primary)]" href={`#${servicePath}`}>{t("claimShowDetails")}</a> : null}
             </div>
             <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-bg)] p-3 text-xs">
               <p className="font-black text-[color:var(--client-muted)]">{t("claimProvider")}</p>
@@ -195,13 +195,13 @@ function ClaimCard({
                 <div><p className="font-black text-[color:var(--client-text)]">{claim.provider.displayName}</p><p className="font-mono text-[color:var(--client-muted)]">{claim.provider.publicId}</p></div>
               </div>
               {claim.provider.publicId !== claim.technician.publicId ? <p className="mt-2 font-bold text-[color:var(--client-text)]">{t("claimTechnician")} · {claim.technician.displayName}</p> : null}
-              {providerPath ? <a className="focus-ring mt-2 inline-block font-black text-[color:var(--client-primary)]" href={providerPath}>{t("claimShowDetails")}</a> : null}
+              {providerPath ? <a className="focus-ring mt-2 inline-block font-black text-[color:var(--client-primary)]" href={`#${providerPath}`}>{t("claimShowDetails")}</a> : null}
             </div>
             <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-bg)] p-3 text-xs">
               <p className="font-black text-[color:var(--client-muted)]">{t("claimShop")}</p>
               <p className="mt-1 font-black text-[color:var(--client-text)]">{claim.shop.name}</p>
               {claim.shop.publicId ? <p className="mt-1 font-mono text-[color:var(--client-muted)]">{claim.shop.publicId}</p> : null}
-              {shopPath ? <a className="focus-ring mt-2 inline-block font-black text-[color:var(--client-primary)]" href={shopPath}>{t("claimShowDetails")}</a> : null}
+              {shopPath ? <a className="focus-ring mt-2 inline-block font-black text-[color:var(--client-primary)]" href={`#${shopPath}`}>{t("claimShowDetails")}</a> : null}
             </div>
             <dl className="grid gap-3 text-xs">
               <div className="rounded-2xl bg-[color:var(--client-bg)] p-3"><dt className="font-black text-[color:var(--client-muted)]">{t("claimEstimatedTime")}</dt><dd className="mt-1 font-bold text-[color:var(--client-text)]">{formatWindow(claim.estimatedStartsAt, claim.estimatedEndsAt, language)}</dd></div>

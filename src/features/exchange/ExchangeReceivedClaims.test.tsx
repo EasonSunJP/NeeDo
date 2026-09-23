@@ -140,9 +140,9 @@ describe("ExchangeReceivedClaims", () => {
     expect(card.textContent).toContain("服务者 1");
     expect(card.textContent).toContain("手动抢单");
     expect(card.textContent).toContain("可在约定时间到店");
-    expect(card.querySelector('a[href="/profiles/technician/NT0000001"]')).not.toBeNull();
-    expect(card.querySelector('a[href="/profiles/shop/shop0000000007"]')).not.toBeNull();
-    expect(card.querySelector('a[href="/stores/shop0000000007/technicians/NT0000001/services"]')).not.toBeNull();
+    expect(card.querySelector('a[href="#/profiles/technician/NT0000001"]')).not.toBeNull();
+    expect(card.querySelector('a[href="#/profiles/shop/shop0000000007"]')).not.toBeNull();
+    expect(card.querySelector('a[href="#/stores/shop0000000007/technicians/NT0000001/services"]')).not.toBeNull();
     await act(async () => card.querySelector<HTMLButtonElement>('[data-action="hide-claim-details"]')!.click());
     expect(card.textContent).not.toContain("GINZA Calm Body Lab");
   });
