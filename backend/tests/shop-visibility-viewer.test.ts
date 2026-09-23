@@ -49,8 +49,9 @@ describe("shop visibility selected merchant identity", () => {
     await request(app).get("/shops/21/navigation").expect(200);
     await request(app).get("/availability?serviceId=1&from=2026-09-20T00:00:00.000Z&to=2026-09-21T00:00:00.000Z").expect(200);
     expect(search).toHaveBeenCalledWith(expect.anything(), undefined, viewer);
-    expect(getShopDetail).toHaveBeenCalledWith(21, undefined, viewer);
-    expect(getShopDetail).toHaveBeenCalledWith(21, undefined, viewer, 61);
+    expect(getShopDetail).toHaveBeenNthCalledWith(1, 21, undefined, viewer);
+    expect(getShopDetail).toHaveBeenNthCalledWith(2, 21, undefined, viewer);
+    expect(getShopDetail).toHaveBeenCalledTimes(2);
     expect(getBookingNavigation).toHaveBeenCalledWith(21, expect.anything(), viewer);
     expect(listAvailableSlots).toHaveBeenCalledWith(expect.anything(), viewer);
   });

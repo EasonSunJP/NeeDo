@@ -224,7 +224,7 @@ describe("ProfileDetailPage routing behavior", () => {
 
     await waitFor(() => expect(getShopDetail).toHaveBeenCalledWith("shop0000000007", { sourcePostId: 61 }));
     expect(container.textContent).toContain("店铺资料");
-    expect(container.querySelector('a[href="/stores/7"]')).toBeNull();
+    expect(container.querySelector('a[href^="/stores/"]')).toBeNull();
   });
 
   it("does not flash a previous source-scoped shop when navigating to another shop", async () => {

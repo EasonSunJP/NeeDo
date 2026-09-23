@@ -142,12 +142,9 @@ describe("core read shop visibility", () => {
     expect(policy.buildVisibilityWhere).toHaveBeenNthCalledWith(2, viewer);
   });
 
-  it("grants only a signed-in viewer the limited shop bound to a live published intelligence source", async () => {
+  it("does not widen a shop's audience through an intelligence source", async () => {
     const shopFindFirst = jest.fn(async () => null);
-    const sourceFindFirst = jest.fn(async () => ({
-      service: { shopId: 11 },
-      post: { authorIdentity: { type: "merchant_owner", scopeType: "shop", scopeId: 11, isActive: true, deletedAt: null } }
-    }));
+    const sourceFindFirst = jest.fn();
     const policy = { buildVisibilityWhere: jest.fn(async () => visibilityWhere) };
     const repository = new CoreReadRepository(
       { shop: { findFirst: shopFindFirst }, exchangeIntelligence: { findFirst: sourceFindFirst } } as never,
@@ -157,44 +154,7 @@ describe("core read shop visibility", () => {
 
     await Reflect.apply(repository.findShopDetail, repository, ["shop6333731099", undefined, viewer, 61]);
 
-    expect(sourceFindFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        postId: 61,
-        deletedAt: null,
-        technicianServiceId: null,
-        post: expect.objectContaining({ type: "INTELLIGENCE", status: "PUBLISHED", deletedAt: null, expiresAt: expect.any(Object) }),
-        service: expect.objectContaining({ shop: expect.objectContaining({ publicIdentifier: expect.any(Object) }) })
-      })
-    }));
-    expect(shopFindFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        AND: expect.arrayContaining([
-          { OR: [visibilityWhere, { id: 11, visibility: "limited" }] }
-        ])
-      })
-    }));
-
-    await Reflect.apply(repository.findShopDetail, repository, ["shop6333731099", undefined, undefined, 61]);
-    expect(sourceFindFirst).toHaveBeenCalledTimes(1);
-    expect(shopFindFirst).toHaveBeenLastCalledWith(expect.objectContaining({
-      where: expect.not.objectContaining({ AND: expect.anything() })
-    }));
-  });
-
-  it("does not grant a mismatched or inactive intelligence source", async () => {
-    const shopFindFirst = jest.fn(async () => null);
-    const sourceFindFirst = jest.fn(async () => ({
-      service: { shopId: 11 },
-      post: { authorIdentity: { type: "merchant_owner", scopeType: "shop", scopeId: 12, isActive: true, deletedAt: null } }
-    }));
-    const repository = new CoreReadRepository(
-      { shop: { findFirst: shopFindFirst }, exchangeIntelligence: { findFirst: sourceFindFirst } } as never,
-      undefined,
-      { buildVisibilityWhere: jest.fn(async () => visibilityWhere) } as never
-    );
-
-    await Reflect.apply(repository.findShopDetail, repository, ["shop6333731099", undefined, viewer, 61]);
-
+    expect(sourceFindFirst).not.toHaveBeenCalled();
     expect(shopFindFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining(visibilityWhere)
     }));

@@ -55,6 +55,7 @@ import type {
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import { toAuditLogCreateData } from "./audit-log.repository";
 import { projectExchangeRequestAddress } from "../domain/exchange-address-privacy";
+import { ShopVisibilityRepository, type ShopVisibilityViewer } from "./shop-visibility.repository";
 
 const typeToDatabase: Record<ExchangePostType, DatabaseExchangePostType> = {
   demand: DatabaseExchangePostType.DEMAND,
@@ -382,7 +383,10 @@ const isServiceAreaList = (value: Prisma.JsonValue): value is string[] =>
 type ExchangePrismaClient = PrismaClient | Prisma.TransactionClient;
 
 export class ExchangePostRepository implements ExchangeRepositoryPort {
-  public constructor(private readonly client: ExchangePrismaClient = prisma) {}
+  public constructor(
+    private readonly client: ExchangePrismaClient = prisma,
+    private readonly shopVisibility: Pick<ShopVisibilityRepository, "buildVisibilityWhere"> = new ShopVisibilityRepository(client as PrismaClient)
+  ) {}
 
   public runInTransaction<T>(
     handler: (repository: ExchangeRepositoryPort, transactionClient?: unknown) => Promise<T>,
@@ -529,6 +533,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       status: DatabaseExchangePostStatus.PUBLISHED,
       expiresAt: { gt: input.now },
       ...(input.authorIdentityId ? { ownerIdentityId: input.authorIdentityId } : {}),
+      ...(input.type === "intelligence" ? await this.intelligenceVisibilityWhere(input.shopViewer) : {}),
       deletedAt: null
     } satisfies Prisma.ExchangePostWhereInput;
 
@@ -667,14 +672,41 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     viewerIdentityId: number,
     now: Date,
     claimProviderUserId?: number,
-    participantIdentityId = viewerIdentityId
+    participantIdentityId = viewerIdentityId,
+    shopViewer?: ShopVisibilityViewer
   ): Promise<ExchangePostPayload | null> {
     const row = await this.client.exchangePost.findFirst({
-      where: { id: postId, deletedAt: null },
+      where: {
+        id: postId,
+        deletedAt: null,
+        OR: [
+          { type: DatabaseExchangePostType.DEMAND },
+          { type: DatabaseExchangePostType.INTELLIGENCE, ...await this.intelligenceVisibilityWhere(shopViewer) }
+        ]
+      },
       include: postInclude(viewerIdentityId, participantIdentityId)
     });
 
     return row ? this.mapPost(row, viewerIdentityId, now, undefined, claimProviderUserId) : null;
+  }
+
+  private async intelligenceVisibilityWhere(viewer?: ShopVisibilityViewer): Promise<Prisma.ExchangePostWhereInput> {
+    const shopWhere: Prisma.ShopWhereInput = {
+      ...(await this.shopVisibility.buildVisibilityWhere(viewer) as Prisma.ShopWhereInput),
+      status: "published",
+      deletedAt: null,
+      publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } }
+    };
+    return {
+      intelligence: {
+        is: {
+          OR: [
+            { service: { is: { shop: { is: shopWhere } } } },
+            { technicianService: { is: { shop: { is: shopWhere } } } }
+          ]
+        }
+      }
+    };
   }
 
   public async listComments(

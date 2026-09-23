@@ -282,7 +282,7 @@ export interface CoreReadRepositoryPort {
     viewer?: ShopVisibilityViewer
   ) => Promise<NearbyTechnicianCandidate[]>;
   loadTechnicianCardsByRankedIds: (ids: number[], viewer?: ShopVisibilityViewer) => Promise<Map<number, TechnicianCardPayload>>;
-  findShopDetail: (id: number | string, locale?: ContentLocaleCode, viewer?: ShopVisibilityViewer, sourcePostId?: number) => Promise<ShopDetailPayload | null>;
+  findShopDetail: (id: number | string, locale?: ContentLocaleCode, viewer?: ShopVisibilityViewer) => Promise<ShopDetailPayload | null>;
   findTechnicianDetail: (
     id: number | string,
     coordinates?: { latitude?: number; longitude?: number },
@@ -818,43 +818,9 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     );
   }
 
-  public async findShopDetail(id: number | string, locale?: ContentLocaleCode, viewer?: ShopVisibilityViewer, sourcePostId?: number): Promise<ShopDetailPayload | null> {
+  public async findShopDetail(id: number | string, locale?: ContentLocaleCode, viewer?: ShopVisibilityViewer): Promise<ShopDetailPayload | null> {
     const now = new Date();
     const visibilityWhere = await this.shopVisibility.buildVisibilityWhere(viewer) as Prisma.ShopWhereInput;
-    const source = viewer && sourcePostId
-      ? await this.client.exchangeIntelligence.findFirst({
-          where: {
-            postId: sourcePostId,
-            deletedAt: null,
-            technicianServiceId: null,
-            post: {
-              type: "INTELLIGENCE",
-              status: "PUBLISHED",
-              expiresAt: { gt: now },
-              deletedAt: null
-            },
-            service: {
-              ...(typeof id === "number"
-                ? { shopId: id, shop: { publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } } } }
-                : { shop: { publicIdentifier: { is: { publicId: id, status: "ACTIVE", deletedAt: null } } } })
-            }
-          },
-          select: {
-            service: { select: { shopId: true } },
-            post: { select: { authorIdentity: { select: { type: true, scopeType: true, scopeId: true, isActive: true, deletedAt: true } } } }
-          }
-        })
-      : null;
-    const sourceShopId = source?.service?.shopId;
-    const sourceAuthor = source?.post.authorIdentity;
-    const detailVisibilityWhere: Prisma.ShopWhereInput = sourceShopId &&
-      ["merchant", "merchant_owner", "merchant_staff"].includes(sourceAuthor?.type ?? "") &&
-      sourceAuthor?.scopeType === "shop" &&
-      sourceAuthor.scopeId === sourceShopId &&
-      sourceAuthor.isActive &&
-      sourceAuthor.deletedAt === null
-      ? { AND: [{ OR: [visibilityWhere, { id: sourceShopId, visibility: "limited" }] }] }
-      : visibilityWhere;
     const shop = await this.client.shop.findFirst({
       where: {
         ...(typeof id === "number"
@@ -866,18 +832,18 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
             }),
         deletedAt: null,
         status: PUBLISHED_STATUS,
-        ...detailVisibilityWhere
+        ...visibilityWhere
       },
       include: {
         ...this.shopCardInclude(),
         services: {
           where: { deletedAt: null, status: PUBLISHED_STATUS },
-          include: this.serviceWithoutShopInclude(detailVisibilityWhere),
+          include: this.serviceWithoutShopInclude(visibilityWhere),
           orderBy: this.buildServiceOrderBy("recommended")
         },
         technicians: {
           where: this.publishedTechnicianProfileWhere(),
-          include: this.technicianCardInclude(detailVisibilityWhere),
+          include: this.technicianCardInclude(visibilityWhere),
           orderBy: [{ id: "asc" }]
         },
         technicianShopAffiliations: {
@@ -888,7 +854,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
             OR: [{ endsAt: null }, { endsAt: { gt: now } }],
             technicianProfile: { is: this.publishedTechnicianProfileWhere() }
           },
-          include: { technicianProfile: { include: this.technicianCardInclude(detailVisibilityWhere) } },
+          include: { technicianProfile: { include: this.technicianCardInclude(visibilityWhere) } },
           orderBy: [{ technicianProfileId: "asc" }]
         }
       }

@@ -1,6 +1,5 @@
 import type { Language } from "../../i18n/translations";
 import type { MessageCenterContext } from "../../lib/messageCenter";
-import { getScopedProfileDetailPath } from "../../shared/profile-detail/paths";
 import { UnifiedShopInfoCard, type UnifiedShopInfoCardData } from "../../shared/shop-card";
 import { exchangeText } from "./i18n";
 import type { ExchangePost } from "./types";
@@ -46,7 +45,7 @@ export function ExchangeIntelligenceShopCard({
     >
       <UnifiedShopInfoCard
         data={data}
-        detailTo={`${getScopedProfileDetailPath(context, "shop", shop.publicId)}?sourcePostId=${post.id}`}
+        detailTo={`${context === "user" ? "" : `/${context}`}/stores/${encodeURIComponent(shop.publicId)}`}
         language={language}
       />
     </div>
