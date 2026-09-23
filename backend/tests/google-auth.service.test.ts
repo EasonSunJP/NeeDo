@@ -342,7 +342,7 @@ const createFixture = (options: { googleAuthEnabled?: boolean } = {}) => {
 };
 
 describe("formal Google sign-in service", () => {
-  it("rejects every Google auth entry point when the capability is explicitly disabled", async () => {
+  it("rejects Google auth actions when the capability is explicitly disabled", async () => {
     const fixture = createFixture({ googleAuthEnabled: false });
     const unavailable = {
       code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
@@ -351,7 +351,6 @@ describe("formal Google sign-in service", () => {
     };
     const calls = [
       () => fixture.service.initializeGoogleLogin(),
-      () => fixture.service.getGoogleLinkStatus({} as never),
       () => fixture.service.initializeAuthenticatedGoogleLink({} as never),
       () =>
         fixture.service.submitAuthenticatedGoogleLink(

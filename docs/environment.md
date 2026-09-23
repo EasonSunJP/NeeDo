@@ -89,7 +89,8 @@ and [error handling](https://developers.deepl.com/docs/best-practices/error-hand
   validation or side effects. The database policy remains an additional runtime
   control.
 - `AUTH_GOOGLE_ENABLED`: environment-level Google authentication boundary. When
-  `false`, every Google sign-in/link/unlink entry point fails closed and
+  `false`, Google sign-in/link/unlink actions fail closed, while the authenticated
+  account-security status remains readable and reports `googleEnabled: false`;
   `GOOGLE_AUTH_CLIENT_ID` may be omitted. When `true`, the client ID remains
   mandatory and production validation requires a real Google Web OAuth client ID.
 - `AUTH_VERIFICATION_SECRET`: dedicated secret, at least 32 characters and

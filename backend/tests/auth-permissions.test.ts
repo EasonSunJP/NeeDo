@@ -104,6 +104,7 @@ const protectedRequests = [
 
 const createPermissionApp = (input: {
   permissions: readonly string[];
+  googleEnabled?: boolean;
   blacklisted?: boolean;
   completedChallengeId?: string;
   googleLinked?: boolean;
@@ -145,7 +146,7 @@ const createPermissionApp = (input: {
     cancelEmailChallenge: jest.fn(async () => true)
   };
 
-  return createApp(env, {
+  return createApp({ ...env, AUTH_GOOGLE_ENABLED: input.googleEnabled ?? true }, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository: repository,
     authSessionStore: sessionStore,
@@ -237,6 +238,29 @@ describe("formal Auth account-security permissions", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ password: "Stronger.2026!" })
       .expect(200);
+  });
+
+  it("reads account security when Google login is disabled while keeping Google actions closed", async () => {
+    const app = createPermissionApp({
+      permissions: ["auth:google:read", "auth:google:link"],
+      googleEnabled: false
+    });
+    const token = issueAccessToken();
+
+    await request(app)
+      .get("/api/v1/auth/google/link")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200)
+      .expect({
+        code: 0,
+        message: "success",
+        data: { linked: false, maskedEmail: null, hasPassword: true, canUnlink: false, googleEnabled: false }
+      });
+    await request(app)
+      .post("/api/v1/auth/google/link/init")
+      .set("Authorization", `Bearer ${token}`)
+      .send({})
+      .expect(503);
   });
 
   it("recovers only a completed unlink for the same challenge without creating a reusable auth context", async () => {
