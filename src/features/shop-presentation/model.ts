@@ -34,9 +34,11 @@ export function applyShopPresentationLocale(
 ): Store {
   const content = locale.content;
   const existingMenus = baseStore.presentation?.menuCards ?? [];
-  const images = content.carousel
-    .map((item) => media[item.mediaAssetPublicId]?.url)
-    .filter((value): value is string => Boolean(value));
+  const carousel = content.carousel.flatMap((item) => {
+    const url = media[item.mediaAssetPublicId]?.url;
+    return url ? [{ url, altText: item.altText }] : [];
+  });
+  const images = carousel.map((item) => item.url);
   const menuCards: StoreMenuConfig[] = content.serviceMenus.map((item) => {
     const serviceId = String(item.serviceId);
     const existing = existingMenus.find((menu) => menu.sourceServiceId === serviceId);
@@ -60,6 +62,7 @@ export function applyShopPresentationLocale(
   const nextPresentation = normalizeStorePresentationConfig({
     ...baseStore.presentation,
     subtitle: content.subtitle,
+    galleryCaptions: carousel.map((item) => item.altText),
     distance: content.distance,
     station: content.station,
     access: content.routeGuide,
@@ -85,15 +88,16 @@ export function applyShopPresentationLocale(
 
 export function buildShopPresentationContent(
   store: Store,
-  mediaPublicIdByUrl: ReadonlyMap<string, string>
+  mediaPublicIdByUrl: ReadonlyMap<string, string>,
+  fallbackImageUrls: ReadonlySet<string> = new Set()
 ): ShopPresentationContent {
   const presentation = normalizeStorePresentationConfig(store.presentation);
-  const carousel = (store.gallery.length ? store.gallery : [store.cover]).slice(0, 5).map((url) => {
+  const carousel = (store.gallery.length ? store.gallery : [store.cover]).slice(0, 5).flatMap((url, index) => {
     const mediaAssetPublicId = mediaPublicIdByUrl.get(url);
+    if (!mediaAssetPublicId && fallbackImageUrls.has(url)) return [];
     if (!mediaAssetPublicId) throw new Error("error.shop_presentation.media_invalid");
-    return { mediaAssetPublicId, altText: store.name };
+    return [{ mediaAssetPublicId, altText: presentation.galleryCaptions?.[index]?.trim() || store.name }];
   });
-  if (!carousel.length) throw new Error("error.shop_presentation.carousel_required");
   const serviceMenus = (presentation.menuCards ?? []).slice(0, 5).map((menu) => {
     const serviceId = Number(menu.sourceServiceId);
     if (!Number.isInteger(serviceId) || serviceId <= 0) {

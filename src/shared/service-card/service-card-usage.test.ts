@@ -74,9 +74,8 @@ describe("unified service-information-card usage", () => {
 
     expect(compactMenuCard).toContain("<UnifiedServiceInfoCard");
     expect(compactMenuCard).toContain("data={serviceData}");
-    expect(source.shopDetail).toContain(
-      "serviceCardsOverride={query.data.services.map(mapCoreServiceCardToUnifiedData)}",
-    );
+    expect(source.shopDetail).toContain("const card = mapCoreServiceCardToUnifiedData(service)");
+    expect(source.shopDetail).toContain("serviceCardsOverride={serviceCards}");
     expect(source.shopDetail).toContain(
       "mapStoreMenuConfigToUnifiedData(menuCard, store)",
     );

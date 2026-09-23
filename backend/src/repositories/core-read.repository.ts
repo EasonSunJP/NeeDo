@@ -16,7 +16,7 @@ import {
   calculateShopPlatformRating,
   calculateTechnicianPlatformRating
 } from "../domain/technician-rating";
-import { shopPresentationContentSchema } from "../validators/shop-presentation.validator";
+import { shopPresentationContentSchema, type ShopPresentationContent } from "../validators/shop-presentation.validator";
 import { prisma } from "../prisma/client";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import type {
@@ -200,6 +200,7 @@ export interface ServiceReviewPayload {
 }
 
 export interface ShopDetailPayload extends ShopCardPayload {
+  presentationContent?: ShopPresentationContent;
   description: string | null;
   phone: string | null;
   latitude: string | null;
@@ -910,13 +911,24 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     if (!translation) return payload;
     const content = shopPresentationContentSchema.parse(translation.content);
     const shopAssetByPublicId = new Map(shop.mediaAssets.flatMap((asset) => asset.checksumSha256 ? [[asset.checksumSha256, asset]] : []));
-    const localizedAssets = content.carousel.flatMap((item) => {
+    const carousel = content.carousel.filter((item) => shopAssetByPublicId.has(item.mediaAssetPublicId));
+    const localizedAssets = carousel.flatMap((item) => {
       const asset = shopAssetByPublicId.get(item.mediaAssetPublicId);
       return asset ? [{ ...this.mapMediaAsset(asset), altText: item.altText }] : [];
     });
-    const menuByServiceId = new Map(content.serviceMenus.map((item) => [item.serviceId, item]));
+    const visibleServiceIds = new Set(payload.services.map((service) => service.id));
+    const serviceMenus = content.serviceMenus
+      .filter((item) => visibleServiceIds.has(item.serviceId))
+      .map((item) => ({
+        ...item,
+        coverMediaAssetPublicId: item.coverMediaAssetPublicId && shopAssetByPublicId.has(item.coverMediaAssetPublicId)
+          ? item.coverMediaAssetPublicId
+          : null
+      }));
+    const menuByServiceId = new Map(serviceMenus.map((item) => [item.serviceId, item]));
     return {
       ...payload,
+      presentationContent: { ...content, carousel, serviceMenus },
       name: content.storeName,
       description: content.description,
       city: content.area,
@@ -926,9 +938,8 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       services: payload.services.map((service) => {
         const menu = menuByServiceId.get(service.id);
         if (!menu) return service;
-        const source = shop.services.find((item) => item.id === service.id);
         const cover = menu.coverMediaAssetPublicId
-          ? source?.mediaAssets.find((asset) => asset.checksumSha256 === menu.coverMediaAssetPublicId)?.url
+          ? shopAssetByPublicId.get(menu.coverMediaAssetPublicId)?.url
           : undefined;
         return { ...service, name: menu.name, description: menu.description, coverUrl: cover ?? service.coverUrl };
       })
@@ -1760,7 +1771,9 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       phone: shop.phone,
       latitude: this.formatNullableDecimal(shop.latitude, 7),
       longitude: this.formatNullableDecimal(shop.longitude, 7),
-      mediaAssets: shop.mediaAssets.map((asset) => this.mapMediaAsset(asset)),
+      mediaAssets: shop.mediaAssets
+        .filter((asset) => asset.usageType !== "shop_presentation_draft")
+        .map((asset) => this.mapMediaAsset(asset)),
       services: shop.services.map((service) => this.mapServiceCard(service, shopCard)),
       technicians: [
         ...new Map(

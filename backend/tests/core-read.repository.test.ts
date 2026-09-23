@@ -173,14 +173,25 @@ describe("shop detail affiliated technician roster", () => {
           routeGuide: "A9出口",
           paymentMethods: [],
           equipment: [],
-          carousel: [{ mediaAssetPublicId: "a".repeat(64), altText: "日本語画像" }],
-          serviceMenus: []
+          carousel: [
+            { mediaAssetPublicId: "a".repeat(64), altText: "日本語画像" },
+            { mediaAssetPublicId: "b".repeat(64), altText: "非公開画像" }
+          ],
+          serviceMenus: [{ serviceId: 999, name: "非公開サービス", description: "", audience: "", tags: [], highlights: [], coverMediaAssetPublicId: null }]
         }
       })) }
     };
-    const result = await new CoreReadRepository(client as never).findShopDetail(21, "ja");
-    expect(result).toMatchObject({ name: "日本語店名", description: "日本語説明", city: "港区", address: "東京都港区", coverUrl: media.url });
+    const repository = new CoreReadRepository(client as never);
+    const baseResult = await repository.findShopDetail(21);
+    expect(baseResult?.mediaAssets).toEqual([]);
+    const result = await repository.findShopDetail(21, "ja");
+    expect(result).toMatchObject({
+      name: "日本語店名", description: "日本語説明", city: "港区", address: "東京都港区", coverUrl: media.url,
+      presentationContent: { rankLabel: "おすすめ", businessHours: "11:00-23:00", station: "麻布十番駅", routeGuide: "A9出口" }
+    });
     expect(result?.mediaAssets).toEqual([expect.objectContaining({ url: media.url, altText: "日本語画像" })]);
+    expect(result?.presentationContent?.carousel).toHaveLength(1);
+    expect(result?.presentationContent?.serviceMenus).toEqual([]);
   });
 
   it("includes active partner technicians with real avatars once alongside primary staff", async () => {

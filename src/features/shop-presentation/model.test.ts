@@ -82,6 +82,7 @@ it("applies localized presentation while retaining server-authoritative price an
   );
   expect(localized.name).toBe("麻布十番マッサージ");
   expect(localized.gallery).toEqual(["/media/content/a.webp"]);
+  expect(localized.presentation?.galleryCaptions).toEqual(["店舗"]);
   expect(localized.presentation?.menuCards?.[0]).toMatchObject({ name: "首肩ケア", duration: "60 分钟", priceLabel: "￥8,800" });
 });
 
@@ -95,13 +96,28 @@ describe("buildShopPresentationContent", () => {
     );
     expect(buildShopPresentationContent(localized, new Map([["/media/content/a.webp", imageId]]))).toMatchObject({
       storeName: "麻布十番マッサージ",
-      carousel: [{ mediaAssetPublicId: imageId }],
+      carousel: [{ mediaAssetPublicId: imageId, altText: "店舗" }],
       serviceMenus: [{ serviceId: 1514, name: "首肩ケア", coverMediaAssetPublicId: imageId }]
     });
   });
 
   it("rejects browser-only image URLs that were never formally uploaded", () => {
     expect(() => buildShopPresentationContent(baseStore, new Map())).toThrow("error.shop_presentation.media_invalid");
+  });
+
+  it("saves edited text without requiring the shop's display-only fallback image", () => {
+    const edited = { ...baseStore, name: "Edited shop", description: "Edited description" };
+    expect(buildShopPresentationContent(edited, new Map(), new Set(baseStore.gallery))).toMatchObject({
+      storeName: "Edited shop",
+      description: "Edited description",
+      carousel: []
+    });
+  });
+
+  it("still rejects an unuploaded image when a fallback image is present", () => {
+    const edited = { ...baseStore, gallery: [...baseStore.gallery, "blob:unuploaded"] };
+    expect(() => buildShopPresentationContent(edited, new Map(), new Set(baseStore.gallery)))
+      .toThrow("error.shop_presentation.media_invalid");
   });
 });
 

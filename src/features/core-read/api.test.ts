@@ -351,6 +351,12 @@ describe("core read API adapter", () => {
       mediaAssets: [{ id: 1, url: coreService.shop.coverUrl!, mimeType: "image/jpeg", usageType: "cover", width: 1200, height: 800, altText: null, sortOrder: 10 }],
       services: [],
       technicians: [coreService.technician],
+      presentationContent: {
+        storeName: "Aoyama Care Studio", description: "Private care studio.", address: "Tokyo", area: "Tokyo",
+        rankLabel: "Localized label", businessHours: "11:00-23:00", subtitle: "Localized subtitle",
+        station: "Aoyama station", distance: "3 min", parking: "Nearby", routeGuide: "Exit A9",
+        paymentMethods: ["Visa"], equipment: ["Private room"], carousel: [], serviceMenus: []
+      },
       createdAt: coreService.createdAt,
       updatedAt: coreService.updatedAt
     } satisfies CoreShopDetail);
@@ -400,6 +406,8 @@ describe("core read API adapter", () => {
       systemId: "shop5831047296",
       name: "Aoyama Care Studio",
       rating: 4.8,
+      rankLabel: "Localized label",
+      businessHours: "11:00-23:00",
       tags: ["スパケア"]
     });
     expect(technician).toMatchObject({

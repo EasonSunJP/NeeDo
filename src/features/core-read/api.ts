@@ -1,4 +1,5 @@
 import { httpClient } from "../../api/httpClient";
+import type { ShopPresentationContent } from "../../api/backofficeRealData";
 import { resolveServiceFulfillmentMode } from "../../lib/serviceFulfillment";
 import type { Customer, FulfillmentMode, ServiceCategory, ServiceItem, Store, Technician } from "../../types/domain";
 
@@ -137,6 +138,7 @@ export type CoreServiceReview = {
 };
 
 export type CoreShopDetail = CoreShopCard & {
+  presentationContent?: ShopPresentationContent;
   description: string | null;
   phone: string | null;
   latitude: string | null;
@@ -427,6 +429,7 @@ export function mapCoreServiceToServiceItem(
 
 export function mapCoreShopToStore(shop: CoreShopCard | CoreShopDetail): Store {
   const detail = "services" in shop ? shop : undefined;
+  const presentationContent = detail?.presentationContent;
   const gallery = mediaGallery(detail?.mediaAssets, shop.coverUrl ?? fallbackStoreImage);
   const businessKeywords = Array.isArray(shop.businessKeywords) ? shop.businessKeywords : [];
 
@@ -451,8 +454,8 @@ export function mapCoreShopToStore(shop: CoreShopCard | CoreShopDetail): Store {
     cover: shop.coverUrl ?? gallery[0] ?? fallbackStoreImage,
     gallery: gallery.length > 0 ? gallery : [fallbackStoreImage],
     description: detail?.description ?? `${shop.name} · ${shop.city}`,
-    rankLabel: shop.reviewSummary.reviewCount > 0 ? `★ ${parseRating(shop.reviewSummary).toFixed(1)} · ${shop.reviewSummary.reviewCount} 条评价` : "公开店铺",
-    businessHours: "请以店铺确认为准",
+    rankLabel: presentationContent?.rankLabel ?? (shop.reviewSummary.reviewCount > 0 ? `★ ${parseRating(shop.reviewSummary).toFixed(1)} · ${shop.reviewSummary.reviewCount} 条评价` : "公开店铺"),
+    businessHours: presentationContent?.businessHours ?? "请以店铺确认为准",
     mode: firstServiceMode(detail?.services),
     paymentMethods: ["platform", "offline"]
   };

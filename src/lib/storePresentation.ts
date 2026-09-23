@@ -233,6 +233,9 @@ export function normalizeStorePresentationConfig(
 
   return {
     subtitle: normalizeString(raw?.subtitle, defaults.subtitle),
+    galleryCaptions: Array.isArray(raw?.galleryCaptions)
+      ? raw.galleryCaptions.slice(0, 5).map((caption) => typeof caption === "string" ? caption.trim() : "")
+      : [],
     favoriteCount: normalizeNumber(raw?.favoriteCount, defaults.favoriteCount),
     distance: normalizeString(raw?.distance, defaults.distance),
     station: normalizeString(raw?.station, defaults.station),

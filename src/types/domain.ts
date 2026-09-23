@@ -207,6 +207,7 @@ export interface StoreMenuConfig {
 
 export interface StorePresentationConfig {
   subtitle: string;
+  galleryCaptions?: string[];
   favoriteCount: number;
   distance: string;
   station: string;
