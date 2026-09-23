@@ -2,6 +2,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { ExchangeBookingConversionRepository } from "../src/repositories/exchange-booking-conversion.repository";
 import type { ExchangeBookingConversionInput } from "../src/types/exchange-booking-conversion.types";
+import { defaultTechnicianAutomationRules } from "../src/validators/technician-automation.validator";
 
 const occurredAt = new Date("2026-09-03T00:00:00.000Z");
 const startsAt = new Date("2026-09-04T01:00:00.000Z");
@@ -164,6 +165,7 @@ const makeSlots = () => [
 ];
 
 interface HarnessOptions {
+  autoAcceptLeadMinutes?: number;
   membershipLevel?: string;
   failSlotUpdateId?: number;
   ordinaryPending?: boolean;
@@ -429,6 +431,11 @@ const createHarness = (options: HarnessOptions = {}) => {
       customerProfile: {
         findFirst: jest.fn(async () => ({ membershipLevel: options.membershipLevel ?? "standard" }))
       },
+      technicianAutomationSetting: {
+        findMany: jest.fn(async () => options.autoAcceptLeadMinutes === undefined ? [] : [
+          { technicianProfileId: 20, rules: { ...defaultTechnicianAutomationRules("booking"), minLeadMinutes: options.autoAcceptLeadMinutes } }
+        ])
+      },
       exchangeMatchParticipant: {
         findMany: jest.fn(async () => stagedParticipants),
         findFirst: jest.fn(async () => {
@@ -603,6 +610,31 @@ const createHarness = (options: HarnessOptions = {}) => {
 };
 
 describe("ExchangeBookingConversionRepository", () => {
+  it("rejects an auto-accepted Request when the remaining lead is below the technician Booking rule without writing an order", async () => {
+    const h = createHarness({ autoAcceptLeadMinutes: 30 });
+    const nearStart = new Date(startsAt.getTime() - 29 * 60_000);
+
+    await expect(new ExchangeBookingConversionRepository(h.client, undefined, () => nearStart).convert(input({ occurredAt: nearStart })))
+      .resolves.toEqual({ outcome: "slot_unavailable" });
+    expect(h.committedWrites).toEqual([]);
+    expect(h.financeWrites).toEqual([]);
+  });
+
+  it("allows the configured Booking lead plus one minute for automation processing", async () => {
+    const h = createHarness({ autoAcceptLeadMinutes: 30 });
+    const boundary = new Date(startsAt.getTime() - 31 * 60_000);
+
+    await expect(new ExchangeBookingConversionRepository(h.client, undefined, () => boundary).convert(input({ occurredAt: boundary })))
+      .resolves.toMatchObject({ outcome: "created" });
+  });
+
+  it("rejects a sub-minute Request conversion even when the Booking automation lead is zero", async () => {
+    const h = createHarness({ autoAcceptLeadMinutes: 0 });
+    const nearStart = new Date(startsAt.getTime() - 30_000);
+    await expect(new ExchangeBookingConversionRepository(h.client, undefined, () => nearStart).convert(input({ occurredAt: nearStart })))
+      .resolves.toEqual({ outcome: "slot_unavailable" });
+    expect(h.committedWrites).toEqual([]);
+  });
   it("finds owner context for an owner or matched participant without exposing the address", async () => {
     const h = createHarness();
     const repository = new ExchangeBookingConversionRepository(h.client);

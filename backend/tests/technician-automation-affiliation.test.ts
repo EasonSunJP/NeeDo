@@ -57,6 +57,7 @@ describe("technician automation shop-affiliation gates", () => {
       }))) },
       customerProfile: { findUnique: jest.fn(async () => null) },
       bookingOrder: { count: jest.fn(async () => 0) },
+      technicianAutomationSetting: { findMany: jest.fn(async (): Promise<Array<{ technicianProfileId: number; rules: ReturnType<typeof defaultTechnicianAutomationRules> }>> => []) },
       ekycVerification: { count: jest.fn(async () => 0) },
       contact: { findMany: jest.fn(async () => []) }
     };
@@ -73,6 +74,14 @@ describe("technician automation shop-affiliation gates", () => {
       expect(listDynamic).toHaveBeenCalledWith(expect.objectContaining({
         scope: { kind: "merchant", shopId: 11 }
       }), 0, profiles.map((profile) => profile.id), expect.any(Function));
+      listDynamic.mockClear();
+      client.technicianAutomationSetting.findMany.mockResolvedValueOnce([{
+        technicianProfileId: 31,
+        rules: { ...defaultTechnicianAutomationRules("booking"), minLeadMinutes: 60 }
+      }]);
+      const insufficientLead = await repository.loadRequestCandidates(601);
+      expect(insufficientLead).toHaveLength(25);
+      expect(insufficientLead.some((candidate) => candidate.technicianProfileId === 31)).toBe(false);
       listDynamic.mockClear();
       const selected = await repository.loadRequestCandidates(601, {
         technicianProfileId: 31,

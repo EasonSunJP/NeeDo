@@ -7,10 +7,48 @@ import {
   type PrismaClient
 } from "@prisma/client";
 import { ExchangeMatchingRepository } from "../src/repositories/exchange-matching.repository";
+import { defaultTechnicianAutomationRules } from "../src/validators/technician-automation.validator";
 
 const at = new Date("2026-09-01T01:00:00.000Z");
 
 describe("ExchangeMatchingRepository", () => {
+  it("does not terminally match a Request whose selected auto-accepting technician lacks Booking lead time", async () => {
+    const createMany = jest.fn();
+    const client = {
+      technicianAutomationSetting: { findMany: jest.fn(async () => [{
+        technicianProfileId: 81,
+        rules: { ...defaultTechnicianAutomationRules("booking"), minLeadMinutes: 30 }
+      }]) },
+      exchangeMatchParticipant: { createMany },
+      exchangeClaim: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      exchangeRequestMatching: { updateMany: jest.fn(async () => ({ count: 1 })), findFirst: jest.fn(async () => null) },
+      exchangePost: { update: jest.fn(async () => ({ id: 41 })) },
+      exchangeMatchEvent: { create: jest.fn(async () => ({ id: 81 })) },
+      notification: { createMany: jest.fn(async () => ({ count: 1 })) },
+      auditLog: { create: jest.fn(async () => ({ id: 91 })) }
+    };
+    const matchedAt = new Date("2026-09-24T00:00:00.000Z");
+    const repository = new ExchangeMatchingRepository(client as unknown as PrismaClient, () => matchedAt);
+    const selectedClaim = {
+      id: 301, exchangePostId: 41, claimantUserId: 8, claimantIdentityId: 18,
+      shopId: 11, technicianProfileId: 81, serviceId: 501, technicianServiceId: null,
+      scheduleSlotId: 91, quoteAmountJpy: 15_000, serviceNameSnapshot: "Service",
+      serviceDurationSnapshot: 60, currency: "JPY" as const, status: "active" as const,
+      estimatedStartsAt: new Date(matchedAt.getTime() + 30 * 60_000),
+      estimatedEndsAt: new Date(matchedAt.getTime() + 90 * 60_000)
+    };
+    await expect(repository.completeMatch({
+      matchingId: 51, exchangePostId: 41, selectedClaims: [selectedClaim],
+      selectedClaimIds: [301], unselectedClaims: [], unselectedClaimIds: [],
+      selectedQuoteTotalJpy: 15_000, effectiveTargetProviderCountAfter: 1,
+      effectiveBudgetMaxJpyAfter: 15_000, adjustments: [], versionBefore: 3, versionAfter: 4,
+      actorUserId: 7, actorIdentityId: 17, viewerIdentityId: 17,
+      matchEventType: "selective_matched", idempotencyKey: "lead-test-key-0001",
+      payloadFingerprint: "a".repeat(64), at: matchedAt,
+      audit: { actorId: 7, action: "exchange.matching.select", targetType: "exchange_request_matching", targetId: 51 }
+    })).rejects.toMatchObject({ message: "error.exchange.match_time_conflict", statusCode: 409 });
+    expect(createMany).not.toHaveBeenCalled();
+  });
   it("looks up owner-confirmed Quick matches by their dedicated terminal event", async () => {
     const findFirst = jest.fn(async () => null);
     const repository = new ExchangeMatchingRepository({
@@ -392,6 +430,7 @@ describe("ExchangeMatchingRepository", () => {
   it("persists only matching-domain state and audit in the transaction client", async () => {
     const events: string[] = [];
     const client = {
+      technicianAutomationSetting: { findMany: jest.fn(async () => []) },
       exchangeMatchParticipant: {
         create: jest.fn(async () => {
           events.push("participant");
@@ -589,6 +628,7 @@ describe("ExchangeMatchingRepository", () => {
 
   it("persists a system-authored Quick match through the shared terminal mutation", async () => {
     const client = {
+      technicianAutomationSetting: { findMany: jest.fn(async () => []) },
       exchangeMatchParticipant: { createMany: jest.fn(async () => ({ count: 1 })) },
       exchangeClaim: { updateMany: jest.fn(async () => ({ count: 1 })) },
       exchangeRequestMatching: {
@@ -739,6 +779,7 @@ describe("ExchangeMatchingRepository", () => {
   it("persists budget and target adjustments as one linked atomic event chain", async () => {
     const createdEvents: Array<Record<string, unknown>> = [];
     const client = {
+      technicianAutomationSetting: { findMany: jest.fn(async () => []) },
       exchangeMatchParticipant: {
         create: jest.fn(async () => ({ id: 71 })),
         createMany: jest.fn(async () => ({ count: 1 }))
@@ -869,6 +910,7 @@ describe("ExchangeMatchingRepository", () => {
 
   it("locks formal service snapshots and writes them through the atomic participant createMany payload", async () => {
     const client = {
+      technicianAutomationSetting: { findMany: jest.fn(async () => []) },
       $queryRaw: jest.fn(async () => [{ id: 301 }]),
       exchangeClaim: {
         findMany: jest.fn(async () => [

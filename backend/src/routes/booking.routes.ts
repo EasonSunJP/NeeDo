@@ -100,12 +100,7 @@ export const BOOKING_ROUTE_PERMISSIONS = {
   manualCreate: "technician:booking:manual-create"
 } as const;
 
-export const createBookingRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
-  const router = Router();
-  const authService = createAuthServiceForRoutes(config, dependencies);
-  const authenticate = createAuthenticateMiddleware(authService);
-  const optionalAuthenticate = createOptionalAuthenticateMiddleware(authService);
-  const authorize = createAuthorizeMiddleware;
+const createBookingRuntime = (config: AppConfig, dependencies: AppDependencies) => {
   const feeCalculationService = new FeeCalculationService(
     dependencies.feeRuleRepository ?? new FeeRuleRepository()
   );
@@ -190,6 +185,22 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
         }
       }
     ));
+  return { bookingRepository, bookingService, servicePrepaymentService, automationProcessor };
+};
+
+export const createBookingAutomationProcessorForRoutes = (
+  config: AppConfig,
+  dependencies: AppDependencies
+) => createBookingRuntime(config, dependencies).automationProcessor;
+
+export const createBookingRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
+  const router = Router();
+  const authService = createAuthServiceForRoutes(config, dependencies);
+  const authenticate = createAuthenticateMiddleware(authService);
+  const optionalAuthenticate = createOptionalAuthenticateMiddleware(authService);
+  const authorize = createAuthorizeMiddleware;
+  const { bookingRepository, bookingService, servicePrepaymentService, automationProcessor } =
+    createBookingRuntime(config, dependencies);
   const schedulePreloadService = new SchedulePreloadService(
     dependencies.authRepository ?? new AuthRepository(),
     dependencies.merchantShopContextRepository ?? new MerchantShopContextRepository(),

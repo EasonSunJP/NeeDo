@@ -25,6 +25,7 @@ import {
   exchangeBookingConversionPostIdParamSchema
 } from "../validators/exchange-booking-conversion.validators";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
+import { createBookingAutomationProcessorForRoutes } from "./booking.routes";
 
 export const createExchangeBookingConversionRoutes = (
   config: AppConfig,
@@ -66,7 +67,8 @@ export const createExchangeBookingConversionRoutes = (
       undefined,
       dependencies.liveDashboardEventGateway ? new LiveDashboardOrderChangePublisher(
         orderProjectionRepository, dependencies.liveDashboardEventGateway
-      ) : undefined
+      ) : undefined,
+      createBookingAutomationProcessorForRoutes(config, dependencies)
     );
   const controller = new ExchangeBookingConversionController(service);
 
