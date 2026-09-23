@@ -21,13 +21,20 @@ const profile = {
 };
 
 const mocks = vi.hoisted(() => ({
+  createCroppedAvatarDataUrl: vi.fn(),
   copyTextToClipboard: vi.fn(),
   getMine: vi.fn(),
   getMyWalletSummary: vi.fn(),
+  readImageFileAsDataUrl: vi.fn(),
   updateMine: vi.fn()
 }));
 
 vi.mock("../../lib/share", () => ({ copyTextToClipboard: mocks.copyTextToClipboard }));
+vi.mock("../../lib/imageUpload", () => ({ readImageFileAsDataUrl: mocks.readImageFileAsDataUrl }));
+vi.mock("../ui/AvatarCropEditor", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ui/AvatarCropEditor")>()),
+  createCroppedAvatarDataUrl: mocks.createCroppedAvatarDataUrl
+}));
 
 vi.mock("../../features/core-read/merchantProfileApi", () => ({
   merchantProfileApi: {
@@ -50,6 +57,8 @@ describe("MerchantIdentityInfoCard", () => {
 
   beforeEach(() => {
     mocks.copyTextToClipboard.mockReset().mockResolvedValue(true);
+    mocks.readImageFileAsDataUrl.mockReset().mockResolvedValue("data:image/png;base64," + "A".repeat(900_000));
+    mocks.createCroppedAvatarDataUrl.mockReset().mockResolvedValue("data:image/jpeg;base64,AAAA");
     mocks.getMine.mockReset().mockResolvedValue(profile);
     mocks.getMyWalletSummary.mockReset().mockResolvedValue({
       activeCurrency: "TEST_NDP",
@@ -93,6 +102,30 @@ describe("MerchantIdentityInfoCard", () => {
     await act(async () => save?.click());
 
     await waitFor(() => expect(mocks.updateMine).toHaveBeenCalledWith(expect.objectContaining({ languages: [] })));
+  });
+
+  it("crops a selected avatar before saving the merchant profile", async () => {
+    await act(async () => root.render(<MerchantIdentityInfoCard />));
+    await waitFor(() => expect(container.textContent).toContain("佐藤 美咲"));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="编辑资料"]')?.click());
+
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    const file = new File(["camera image"], "avatar.png", { type: "image/png" });
+    expect(input).not.toBeNull();
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+    await act(async () => input?.dispatchEvent(new Event("change", { bubbles: true })));
+
+    expect(mocks.readImageFileAsDataUrl).toHaveBeenCalledWith(file, expect.any(Object));
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("头像裁剪");
+    expect(mocks.updateMine).not.toHaveBeenCalled();
+
+    const apply = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "套用头像");
+    await act(async () => apply?.click());
+    const save = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("保存并退出编辑模式"));
+    await act(async () => save?.click());
+
+    expect(mocks.createCroppedAvatarDataUrl).toHaveBeenCalledTimes(1);
+    expect(mocks.updateMine).toHaveBeenCalledWith(expect.objectContaining({ avatarDataUrl: "data:image/jpeg;base64,AAAA" }));
   });
 
   it("copies the formal merchant ID through the PWA-safe clipboard helper", async () => {
