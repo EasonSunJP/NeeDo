@@ -3426,9 +3426,7 @@ export function StoreDetailExperience({
     || (
       canLoadFormalAvailability
       && (
-        formalAvailabilityDateSummariesStatus === "idle"
-        || formalAvailabilityDateSummariesStatus === "loading"
-        || formalStartSummariesStatus === "idle"
+        formalStartSummariesStatus === "idle"
         || formalStartSummariesStatus === "loading"
       )
     )
@@ -4467,6 +4465,7 @@ export function StoreDetailExperience({
                     selectedDay={selectedVisitDate.getDate()}
                     technicianCountRelevant={isTechnicianPricingActive}
                     time={selectedTime}
+                    timeAvailabilityLoading={formalAvailabilityLoading}
                     timeOptions={displayedTimeOptions}
                     title="来店日"
                   />
