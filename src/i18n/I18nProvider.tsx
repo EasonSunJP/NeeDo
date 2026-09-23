@@ -12,6 +12,8 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 const storageKey = "needo.language";
 const storageModeKey = "needo.language.mode";
 const textNodeSources = new WeakMap<Text, string>();
+const translatedTextValues = new WeakMap<Text, string>();
+const translatedAttributeValues = new WeakMap<HTMLElement, Record<string, string>>();
 const translatedAttributes = ["placeholder", "title", "aria-label", "alt"];
 const runtimeTranslationPortals: TranslationPortalContext[] = ["user", "technician", "merchant", "business", "admin"];
 const noopSetLanguage = () => undefined;
@@ -164,6 +166,10 @@ export function resolveRuntimeTranslationSource(
     return currentValue;
   }
 
+  if (currentValue === storedSource) {
+    return storedSource;
+  }
+
   const knownRuntimeValue = languages.some((item) => {
     if (currentValue === translateText(storedSource, item.code)) {
       return true;
@@ -173,6 +179,20 @@ export function resolveRuntimeTranslationSource(
   });
 
   return knownRuntimeValue || currentValue === translateTextForContext(storedSource, language, context) ? storedSource : currentValue;
+}
+
+function translateTextNode(node: Text, language: Language, context: TranslationContext) {
+  if (shouldSkipNode(node) || !node.nodeValue?.trim()) return;
+  const currentValue = node.nodeValue;
+  const storedSource = textNodeSources.get(node);
+  const source = translatedTextValues.get(node) === currentValue && storedSource !== undefined
+    ? storedSource
+    : resolveRuntimeTranslationSource(currentValue, storedSource, language, context);
+  textNodeSources.set(node, source);
+  const next = translateTextForContext(source, language, context);
+  translatedTextValues.set(node, next);
+
+  if (currentValue !== next) node.nodeValue = next;
 }
 
 function translateTextNodes(root: ParentNode, language: Language, context: TranslationContext) {
@@ -194,42 +214,46 @@ function translateTextNodes(root: ParentNode, language: Language, context: Trans
     current = walker.nextNode();
   }
 
-  nodes.forEach((node) => {
-    const currentValue = node.nodeValue ?? "";
-    const source = resolveRuntimeTranslationSource(currentValue, textNodeSources.get(node), language, context);
-    textNodeSources.set(node, source);
-    const next = translateTextForContext(source, language, context);
+  nodes.forEach((node) => translateTextNode(node, language, context));
+}
 
-    if (currentValue !== next) {
-      node.nodeValue = next;
-    }
+function translateElementAttributes(element: HTMLElement, language: Language, context: TranslationContext) {
+  if (element.closest("[data-no-i18n]")) return;
+
+  translatedAttributes.forEach((attribute) => {
+    const currentValue = element.getAttribute(attribute);
+
+    if (!currentValue?.trim()) return;
+
+    const sourceAttribute = `data-i18n-source-${attribute}`;
+    const storedSource = element.getAttribute(sourceAttribute) ?? undefined;
+    const source = translatedAttributeValues.get(element)?.[attribute] === currentValue && storedSource !== undefined
+      ? storedSource
+      : resolveRuntimeTranslationSource(currentValue, storedSource, language, context);
+    element.setAttribute(sourceAttribute, source);
+
+    const next = translateTextForContext(source, language, context);
+    const values = translatedAttributeValues.get(element) ?? {};
+    values[attribute] = next;
+    translatedAttributeValues.set(element, values);
+
+    if (currentValue !== next) element.setAttribute(attribute, next);
   });
 }
 
 function translateAttributes(root: ParentNode, language: Language, context: TranslationContext) {
-  root.querySelectorAll<HTMLElement>("*").forEach((element) => {
-    if (element.closest("[data-no-i18n]")) {
-      return;
-    }
+  root.querySelectorAll<HTMLElement>("*").forEach((element) => translateElementAttributes(element, language, context));
+}
 
-    translatedAttributes.forEach((attribute) => {
-      const currentValue = element.getAttribute(attribute);
-
-      if (!currentValue?.trim()) {
-        return;
-      }
-
-      const sourceAttribute = `data-i18n-source-${attribute}`;
-      const source = resolveRuntimeTranslationSource(currentValue, element.getAttribute(sourceAttribute) ?? undefined, language, context);
-      element.setAttribute(sourceAttribute, source);
-
-      const next = translateTextForContext(source, language, context);
-
-      if (currentValue !== next) {
-        element.setAttribute(attribute, next);
-      }
-    });
-  });
+function translateChangedNode(node: Node, language: Language, context: TranslationContext) {
+  if (!node.isConnected) return;
+  if (node.nodeType === Node.TEXT_NODE) {
+    translateTextNode(node as Text, language, context);
+  } else if (node instanceof Element) {
+    translateTextNodes(node, language, context);
+    if (node instanceof HTMLElement) translateElementAttributes(node, language, context);
+    translateAttributes(node, language, context);
+  }
 }
 
 function translateDocument(language: Language, context: TranslationContext) {
@@ -324,15 +348,34 @@ export function I18nRuntime({ children }: { children: ReactNode }) {
     }
 
     let frame = 0;
+    const pendingNodes = new Set<Node>();
 
     const scheduleTranslate = () => {
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => translateDocument(language, translationContext));
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        translateDocument(language, translationContext);
+        pendingNodes.clear();
+      });
     };
 
     scheduleTranslate();
 
-    const observer = new MutationObserver(scheduleTranslate);
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === "childList") {
+          record.addedNodes.forEach((node) => pendingNodes.add(node));
+        } else {
+          pendingNodes.add(record.target);
+        }
+      }
+      if (pendingNodes.size === 0 || frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        for (const node of pendingNodes) translateChangedNode(node, language, translationContext);
+        pendingNodes.clear();
+      });
+    });
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -344,6 +387,7 @@ export function I18nRuntime({ children }: { children: ReactNode }) {
     return () => {
       window.cancelAnimationFrame(frame);
       observer.disconnect();
+      pendingNodes.clear();
     };
   }, [language, location.pathname, location.search, translationContext]);
 

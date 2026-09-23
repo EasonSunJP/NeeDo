@@ -15276,6 +15276,7 @@ export function registerTranslationEntries(entries: Readonly<Record<string, Tran
   Object.entries(entries).forEach(([source, entry]) => {
     if (!(source in translations)) {
       translations[source] = entry;
+      partialTranslationEntries = null;
     }
   });
 }
@@ -15305,6 +15306,14 @@ function applyManualContextCorrection(source: string, translated: string, langua
   });
 
   return lock?.replacement ?? translated;
+}
+
+let partialTranslationEntries: [string, TranslationEntry][] | null = null;
+
+function getPartialTranslationEntries() {
+  return partialTranslationEntries ??= Object.entries({ ...translations, ...travelFareTranslations })
+    .filter(([phrase]) => phrase.length >= 2)
+    .sort(([a], [b]) => b.length - a.length);
 }
 
 export function translateText(source: string, language: Language): string {
@@ -15386,14 +15395,12 @@ export function translateText(source: string, language: Language): string {
     return `${leading}${cleanupRuntimeTranslation(dynamicGroupPrivacyCountdownStatus, language)}${trailing}`;
   }
 
-  const translated = Object.entries({ ...translations, ...travelFareTranslations })
-    .filter(([phrase]) => phrase.length >= 2 && core.includes(phrase))
-    .sort(([a], [b]) => b.length - a.length)
-    .reduce((text, [phrase, values]) => {
-      const replacement = resolveTranslationEntry(values, language);
-
-      return replacement ? text.split(phrase).join(replacement) : text;
-    }, core);
+  let translated = core;
+  for (const [phrase, values] of getPartialTranslationEntries()) {
+    if (!core.includes(phrase)) continue;
+    const replacement = resolveTranslationEntry(values, language);
+    if (replacement) translated = translated.split(phrase).join(replacement);
+  }
 
   return `${leading}${cleanupRuntimeTranslation(translated, language)}${trailing}`;
 }

@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { act, createElement, useEffect } from "react";
+import { act, createElement, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +31,26 @@ function SetJapaneseLanguage() {
   }, [setLanguage]);
 
   return createElement("p", { "data-no-i18n": "true" }, "测试测试");
+}
+
+function LanguageCycle({ count }: { count: number }) {
+  const { language, setLanguage } = useI18n();
+
+  return createElement("div", null,
+    createElement("button", { onClick: () => setLanguage(language === "zh" ? "ja" : "zh") }, "switch"),
+    ...Array.from({ length: count }, (_, index) => createElement("p", { key: index }, `后台动态数据 ${index}: ${index * 7}`))
+  );
+}
+
+function DynamicLanguageProbe() {
+  const { language, setLanguage } = useI18n();
+  const [updated, setUpdated] = useState(false);
+
+  return createElement("div", null,
+    createElement("button", { onClick: () => setLanguage(language === "zh" ? "ja" : "zh") }, "switch"),
+    createElement("button", { onClick: () => setUpdated(true) }, "update"),
+    createElement("p", null, updated ? "后一周" : "预约一览")
+  );
 }
 
 afterEach(() => {
@@ -152,6 +172,54 @@ describe("i18n language detection", () => {
     });
     expect(container.querySelector("[data-no-i18n]")?.textContent).toBe("测试测试");
 
+    await act(async () => root.unmount());
+  });
+
+  it("switches a data-heavy admin page from Chinese to Japanese and back without stalling", async () => {
+    localStorage.setItem("needo.language", "zh");
+    localStorage.setItem("needo.language.mode", "manual");
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => root.render(createElement(MemoryRouter, { initialEntries: ["/admin"] }, createElement(
+      I18nProvider, null, createElement(I18nRuntime, null, createElement(LanguageCycle, { count: 500 }))
+    ))));
+    const button = container.querySelector("button")!;
+
+    await act(async () => button.click());
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    expect(document.documentElement.lang).toBe("ja");
+
+    await act(async () => button.click());
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    expect(document.documentElement.lang).toBe("zh-CN");
+    expect(container.querySelectorAll("p")).toHaveLength(500);
+    await act(async () => root.unmount());
+  }, 5000);
+
+  it("translates changed data in Japanese and restores its latest Chinese source", async () => {
+    localStorage.setItem("needo.language", "zh");
+    localStorage.setItem("needo.language.mode", "manual");
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(createElement(MemoryRouter, { initialEntries: ["/admin"] }, createElement(
+      I18nProvider, null, createElement(I18nRuntime, null, createElement(DynamicLanguageProbe))
+    ))));
+    const [switchButton, updateButton] = container.querySelectorAll("button");
+
+    await act(async () => switchButton.click());
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    expect(container.querySelector("p")?.textContent).toBe(translateText("预约一览", "ja"));
+
+    await act(async () => updateButton.click());
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    expect(container.querySelector("p")?.textContent).toBe(translateText("后一周", "ja"));
+
+    await act(async () => switchButton.click());
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    expect(container.querySelector("p")?.textContent).toBe("后一周");
     await act(async () => root.unmount());
   });
 });

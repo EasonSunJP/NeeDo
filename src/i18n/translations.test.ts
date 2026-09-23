@@ -327,12 +327,15 @@ describe("translations", () => {
   });
 
   it("registers lazy feature copy without overriding the global source of truth", () => {
+    translateText("prefix new lazy phrase suffix", "ja");
     registerTranslationEntries({
       "lazy feature probe": { ja: "遅延機能", en: "Lazy feature", ko: "지연 기능" },
+      "new lazy phrase": { ja: "追加の遅延語句" },
       "取消": { ja: "上書き禁止" },
     });
 
     expect(translateText("lazy feature probe", "ja")).toBe("遅延機能");
+    expect(translateText("prefix new lazy phrase suffix", "ja")).toContain("追加の遅延語句");
     expect(translateText("取消", "ja")).not.toBe("上書き禁止");
   });
 
