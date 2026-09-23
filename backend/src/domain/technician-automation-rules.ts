@@ -40,6 +40,11 @@ export interface TechnicianAutomationEvaluationResult {
   failedReasons: string[];
 }
 
+// Keep one minute for Request conversion and the post-commit Booking decision.
+export function hasRequestBookingAutomationLead(startsAt: Date, now: Date, minLeadMinutes: number): boolean {
+  return startsAt.getTime() - now.getTime() >= (minLeadMinutes + 1) * 60_000;
+}
+
 function tokyoParts(value: Date): { weekday: number; minute: number; date: string } {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Tokyo",

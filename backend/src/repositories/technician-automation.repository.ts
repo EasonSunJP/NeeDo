@@ -14,7 +14,7 @@ import type {
 } from "../services/technician-automation.service";
 import type { TechnicianAutomationKindValue } from "../validators/technician-automation.validator";
 import { technicianAutomationRulesSchema } from "../validators/technician-automation.validator";
-import { evaluateTechnicianAutomationRules } from "../domain/technician-automation-rules";
+import { evaluateTechnicianAutomationRules, hasRequestBookingAutomationLead } from "../domain/technician-automation-rules";
 import { ExchangeClaimRepository, exchangeClaimOptionBusinessKey } from "./exchange-claim.repository";
 import type { ExchangeClaimOptionPayload, ExchangeClaimServiceRef } from "../types/exchange-claim.types";
 import type {
@@ -479,8 +479,25 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         postId, post.authorUserId, post.serviceStartAt, post.serviceEndAt, now, eligibleSlots, selection
       ));
     }
-    eligibleSlots.sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime() || left.id - right.id);
-    const technicianIds = [...new Set(eligibleSlots.map((slot) => slot.technicianProfileId))];
+    const bookingSettings = eligibleSlots.length === 0 ? [] : await this.client.technicianAutomationSetting.findMany({
+      where: {
+        technicianProfileId: { in: [...new Set(eligibleSlots.map((slot) => slot.technicianProfileId))] },
+        kind: DatabaseTechnicianAutomationKind.BOOKING,
+        enabled: true,
+        deletedAt: null
+      },
+      select: { technicianProfileId: true, rules: true }
+    });
+    const bookingLeadByTechnician = new Map(bookingSettings.map((setting) => [
+      setting.technicianProfileId,
+      technicianAutomationRulesSchema.parse(setting.rules).minLeadMinutes
+    ]));
+    const candidateSlots = eligibleSlots.filter((slot) => {
+      const requiredMinutes = bookingLeadByTechnician.get(slot.technicianProfileId);
+      return requiredMinutes === undefined || hasRequestBookingAutomationLead(slot.startsAt, now, requiredMinutes);
+    });
+    candidateSlots.sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime() || left.id - right.id);
+    const technicianIds = [...new Set(candidateSlots.map((slot) => slot.technicianProfileId))];
     if (technicianIds.length === 0) return [];
     const identities = await this.client.userIdentity.findMany({
       where: { type: "technician", scopeType: "technician_profile", scopeId: { in: technicianIds }, isActive: true, deletedAt: null },
@@ -502,7 +519,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     const completedByTechnician = new Map<number, Promise<number>>();
     const conflictsByWindow = new Map<string, Promise<boolean>>();
     const claimRepository = new ExchangeClaimRepository(this.client);
-    for (const slot of eligibleSlots) {
+    for (const slot of candidateSlots) {
       const technicianProfileId = slot.technicianProfileId;
       if (matchedTechnicians.has(technicianProfileId)) continue;
       const identity = identityByTechnician.get(technicianProfileId);
