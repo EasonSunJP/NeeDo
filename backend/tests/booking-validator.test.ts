@@ -2,9 +2,54 @@ import {
   availabilityListQuerySchema,
   availabilityWindowListQuerySchema,
   bookingCreateBodySchema,
+  bookingGroupCreateBodySchema,
   orderListQuerySchema,
   startServiceBodySchema
 } from "../src/validators/booking.validator";
+
+describe("bookingGroupCreateBodySchema", () => {
+  const assignment = {
+    technicianProfileId: 11,
+    technicianServiceIds: [101, 102],
+    scheduleSlotIds: [-201, -202],
+    expectedPriceAmountJpy: 12_000
+  };
+  const base = {
+    shopId: 5,
+    startsAt: "2026-10-02T01:00:00.000Z",
+    guests: [
+      { label: "客人 1", assignments: [assignment] },
+      { label: "客人 2", assignments: [{ ...assignment, technicianProfileId: 12, technicianServiceIds: [103], scheduleSlotIds: [-203] }] }
+    ],
+    paymentMethod: "onsite"
+  };
+
+  it("accepts a multi-guest booking with distinct technician and slot selectors", () => {
+    expect(bookingGroupCreateBodySchema.parse(base)).toMatchObject(base);
+  });
+
+  it("rejects guest counts outside one to ten and empty assignments", () => {
+    expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: [] }).success).toBe(false);
+    expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: Array.from({ length: 11 }, (_, index) => ({ label: `客人 ${index}`, assignments: [{ ...assignment, technicianProfileId: index + 1, scheduleSlotIds: [index * 2 + 1, index * 2 + 2] }] })) }).success).toBe(false);
+    expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: [{ label: "客人 1", assignments: [] }] }).success).toBe(false);
+  });
+
+  it("rejects duplicate technician and slot selectors across guests", () => {
+    expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: [...base.guests, { label: "客人 3", assignments: [assignment] }] }).success).toBe(false);
+    expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: [...base.guests, { label: "客人 3", assignments: [{ ...assignment, technicianProfileId: 13 }] }] }).success).toBe(false);
+  });
+
+  it("requires one catalog type and a slot for each selected service", () => {
+    expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: [{ label: "客人 1", assignments: [{ ...assignment, serviceIds: [1, 2] }] }] }).success).toBe(false);
+    expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: [{ label: "客人 1", assignments: [{ ...assignment, scheduleSlotIds: [-201] }] }] }).success).toBe(false);
+    expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: [{ label: "客人 1", assignments: [{ ...assignment, technicianServiceIds: [101, 101] }] }] }).success).toBe(false);
+  });
+
+  it("rejects blank guest labels and invalid expected prices", () => {
+    expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: [{ label: " ", assignments: [assignment] }] }).success).toBe(false);
+    expect(bookingGroupCreateBodySchema.safeParse({ ...base, guests: [{ label: "客人 1", assignments: [{ ...assignment, expectedPriceAmountJpy: -1 }] }] }).success).toBe(false);
+  });
+});
 
 describe("startServiceBodySchema", () => {
   it("accepts an owning merchant only with the customer-visible verification code", () => {
