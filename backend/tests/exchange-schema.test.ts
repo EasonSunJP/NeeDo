@@ -14,6 +14,10 @@ const identityScopeMigration = readFileSync(
   ),
   "utf8"
 );
+const deadlineMigrationPath = resolve(
+  __dirname,
+  "../prisma/migrations/20260922070000_exchange_demand_application_deadline/migration.sql"
+);
 
 const modelSource = (name: string): string => {
   const match = schema.match(new RegExp(`model ${name} \\{[\\s\\S]*?\\n\\}`, "m"));
@@ -88,5 +92,14 @@ describe("formal NeeDo Exchange schema", () => {
     expect(identityScopeMigration).toContain("exchange_shares_post_id_actor_identity_id_key");
     expect(identityScopeMigration).toContain("exchange_posts_owner_identity_id_fkey");
     expect(identityScopeMigration).not.toMatch(/(?:^|\n)\s*(?:DELETE|TRUNCATE)\b/i);
+  });
+
+  it("allows new demand deadlines before service while preserving legacy posts and Intelligence", () => {
+    expect(existsSync(deadlineMigrationPath)).toBe(true);
+    const deadlineMigration = readFileSync(deadlineMigrationPath, "utf8");
+    expect(deadlineMigration).toContain("DROP CHECK `exchange_posts_service_window_check`");
+    expect(deadlineMigration).toContain("`type` = 'demand' AND `expires_at` < `service_start_at`");
+    expect(deadlineMigration).toContain("`service_end_at` <= `expires_at`");
+    expect(deadlineMigration).not.toMatch(/\b(?:DELETE|TRUNCATE|UPDATE)\b/i);
   });
 });

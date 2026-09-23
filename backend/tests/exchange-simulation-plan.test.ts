@@ -167,7 +167,12 @@ describe("formal Exchange simulation plan", () => {
       expect(createdAt).toBeLessThan(serviceStartAt);
       expect(serviceStartAt).toBeGreaterThan(referenceTime.getTime());
       expect(serviceStartAt).toBeLessThan(serviceEndAt);
-      expect(serviceEndAt).toBeLessThanOrEqual(expiresAt);
+      if (post.type === "demand") {
+        expect(createdAt).toBeLessThan(expiresAt);
+        expect(expiresAt).toBeLessThan(serviceStartAt);
+      } else {
+        expect(serviceEndAt).toBeLessThan(expiresAt);
+      }
       expect(post.title.trim()).toBe(post.title);
       expect(post.detail.trim()).toBe(post.detail);
     }

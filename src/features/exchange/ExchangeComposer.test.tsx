@@ -75,7 +75,7 @@ const validDemandDraft: RequestComposerDraft = {
   contentLocale: "ja", title: "A demand", detail: "Details", cover: null,
   serviceStartDate: "2026-08-31", serviceStartTime: "13:00",
   serviceEndDate: "2026-08-31", serviceEndTime: "14:00",
-  expiresDate: "2026-08-31", expiresTime: "14:01",
+  expiresDate: "2026-08-31", expiresTime: "12:30",
   targetProviderCount: "1", serviceMode: "store", matchMode: "quick", budgetMode: "total",
   budgetMinJpy: "5000", budgetMaxJpy: "8000", addressLine1: "新宿区", addressLine2: "", addressLine3: "",
   addressLine2Public: false, addressLine3Public: false, publisherIdentityPublic: false
@@ -156,6 +156,12 @@ describe("ExchangeComposer identity boundary", () => {
     expect(exchangeText("authoredLanguage", "ja")).toBe("言語");
     expect(exchangeText("bookable", "ja")).toBe("予約可");
   });
+
+  it("explains the thirty-minute Request deadline rule in all UI languages", () => {
+    for (const language of ["zh", "zh-Hant", "ja", "en", "ko"] as const) {
+      expect(exchangeText("invalidRequestWindow", language)).toMatch(/30/);
+    }
+  });
 });
 
 function setInputValue(input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
@@ -178,14 +184,14 @@ function fillDemandForm(container: ParentNode) {
     serviceEndDate: "2026-08-31",
     serviceEndTime: "14:00",
     expiresDate: "2026-08-31",
-    expiresTime: "14:01",
+    expiresTime: "12:30",
     targetProviderCount: "1",
     budgetMinJpy: "5000",
     budgetMaxJpy: "8000",
     addressLine1: "新宿区"
   };
   Object.entries(values).forEach(([name, value]) => {
-    const input = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
+    const input = container.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${name}"]`);
     if (!input) throw new Error(`missing ${name}`);
     setInputValue(input, value);
   });
@@ -212,6 +218,7 @@ describe("ExchangeComposer publication", () => {
   let root: Root;
 
   beforeEach(() => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-30T00:00:00.000Z"));
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -234,6 +241,22 @@ describe("ExchangeComposer publication", () => {
     await act(async () => root.unmount());
     container.remove();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("defaults the Request application deadline thirty minutes before service starts", async () => {
+    await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
+    await waitFor(() => expect(document.body.querySelector('[name="serviceStartDate"]')).not.toBeNull());
+
+    await act(async () => setInputValue(document.body.querySelector<HTMLInputElement>('[name="serviceStartDate"]')!, "2026-09-24"));
+    await act(async () => setInputValue(document.body.querySelector<HTMLSelectElement>('[name="serviceStartTime"]')!, "00:00"));
+    expect(document.body.querySelector<HTMLInputElement>('[name="expiresDate"]')?.value).toBe("2026-09-23");
+    expect(document.body.querySelector<HTMLSelectElement>('[name="expiresTime"]')?.value).toBe("23:30");
+
+    await act(async () => setInputValue(document.body.querySelector<HTMLSelectElement>('[name="expiresTime"]')!, "22:30"));
+    await act(async () => setInputValue(document.body.querySelector<HTMLSelectElement>('[name="serviceStartTime"]')!, "01:00"));
+    expect(document.body.querySelector<HTMLSelectElement>('[name="expiresTime"]')?.value).toBe("22:30");
   });
 
   it("validates on Next, then submits a customer demand with a fresh key and no actor selector", async () => {
@@ -295,6 +318,21 @@ describe("ExchangeComposer publication", () => {
     await waitFor(() => expect(publishExchangePost).toHaveBeenCalledTimes(2));
     expect(vi.mocked(publishExchangePost).mock.calls[0]?.[1]).toBe("123e4567-e89b-42d3-a456-426614174000");
     expect(vi.mocked(publishExchangePost).mock.calls[1]?.[1]).toBe("123e4567-e89b-42d3-a456-426614174000");
+  });
+
+  it("returns to editing if the application deadline passes during review", async () => {
+    await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
+    await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
+    fillDemandForm(document.body);
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
+    expect(document.body.querySelector('[data-testid="exchange-publication-review"]')).not.toBeNull();
+
+    vi.mocked(Date.now).mockReturnValue(Date.parse("2026-08-31T03:30:00.000Z"));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-publish"]')?.click());
+    expect(document.body.textContent).toContain("应募截止时间已过");
+    expect(document.body.querySelector('[data-testid="exchange-publication-review"]')).toBeNull();
+    expect(publishExchangePost).not.toHaveBeenCalled();
   });
 
   it("returns to edit and refreshes a stale Request target limit without losing the draft", async () => {

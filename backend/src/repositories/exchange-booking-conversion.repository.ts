@@ -13,6 +13,7 @@ import {
   ServicePaymentMethod,
   ServicePaymentStatus,
   ShopPricingMode,
+  TechnicianAutomationKind,
   TechnicianServiceReviewStatus,
   TechnicianShopWorkStatus,
   type PrismaClient
@@ -30,6 +31,8 @@ import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-r
 import { toAuditLogCreateData } from "./audit-log.repository";
 import { AdministrativeRegionRepository } from "./administrative-region.repository";
 import { AppError } from "../utils/app-error";
+import { technicianAutomationRulesSchema } from "../validators/technician-automation.validator";
+import { hasRequestBookingAutomationLead } from "../domain/technician-automation-rules";
 
 type ExchangeBookingConversionClient = PrismaClient | Prisma.TransactionClient;
 
@@ -159,7 +162,8 @@ const ORDER_NUMBER_ATTEMPTS = 5;
 export class ExchangeBookingConversionRepository {
   public constructor(
     private readonly client: ExchangeBookingConversionClient = prisma,
-    private readonly orderNumberSuffix: () => number = () => randomInt(1000, 10_000)
+    private readonly orderNumberSuffix: () => number = () => randomInt(1000, 10_000),
+    private readonly now: () => Date = () => new Date()
   ) {}
 
   public async findOwnerContext(
@@ -207,7 +211,8 @@ export class ExchangeBookingConversionRepository {
           (transaction) =>
             new ExchangeBookingConversionRepository(
               transaction,
-              this.orderNumberSuffix
+              this.orderNumberSuffix,
+              this.now
             ).convertInTransaction(input, options),
           { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
         )
@@ -338,6 +343,29 @@ export class ExchangeBookingConversionRepository {
       FOR UPDATE
     `);
     if (lockedTechnicians.length !== technicianIds.length) this.abort("slot_unavailable");
+
+    // A Request claimant can opt into immediate applications, while Booking auto
+    // acceptance has its own lead rule. Preserve one minute for the committed
+    // order to reach that processor after this transaction.
+    const bookingAutomation = await this.client.technicianAutomationSetting.findMany({
+      where: {
+        technicianProfileId: { in: technicianIds },
+        kind: TechnicianAutomationKind.BOOKING,
+        enabled: true,
+        deletedAt: null
+      },
+      select: { technicianProfileId: true, rules: true }
+    });
+    const decisionTime = new Date(Math.max(input.occurredAt.getTime(), this.now().getTime()));
+    const minimumLeadByTechnician = new Map(bookingAutomation.map((setting) => [
+      setting.technicianProfileId,
+      technicianAutomationRulesSchema.parse(setting.rules).minLeadMinutes
+    ]));
+    if (participants.some((participant) => {
+      const requiredMinutes = minimumLeadByTechnician.get(participant.technicianProfileId);
+      return requiredMinutes !== undefined &&
+        !hasRequestBookingAutomationLead(participant.estimatedStartsAt, decisionTime, requiredMinutes);
+    })) this.abort("slot_unavailable");
 
     const customerProfile = await this.client.customerProfile.findFirst({
       where: { userId: matching.exchangePost.authorUserId, deletedAt: null },

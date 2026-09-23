@@ -17,6 +17,7 @@ import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
 import type { LiveDashboardOrderChangePublisher } from "./live-dashboard-order-change.publisher";
+import type { TechnicianAutomationProcessor } from "./technician-automation-processor";
 
 export interface ExchangeBookingConversionRepositoryPort {
   findOwnerContext(
@@ -41,7 +42,8 @@ export class ExchangeBookingConversionService {
     private readonly policy: Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
     private readonly realtime?: RealtimeCommittedNotificationPort,
     private readonly now: () => Date = () => new Date(),
-    private readonly liveDashboard?: Pick<LiveDashboardOrderChangePublisher, "publishCommittedOrderChanges">
+    private readonly liveDashboard?: Pick<LiveDashboardOrderChangePublisher, "publishCommittedOrderChanges">,
+    private readonly automation?: Pick<TechnicianAutomationProcessor, "processBooking">
   ) {}
 
   public async createBookings(
@@ -116,6 +118,15 @@ export class ExchangeBookingConversionService {
           { error, exchangePostId },
           "Exchange booking realtime publish failed after commit"
         );
+      }
+    }
+    if (result.outcome === "created" && this.automation) {
+      for (const order of result.payload.orders) {
+        try {
+          await this.automation.processBooking(order.orderId);
+        } catch (error) {
+          logger.error({ error, exchangePostId, orderId: order.orderId }, "Request order automation failed after commit");
+        }
       }
     }
     return result.payload;

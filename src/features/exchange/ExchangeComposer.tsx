@@ -15,6 +15,7 @@ import { ExchangePublicationReview } from "./ExchangePublicationReview";
 import { IntelligenceComposerFields } from "./IntelligenceComposerFields";
 import { RequestComposerFields } from "./RequestComposerFields";
 import {
+  applyRequestDraftPatch,
   normalizeIntelligenceDraft,
   normalizeRequestDraft,
   type ExchangeComposerErrorKey,
@@ -296,7 +297,7 @@ export function ExchangeComposer({
         setErrorKey("requestNotAllowed");
         return;
       }
-      result = normalizeRequestDraft(requestDraft, requestContext);
+      result = normalizeRequestDraft(requestDraft, requestContext, Date.now());
     } else {
       const selectedService = intelligenceServiceOptions.find(
         (option) => option.serviceRef === intelligenceDraft.serviceRef
@@ -327,6 +328,12 @@ export function ExchangeComposer({
 
   const publish = async () => {
     if (!normalizedPayload || pending) return;
+    if (normalizedPayload.type === "demand" && Date.parse(normalizedPayload.expiresAt) <= Date.now()) {
+      setErrorKey("applicationDeadlinePassed");
+      setNormalizedPayload(null);
+      setStep("edit");
+      return;
+    }
     setErrorKey(null);
     setPending(true);
     try {
@@ -368,7 +375,7 @@ export function ExchangeComposer({
               { label: t("serviceMode"), value: t(normalizedPayload.serviceMode === "home" ? "home" : "store") },
               { label: t("addressLine1"), value: normalizedPayload.addressLine1 },
               { label: t("serviceWindow"), value: `${formatComposerDateTime(normalizedPayload.serviceStartAt, language)} ～ ${formatComposerDateTime(normalizedPayload.serviceEndAt, language)}` },
-              { label: t("expiry"), value: formatComposerDateTime(normalizedPayload.expiresAt, language) },
+              { label: t("applicationDeadlineTime"), value: formatComposerDateTime(normalizedPayload.expiresAt, language) },
               { label: t("targetProviderCount"), value: String(normalizedPayload.targetProviderCount) },
               { label: t("matchMode"), value: t(normalizedPayload.matchMode === "quick" ? "quickMatch" : "selectiveMatch") },
               { label: t("budgetMode"), value: t(normalizedPayload.budgetMode === "total" ? "totalBudget" : "perProviderBudget") },
@@ -483,7 +490,7 @@ export function ExchangeComposer({
                   context={requestContext}
                   draft={requestDraft}
                   language={language}
-                  onChange={(patch) => setRequestDraft((current) => ({ ...current, ...patch }))}
+                  onChange={(patch) => setRequestDraft((current) => applyRequestDraftPatch(current, patch))}
                 />
               </>
             ) : (

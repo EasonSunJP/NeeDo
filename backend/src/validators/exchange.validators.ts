@@ -109,7 +109,25 @@ export const publishExchangePostSchema = z
         path: ["serviceEndAt"]
       });
     }
-    if (value.serviceEndAt.getTime() >= value.expiresAt.getTime()) {
+    if (value.type === "demand" && value.serviceStartAt.getTime() - value.expiresAt.getTime() < 30 * 60_000) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "demand expiresAt must be at least thirty minutes before serviceStartAt",
+        path: ["expiresAt"]
+      });
+    }
+    if (value.type === "demand") {
+      for (const field of ["serviceStartAt", "serviceEndAt", "expiresAt"] as const) {
+        if (value[field].getTime() % (30 * 60_000) !== 0) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${field} must be on a thirty-minute boundary`,
+            path: [field]
+          });
+        }
+      }
+    }
+    if (value.type === "intelligence" && value.serviceEndAt.getTime() >= value.expiresAt.getTime()) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "expiresAt must be later than serviceEndAt",

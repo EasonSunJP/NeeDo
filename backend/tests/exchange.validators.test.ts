@@ -17,6 +17,7 @@ const common = {
 
 const validDemand = (overrides: Record<string, unknown> = {}) => ({
   ...common,
+  expiresAt: "2026-08-31T08:30:00+09:00",
   type: "demand" as const,
   serviceMode: "store" as const,
   targetProviderCount: 1,
@@ -93,7 +94,7 @@ describe("formal NeeDo Exchange validators", () => {
         publisherIdentityPublic: false,
         serviceStartAt: new Date("2026-08-31T00:00:00.000Z"),
         serviceEndAt: new Date("2026-08-31T01:00:00.000Z"),
-        expiresAt: new Date("2026-08-31T08:30:00.000Z")
+        expiresAt: new Date("2026-08-30T23:30:00.000Z")
       })
     );
   });
@@ -136,23 +137,36 @@ describe("formal NeeDo Exchange validators", () => {
     ).toBe(false);
   });
 
-  it("requires the publication expiry to be strictly later than the service end", () => {
+  it("closes demand applications before service starts, while intelligence expires after service ends", () => {
     expect(
       publishExchangePostSchema.safeParse(
         validDemand({
-          serviceEndAt: "2026-08-31T10:00:00+09:00",
-          expiresAt: "2026-08-31T10:00:00+09:00"
+          expiresAt: "2026-08-31T09:00:00+09:00"
         })
       ).success
     ).toBe(false);
     expect(
       publishExchangePostSchema.safeParse(
         validDemand({
-          serviceEndAt: "2026-08-31T10:00:00+09:00",
-          expiresAt: "2026-08-31T10:00:01+09:00"
+          expiresAt: "2026-08-31T09:30:00+09:00"
         })
       ).success
-    ).toBe(true);
+    ).toBe(false);
+    expect(publishExchangePostSchema.safeParse(validDemand()).success).toBe(true);
+    expect(publishExchangePostSchema.safeParse(validIntelligence()).success).toBe(true);
+    expect(publishExchangePostSchema.safeParse(validIntelligence({ expiresAt: "2026-08-31T09:30:00+09:00" })).success).toBe(false);
+  });
+
+  it("requires the demand application deadline to be at least thirty minutes before service starts", () => {
+    expect(publishExchangePostSchema.safeParse(validDemand({ expiresAt: "2026-08-31T08:30:00+09:00" })).success).toBe(true);
+    expect(publishExchangePostSchema.safeParse(validDemand({ expiresAt: "2026-08-31T08:31:00+09:00" })).success).toBe(false);
+  });
+
+  it("uses thirty-minute boundaries for every demand time on the server", () => {
+    expect(publishExchangePostSchema.safeParse(validDemand({ serviceStartAt: "2026-08-31T09:15:00+09:00" })).success).toBe(false);
+    expect(publishExchangePostSchema.safeParse(validDemand({ serviceEndAt: "2026-08-31T10:45:00+09:00" })).success).toBe(false);
+    expect(publishExchangePostSchema.safeParse(validDemand({ expiresAt: "2026-08-31T08:15:00+09:00" })).success).toBe(false);
+    expect(publishExchangePostSchema.safeParse(validIntelligence({ serviceStartAt: "2026-08-31T09:15:00+09:00" })).success).toBe(true);
   });
 
   it("rejects legacy demand-only fields and provider counts outside 1 through 20", () => {

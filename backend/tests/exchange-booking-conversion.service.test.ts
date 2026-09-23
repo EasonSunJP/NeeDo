@@ -96,17 +96,27 @@ function fixture(
     }))
   };
   const live = { publishCommittedOrderChanges: jest.fn(async () => undefined) };
+  const automation = { processBooking: jest.fn(async () => undefined) };
   const service = new ExchangeBookingConversionService(
     repository as never, audit as never, affiliate as never, policy as never,
-    realtime as never, () => now, live
+    realtime as never, () => now, live, automation
   );
-  return { affiliate, audit, policy, realtime, repository, service, transactionClient, live };
+  return { affiliate, audit, policy, realtime, repository, service, transactionClient, live, automation };
 }
 
 const create = (service: ExchangeBookingConversionService) =>
   service.createBookings(access, 42, { expectedVersion: 7 }, "idem-key-0000001", context);
 
 describe("ExchangeBookingConversionService", () => {
+  it("processes newly committed Request orders for technician auto acceptance, but never replays", async () => {
+    const state = fixture();
+    await create(state.service);
+    expect(state.automation.processBooking).toHaveBeenCalledWith(501);
+    expect(state.repository.convert.mock.invocationCallOrder[0]).toBeLessThan(state.automation.processBooking.mock.invocationCallOrder[0]!);
+    const replay = fixture({ outcome: "replayed", payload, notifications: [] });
+    await create(replay.service);
+    expect(replay.automation.processBooking).not.toHaveBeenCalled();
+  });
   it("publishes created and superseded orders only after a committed conversion, not replay", async () => {
     const state = fixture();
     await create(state.service);

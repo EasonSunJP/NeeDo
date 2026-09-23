@@ -429,7 +429,7 @@ describe("formal Exchange routes", () => {
       contentLocale: "ja",
       serviceStartAt: "2026-08-31T09:00:00+09:00",
       serviceEndAt: "2026-08-31T10:00:00+09:00",
-      expiresAt: "2026-08-31T08:30:00Z",
+      expiresAt: "2026-08-30T23:30:00Z",
       targetProviderCount: 1,
       matchMode: "quick",
       budgetMode: "total",

@@ -409,6 +409,10 @@ export class ExchangeService {
         );
         if (replay) return this.unwrapPublicationReplay(replay, payloadFingerprint);
 
+        if (input.type === "demand" && input.expiresAt.getTime() <= occurredAt.getTime()) {
+          throw this.postUnavailable();
+        }
+
         if (input.type === "demand") {
           if (!capacity || !this.exchangeRequestFeeService || !this.ledgerService) {
             throw this.requestFeeUnavailable();

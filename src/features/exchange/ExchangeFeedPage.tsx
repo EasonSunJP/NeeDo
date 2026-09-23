@@ -190,7 +190,7 @@ function PostCard({
       <OfferInfoCard
         className={pending ? "opacity-90" : undefined}
         expiryCountdown={formatCountdown(post.expiresAt, nowMs, language)}
-        expiryLabel={t("validity")}
+        expiryLabel={t(post.type === "demand" ? "applicationDeadlineTime" : "validity")}
         expiryValue={formatExpiryDate(post.expiresAt, language)}
         fields={[
           {

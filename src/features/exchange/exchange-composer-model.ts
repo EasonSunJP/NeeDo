@@ -9,6 +9,8 @@ import type {
 export type ExchangeComposerErrorKey =
   | "required"
   | "invalidWindow"
+  | "invalidRequestWindow"
+  | "applicationDeadlinePassed"
   | "invalidBudget"
   | "invalidPrice"
   | "serviceRequired"
@@ -78,9 +80,34 @@ export type RequestComposerDraft = {
   publisherIdentityPublic: boolean;
 };
 
+function defaultApplicationDeadline(date: string, time: string): { date: string; time: string } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:(?:00|30)$/.test(time)) return null;
+  const start = new Date(`${date}T${time}:00Z`);
+  if (!Number.isFinite(start.getTime()) || start.toISOString().slice(0, 10) !== date) return null;
+  const deadline = new Date(start.getTime() - 30 * 60_000).toISOString();
+  return { date: deadline.slice(0, 10), time: deadline.slice(11, 16) };
+}
+
+export function applyRequestDraftPatch(current: RequestComposerDraft, patch: Partial<RequestComposerDraft>): RequestComposerDraft {
+  const next = { ...current, ...patch };
+  if (("serviceStartDate" in patch || "serviceStartTime" in patch)
+    && !("expiresDate" in patch || "expiresTime" in patch)) {
+    const previousDefault = defaultApplicationDeadline(current.serviceStartDate, current.serviceStartTime);
+    const usesDefault = (!current.expiresDate && !current.expiresTime)
+      || (current.expiresDate === previousDefault?.date && current.expiresTime === previousDefault.time);
+    if (usesDefault) {
+      const updatedDefault = defaultApplicationDeadline(next.serviceStartDate, next.serviceStartTime);
+      next.expiresDate = updatedDefault?.date ?? "";
+      next.expiresTime = updatedDefault?.time ?? "";
+    }
+  }
+  return next;
+}
+
 export function normalizeRequestDraft(
   draft: RequestComposerDraft,
-  context: ExchangeRequestPublicationContext
+  context: ExchangeRequestPublicationContext,
+  nowMs?: number
 ): { ok: true; value: PublishExchangeDemandInput } | { ok: false; errorKey: ExchangeComposerErrorKey } {
   if (draft.cover?.status === "uploading") return { ok: false, errorKey: "demandCoverUploading" };
   if (draft.cover && (
@@ -114,8 +141,12 @@ export function normalizeRequestDraft(
   ) {
     return { ok: false, errorKey: "targetProviderLimit" };
   }
-  if (!(serviceStartAt < serviceEndAt && serviceEndAt < expiresAt)) {
-    return { ok: false, errorKey: "invalidWindow" };
+  if (!(expiresAt < serviceStartAt && serviceStartAt < serviceEndAt)
+    || ![draft.serviceStartTime, draft.serviceEndTime, draft.expiresTime].every((time) => /^\d{2}:(?:00|30)$/.test(time))) {
+    return { ok: false, errorKey: "invalidRequestWindow" };
+  }
+  if (nowMs !== undefined && Date.parse(expiresAt) <= nowMs) {
+    return { ok: false, errorKey: "applicationDeadlinePassed" };
   }
   if (budgetMinJpy !== null && budgetMinJpy > budgetMaxJpy) {
     return { ok: false, errorKey: "invalidBudget" };

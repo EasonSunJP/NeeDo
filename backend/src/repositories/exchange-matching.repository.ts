@@ -6,6 +6,7 @@ import {
   ExchangePostStatus as DatabaseExchangePostStatus,
   NotificationType,
   Prisma,
+  TechnicianAutomationKind,
   type PrismaClient
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
@@ -16,6 +17,10 @@ import type {
 } from "../types/exchange-matching.types";
 import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
 import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
+import { technicianAutomationRulesSchema } from "../validators/technician-automation.validator";
+import { AppError } from "../utils/app-error";
+import { ERROR_CODES } from "../constants/error-codes";
+import { hasRequestBookingAutomationLead } from "../domain/technician-automation-rules";
 
 type ExchangeMatchingPrismaClient = PrismaClient | Prisma.TransactionClient;
 
@@ -153,17 +158,20 @@ export interface NotifyQuickBudgetDecisionRequiredInput {
 }
 
 export class ExchangeMatchingRepository {
-  public constructor(private readonly client: ExchangeMatchingPrismaClient = prisma) {}
+  public constructor(
+    private readonly client: ExchangeMatchingPrismaClient = prisma,
+    private readonly now: () => Date = () => new Date()
+  ) {}
 
   public runInTransaction<T>(
     handler: (repository: ExchangeMatchingRepository) => Promise<T>,
     transactionClient?: ExchangeMatchingPrismaClient
   ): Promise<T> {
-    if (transactionClient) return handler(new ExchangeMatchingRepository(transactionClient));
+    if (transactionClient) return handler(new ExchangeMatchingRepository(transactionClient, this.now));
     if (!("$transaction" in this.client)) return handler(this);
     return runWithTransactionConflictRetry(() =>
       this.client.$transaction(
-        (transaction) => handler(new ExchangeMatchingRepository(transaction)),
+        (transaction) => handler(new ExchangeMatchingRepository(transaction, this.now)),
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
       )
     );
@@ -357,6 +365,29 @@ export class ExchangeMatchingRepository {
   public async completeMatch(
     input: CompleteExchangeMatchInput
   ): Promise<ExchangeMatchingPayload | null> {
+    const bookingAutomation = await this.client.technicianAutomationSetting.findMany({
+      where: {
+        technicianProfileId: { in: input.selectedClaims.map((claim) => claim.technicianProfileId) },
+        kind: TechnicianAutomationKind.BOOKING,
+        enabled: true,
+        deletedAt: null
+      },
+      select: { technicianProfileId: true, rules: true }
+    });
+    const minimumLeadByTechnician = new Map(bookingAutomation.map((setting) => [
+      setting.technicianProfileId,
+      technicianAutomationRulesSchema.parse(setting.rules).minLeadMinutes
+    ]));
+    const decisionTime = new Date(Math.max(input.at.getTime(), this.now().getTime()));
+    if (input.selectedClaims.some((claim) => {
+      const requiredMinutes = minimumLeadByTechnician.get(claim.technicianProfileId);
+      return requiredMinutes !== undefined &&
+        !hasRequestBookingAutomationLead(claim.estimatedStartsAt, decisionTime, requiredMinutes);
+    })) throw new AppError({
+      code: ERROR_CODES.EXCHANGE_MATCH_TIME_CONFLICT,
+      message: "error.exchange.match_time_conflict",
+      statusCode: 409
+    });
     await this.client.exchangeMatchParticipant.createMany({
       data: input.selectedClaims.map((claim) => ({
         matchingId: input.matchingId,
