@@ -53,6 +53,26 @@ describe("TechnicianAutomationService", () => {
     expect(repo.saveSetting).not.toHaveBeenCalled();
   });
 
+  it.each(["booking", "request"] as const)("reads existing %s settings with bank transfer without changing them", async (kind) => {
+    const repo = repository();
+    const rules = {
+      ...defaultTechnicianAutomationRules(kind),
+      paymentMethods: ["onsite", "card", "ndp", "bank_transfer", "other"]
+    };
+    repo.findSetting.mockResolvedValueOnce({
+      id: 11,
+      technicianProfileId: 31,
+      kind,
+      enabled: true,
+      rules,
+      version: 3,
+      updatedAt: new Date("2026-09-09T00:00:00.000Z")
+    });
+    await expect(new TechnicianAutomationService(repo).getSetting(access, kind))
+      .resolves.toMatchObject({ enabled: true, rules });
+    expect(repo.saveSetting).not.toHaveBeenCalled();
+  });
+
   it("derives entitlement from the backend write permission", async () => {
     const repo = repository();
     const service = new TechnicianAutomationService(repo);

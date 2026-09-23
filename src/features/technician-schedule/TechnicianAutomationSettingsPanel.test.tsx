@@ -87,6 +87,31 @@ describe("TechnicianAutomationSettingsPanel", () => {
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   });
 
+  it("shows and preserves bank transfer in an existing automation setting", async () => {
+    const rules = {
+      ...defaultAutomationRules("booking"),
+      paymentMethods: ["onsite", "card", "ndp", "bank_transfer", "other"]
+    };
+    mocks.getSetting.mockResolvedValueOnce({
+      kind: "booking",
+      enabled: true,
+      entitled: true,
+      testBadgeEnabled: true,
+      rules,
+      version: 3,
+      updatedAt: "2026-09-09T00:00:00.000Z"
+    });
+    await act(async () => root.render(<TechnicianAutomationSettingsPanel kind="booking" />));
+    await act(async () => Promise.resolve());
+    await act(async () => Promise.resolve());
+
+    const bankTransfer = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent === "银行转账（历史订单）");
+    expect(bankTransfer?.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => (container.querySelector('[data-testid="automation-save"]') as HTMLButtonElement).click());
+    expect(mocks.updateSetting).not.toHaveBeenCalled();
+  });
+
   it("matches the application form visual for the three customer rule selects", async () => {
     await act(async () => root.render(
       <TechnicianAutomationSettingsPanel kind="booking" />

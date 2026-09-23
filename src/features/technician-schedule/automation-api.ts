@@ -27,7 +27,7 @@ export type TechnicianAutomationRules = {
   customerType: "all" | "returning" | "new";
   partyTypes: Array<"single" | "multiple">;
   serviceModes: Array<"store" | "home">;
-  paymentMethods: Array<"onsite" | "card" | "ndp" | "other">;
+  paymentMethods: Array<"onsite" | "card" | "ndp" | "bank_transfer" | "other">;
   serviceIds: number[];
   minimumPrepaymentPercent: number;
   onlyOnline: boolean;
