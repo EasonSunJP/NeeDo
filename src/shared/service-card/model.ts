@@ -2,6 +2,7 @@ export type UnifiedServiceInfoCardData = {
   id: string;
   coverUrl: string | null;
   name: string;
+  localizedContent?: Partial<Record<"zh-CN" | "zh-TW" | "ja" | "en" | "ko", { name?: string; description?: string }>>;
   priceAmount: number;
   currency: string;
   durationMinutes: number | null;

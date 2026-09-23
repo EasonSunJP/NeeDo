@@ -175,7 +175,7 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
                 />
               );
             }) : (
-              <div className="rounded-[18px] border border-line bg-white p-4 text-sm font-bold text-ink/58">
+              <div className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 text-sm font-bold text-[color:var(--client-muted)]">
                 {loading ? "正在读取技师服务..." : "该技师暂未开放可预约服务。"}
               </div>
             )}

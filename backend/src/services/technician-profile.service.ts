@@ -103,6 +103,7 @@ export class TechnicianProfileService {
       ...(input.heightCm !== undefined ? { heightCm: input.heightCm } : {}),
       ...(input.languages !== undefined ? { languages: input.languages } : {}),
       ...(input.bio !== undefined ? { bio: input.bio } : {}),
+      ...(input.localizedBio !== undefined ? { localizedBio: input.localizedBio } : {}),
       ...(input.serviceAreas !== undefined ? { serviceAreas: input.serviceAreas } : {}),
       ...(input.canServeForeigners !== undefined
         ? { canServeForeigners: input.canServeForeigners }

@@ -6,6 +6,7 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { cn } from "../../lib/utils";
 import type { ServiceItem, Technician } from "../../types/domain";
 import { getScopedProfileDetailPath } from "../profile-detail/paths";
+import { contentLocaleForLanguage } from "../localized-content/localizedText";
 import { SimpleRatingBadge } from "./SimpleRatingBadge";
 
 type TechnicianShowcaseCardProps = {
@@ -45,6 +46,7 @@ export type TechnicianShowcaseFormalData = {
     currency: string;
     durationMinutes: number;
     name: string;
+    localizedContent?: Partial<Record<"zh-CN" | "zh-TW" | "ja" | "en" | "ko", { name?: string; description?: string }>>;
     priceAmount: string;
   } | null;
   ratingAverage?: string;
@@ -400,6 +402,7 @@ export function TechnicianShowcaseCard({
   const location = useLocation();
   const formalPrimaryService = formalData?.primaryService ?? null;
   const persistedPrimaryService = formalData ? formalPrimaryService : technician.primaryService ?? null;
+  const authoredServiceName = persistedPrimaryService?.localizedContent?.[contentLocaleForLanguage(language)]?.name?.trim() || persistedPrimaryService?.name;
   const recommendedService = formalData || persistedPrimaryService
     ? null
     : getRecommendedServiceForTechnician(technician, directService, fallbackServices);
@@ -411,10 +414,10 @@ export function TechnicianShowcaseCard({
       ? [formalRankBadge]
       : []
     : buildTechnicianCardBadges(technician, rankIndex, language);
-  const primarySkillSource = persistedPrimaryService?.name ?? (
+  const primarySkillSource = authoredServiceName ?? (
     formalData ? "" : technician.skills[0] ?? technician.profileTags?.[0] ?? copy.serviceFallback
   );
-  const primarySkill = primarySkillSource ? localizeTechnicianCardText(primarySkillSource, language) : "";
+  const primarySkill = primarySkillSource ? persistedPrimaryService ? primarySkillSource : localizeTechnicianCardText(primarySkillSource, language) : "";
   const areaSource = formalData ? formalData.city?.trim() ?? "" : technician.serviceAreas[0] ?? copy.tokyo;
   const areaLabel = areaSource ? localizeTechnicianCardText(areaSource, language) : "";
   const statusLabel = formalData
@@ -439,7 +442,7 @@ export function TechnicianShowcaseCard({
       ? formatCardYen(price)
       : copy.pricePending;
   const serviceName = persistedPrimaryService
-    ? localizeTechnicianCardText(persistedPrimaryService.name, language)
+    ? authoredServiceName ?? ""
     : formalData
       ? ""
     : localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);

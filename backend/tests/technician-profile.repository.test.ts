@@ -53,6 +53,29 @@ const record = {
 };
 
 describe("TechnicianProfileRepository", () => {
+  it("merges one bio locale without replacing the other authored languages", async () => {
+    const current = { ...record, bioLocalesJson: { ja: "肩のケア", en: "Shoulder care" } };
+    const update = jest.fn().mockResolvedValue(current);
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 31 }]),
+      technicianProfile: {
+        findFirst: jest.fn().mockResolvedValue(current), update,
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ ...current, bioLocalesJson: { ja: "肩のケア", en: "Deep care" } })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(transaction)),
+      orderReviewTag: { groupBy: jest.fn(async () => []) }
+    } as unknown as PrismaClient;
+    const result = await new TechnicianProfileRepository(client).updateMine(9, 31, 19,
+      { localizedBio: { locale: "en", bio: "Deep care" } },
+      { actorId: 9, action: "technician_profile.self_update", targetType: "TechnicianProfile", targetId: 31 });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ bioLocalesJson: { ja: "肩のケア", en: "Deep care" } })
+    }));
+    expect(result.bioLocales).toEqual({ ja: "肩のケア", en: "Deep care" });
+  });
   it("returns the private service base and formal review tag summary through the self-profile repository", async () => {
     const client = {
       technicianProfile: { findFirst: jest.fn(async () => record) },

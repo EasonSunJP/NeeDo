@@ -271,6 +271,23 @@ describe("pricing mode public API", () => {
       technicianId: 3
     }));
 
+    pricingModeRepository.updateTechnicianService.mockResolvedValue(serviceRecordForApi(11, 1));
+    await request(fixture.app)
+      .put("/api/v1/technicians/me/services/11")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ localizedContent: { locale: "en", name: "Body care", description: "One hour" } })
+      .expect(200);
+    expect(pricingModeRepository.updateTechnicianService).toHaveBeenCalledWith(expect.objectContaining({
+      technicianId: 3, serviceId: 11,
+      localizedContent: { locale: "en", name: "Body care", description: "One hour" }
+    }));
+    await request(fixture.app)
+      .put("/api/v1/technicians/me/services/11")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ localizedContent: { locale: "fr", name: "Bonjour" } })
+      .expect(400);
+    expect(pricingModeRepository.updateTechnicianService).toHaveBeenCalledTimes(1);
+
     const listResponse = await request(fixture.app)
       .get("/api/v1/technicians/me/services?page=1&pageSize=20&activeOnly=false")
       .set("Authorization", `Bearer ${accessToken}`)

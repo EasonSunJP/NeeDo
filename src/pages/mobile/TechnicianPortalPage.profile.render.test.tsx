@@ -43,7 +43,8 @@ vi.mock("../../features/realtime/useRealtimeUnreadCounts", () => ({
 }));
 
 vi.mock("../../i18n/I18nProvider", () => ({
-  useI18n: () => ({ language: "zh" })
+  useI18n: () => ({ language: "zh" }),
+  useOptionalI18n: () => ({ language: "zh" })
 }));
 
 const profile: TechnicianSelfProfile = {

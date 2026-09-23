@@ -23,6 +23,7 @@ import { AppError } from "../utils/app-error";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import { calculateTechnicianPlatformRating } from "../domain/technician-rating";
+import { readLocalizedServiceMap } from "../domain/technician-localized-content";
 
 type DecimalLike = {
   toFixed: (decimalPlaces?: number) => string;
@@ -651,6 +652,10 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
           sourceShopServiceId: input.sourceShopServiceId ?? null,
           name: input.name,
           description: input.description ?? null,
+          localizedContentJson: input.localizedContent ? { [input.localizedContent.locale]: {
+            ...(input.localizedContent.name !== undefined ? { name: input.localizedContent.name } : {}),
+            ...(input.localizedContent.description !== undefined ? { description: input.localizedContent.description } : {})
+          } } : Prisma.JsonNull,
           categoryId: input.categoryId,
           priceAmount: input.priceAmount,
           currency: input.currency,
@@ -681,6 +686,32 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
   public async updateTechnicianService(
     input: TechnicianServiceUpdateRepositoryInput
   ): Promise<TechnicianServicePayload | null> {
+    if (input.localizedContent) {
+      const localizedEdit = input.localizedContent;
+      return this.client.$transaction(async (transaction) => {
+        await transaction.$queryRaw(
+          Prisma.sql`SELECT id FROM technician_services WHERE id = ${input.serviceId} AND technician_id = ${input.technicianId} AND deleted_at IS NULL FOR UPDATE`
+        );
+        const current = await transaction.technicianService.findFirst({
+          where: { id: input.serviceId, technicianId: input.technicianId, deletedAt: null, ...(input.shopId ? { shopId: input.shopId } : {}) }
+        });
+        if (!current) return null;
+        const { locale, name, description } = localizedEdit;
+        const localizedContent = readLocalizedServiceMap(current.localizedContentJson);
+        await transaction.technicianService.update({
+          where: { id: current.id },
+          data: {
+            ...this.technicianServiceUpdateData(input),
+            localizedContentJson: {
+              ...localizedContent,
+              [locale]: { ...localizedContent[locale], ...(name !== undefined ? { name } : {}), ...(description !== undefined ? { description } : {}) }
+            }
+          }
+        });
+        const service = await transaction.technicianService.findUniqueOrThrow({ where: { id: current.id }, include: technicianServiceCardInclude });
+        return this.mapTechnicianService(service);
+      });
+    }
     const update = await this.client.technicianService.updateMany({
       where: {
         id: input.serviceId,
@@ -688,23 +719,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
         technicianId: input.technicianId,
         deletedAt: null
       },
-      data: {
-        sourceShopServiceId: input.sourceShopServiceId,
-        name: input.name,
-        description: input.description,
-        categoryId: input.categoryId,
-        priceAmount: input.priceAmount,
-        currency: input.currency,
-        durationMinutes: input.durationMinutes,
-        coverImageUrl: input.coverImageUrl,
-        imagesJson: input.images,
-        tagsJson: input.tags,
-        isActive: input.isActive,
-        isBookable: input.isBookable,
-        isRecommended: input.isRecommended,
-        sortOrder: input.sortOrder,
-        updatedBy: input.updatedBy
-      }
+      data: this.technicianServiceUpdateData(input)
     });
 
     if (update.count !== 1) {
@@ -899,6 +914,26 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     );
   }
 
+  private technicianServiceUpdateData(input: TechnicianServiceUpdateRepositoryInput): Prisma.TechnicianServiceUncheckedUpdateManyInput {
+    return {
+      sourceShopServiceId: input.sourceShopServiceId,
+      name: input.name,
+      description: input.description,
+      categoryId: input.categoryId,
+      priceAmount: input.priceAmount,
+      currency: input.currency,
+      durationMinutes: input.durationMinutes,
+      coverImageUrl: input.coverImageUrl,
+      imagesJson: input.images,
+      tagsJson: input.tags,
+      isActive: input.isActive,
+      isBookable: input.isBookable,
+      isRecommended: input.isRecommended,
+      sortOrder: input.sortOrder,
+      updatedBy: input.updatedBy
+    };
+  }
+
   private mapTechnicianService(service: TechnicianServiceRecord): TechnicianServicePayload {
     return {
       id: service.id,
@@ -908,6 +943,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       sourceShopServiceId: service.sourceShopServiceId,
       name: service.name,
       description: service.description,
+      localizedContent: readLocalizedServiceMap(service.localizedContentJson),
       categoryId: service.categoryId,
       priceAmount: service.priceAmount,
       currency: service.currency,

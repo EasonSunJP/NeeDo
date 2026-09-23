@@ -1,5 +1,6 @@
 import type { TechnicianReviewTagSummary } from "../../features/core-read/api";
 import type { UnifiedServiceInfoCardData } from "../service-card";
+import type { ContentLocale } from "../localized-content/localizedText";
 
 export type TechnicianProfileInfoModel = {
   publicId: string;
@@ -11,6 +12,7 @@ export type TechnicianProfileInfoModel = {
   heightCm: number | null;
   languages: string[];
   bio: string | null;
+  bioLocales?: Partial<Record<ContentLocale, string>>;
   yearsExperience: number;
   acceptanceRatePercent: number | null;
   ratingAverage: number | null;

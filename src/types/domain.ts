@@ -299,6 +299,7 @@ export interface Technician extends Staff {
   primaryService?: {
     id?: number;
     name: string;
+    localizedContent?: Partial<Record<"zh-CN" | "zh-TW" | "ja" | "en" | "ko", { name?: string; description?: string }>>;
     priceAmount: string;
     currency: string;
     durationMinutes: number;

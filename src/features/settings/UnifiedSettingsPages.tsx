@@ -71,6 +71,7 @@ import { EkycProfileForm } from "./EkycProfileForm";
 import { ApplicationShell } from "../identity-applications/ApplicationUi";
 import { ImOpenedMediaCacheSettingsSection } from "./ImOpenedMediaCacheSettingsSection";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { LocalizedTextEditor } from "../../shared/localized-content/LocalizedTextEditor";
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
 const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
@@ -2051,6 +2052,7 @@ function TechnicianProfileSettingsPage({
     paymentMethods: [...current.paymentMethods]
   });
   const [draft, setDraft] = useState<TechnicianProfileDraft>(() => buildDraft(profile));
+  const [bioLocales, setBioLocales] = useState(profile.bioLocales);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -2072,6 +2074,7 @@ function TechnicianProfileSettingsPage({
   );
   useEffect(() => {
     setDraft(buildDraft(profile));
+    setBioLocales(profile.bioLocales);
   }, [profile]);
 
   const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
@@ -2361,6 +2364,15 @@ function TechnicianProfileSettingsPage({
               value={draft.bio}
             />
           </label>
+          <LocalizedTextEditor
+            fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
+            fallback={{ bio: profile.bio ?? "" }}
+            translations={Object.fromEntries(Object.entries(bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
+            onSave={async (locale, values) => {
+              const saved = await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } });
+              setBioLocales(saved.bioLocales);
+            }}
+          />
           <div className="rounded-[24px] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-xs leading-6 text-[color:var(--client-muted)]">
             资料保存后会立即同步到技师主页信息卡；详细数据页面保持独立路由展示，不会再以透明浮层覆盖在我的页上方。
           </div>

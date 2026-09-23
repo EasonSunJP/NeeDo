@@ -63,6 +63,7 @@ export function mapTechnicianServiceToUnifiedData(service: TechnicianServicePayl
     id: String(service.id),
     coverUrl: normalizeText(service.coverImageUrl) ?? normalizeText(service.images[0]),
     name: service.name,
+    localizedContent: service.localizedContent,
     priceAmount: normalizeAmount(service.priceAmount),
     currency: service.currency,
     durationMinutes: service.durationMinutes,

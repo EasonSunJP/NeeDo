@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AppIcon } from "../../components/client-ui/AppScaffold";
 import type { Language } from "../../i18n/translations";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { cn } from "../../lib/utils";
 import type {
   EntityFavoriteState,
@@ -60,7 +61,7 @@ export function UnifiedEntityInfoCard({
   data,
   density = "default",
   detailTo,
-  language = "zh",
+  language: languageOverride,
   onOpenDetails,
   showMetrics = true,
   showLanguageTags = true,
@@ -75,6 +76,8 @@ export function UnifiedEntityInfoCard({
   showMetrics?: boolean;
   showLanguageTags?: boolean;
 }) {
+  const { language: currentLanguage } = useOptionalI18n();
+  const language = languageOverride ?? currentLanguage;
   const text = getUnifiedCardCopy(language);
   const target = data.engagementTarget ?? null;
   const [favoriteState, setFavoriteState] =

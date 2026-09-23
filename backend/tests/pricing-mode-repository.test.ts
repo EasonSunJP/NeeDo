@@ -64,6 +64,28 @@ const createInput = (shopId: number) => ({
 });
 
 describe("PricingModeRepository", () => {
+  it("updates one service language under technician scope and preserves other translations", async () => {
+    const current = { ...serviceRecord(41, 10), localizedContentJson: { ja: { name: "整体" }, en: { name: "Massage" } } };
+    const update = jest.fn();
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 41 }]),
+      technicianService: {
+        findFirst: jest.fn(async () => current), update,
+        findUniqueOrThrow: jest.fn(async () => ({ ...current, localizedContentJson: { ja: { name: "整体" }, en: { name: "Body massage", description: "One hour" } } }))
+      }
+    };
+    const client = { $transaction: jest.fn(async (callback) => callback(transaction)) } as unknown as PrismaClient;
+    const result = await new PricingModeRepository(client).updateTechnicianService({
+      technicianId: 3, serviceId: 41, updatedBy: 8,
+      localizedContent: { locale: "en", name: "Body massage", description: "One hour" }
+    });
+    expect(transaction.$queryRaw).toHaveBeenCalled();
+    expect(transaction.technicianService.findFirst).toHaveBeenCalledWith({ where: { id: 41, technicianId: 3, deletedAt: null } });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      localizedContentJson: { ja: { name: "整体" }, en: { name: "Body massage", description: "One hour" } }
+    }) }));
+    expect(result?.localizedContent).toEqual({ ja: { name: "整体" }, en: { name: "Body massage", description: "One hour" } });
+  });
   it("authorizes technician shop scope through the active affiliation relation", async () => {
     const findFirst = jest.fn(async () => ({ id: 3 }));
     const repository = new PricingModeRepository({

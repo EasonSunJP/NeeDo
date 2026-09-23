@@ -655,6 +655,18 @@ describe("translations", () => {
     expect(translateText(unknownText, "zh-Hant")).toBe(unknownText);
   });
 
+  it("keeps technician information and service card labels complete in every locale", () => {
+    const expected = {
+      "zh-Hant": ["店鋪所屬", "已完成訂單數", "新增服務"],
+      ja: ["店舗所属", "完了した注文数", "サービスを追加"],
+      en: ["Affiliated with a shop", "Completed orders", "Add service"],
+      ko: ["매장 소속", "완료된 주문 수", "서비스 추가"]
+    } as const;
+    for (const [language, labels] of Object.entries(expected) as [Exclude<Language, "zh">, readonly string[]][]) {
+      expect(["店铺所属", "完成订单数", "添加服务"].map((label) => translateText(label, language))).toEqual(labels);
+    }
+  });
+
   it("localizes every technician-ranking metric, state, and drawer label", () => {
     expect(translateText("平均客单价", "zh-Hant")).toBe("平均客單價");
     expect(translateText("平均客单价", "ja")).toBe("平均注文単価");

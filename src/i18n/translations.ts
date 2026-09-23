@@ -64,6 +64,10 @@ export function getAnalyticsMetricInfoLabel(title: string, language: Language) {
 
 
 export const translations: TranslationMap = {
+  "内容语言": fourLanguageTranslation("內容語言", "コンテンツの言語", "Content language", "콘텐츠 언어"),
+  "服务描述": fourLanguageTranslation("服務描述", "サービスの説明", "Service description", "서비스 설명"),
+  "留空时使用原始内容。每种语言单独保存。": fourLanguageTranslation("留空時使用原始內容。每種語言單獨儲存。", "空欄の場合は元の内容を表示します。言語ごとに保存します。", "Blank fields use the original text. Save each language separately.", "빈칸은 원문을 표시합니다. 언어별로 저장하세요."),
+  "保存当前语言": fourLanguageTranslation("儲存目前語言", "この言語を保存", "Save this language", "이 언어 저장"),
   "新建员工": { "zh-Hant": "新增員工", ja: "スタッフを登録", en: "Add employee", ko: "직원 등록" },
   "员工已新建": { "zh-Hant": "員工已新增", ja: "スタッフを登録しました", en: "Employee added", ko: "직원이 등록되었습니다" },
   "员工 NeeDoID": { "zh-Hant": "員工 NeeDoID", ja: "スタッフのNeeDoID", en: "Employee NeeDoID", ko: "직원 NeeDoID" },
@@ -3553,6 +3557,8 @@ export const translations: TranslationMap = {
   "店铺私域会员、会员卡账本、核销和经营提醒集中在这里；平台 NDP 主账本不会被这里的卡余额抵扣。": { "zh-Hant": "店鋪私域會員、會員卡帳本、核銷和經營提醒集中在這里；平台 NDP 主帳本不會被這里的卡餘額抵扣。", ja: "店舗私域メンバー／会員カード・メンバー／ビジネスリマインダー・運営・消込・プラットフォームに関する説明です。", en: "Store Member / Member Card Member / Merchant Reminder Operations Redeem Platform Remind.", ko: "매장프라이빗회원, 관련 안내, 관련 안내" },
   "店铺搜索": { "zh-Hant": "店鋪搜尋", ja: "ショップ検索", en: "Store Search", ko: "쇼핑 검색" },
   "店铺所属技师": { "zh-Hant": "店所屬技師", ja: "店のスタッフ", en: "Store's staffs", ko: "매장의 스태프들" },
+  "店铺所属": { "zh-Hant": "店鋪所屬", ja: "店舗所属", en: "Affiliated with a shop", ko: "매장 소속" },
+  "店铺当前定价模式：": { "zh-Hant": "店鋪目前定價模式：", ja: "店舗の現在の料金設定：", en: "Current shop pricing mode: ", ko: "현재 매장 가격 설정: " },
   "店铺统一安排培训，暂停对外派单。": { "zh-Hant": "店鋪統一安排培訓，暫停對外派單。", ja: "店舗は統一的な研修を実施し、注文品の発送を一時停止します。", en: "The store will arrange unified training and suspend order dispatching.", ko: "해당 매장은 통합 교육을 실시하고 주문 발송을 중단할 예정입니다." },
   "店铺图片": { "zh-Hant": "店鋪圖片", ja: "ショップ画像", en: "Store Images", ko: "매장 이미지" },
   "店铺未允许发布": { "zh-Hant": "店舖未允許發布", ja: "その店は投稿を許可しなかった。", en: "The store did not allow the posting.", ko: "해당 매장에서는 게시를 허용하지 않았습니다." },
@@ -9900,7 +9906,7 @@ export const translations: TranslationMap = {
   "添加地点": { "zh-Hant": "添加地點", ja: "追加場所", en: "AddPlace", ko: "추가장소" },
   "添加分类": { "zh-Hant": "添加分類", ja: "カテゴリを追加", en: "Add category", ko: "카테고리 추가" },
   "添加分组": { "zh-Hant": "新增分組", ja: "グループを追加…", en: "Add Groups", ko: "그룹 추가" },
-  "添加服务": { "zh-Hant": "添加服務", ja: "追加サービス", en: "AddService", ko: "추가서비스" },
+  "添加服务": { "zh-Hant": "新增服務", ja: "サービスを追加", en: "Add service", ko: "서비스 추가" },
   "添加管理员": { "zh-Hant": "新增管理員", ja: "管理者を追加する", en: "Add administrator", ko: "관리자 추가" },
   "添加规则": { "zh-Hant": "添加規則", ja: "追加ルール", en: "AddRule", ko: "추가규칙" },
   "添加好友": { "zh-Hant": "新增好友", ja: "友達追加", en: "Add Friend", ko: "친구 추가" },
@@ -10329,6 +10335,7 @@ export const translations: TranslationMap = {
   "完成91": { "zh-Hant": "完成91", ja: "完成91", en: "Complete91", ko: "완료91" },
   "完成单数": { "zh-Hant": "完成單數", ja: "奇数を完成させる", en: "Complete the odd number", ko: "홀수를 완성하…" },
   "完成订单": { "zh-Hant": "完成訂單", ja: "完了した注文", en: "Completed orders", ko: "완료된 주문" },
+  "完成订单数": { "zh-Hant": "已完成訂單數", ja: "完了した注文数", en: "Completed orders", ko: "완료된 주문 수" },
   "完成对象预约": { "zh-Hant": "完成對象預約", ja: "完成物体予約", en: "CompleteObjectReservation", ko: "완료물체예약" },
   "完成服务": { "zh-Hant": "完成服務", ja: "完成サービス", en: "CompleteService", ko: "완료서비스" },
   "完成检查": { "zh-Hant": "完成檢查", ja: "完成检查", en: "Complete", ko: "완료" },

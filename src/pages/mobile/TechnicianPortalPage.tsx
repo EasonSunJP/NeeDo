@@ -48,6 +48,7 @@ import { cn, yen } from "../../lib/utils";
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
+import { LocalizedTextEditor } from "../../shared/localized-content/LocalizedTextEditor";
 import {
   mapTechnicianServiceToUnifiedData as fromTechnicianServicePayload,
   UnifiedServiceInfoCard
@@ -437,7 +438,7 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
   const [error, setError] = useState("");
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => setDraft(profileDraft(profile)), [profile]);
+  useEffect(() => { if (!editing) setDraft(profileDraft(profile)); }, [profile, editing]);
   const saveProfile = async () => {
     if (saving || readingAvatar || avatarCrop) return;
     setSaving(true);
@@ -540,6 +541,12 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
             </div>
             <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>语言能力</span><textarea className="mt-2 min-h-16 w-full bg-transparent text-sm font-bold outline-none" onChange={(event) => setDraft((current) => ({ ...current, languagesText: event.target.value }))} value={draft.languagesText} /></label>
             <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>自我介绍</span><textarea className="mt-2 min-h-28 w-full bg-transparent text-sm font-bold leading-6 outline-none" onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))} value={draft.bio} /></label>
+            <LocalizedTextEditor
+              fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
+              fallback={{ bio: profile.bio ?? "" }}
+              translations={Object.fromEntries(Object.entries(profile.bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
+              onSave={async (locale, values) => onSaved(await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } }))}
+            />
             <TechnicianReviewTagSummaryView model={editModel} />
             <section className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-profile-privacy-control">
               <div className="flex items-center justify-between gap-3">
@@ -839,6 +846,19 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
           <label className="block text-xs font-bold"><span className={surface.muted}>时长（分钟）</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, durationMinutes: event.target.value }))} value={draft.durationMinutes} /></label>
         </div>
         <label className="block text-xs font-bold"><span className={surface.muted}>描述</span><textarea className={cn(surface.metric, "mt-1 min-h-20 w-full rounded-[14px] border px-3 py-2 text-sm font-bold outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} value={draft.description} /></label>
+        {editorService ? <LocalizedTextEditor
+          disabled={saving || Boolean(persistedAfterPartialSave)}
+          key={editorService.id}
+          fields={[{ key: "name", label: "服务名称", maxLength: 160 }, { key: "description", label: "服务描述", maxLength: 2000, multiline: true }]}
+          fallback={{ name: editorService.name, description: editorService.description ?? "" }}
+          translations={editorService.localizedContent}
+          onSave={async (locale, values) => {
+            const saved = await pricingModeApi.updateMyTechnicianService(editorService.id, {
+              localizedContent: { locale, name: values.name, description: values.description }
+            });
+            setServices((current) => upsertTechnicianService(current, saved));
+          }}
+        /> : null}
         <div className="grid grid-cols-2 gap-2"><button className={cn(surface.metric, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={closeAndResetServiceEditor} type="button">取消</button><button className={cn(surface.chip, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={() => void save()} type="button">{saving ? "保存中…" : persistedAfterPartialSave ? pendingCoverOperation === "remove" ? "重试移除封面" : pendingCoverOperation === "upload" ? "重试上传封面" : "完成并关闭" : "保存"}</button></div>
         {editorService && !persistedAfterPartialSave ? <button className="w-full rounded-[16px] border border-red-500/40 px-3 py-2.5 text-sm font-black text-red-500" disabled={saving} onClick={() => void remove(editorService)} type="button">{deleteArmedId === editorService.id ? "再次点击确认删除" : "删除该服务"}</button> : null}
       </div>
