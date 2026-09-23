@@ -439,9 +439,12 @@ describe("UserCenterPage inline profile editing", () => {
     expect(container.textContent).not.toContain("可在这里补充你的语言偏好");
     expect(container.textContent).not.toContain("日本語");
     expect(container.textContent?.match(/未设置/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(container.querySelector('[data-testid="localized-content-locale-rail"]')).toBeNull();
 
     await click(findIconButton("编辑资料"));
-    expect(container.querySelector<HTMLTextAreaElement>('textarea[data-profile-field="bio"]')?.value).toBe("");
+    expect(container.querySelector<HTMLTextAreaElement>('textarea[data-profile-field="bio"]')).toBeNull();
+    expect(container.querySelector('[data-testid="localized-content-locale-rail"]')).not.toBeNull();
+    expect(container.querySelector<HTMLTextAreaElement>('[data-testid="localized-text-editor"] textarea')?.value).toBe("");
     expect(findButton("日本語").className).not.toContain("client-primary-soft");
   });
 
@@ -663,7 +666,7 @@ describe("UserCenterPage inline profile editing", () => {
     expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]')?.readOnly).toBe(true);
     expect(container.querySelector<HTMLInputElement>('input[data-profile-field="age"]')?.disabled).toBe(true);
     expect(container.querySelector<HTMLInputElement>('input[data-profile-field="height"]')?.disabled).toBe(true);
-    expect(container.querySelector<HTMLTextAreaElement>('textarea[data-profile-field="bio"]')?.readOnly).toBe(true);
+    expect(container.querySelector<HTMLTextAreaElement>('[data-testid="localized-text-editor"] textarea')?.disabled).toBe(true);
     expect((findButton("女") as HTMLButtonElement).disabled).toBe(true);
     expect((findButton("日本語") as HTMLButtonElement).disabled).toBe(true);
     expect((findButton("对好友以及关联人可见") as HTMLButtonElement).disabled).toBe(true);

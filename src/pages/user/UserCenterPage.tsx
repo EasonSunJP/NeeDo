@@ -168,7 +168,6 @@ type UserProfileDraft = {
   age: string;
   height: string;
   languages: string[];
-  bio: string;
 };
 const userProfilePrivacyOptions = [
   {
@@ -373,7 +372,6 @@ function buildUserProfileDraft(customer: Customer): UserProfileDraft {
     age: profile.age,
     height: formatUserHeightInput(profile.height),
     languages: profile.languages,
-    bio: profile.bio,
   };
 }
 
@@ -567,7 +565,7 @@ function CompleteUserCenterPage({
         height: profileDraft.height,
         gender: formatCustomerGenderLabel(profileDraft.gender),
         languages: profileDraft.languages,
-        bio: profileDraft.bio,
+        bio: userProfile.bio,
       }
     : userProfile;
   const displayName = limitUserProfileName(
@@ -603,7 +601,6 @@ function CompleteUserCenterPage({
   const nicknameInputRef = useRef<HTMLTextAreaElement>(null);
   const ageInputRef = useRef<HTMLInputElement>(null);
   const heightInputRef = useRef<HTMLInputElement>(null);
-  const bioInputRef = useRef<HTMLTextAreaElement>(null);
   const orderShortcuts = [
     { label: "待确认", count: formalData.orderCounts.pending, to: "/orders" },
     { label: "待服务", count: formalData.orderCounts.confirmed, to: "/orders" },
@@ -866,10 +863,6 @@ function CompleteUserCenterPage({
       "height",
       heightInputRef.current?.value ?? profileDraft.height,
     );
-    const bioValue = readProfileFieldValue<HTMLTextAreaElement>(
-      "bio",
-      bioInputRef.current?.value ?? profileDraft.bio,
-    );
     let ageNumber: number | null;
     let heightNumber: number | null;
 
@@ -897,7 +890,6 @@ function CompleteUserCenterPage({
       age: ageValue.trim(),
       height: normalizeUserHeightForStorage(heightValue),
       languages: profileDraft.languages,
-      bio: bioValue.trim(),
     };
     setIsSavingProfile(true);
     setProfileToastMessage("");
@@ -912,7 +904,6 @@ function CompleteUserCenterPage({
         age: ageNumber,
         heightCm: heightNumber,
         languages: nextProfile.languages,
-        bio: nextProfile.bio || null,
         visibility: activeProfilePrivacy.enabled
           ? activeProfilePrivacy.visibility
           : "public",
@@ -1370,6 +1361,23 @@ function CompleteUserCenterPage({
 
                   <div className={cn("my-4 h-px", membershipSurface.divider)} />
 
+                  {isEditingProfile && profileDraft ? <LocalizedTextEditor
+                    disabled={isSavingProfile}
+                    fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
+                    fallback={{ bio: formalData.profile.bio ?? "" }}
+                    translations={Object.fromEntries(Object.entries(bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
+                    onSave={async (locale, values) => {
+                      const saved = await customerProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } });
+                      setBioLocales(saved.bioLocales);
+                      onFormalProfileUpdated(saved);
+                    }}
+                    onSyncAll={async (locale, values) => {
+                      const saved = await customerProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } });
+                      setBioLocales(saved.bioLocales);
+                      onFormalProfileUpdated(saved);
+                    }}
+                  /> : null}
+
                   <div>
                     <h2 className="text-lg font-black">基础信息</h2>
                     {isEditingProfile && profileDraft ? (
@@ -1514,53 +1522,6 @@ function CompleteUserCenterPage({
                             ))}
                           </div>
                         </div>
-                        <label
-                          className={cn(
-                            "block overflow-hidden rounded-[24px] border px-5 py-4",
-                            membershipSurface.panel,
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "block text-xs font-bold",
-                              membershipSurface.label,
-                            )}
-                          >
-                            自我介绍
-                          </span>
-                          <textarea
-                            className="mt-2 min-h-[132px] w-full resize-none bg-transparent text-sm font-bold leading-6 outline-none"
-                            data-profile-field="bio"
-                            defaultValue={profileDraft.bio}
-                            readOnly={isSavingProfile}
-                            onChange={(event) =>
-                              updateProfileDraft({
-                                bio: event.currentTarget.value,
-                              })
-                            }
-                            onInput={(event) =>
-                              updateProfileDraft({
-                                bio: event.currentTarget.value,
-                              })
-                            }
-                            ref={bioInputRef}
-                          />
-                        </label>
-                        <LocalizedTextEditor
-                          fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
-                          fallback={{ bio: formalData.profile.bio ?? "" }}
-                          translations={Object.fromEntries(Object.entries(bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
-                          onSave={async (locale, values) => {
-                            const saved = await customerProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } });
-                            setBioLocales(saved.bioLocales);
-                            onFormalProfileUpdated(saved);
-                          }}
-                          onSyncAll={async (locale, values) => {
-                            const saved = await customerProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } });
-                            setBioLocales(saved.bioLocales);
-                            onFormalProfileUpdated(saved);
-                          }}
-                        />
                       </div>
                     ) : (
                       <>

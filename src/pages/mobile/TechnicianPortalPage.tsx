@@ -124,7 +124,6 @@ function profileDraft(profile: TechnicianSelfProfile) {
     age: profile.age,
     heightCm: profile.heightCm,
     languagesText: profile.languages.join("、"),
-    bio: profile.bio ?? "",
     visibility: profile.visibility,
     avatarDataUrl: undefined as string | undefined
   };
@@ -449,7 +448,6 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
         age: draft.age,
         heightCm: draft.heightCm,
         languages: splitList(draft.languagesText),
-        bio: draft.bio || null,
         visibility: draft.visibility,
         ...(draft.avatarDataUrl ? { avatarDataUrl: draft.avatarDataUrl } : {})
       };
@@ -529,6 +527,14 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
             <p className={cn(surface.muted, "mt-1 text-xs font-bold")}>评价标签由正式订单评价生成，不可自行修改。</p>
           </div>
           <div className="mt-4 space-y-3">
+            <LocalizedTextEditor
+              fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
+              fallback={{ bio: profile.bio ?? "" }}
+              translations={Object.fromEntries(Object.entries(profile.bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
+              disabled={saving || readingAvatar}
+              onSave={async (locale, values) => onSaved(await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } }))}
+              onSyncAll={async (locale, values) => onSaved(await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } }))}
+            />
             <div className="relative h-36 w-36">
               <AvatarImage alt={t("技师头像预览")} className="h-36 w-36 rounded-[28px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] shadow-[0_18px_36px_rgba(0,0,0,0.28)]" src={draft.avatarDataUrl ?? profileAvatarSrc(profile)} />
               <input accept="image/*" aria-label={t("技师头像")} className="hidden" disabled={saving || readingAvatar} onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
@@ -540,14 +546,6 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
               <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>身高</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, heightCm: parseNullableNumber(event.target.value) }))} value={draft.heightCm ?? ""} /></label>
             </div>
             <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>语言能力</span><textarea className="mt-2 min-h-16 w-full bg-transparent text-sm font-bold outline-none" onChange={(event) => setDraft((current) => ({ ...current, languagesText: event.target.value }))} value={draft.languagesText} /></label>
-            <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>自我介绍</span><textarea className="mt-2 min-h-28 w-full bg-transparent text-sm font-bold leading-6 outline-none" onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))} value={draft.bio} /></label>
-            <LocalizedTextEditor
-              fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
-              fallback={{ bio: profile.bio ?? "" }}
-              translations={Object.fromEntries(Object.entries(profile.bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
-              onSave={async (locale, values) => onSaved(await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } }))}
-              onSyncAll={async (locale, values) => onSaved(await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } }))}
-            />
             <TechnicianReviewTagSummaryView model={editModel} />
             <section className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-profile-privacy-control">
               <div className="flex items-center justify-between gap-3">

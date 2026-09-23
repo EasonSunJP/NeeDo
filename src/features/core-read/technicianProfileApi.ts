@@ -77,7 +77,7 @@ export type TechnicianSelfProfileUpdate = Partial<Pick<
 
 export type TechnicianPersonalCenterUpdate = Pick<
   TechnicianSelfProfile,
-  "gender" | "age" | "heightCm" | "languages" | "bio" | "visibility"
+  "gender" | "age" | "heightCm" | "languages" | "visibility"
 > & { avatarDataUrl?: string };
 
 export const technicianProfileApi = {

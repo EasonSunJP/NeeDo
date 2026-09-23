@@ -48,7 +48,6 @@ type Draft = {
   age: string;
   heightCm: string;
   languages: string[];
-  bio: string;
   visibility: MerchantProfileVisibility;
   avatarDataUrl?: string;
 };
@@ -60,7 +59,6 @@ function toDraft(profile: MerchantIdentityProfile): Draft {
     age: profile.age === null ? "" : String(profile.age),
     heightCm: profile.heightCm === null ? "" : String(profile.heightCm),
     languages: [...profile.languages],
-    bio: profile.bio ?? "",
     visibility: profile.visibility
   };
 }
@@ -201,7 +199,6 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
       age,
       heightCm,
       languages: draft.languages,
-      bio: draft.bio.trim() || null,
       visibility: draft.visibility,
       ...(draft.avatarDataUrl ? { avatarDataUrl: draft.avatarDataUrl } : {})
     };
@@ -265,6 +262,14 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
           <div className={cn(surface.metric, "min-w-0 rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-[11px] font-bold")}>评价</p><strong className="mt-1 block text-lg">-</strong></div>
         </div>
 
+        {editing ? <LocalizedTextEditor
+          fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
+          fallback={{ bio: profile.bio ?? "" }}
+          translations={Object.fromEntries(Object.entries(profile.bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
+          disabled={saving || readingAvatar}
+          onSave={async (locale, values) => setProfile(await merchantProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } }))}
+          onSyncAll={async (locale, values) => setProfile(await merchantProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } }))}
+        /> : null}
         <div className="my-4 h-px bg-[color:var(--client-line)]" />
         <h2 className="text-lg font-black">基础信息</h2>
         {editing ? (
@@ -275,14 +280,6 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
               <label className={cn(surface.panel, "rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>身高（cm）</span><input className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none" inputMode="decimal" onChange={(event) => update({ heightCm: event.target.value })} value={draft.heightCm} /></label>
             </div>
             <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>语言能力</p><div className="mt-2 flex flex-wrap gap-1.5">{languages.map((language) => <button className={cn("rounded-full border px-2.5 py-1 text-xs font-black", draft.languages.includes(language) ? surface.chip : surface.metric)} key={language} onClick={() => toggleLanguage(language)} type="button">{language}</button>)}</div></div>
-            <label className={cn(surface.panel, "block overflow-hidden rounded-[24px] border px-5 py-4")}><span className={cn(surface.muted, "text-xs font-bold")}>自我介绍</span><textarea className="mt-2 min-h-[132px] w-full resize-none bg-transparent text-sm font-bold leading-6 outline-none" onChange={(event) => update({ bio: event.target.value })} value={draft.bio} /></label>
-            <LocalizedTextEditor
-              fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
-              fallback={{ bio: profile.bio ?? "" }}
-              translations={Object.fromEntries(Object.entries(profile.bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
-              onSave={async (locale, values) => setProfile(await merchantProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } }))}
-              onSyncAll={async (locale, values) => setProfile(await merchantProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } }))}
-            />
           </div>
         ) : (
           <div className="mt-3 space-y-3">

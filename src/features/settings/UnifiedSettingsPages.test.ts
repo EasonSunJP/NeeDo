@@ -683,6 +683,9 @@ describe("UnifiedSettingsProfilePage", () => {
     expect(technicianProfileSource).toContain("technicianProfileApi.updateMine");
     expect(technicianProfileSource).not.toContain("updateTechnicianEntity");
     expect(profileRouteSource).toContain("SettingsProfileResourceState");
+    expect(technicianProfileSource).toContain("<LocalizedTextEditor");
+    expect(technicianProfileSource).not.toContain("bio: draft.bio.trim() || null");
+    expect(technicianProfileSource).not.toContain("bio: current.bio ??");
   });
 
   it("loads and saves the merchant profile through the authenticated shop API", () => {

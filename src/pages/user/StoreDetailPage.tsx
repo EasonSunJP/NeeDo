@@ -68,7 +68,8 @@ import { SocialEmptyState, SocialPostItem } from "../../features/social/componen
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
-import { localizedServiceName } from "../../shared/localized-content/localizedText";
+import { contentLocaleForLanguage, contentLocales, localizedServiceName } from "../../shared/localized-content/localizedText";
+import { LocalizedContentLocaleRail } from "../../shared/localized-content/LocalizedContentLocaleRail";
 import { registerTranslationEntries, translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
@@ -124,18 +125,10 @@ type ActiveStoreDisplayEditor = {
   mode: StoreDisplayEditorMode;
   target: string;
 };
-const shopPresentationLocales: Array<{ code: ShopPresentationLocale; label: string; shortLabel: string }> = [
-  { code: "ja", label: "日本語", shortLabel: "日" },
-  { code: "en", label: "English", shortLabel: "EN" },
-  { code: "ko", label: "한국어", shortLabel: "한" },
-  { code: "zh-CN", label: "简体中文", shortLabel: "简" },
-  { code: "zh-TW", label: "繁體中文", shortLabel: "繁" }
-];
+const shopPresentationLocales = contentLocales;
 
 function languageToShopPresentationLocale(language: Language): ShopPresentationLocale {
-  if (language === "ja" || language === "en" || language === "ko") return language;
-  if (language === "zh-Hant") return "zh-TW";
-  return "zh-CN";
+  return contentLocaleForLanguage(language);
 }
 type PendingStoreImageEdit = {
   apply: (editedImage: string) => void;
@@ -3960,48 +3953,25 @@ export function StoreDetailExperience({
     return null;
   };
   const presentationLocaleRail = isMerchantEditable && activeEditor && activeTab !== "moments" && activeTab !== "offers" ? (
-    <aside
-      aria-label="店铺展示语言"
-      className="relative z-[70] mx-auto my-3 flex w-fit max-w-full items-center gap-1 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur sm:fixed sm:right-2 sm:top-1/2 sm:my-0 sm:-translate-y-1/2 sm:flex-col sm:gap-1.5"
-      data-testid="shop-presentation-locale-rail"
-    >
-      {shopPresentationLocales.map((locale) => (
-        <button
-          aria-label={locale.label}
-          aria-pressed={presentationLocale === locale.code}
-          className={cn(
-            "focus-ring flex h-8 min-w-8 items-center justify-center rounded-[12px] px-1 text-[11px] font-black sm:h-9 sm:min-w-9 sm:px-2",
-            presentationLocale === locale.code
-              ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-ink)]"
-              : "text-[color:var(--client-muted)]"
-          )}
-          key={locale.code}
-          onClick={() => switchPresentationLocale(locale.code)}
-          title={locale.label}
-          type="button"
-        >
-          <span data-no-i18n>{locale.shortLabel}</span>
-        </button>
-      ))}
-      <div className="mx-0.5 h-6 w-px bg-[color:var(--client-line)] sm:my-0.5 sm:h-px sm:w-6" />
-      <button
-        className="focus-ring rounded-[12px] bg-[color:var(--client-primary)] px-1.5 py-2 text-[10px] font-black text-[color:var(--client-primary-ink)] disabled:opacity-45 sm:px-2"
-        disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"}
-        onClick={() => { void savePresentationLocale(); }}
-        type="button"
-      >
-        {presentationSaveState === "saving" ? "保存中" : presentationSaveState === "saved" ? "已保存" : "保存"}
-      </button>
-      <button
-        className="focus-ring rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-danger)_48%,transparent)] px-1.5 py-2 text-[10px] font-black text-[color:var(--client-danger)] disabled:opacity-45 sm:px-2"
-        disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"}
-        onClick={() => setPresentationSyncConfirmOpen(true)}
-        type="button"
-      >
-        同步
-      </button>
+    <>
+      <LocalizedContentLocaleRail
+        ariaLabel="店铺展示语言"
+        locale={presentationLocale}
+        onSelect={switchPresentationLocale}
+        saveAction={{
+          label: presentationSaveState === "saving" ? "保存中" : presentationSaveState === "saved" ? "已保存" : "保存",
+          disabled: !presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading",
+          onClick: () => { void savePresentationLocale(); }
+        }}
+        syncAction={{
+          label: "同步",
+          disabled: !presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading",
+          onClick: () => setPresentationSyncConfirmOpen(true)
+        }}
+        testId="shop-presentation-locale-rail"
+      />
       {presentationError ? <span className="sr-only" role="alert">{presentationError}</span> : null}
-    </aside>
+    </>
   ) : null;
 
   const toggleOfferLike = (offerId: string) => {

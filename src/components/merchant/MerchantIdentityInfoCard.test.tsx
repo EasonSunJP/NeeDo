@@ -94,6 +94,9 @@ describe("MerchantIdentityInfoCard", () => {
     const edit = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("编辑资料"));
     expect(edit).not.toBeNull();
     await act(async () => edit?.click());
+    expect(container.querySelector('[data-testid="localized-content-locale-rail"]')).not.toBeNull();
+    expect(container.querySelectorAll('textarea')).toHaveLength(1);
+    expect(container.querySelector('textarea')?.placeholder).toBe("商户负责人");
     const language = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "日本語");
     const save = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("保存并退出编辑模式"));
     expect(language).not.toBeUndefined();
@@ -102,6 +105,7 @@ describe("MerchantIdentityInfoCard", () => {
     await act(async () => save?.click());
 
     await waitFor(() => expect(mocks.updateMine).toHaveBeenCalledWith(expect.objectContaining({ languages: [] })));
+    expect(mocks.updateMine.mock.calls.at(-1)?.[0]).not.toHaveProperty("bio");
   });
 
   it("crops a selected avatar before saving the merchant profile", async () => {

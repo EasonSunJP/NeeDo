@@ -398,6 +398,9 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     const editButton = container.querySelector<HTMLButtonElement>('button[aria-label="编辑信息卡"]');
     expect(editButton).not.toBeNull();
     await act(async () => editButton?.click());
+    expect(container.querySelector('[data-testid="localized-content-locale-rail"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-testid="localized-text-editor"] textarea')).toHaveLength(1);
+    expect(Array.from(container.querySelectorAll('textarea')).filter((textarea) => textarea.value === "预约前请联系。")).toHaveLength(0);
 
     const languageDraft = Array.from(container.querySelectorAll<HTMLTextAreaElement>("textarea"))
       .find((textarea) => textarea.value === "日本語、中文");
@@ -429,7 +432,6 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
       age: 29,
       heightCm: 168,
       languages: ["日本語", "中文"],
-      bio: "预约前请联系。",
       visibility: "limited"
     });
     expect(container.querySelector('[data-testid="technician-profile-save-action"]')).toBeNull();

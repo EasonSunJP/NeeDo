@@ -1994,7 +1994,6 @@ function TechnicianProfileSettingsPage({
     age: string;
     height: string;
     languages: string[];
-    bio: string;
     serviceAreas: string[];
     profileTags: string[];
     canServeForeigners: boolean;
@@ -2050,7 +2049,6 @@ function TechnicianProfileSettingsPage({
     age: current.age === null ? "" : String(current.age),
     height: current.heightCm === null ? "" : String(current.heightCm),
     languages: [...current.languages],
-    bio: current.bio ?? "",
     serviceAreas: current.serviceAreas.filter((item) => allowedServiceAreas.has(item)),
     profileTags: [...current.profileTags],
     canServeForeigners: current.canServeForeigners,
@@ -2114,7 +2112,6 @@ function TechnicianProfileSettingsPage({
       age: draft.age.trim() ? Number(draft.age) : null,
       heightCm: draft.height.trim() ? Number(draft.height) : null,
       languages: Array.from(new Set(draft.languages)),
-      bio: draft.bio.trim() || null,
       serviceAreas: Array.from(new Set(draft.serviceAreas)),
       canServeForeigners: draft.canServeForeigners,
       bidBudgetMinJpy: draft.bidBudgetMin.trim() ? Number(draft.bidBudgetMin) : null,
@@ -2364,13 +2361,6 @@ function TechnicianProfileSettingsPage({
 
       <SettingsSection description="这里建议写清楚服务风格、擅长项目和沟通说明。" headerMode="info" panelClassName="p-4" title="自我介绍">
         <div className="space-y-4">
-          <label className="block">
-            <textarea
-              className="min-h-[180px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-4 outline-none"
-              onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))}
-              value={draft.bio}
-            />
-          </label>
           <LocalizedTextEditor
             fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
             fallback={{ bio: profile.bio ?? "" }}

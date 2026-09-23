@@ -349,13 +349,11 @@ describe("StoreDetailPage routed booking defaults", () => {
   });
 
   it("keeps merchant-owned display edits on the current page with a five-language rail", () => {
+    expect(pageSource).toContain("<LocalizedContentLocaleRail");
     expect(pageSource).toContain("activeEditor && !isMerchantEditable ? (");
-    expect(pageSource).toContain('data-testid="shop-presentation-locale-rail"');
-    expect(pageSource).toContain('{ code: "ja", label: "日本語"');
-    expect(pageSource).toContain('{ code: "en", label: "English"');
-    expect(pageSource).toContain('{ code: "ko", label: "한국어"');
-    expect(pageSource).toContain('{ code: "zh-CN", label: "简体中文"');
-    expect(pageSource).toContain('{ code: "zh-TW", label: "繁體中文"');
+    expect(pageSource).toContain('testId="shop-presentation-locale-rail"');
+    expect(pageSource).toContain("const shopPresentationLocales = contentLocales;");
+    expect(pageSource).toContain("return contentLocaleForLanguage(language);");
     expect(pageSource).toContain("renderActiveInlineEditor");
   });
 
