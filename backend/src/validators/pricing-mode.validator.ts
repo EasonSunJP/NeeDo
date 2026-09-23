@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONTENT_LOCALES } from "../constants/content-locales";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -55,6 +56,11 @@ export const technicianServiceBodySchema = z.object({
   sourceShopServiceId: z.number().int().positive().nullable().optional(),
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(2000).nullable().optional(),
+  localizedContent: z.object({
+    locale: z.enum(CONTENT_LOCALES),
+    name: z.string().trim().max(160).optional(),
+    description: z.string().trim().max(2000).optional()
+  }).strict().refine((value) => value.name !== undefined || value.description !== undefined).optional(),
   categoryId: z.number().int().positive(),
   priceAmount: z.number().int().nonnegative().max(10_000_000),
   currency: z.string().trim().length(3).default("JPY"),

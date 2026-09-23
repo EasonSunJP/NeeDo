@@ -1,9 +1,11 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
 import { AppError } from "../utils/app-error";
 import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
+import { readLocalizedBioMap } from "../domain/technician-localized-content";
+import type { ContentLocaleCode } from "../constants/content-locales";
 import { syncPersonalDisplayName } from "./personal-display-name.repository";
 import {
   loadTechnicianReviewTagSummary,
@@ -45,6 +47,7 @@ export interface TechnicianProfileMutation {
   heightCm?: number | null;
   languages?: string[];
   bio?: string | null;
+  localizedBio?: { locale: ContentLocaleCode; bio: string };
   serviceAreas?: string[];
   canServeForeigners?: boolean;
   bidBudgetMinJpy?: number | null;
@@ -65,6 +68,7 @@ export interface TechnicianProfilePayload {
   displayName: string;
   avatarUrl: string | null;
   bio: string | null;
+  bioLocales?: Partial<Record<ContentLocaleCode, string>>;
   city: string;
   gender: TechnicianProfileGender;
   age: number | null;
@@ -176,6 +180,9 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
     auditLog: AuditLogCreateInput
   ): Promise<TechnicianProfilePayload> {
     const profile = await this.client.$transaction(async (transaction) => {
+      if (mutation.localizedBio) {
+        await transaction.$queryRaw(Prisma.sql`SELECT id FROM technician_profiles WHERE id = ${profileId} AND user_id = ${userId} AND deleted_at IS NULL FOR UPDATE`);
+      }
       const current = await transaction.technicianProfile.findFirst({
         where: { id: profileId, userId, deletedAt: null }
       });
@@ -183,7 +190,15 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
 
       await transaction.technicianProfile.update({
         where: { id: current.id },
-        data: this.profileData(mutation)
+        data: {
+          ...this.profileData(mutation),
+          ...(mutation.localizedBio ? {
+            bioLocalesJson: {
+              ...readLocalizedBioMap(current.bioLocalesJson),
+              [mutation.localizedBio.locale]: mutation.localizedBio.bio
+            }
+          } : {})
+        }
       });
 
       if (mutation.displayName !== undefined) {
@@ -303,6 +318,7 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       displayName: profile.displayName,
       avatarUrl: profile.mediaAssets[0]?.url ?? null,
       bio: profile.bio,
+      bioLocales: readLocalizedBioMap(profile.bioLocalesJson),
       city: profile.city,
       gender: this.gender(profile.gender),
       age: profile.age,

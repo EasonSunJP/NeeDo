@@ -1307,6 +1307,7 @@ function StoreTechnicianSelectableCard({
       aria-label={availabilityLoading ? translateText("正在读取可预约状态…", language) : unavailable ? "当前时间不可约" : active ? "已选技师" : "待选技师"}
       className={cn(
         "h-full w-full",
+        isMerchantEditable && "!border-[color:color-mix(in_srgb,var(--client-line)_40%,transparent)] !shadow-none",
         isMerchantEditable && !technicianVisible && "opacity-70 saturate-[0.72]",
         !isMerchantEditable && unavailable && "opacity-70 saturate-[0.72]"
       )}
@@ -2249,6 +2250,13 @@ function StoreDisplayInlineEditor({
               onChange={(value) => updatePresentationField("subtitle", value)}
               rows={3}
               value={config.subtitle}
+            />
+            <StoreDisplayEditorInput
+              label="店铺信息卡简介"
+              multiline
+              onChange={(value) => onStoreChange?.({ description: value })}
+              rows={3}
+              value={store.description}
             />
           </div>
           <ImageGalleryManager
@@ -3929,6 +3937,7 @@ export function StoreDetailExperience({
       return (
         <StoreDisplayEditorPanel title="轮播图文字">
           <StoreDisplayEditorInput label="轮播简介" multiline onChange={(value) => updatePresentationField("subtitle", value)} rows={3} value={config.subtitle} />
+          <StoreDisplayEditorInput label="店铺信息卡简介" multiline onChange={(value) => setEditableStore((current) => ({ ...current, description: value }))} rows={3} value={store.description} />
         </StoreDisplayEditorPanel>
       );
     }
@@ -3937,7 +3946,7 @@ export function StoreDetailExperience({
   const presentationLocaleRail = isMerchantEditable && activeEditor && activeTab !== "moments" && activeTab !== "offers" ? (
     <aside
       aria-label="店铺展示语言"
-      className="fixed right-2 top-1/2 z-[70] flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur"
+      className="fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom,0px)+8px)] z-[70] mx-auto flex w-fit max-w-[calc(100vw-16px)] items-center gap-1 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur sm:inset-x-auto sm:bottom-auto sm:right-2 sm:top-1/2 sm:mx-0 sm:-translate-y-1/2 sm:flex-col sm:gap-1.5"
       data-testid="shop-presentation-locale-rail"
     >
       {shopPresentationLocales.map((locale) => (
@@ -3945,7 +3954,7 @@ export function StoreDetailExperience({
           aria-label={locale.label}
           aria-pressed={presentationLocale === locale.code}
           className={cn(
-            "focus-ring flex h-9 min-w-9 items-center justify-center rounded-[12px] px-2 text-[11px] font-black",
+            "focus-ring flex h-8 min-w-8 items-center justify-center rounded-[12px] px-1 text-[11px] font-black sm:h-9 sm:min-w-9 sm:px-2",
             presentationLocale === locale.code
               ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-ink)]"
               : "text-[color:var(--client-muted)]"
@@ -3958,9 +3967,9 @@ export function StoreDetailExperience({
           {locale.shortLabel}
         </button>
       ))}
-      <div className="my-0.5 h-px w-6 bg-[color:var(--client-line)]" />
+      <div className="mx-0.5 h-6 w-px bg-[color:var(--client-line)] sm:my-0.5 sm:h-px sm:w-6" />
       <button
-        className="focus-ring rounded-[12px] bg-[color:var(--client-primary)] px-2 py-2 text-[10px] font-black text-[color:var(--client-primary-ink)] disabled:opacity-45"
+        className="focus-ring rounded-[12px] bg-[color:var(--client-primary)] px-1.5 py-2 text-[10px] font-black text-[color:var(--client-primary-ink)] disabled:opacity-45 sm:px-2"
         disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"}
         onClick={() => { void savePresentationLocale(); }}
         type="button"
@@ -3968,7 +3977,7 @@ export function StoreDetailExperience({
         {presentationSaveState === "saving" ? "保存中" : presentationSaveState === "saved" ? "已保存" : "保存"}
       </button>
       <button
-        className="focus-ring rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-danger)_48%,transparent)] px-2 py-2 text-[10px] font-black text-[color:var(--client-danger)] disabled:opacity-45"
+        className="focus-ring rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-danger)_48%,transparent)] px-1.5 py-2 text-[10px] font-black text-[color:var(--client-danger)] disabled:opacity-45 sm:px-2"
         disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"}
         onClick={() => setPresentationSyncConfirmOpen(true)}
         type="button"
@@ -4932,7 +4941,7 @@ export function StoreDetailExperience({
     const hasMerchantControls = Boolean(pricingControl || privacyControl);
 
     return (
-      <div className="space-y-4 pb-6">
+      <div className={cn("space-y-4 pb-6", presentationLocaleRail && "pb-20 sm:pb-6")}>
         <section className="relative z-50 space-y-3 overflow-visible">
           {activeTab !== "moments" && activeTab !== "offers"
             ? renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")

@@ -3,6 +3,7 @@ import type { ShopPresentationContent } from "../../api/backofficeRealData";
 import { resolveServiceFulfillmentMode } from "../../lib/serviceFulfillment";
 import type { Customer, FulfillmentMode, ServiceCategory, ServiceItem, Store, Technician } from "../../types/domain";
 import { DEFAULT_AVATAR_URL } from "../../lib/defaultAvatar";
+import type { ContentLocale } from "../../shared/localized-content/localizedText";
 
 export type PaginatedCoreReadData<TItem> = {
   list: TItem[];
@@ -73,6 +74,7 @@ export type CoreShopCard = {
 export type CorePrimaryTechnicianService = {
   id: number;
   name: string;
+  localizedContent?: Partial<Record<ContentLocale, { name?: string; description?: string }>>;
   priceAmount: string;
   currency: string;
   durationMinutes: number;
@@ -156,6 +158,7 @@ export type CoreTechnicianDetail = CoreTechnicianCard & {
   socialIdentityId?: number;
   shop: CoreShopCard | null;
   bio: string | null;
+  bioLocales?: Partial<Record<ContentLocale, string>>;
   serviceArea: string | null;
   gender: "female" | "male" | "private";
   heightCm: number | null;

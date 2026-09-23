@@ -13,6 +13,7 @@ import type { ContentMediaMimeType } from "./content-media.storage";
 import { assertMerchantShopId } from "./merchant-shop-scope";
 import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
 import type { ShopVisibilityRepositoryPort } from "./shop-visibility.service";
+import type { ContentLocaleCode } from "../constants/content-locales";
 
 export type PricingModePayload = "merchant" | "technician";
 export type BookingNavigationEntry = "service_menu" | "technician_list";
@@ -38,6 +39,7 @@ export interface TechnicianServicePayload {
   sourceShopServiceId: number | null;
   name: string;
   description: string | null;
+  localizedContent?: Partial<Record<ContentLocaleCode, { name?: string; description?: string }>>;
   categoryId: number;
   priceAmount: number;
   currency: string;

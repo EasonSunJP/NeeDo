@@ -41,6 +41,20 @@ const technician: Technician = {
 };
 
 describe("TechnicianShowcaseCard recommendation tile", () => {
+  it("uses authored primary-service language without runtime text rewriting", () => {
+    const markup = renderToStaticMarkup(createElement(MemoryRouter, null,
+      createElement(TechnicianShowcaseCard, {
+        language: "en", rankIndex: 0, technician,
+        formalData: {
+          primaryService: {
+            currency: "JPY", durationMinutes: 60, name: "肩颈护理", priceAmount: "8800",
+            localizedContent: { en: { name: "Shoulder care" } }
+          }
+        }
+      })));
+    expect(markup).toContain("Shoulder care");
+    expect(markup).not.toContain("肩颈护理");
+  });
   it("uses the canonical public profile path", () => {
     expect(getTechnicianDynamicPath(technician)).toBe(
       "/profiles/technician/s0000000002",

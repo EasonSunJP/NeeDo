@@ -101,6 +101,23 @@ describe("buildShopPresentationContent", () => {
     });
   });
 
+  it("submits each carousel asset once when the display gallery repeats images", () => {
+    const secondImageId = "b".repeat(64);
+    const edited = {
+      ...baseStore,
+      gallery: ["/media/content/a.webp", "/media/content/b.webp", "/media/content/a.webp", "/media/content/b.webp"],
+      presentation: { ...baseStore.presentation!, galleryCaptions: ["first", "second", "repeat A", "repeat B"] }
+    };
+    const content = buildShopPresentationContent(edited, new Map([
+      ["/media/content/a.webp", imageId],
+      ["/media/content/b.webp", secondImageId]
+    ]));
+    expect(content.carousel).toEqual([
+      { mediaAssetPublicId: imageId, altText: "first" },
+      { mediaAssetPublicId: secondImageId, altText: "second" }
+    ]);
+  });
+
   it("rejects browser-only image URLs that were never formally uploaded", () => {
     expect(() => buildShopPresentationContent(baseStore, new Map())).toThrow("error.shop_presentation.media_invalid");
   });

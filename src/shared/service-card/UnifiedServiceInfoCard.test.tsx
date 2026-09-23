@@ -15,6 +15,19 @@ const formalService: UnifiedServiceInfoCardData = {
 };
 
 describe("UnifiedServiceInfoCard", () => {
+  it("renders authored service text for the selected language and falls back independently", () => {
+    const data = { ...formalService, localizedContent: {
+      en: { name: "Home cleaning", description: "Kitchen and bathroom care" },
+      ja: { name: "お掃除" }
+    } };
+    const english = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, { data, language: "en" })));
+    const japanese = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, { data, language: "ja" })));
+    expect(english).toContain("Home cleaning");
+    expect(english).toContain("Kitchen and bathroom care");
+    expect(japanese).toContain("お掃除");
+    expect(japanese).toContain(formalService.description);
+    expect(japanese).not.toContain("Kitchen and bathroom care");
+  });
   it("renders the only approved neon split-card skeleton and metric order", () => {
     const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, {
       actionSlot: createElement("button", { type: "button" }, "编辑服务"), data: formalService, detailTo: "/services/71"

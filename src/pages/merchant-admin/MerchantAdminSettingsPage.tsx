@@ -351,11 +351,11 @@ export function MerchantAdminSettingsPage() {
         ) : null}
 
         {shop ? (
-          <section className="mt-5 overflow-hidden rounded-lg border border-line bg-white shadow-panel">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
+          <section className="mx-auto mt-5 max-w-[840px] overflow-hidden rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-[color:var(--client-text)] shadow-panel">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--client-line)] px-5 py-4">
               <div>
-                <h2 className="text-lg font-black text-ink">五语言店铺展示</h2>
-                <p className="mt-1 max-w-3xl text-sm font-bold leading-6 text-ink/50">
+                <h2 className="text-lg font-black">五语言店铺展示</h2>
+                <p className="mt-1 max-w-3xl text-sm font-bold leading-6 text-[color:var(--client-muted)]">
                   店铺前端与店铺后台共用同一套展示数据。任一入口保存后，日语、英语、韩语、简体中文和繁体中文都会从同一数据库版本读取。
                 </p>
               </div>
@@ -367,7 +367,7 @@ export function MerchantAdminSettingsPage() {
                 <Button onClick={() => void load()} size="sm" variant="secondary">重新加载五语言展示</Button>
               </div>
             ) : presentationStore ? (
-              <div className="bg-[color:var(--client-bg)] p-4 sm:p-5">
+              <div className="mx-auto w-full max-w-[780px] bg-[color:var(--client-bg)] p-3 sm:p-5">
                 <StoreDetailExperience
                   embedded
                   formalApiOnly
@@ -377,7 +377,7 @@ export function MerchantAdminSettingsPage() {
                 />
               </div>
             ) : (
-              <p className="m-5 rounded-lg border border-line bg-paper p-4 text-sm font-bold text-ink/55">
+              <p className="m-5 rounded-lg border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] p-4 text-sm font-bold text-[color:var(--client-muted)]">
                 正在读取五语言店铺展示...
               </p>
             )}

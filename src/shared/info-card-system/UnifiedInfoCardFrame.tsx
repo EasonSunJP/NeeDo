@@ -55,6 +55,7 @@ export function UnifiedCardMetricRail({
   return (
     <div
       className="pointer-events-none relative z-20 flex items-center px-2 py-1.5 sm:px-5 sm:py-3"
+      data-no-i18n
       data-testid="unified-card-metrics"
     >
       {metrics.map((metric, index) => (
@@ -238,6 +239,7 @@ export function UnifiedCardDetails({
         compact ? "pb-8 sm:pb-9 sm:pt-3" : "pb-10 sm:pb-11 sm:pt-4",
       )}
       data-card-density={density}
+      data-no-i18n
     >
       <h3 className={cn(
         "break-words font-black leading-tight tracking-[-0.025em] text-[color:var(--client-text)] [overflow-wrap:anywhere]",

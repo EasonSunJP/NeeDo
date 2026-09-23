@@ -92,10 +92,13 @@ export function buildShopPresentationContent(
   fallbackImageUrls: ReadonlySet<string> = new Set()
 ): ShopPresentationContent {
   const presentation = normalizeStorePresentationConfig(store.presentation);
+  const seenMediaIds = new Set<string>();
   const carousel = (store.gallery.length ? store.gallery : [store.cover]).slice(0, 5).flatMap((url, index) => {
     const mediaAssetPublicId = mediaPublicIdByUrl.get(url);
     if (!mediaAssetPublicId && fallbackImageUrls.has(url)) return [];
     if (!mediaAssetPublicId) throw new Error("error.shop_presentation.media_invalid");
+    if (seenMediaIds.has(mediaAssetPublicId)) return [];
+    seenMediaIds.add(mediaAssetPublicId);
     return [{ mediaAssetPublicId, altText: presentation.galleryCaptions?.[index]?.trim() || store.name }];
   });
   const serviceMenus = (presentation.menuCards ?? []).slice(0, 5).map((menu) => {

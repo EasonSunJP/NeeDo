@@ -3,6 +3,9 @@ import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { copyTextToClipboard } from "../../lib/share";
 import { cn } from "../../lib/utils";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import type { Language } from "../../i18n/translations";
+import { localizedText } from "../localized-content/localizedText";
 import type { WalletSummary } from "../../features/wallet/api";
 import { formatWalletAmount, hasTestNdpWallet } from "../../features/wallet/presentation";
 import { splitMaxReviewStampLabel } from "../order-detail/serviceReviewTagCatalog";
@@ -12,6 +15,7 @@ import type { TechnicianProfileInfoModel } from "./model";
 
 type TechnicianProfileInfoViewProps = {
   className?: string;
+  language?: Language;
   model: TechnicianProfileInfoModel;
   privacySlot?: ReactNode;
   serviceAction?: (service: UnifiedServiceInfoCardData, index: number) => ReactNode;
@@ -90,7 +94,10 @@ export function TechnicianReviewTagSummaryView({ model }: { model: TechnicianPro
   );
 }
 
-export function TechnicianProfileInfoView({ className, model, privacySlot, serviceAction, walletSummary }: TechnicianProfileInfoViewProps) {
+export function TechnicianProfileInfoView({ className, language: languageOverride, model, privacySlot, serviceAction, walletSummary }: TechnicianProfileInfoViewProps) {
+  const { language: currentLanguage } = useOptionalI18n();
+  const language = languageOverride ?? currentLanguage;
+  const localizedBio = localizedText(model.bio, model.bioLocales, language);
   const [copyStatus, setCopyStatus] = useState<"" | "copied" | "failed">("");
   const copyNeedoId = async () => {
     setCopyStatus(await copyTextToClipboard(model.publicId) ? "copied" : "failed");
@@ -100,7 +107,7 @@ export function TechnicianProfileInfoView({ className, model, privacySlot, servi
     <div className={cn("space-y-4", className)} data-testid="technician-profile-info-view">
       <section className="overflow-visible rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,var(--client-primary)_18%)] bg-[color:var(--client-surface)] p-4 text-[color:var(--client-text)] shadow-panel">
         <header className="flex min-w-0 items-start gap-3">
-          <AvatarImage alt={model.displayName} className="h-32 w-32 shrink-0 rounded-[26px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] object-cover shadow-soft" src={model.avatarUrl ?? undefined} />
+          <AvatarImage alt={model.displayName} className="h-24 w-24 shrink-0 rounded-[22px] border-2 border-[color:color-mix(in_srgb,var(--client-primary)_40%,var(--client-line))] object-cover shadow-soft sm:h-32 sm:w-32 sm:rounded-[26px]" src={model.avatarUrl ?? undefined} />
           <div className="min-w-0 flex-1 pt-1">
             <h1 className="text-[21px] font-black leading-7">{model.displayName} <KycVerifiedBadge className="inline-flex align-middle" size="label" /></h1>
             <span className="mt-2 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_45%,var(--client-line))] bg-[color:var(--client-primary-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-primary)]">{model.identityLabel}</span>
@@ -144,7 +151,7 @@ export function TechnicianProfileInfoView({ className, model, privacySlot, servi
 
           <section className={cn(panelClassName, "p-3")}>
             <p className={cn("text-xs font-bold", mutedClassName)}>自我介绍</p>
-            <p className={cn("mt-2 whitespace-pre-wrap text-sm font-bold leading-6", mutedClassName)}>{model.bio ?? "暂无简介"}</p>
+            <p className={cn("mt-2 whitespace-pre-wrap text-sm font-bold leading-6", mutedClassName)} data-no-i18n={localizedBio ? true : undefined}>{localizedBio ?? "暂无简介"}</p>
           </section>
 
           <TechnicianReviewTagSummaryView model={model} />
@@ -155,7 +162,7 @@ export function TechnicianProfileInfoView({ className, model, privacySlot, servi
       <section className="space-y-3" data-testid="technician-profile-services">
         <h2 className="px-1 text-lg font-black text-[color:var(--client-text)]">服务信息</h2>
         {model.services.length > 0 ? model.services.map((service, index) => (
-          <UnifiedServiceInfoCard actionSlot={serviceAction?.(service, index)} data={service} key={service.id} />
+          <UnifiedServiceInfoCard actionSlot={serviceAction?.(service, index)} data={service} key={service.id} language={language} />
         )) : <p className={cn("px-1 text-sm font-bold", mutedClassName)}>暂无服务信息</p>}
       </section>
     </div>
