@@ -230,10 +230,11 @@ const createRepository = () => {
 
 describe("ExchangeService", () => {
   it("accepts only a valid pending cover checksum on demand publication", () => {
-    expect(publishExchangePostSchema.parse({ ...demandInput, coverMediaAssetPublicId: "a".repeat(64) }))
+    const validCoverDemandInput = { ...demandInput, expiresAt: new Date("2026-08-30T23:30:00.000Z") };
+    expect(publishExchangePostSchema.parse({ ...validCoverDemandInput, coverMediaAssetPublicId: "a".repeat(64) }))
       .toMatchObject({ coverMediaAssetPublicId: "a".repeat(64) });
     for (const checksum of ["", "a".repeat(63), "g".repeat(64), "/media/cover.webp"]) {
-      expect(() => publishExchangePostSchema.parse({ ...demandInput, coverMediaAssetPublicId: checksum })).toThrow();
+      expect(() => publishExchangePostSchema.parse({ ...validCoverDemandInput, coverMediaAssetPublicId: checksum })).toThrow();
     }
     expect(() => publishExchangePostSchema.parse({
       type: "intelligence", title: post.title, detail: post.detail, contentLocale: "ja",

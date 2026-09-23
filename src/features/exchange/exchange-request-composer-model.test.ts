@@ -6,6 +6,7 @@ const draft: RequestComposerDraft = {
   contentLocale: "zh-CN",
   title: "上门服务",
   detail: "请提前联系",
+  cover: null,
   serviceStartDate: "2026-09-23",
   serviceStartTime: "10:00",
   serviceEndDate: "2026-09-23",

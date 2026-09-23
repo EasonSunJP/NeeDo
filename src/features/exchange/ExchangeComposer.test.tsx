@@ -75,7 +75,7 @@ const validDemandDraft: RequestComposerDraft = {
   contentLocale: "ja", title: "A demand", detail: "Details", cover: null,
   serviceStartDate: "2026-08-31", serviceStartTime: "13:00",
   serviceEndDate: "2026-08-31", serviceEndTime: "14:00",
-  expiresDate: "2026-08-31", expiresTime: "14:01",
+  expiresDate: "2026-08-31", expiresTime: "12:30",
   targetProviderCount: "1", serviceMode: "store", matchMode: "quick", budgetMode: "total",
   budgetMinJpy: "5000", budgetMaxJpy: "8000", addressLine1: "新宿区", addressLine2: "", addressLine3: "",
   addressLine2Public: false, addressLine3Public: false, publisherIdentityPublic: false
