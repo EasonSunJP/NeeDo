@@ -228,10 +228,6 @@ function DetailPostMenu({
         <Link className={menuItemClassName} to={socialPaths.repost(scope, post.id)}>
           转发 / 引用
         </Link>
-        <button className={menuItemClassName} type="button">
-          <SocialPostMenuActionIcon name="translate" />
-          <span>翻译</span>
-        </button>
         {isMine ? (
           <button
             className={cn(menuItemClassName, "text-[#ff7b73]")}
@@ -407,7 +403,7 @@ function ReplyListItem({
                 <path d="M12 21s6-5.5 6-11a6 6 0 1 0-12 0c0 5.5 6 11 6 11Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
                 <circle cx="12" cy="10" r="2" stroke="currentColor" strokeWidth="1.8" />
               </svg>
-              <span className="min-w-0 truncate">{post.locationLabel}</span>
+              <span className="min-w-0 truncate" data-no-i18n>{post.locationLabel}</span>
             </p>
           ) : null}
 

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import composerSource from "./UnifiedComposerUi.tsx?raw";
 import source from "./UnifiedSocialUi.tsx?raw";
 import { resolveSocialProfileMessageAction, UnifiedPostText } from "./UnifiedSocialUi";
+import { I18nProvider, I18nRuntime } from "../../../i18n/I18nProvider";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -152,6 +153,22 @@ describe("UnifiedPostText judgement rendering", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+    localStorage.clear();
+  });
+
+  it("keeps an authored post in its original language when the UI is Japanese", async () => {
+    localStorage.setItem("needo.language", "ja");
+    localStorage.setItem("needo.language.mode", "manual");
+    await act(async () => root.render(createElement(MemoryRouter, { initialEntries: ["/social"] }, createElement(
+      I18nProvider, null, createElement(I18nRuntime, null, createElement(UnifiedPostText, {
+        expanded: true,
+        profiles: {},
+        scope: "user",
+        text: "预约一览"
+      }))
+    ))));
+    await act(async () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    expect(container.querySelector("p")?.textContent).toBe("预约一览");
   });
 
   it("renders a structured judgement as its shared SVG without duplicating its fallback text", async () => {

@@ -25,7 +25,6 @@ import { Button } from "../../../components/ui/Button";
 import { KycVerifiedBadge } from "../../../components/ui/KycVerifiedBadge";
 import { NotificationBadge } from "../../../components/ui/NotificationBadge";
 import { PinBadgeIcon } from "../../../components/ui/PinBadgeIcon";
-import { TranslationIcon } from "../../../components/ui/LanguageSwitcher";
 import { ShareNetworkIcon } from "../../../components/ui/ShareNetworkIcon";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { getGeneratedImageThumbnailUrl } from "../../../lib/imageThumbnails";
@@ -235,13 +234,9 @@ function InteractionIcon({
   );
 }
 
-type SocialPostMenuActionIconName = "translate" | "report" | "block";
+type SocialPostMenuActionIconName = "report" | "block";
 
 export function SocialPostMenuActionIcon({ name, className }: { name: SocialPostMenuActionIconName; className?: string }) {
-  if (name === "translate") {
-    return <TranslationIcon className={cn("h-5 w-5", className)} />;
-  }
-
   if (name === "report") {
     return (
       <svg aria-hidden="true" className={cn("h-5 w-5 text-[#ff3b35]", className)} fill="none" viewBox="0 0 24 24">
@@ -853,7 +848,7 @@ export function SocialPostTextRenderer({
   }
 
   return (
-    <p className={cn("whitespace-pre-wrap break-words text-[15px] leading-7 text-[color:var(--client-text)]", className)}>
+    <p className={cn("whitespace-pre-wrap break-words text-[15px] leading-7 text-[color:var(--client-text)]", className)} data-no-i18n>
       {segments.map((segment, index) => {
         if (segment.type === "judgement") {
           return (
@@ -1472,10 +1467,6 @@ function PostMenu({
             {isRepost ? "取消转发" : "删除动态"}
           </button>
         ) : null}
-        <button className={menuItemClassName} type="button">
-          <SocialPostMenuActionIcon name="translate" />
-          <span>翻译</span>
-        </button>
         <button className={menuItemClassName} type="button">
           <SocialPostMenuActionIcon name="report" />
           <span>举报</span>

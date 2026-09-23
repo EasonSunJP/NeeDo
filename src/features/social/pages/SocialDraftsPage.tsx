@@ -73,13 +73,13 @@ export function SocialDraftsPage() {
                   className="block rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-4 transition hover:bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)]"
                   to={resumePath}
                 >
-                  <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-[color:var(--client-text)]">
+                  <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-[color:var(--client-text)]" data-no-i18n={draft.text.trim() ? true : undefined}>
                     {draft.text.trim() || "这条草稿目前只有媒体，还没有正文。"}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-4 text-sm font-semibold text-[color:var(--client-muted)]">
                     <span>{draft.media.length} 个媒体</span>
                     <span>{formatSocialVisibilityLabel(draft.visibility ?? "public")}</span>
-                    {draft.locationLabel ? <span>{draft.locationLabel}</span> : null}
+                    {draft.locationLabel ? <span data-no-i18n>{draft.locationLabel}</span> : null}
                   </div>
                 </Link>
               </SurfacePanel>
