@@ -72,6 +72,7 @@ import { ApplicationShell } from "../identity-applications/ApplicationUi";
 import { ImOpenedMediaCacheSettingsSection } from "./ImOpenedMediaCacheSettingsSection";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { LocalizedTextEditor } from "../../shared/localized-content/LocalizedTextEditor";
+import { findServiceAreaPath, getServiceAreaDistricts, getServiceAreaPrefectures, getServiceAreaStreets, normalizeServiceStreet } from "./serviceAreaHierarchy";
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
 const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
@@ -79,12 +80,6 @@ const appVersion = deploymentVersionLabel;
 
 function normalizeAreaToken(value: string) {
   return value.toLocaleLowerCase().replace(/[\s/／・,，、区市町丁目.-]/g, "");
-}
-
-function buildServiceAreaOptions(...sources: Array<string | string[] | undefined>) {
-  const values = sources.flatMap((source) => (Array.isArray(source) ? source : source ? [source] : []));
-
-  return Array.from(new Set([...serviceAreaPool, ...values.map((value) => value.trim()).filter(Boolean)]));
 }
 
 function getManualHomeLocationId(area: string) {
@@ -96,6 +91,7 @@ function getManualHomeLocationId(area: string) {
 }
 
 function getHomeLocationAreaLabel(location: HomeLocationOption) {
+  if (location.district?.trim()) return location.district;
   const tokens = [location.district, location.area, location.city, location.label].filter(Boolean).map((value) => normalizeAreaToken(value ?? ""));
   const matchedArea = serviceAreaPool.find((area) => {
     const areaToken = normalizeAreaToken(area);
@@ -106,22 +102,13 @@ function getHomeLocationAreaLabel(location: HomeLocationOption) {
   return matchedArea ?? location.district ?? location.area ?? location.label;
 }
 
-function findHomeLocationForArea(locations: HomeLocationOption[], area: string) {
-  const areaToken = normalizeAreaToken(area);
-
-  return locations.find((location) => {
-    const tokens = [location.label, location.city, location.area, location.district ?? ""].map(normalizeAreaToken).filter(Boolean);
-
-    return tokens.some((token) => token === areaToken || token.includes(areaToken) || areaToken.includes(token));
-  });
-}
-
-function createManualHomeLocation(area: string): HomeLocationOption {
+function createManualHomeLocation(area: string, path = findServiceAreaPath(area)): HomeLocationOption {
   return {
-    id: getManualHomeLocationId(area),
-    label: area,
-    city: area === "横滨" ? "横滨" : "东京",
-    area
+    id: getManualHomeLocationId(path ? `${path.prefecture.id}/${path.district.id}/${area}` : area),
+    label: path ? `${path.prefecture.name} / ${path.district.name} / ${area}` : area,
+    city: path?.prefecture.name ?? (area === "横滨" ? "横滨" : "东京"),
+    area: path?.district.name ?? area,
+    district: path ? area : undefined
   };
 }
 
@@ -2696,6 +2683,7 @@ export function UnifiedSettingsVerificationPage({ portal }: { portal: UnifiedSet
 
 export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSettingsPortal }) {
   const navigate = useNavigate();
+  const singleSelection = portal === "user" || portal === "merchant";
   const { language } = useI18n();
   const { session } = useAuth();
   const { stores } = useEntityStore();
@@ -2729,29 +2717,78 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
   }, [portal, selectedHomeArea, storeArea, technicianAreaKey]);
   const [areas, setAreas] = useState<string[]>(initialAreas);
   const [serviceRangeSearchQuery, setServiceRangeSearchQuery] = useState("");
+  const prefectures = useMemo(() => getServiceAreaPrefectures(), []);
+  const initialPath = findServiceAreaPath(
+    portal === "user" && selectedHomeLocation.district
+      ? `${selectedHomeLocation.city} / ${selectedHomeLocation.area} / ${selectedHomeLocation.district}`
+      : initialAreas[0] ?? ""
+  ) ?? findServiceAreaPath(initialAreas[0] ?? "");
+  const [selectedPrefectureId, setSelectedPrefectureId] = useState(initialPath?.prefecture.id ?? "jp-prefecture-13000");
+  const [selectedDistrictId, setSelectedDistrictId] = useState(initialPath?.district.id ?? "jp-municipality-13103");
+  const [selectedStreetPath, setSelectedStreetPath] = useState(initialPath);
+  const [streetInput, setStreetInput] = useState("");
   const [serviceRangeSaving, setServiceRangeSaving] = useState(false);
   const [serviceRangeError, setServiceRangeError] = useState("");
   const t = (source: string) => translateText(source, language);
-  const serviceRangeAreaOptions = useMemo(
-    () => buildServiceAreaOptions(initialAreas, portal === "merchant" ? storeArea : undefined, portal === "technician" ? technicianAreas : undefined),
-    [initialAreas, portal, storeArea, technicianAreaKey]
-  );
-  const filteredServiceAreas = useMemo(() => {
-    const query = serviceRangeSearchQuery.trim().toLocaleLowerCase();
-
-    if (!query) {
-      return serviceRangeAreaOptions;
-    }
-
-    return serviceRangeAreaOptions.filter((area) => {
-      const translatedArea = t(area);
-
-      return area.toLocaleLowerCase().includes(query) || translatedArea.toLocaleLowerCase().includes(query);
-    });
-  }, [language, serviceRangeAreaOptions, serviceRangeSearchQuery]);
+  const districts = useMemo(() => getServiceAreaDistricts(selectedPrefectureId), [selectedPrefectureId]);
+  const selectedPrefecture = prefectures.find((item) => item.id === selectedPrefectureId);
+  const selectedDistrict = districts.find((item) => item.id === selectedDistrictId);
+  const streets = useMemo(() => Array.from(new Set([
+    ...getServiceAreaStreets(selectedDistrictId),
+    ...initialAreas.flatMap((area) => {
+      const path = findServiceAreaPath(area);
+      return path?.district.id === selectedDistrictId && path.street
+        && !getServiceAreaStreets(selectedDistrictId).some((street) => normalizeServiceStreet(street) === normalizeServiceStreet(path.street))
+        ? [path.street] : [];
+    }),
+    ...(selectedStreetPath?.district.id === selectedDistrictId && selectedStreetPath.street
+      && !getServiceAreaStreets(selectedDistrictId).some((street) => normalizeServiceStreet(street) === normalizeServiceStreet(selectedStreetPath.street))
+      ? [selectedStreetPath.street] : [])
+  ])), [initialAreas, selectedDistrictId, selectedStreetPath]);
+  const matchesSearch = (value: string) => !serviceRangeSearchQuery.trim()
+    || value.toLocaleLowerCase().includes(serviceRangeSearchQuery.trim().toLocaleLowerCase())
+    || t(value).toLocaleLowerCase().includes(serviceRangeSearchQuery.trim().toLocaleLowerCase());
+  const filteredPrefectures = prefectures.filter((item) => matchesSearch(item.name));
+  const filteredDistricts = districts.filter((item) => matchesSearch(item.name));
+  const filteredStreets = streets.filter(matchesSearch);
+  const isStreetSelected = (street: string) => areas.some((area) => {
+    const path = findServiceAreaPath(area);
+    return (path?.district.id === selectedDistrictId && normalizeServiceStreet(path.street) === normalizeServiceStreet(street))
+      || (portal === "user" && selectedStreetPath?.district.id === selectedDistrictId && normalizeServiceStreet(area) === normalizeServiceStreet(street));
+  });
+  const chooseStreet = (street: string) => {
+    const streetName = street.trim();
+    if (!streetName || !selectedPrefecture || !selectedDistrict) return;
+    const value = portal === "user" ? streetName : `${selectedPrefecture.name} / ${selectedDistrict.name} / ${streetName}`;
+    setSelectedStreetPath({ prefecture: selectedPrefecture, district: selectedDistrict, street: streetName });
+    setAreas((current) => portal === "technician"
+      ? current.some((item) => {
+        const path = findServiceAreaPath(item);
+        return path?.district.id === selectedDistrictId && normalizeServiceStreet(path.street) === normalizeServiceStreet(streetName);
+      })
+        ? current.filter((item) => {
+          const path = findServiceAreaPath(item);
+          return path?.district.id !== selectedDistrictId || normalizeServiceStreet(path.street) !== normalizeServiceStreet(streetName);
+        })
+        : [...current, value]
+      : [value]);
+    setStreetInput("");
+    setServiceRangeSearchQuery("");
+    setServiceRangeError("");
+  };
   useEffect(() => {
     setAreas(initialAreas);
-  }, [initialAreas]);
+    const path = findServiceAreaPath(
+      portal === "user" && selectedHomeLocation.district
+        ? `${selectedHomeLocation.city} / ${selectedHomeLocation.area} / ${selectedHomeLocation.district}`
+        : initialAreas[0] ?? ""
+    ) ?? findServiceAreaPath(initialAreas[0] ?? "");
+    if (path) {
+      setSelectedPrefectureId(path.prefecture.id);
+      setSelectedDistrictId(path.district.id);
+      setSelectedStreetPath(path);
+    }
+  }, [initialAreas, portal, selectedHomeLocation]);
   const closeServiceRangePage = () => {
     if (typeof window !== "undefined" && typeof window.history.state?.idx === "number" && window.history.state.idx > 0) {
       navigate(-1);
@@ -2761,10 +2798,16 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
     navigate(getSettingsBasePath(portal), { replace: true });
   };
   const handleSaveServiceRange = async () => {
+    if (singleSelection && areas.length === 0) {
+      setServiceRangeError(t("请选择街道"));
+      return;
+    }
     if (portal === "user") {
       const selectedArea = areas[0] ?? selectedHomeArea;
-      const existingLocation = findHomeLocationForArea(homeLocationConfig.locations, selectedArea);
-      const nextLocation = existingLocation ?? createManualHomeLocation(selectedArea);
+      const existingLocation = selectedArea === selectedHomeArea
+        ? selectedHomeLocation
+        : homeLocationConfig.locations.find((item) => normalizeAreaToken(item.district ?? "") === normalizeAreaToken(selectedArea));
+      const nextLocation = existingLocation ?? createManualHomeLocation(selectedArea, selectedStreetPath?.street === selectedArea ? selectedStreetPath : null);
 
       if (!existingLocation) {
         updateHomeLayoutConfig({
@@ -2841,32 +2884,81 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
         title={t("服务范围")}
       >
         <div className="space-y-4 pt-1">
-          <div className="flex flex-wrap gap-3">
-            {filteredServiceAreas.map((area) => {
-              const active = areas.includes(area);
-
-              return (
+          <section className="space-y-2" aria-label={t("国家")}>
+            <h2 className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("国家")}</h2>
+            <span className="inline-flex min-h-11 items-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)]">{t("日本")}</span>
+          </section>
+          <section className="space-y-2" aria-label={t("城市（都道府县）")}>
+            <h2 className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("城市（都道府县）")}</h2>
+            <div className="flex max-h-44 flex-wrap content-start gap-2 overflow-y-auto">
+              {filteredPrefectures.map((prefecture) => (
                 <button
-                  className={cn(
-                    "inline-flex min-h-11 min-w-[86px] items-center justify-center rounded-full px-4 text-[14px] font-black leading-none transition active:scale-[0.98]",
-                    active
-                      ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
-                      : "bg-[color:color-mix(in_srgb,var(--client-surface)_58%,transparent)] text-[color:var(--client-text)]"
-                  )}
-                  key={area}
-                  onClick={() =>
-                    portal === "technician"
-                      ? setAreas((current) => (current.includes(area) ? current.filter((item) => item !== area) : [...current, area]))
-                      : setAreas([area])
-                  }
+                  aria-pressed={selectedPrefectureId === prefecture.id}
+                  className={cn("min-h-11 rounded-full px-4 text-sm font-black", selectedPrefectureId === prefecture.id ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]")}
+                  key={prefecture.id}
+                  onClick={() => {
+                    if (prefecture.id === selectedPrefectureId) return;
+                    setSelectedPrefectureId(prefecture.id);
+                    setSelectedDistrictId(getServiceAreaDistricts(prefecture.id)[0]?.id ?? "");
+                    if (singleSelection) setAreas([]);
+                    setSelectedStreetPath(null);
+                    setServiceRangeSearchQuery("");
+                  }}
                   type="button"
-                >
-                  {t(area)}
-                </button>
-              );
-            })}
-          </div>
-          {filteredServiceAreas.length === 0 ? (
+                >{prefecture.name}</button>
+              ))}
+            </div>
+          </section>
+          <section className="space-y-2" aria-label={t("区域")}>
+            <h2 className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("区域")}</h2>
+            <div className="flex max-h-44 flex-wrap content-start gap-2 overflow-y-auto">
+              {filteredDistricts.map((district) => (
+                <button
+                  aria-pressed={selectedDistrictId === district.id}
+                  className={cn("min-h-11 rounded-full px-4 text-sm font-black", selectedDistrictId === district.id ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]")}
+                  key={district.id}
+                  onClick={() => {
+                    if (district.id === selectedDistrictId) return;
+                    setSelectedDistrictId(district.id);
+                    if (singleSelection) setAreas([]);
+                    setSelectedStreetPath(null);
+                    setServiceRangeSearchQuery("");
+                  }}
+                  type="button"
+                >{district.name}</button>
+              ))}
+            </div>
+          </section>
+          <section className="space-y-2" aria-label={t("街道")}>
+            <h2 className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("街道")}</h2>
+            <div className="flex flex-wrap gap-2">
+              {filteredStreets.map((street) => (
+                <button
+                  aria-pressed={isStreetSelected(street)}
+                  className={cn("min-h-11 rounded-full px-4 text-sm font-black", isStreetSelected(street) ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]")}
+                  key={street}
+                  onClick={() => chooseStreet(street)}
+                  type="button"
+                >{t(street)}</button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                aria-label={t("输入街道名称")}
+                className="min-h-11 min-w-0 flex-1 rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 text-sm text-[color:var(--client-text)]"
+                maxLength={80}
+                onChange={(event) => setStreetInput(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); chooseStreet(streetInput); } }}
+                placeholder={t("输入街道名称")}
+                value={streetInput}
+              />
+              <button className="min-h-11 rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => chooseStreet(streetInput)} type="button">{t("添加街道")}</button>
+            </div>
+          </section>
+          {areas.length > 0 ? (
+            <p className="px-1 text-sm text-[color:var(--client-muted)]">{t("已选")}: {areas.map(t).join("、")}</p>
+          ) : null}
+          {serviceRangeSearchQuery && filteredPrefectures.length + filteredDistricts.length + filteredStreets.length === 0 ? (
             <p className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("没有匹配结果")}</p>
           ) : null}
           {serviceRangeError ? <p className="px-1 text-sm font-bold text-red-500" role="alert">{t("保存失败。")} {serviceRangeError}</p> : null}

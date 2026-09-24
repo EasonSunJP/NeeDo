@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import source from "./UserCenterPage.tsx?raw";
 
 describe("UserCenterPage", () => {
+  it("uses the shared localized platform membership tier names", () => {
+    expect(source).toContain("platformMembershipTierText(formalData.membership.tierCode, language)");
+    expect(source).not.toContain("const platformMembershipTierLabels");
+  });
   it("links the collection entry to the formal dynamics and chat-record favorites hub", () => {
     expect(source).toContain('zh: "已收藏的服务、店铺、技师、动态与聊天记录"');
     expect(source).toContain('ja: "お気に入りのサービス・店舗・スタッフ・投稿・チャット履歴"');

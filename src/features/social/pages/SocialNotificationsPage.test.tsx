@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { translateText } from "../../../i18n/translations";
+import "../registerRouteI18n";
 import source from "./SocialNotificationsPage.tsx?raw";
 import { socialRouteTranslations } from "../route-i18n";
+import uiSource from "../components/UnifiedSocialUi.tsx?raw";
 
 describe("SocialNotificationsPage", () => {
   it("shows only friend and nearby timeline updates", () => {
@@ -19,7 +22,9 @@ describe("SocialNotificationsPage", () => {
     expect(source).toContain('closeTo={socialPaths.timeline(scope)}');
     expect(source).toContain('info="附近与好友新动态"');
     expect(source).not.toContain('subtitle="附近与好友新动态"');
-    expect(source).toContain("unread={item.unread}");
+    expect(source).toContain("<ContactEventTimeline");
+    expect(source).toContain("showCommentComposer={false}");
+    expect(source).toContain('tone: item.unread ? "green" : "neutral"');
     expect(source).not.toContain("actions={<SocialTopActions");
   });
 
@@ -30,5 +35,11 @@ describe("SocialNotificationsPage", () => {
     "附近或好友发布新动态后，会在这里提示。"
   ])("localizes the new timeline notice copy: %s", (copy) => {
     expect(Object.keys(socialRouteTranslations[copy] ?? {})).toEqual(["zh-Hant", "ja", "en", "ko"]);
+  });
+
+  it("translates timeline notices in the shared sidebar row", () => {
+    expect(uiSource).toContain("translateText(content, language)");
+    expect(translateText("好友发布了新动态", "ja")).toBe("友だちが新しい投稿を公開しました");
+    expect(translateText("附近发布了新动态", "ja")).toBe("付近で新しい投稿が公開されました");
   });
 });

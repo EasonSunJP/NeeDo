@@ -159,6 +159,16 @@ describe("ContactEventTimeline comment composer visibility", () => {
     expect(markup).toContain('class="block"');
   });
 
+  it("keeps dates beside the rail while leaving room for notification text on mobile", () => {
+    const markup = renderToStaticMarkup(
+      <ContactEventTimeline events={events} layout="compact-three-column" showCommentComposer={false} />
+    );
+
+    expect(markup).toContain("grid-cols-[68px,18px,minmax(0,1fr)]");
+    expect(markup).toContain("grid-cols-[32px,minmax(0,1fr)]");
+    expect(markup).not.toContain('aria-label="评论"');
+  });
+
   it("keeps the deployed comment row while allowing a formal navigation action", () => {
     const markup = renderToStaticMarkup(
       <ContactEventTimeline

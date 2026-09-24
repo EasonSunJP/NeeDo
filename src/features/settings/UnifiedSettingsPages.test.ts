@@ -498,6 +498,16 @@ describe("UnifiedSettingsServiceRangePage", () => {
     expect(serviceRangeSource).not.toContain('title={t("可服务区域")}');
     expect(serviceRangeSource).not.toContain("min-h-12 rounded-full px-5");
   });
+
+  it("shows country, prefecture, district, and street before saving a location", () => {
+    expect(serviceRangeSource).toContain('t("国家")');
+    expect(serviceRangeSource).toContain('t("城市（都道府县）")');
+    expect(serviceRangeSource).toContain('t("区域")');
+    expect(serviceRangeSource).toContain('t("街道")');
+    expect(serviceRangeSource).toContain("getServiceAreaPrefectures()");
+    expect(serviceRangeSource).toContain("getServiceAreaDistricts(selectedPrefectureId)");
+    expect(serviceRangeSource).toContain("getServiceAreaStreets(selectedDistrictId)");
+  });
 });
 
 describe("UnifiedSettingsPortalPage", () => {

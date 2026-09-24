@@ -23,6 +23,7 @@ import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { platformMembershipTierText } from "../../shared/profile-card/platformMembershipTierText";
 import { LocalizedTextEditor } from "../../shared/localized-content/LocalizedTextEditor";
 import { localizedText } from "../../shared/localized-content/localizedText";
 import { registerTranslationEntries, type Language } from "../../i18n/translations";
@@ -100,16 +101,6 @@ const userCenterCollectionInfo: Record<Language, string> = {
   en: "Favorite services, shops, technicians, posts and chat records",
   ko: "즐겨찾기 서비스, 매장, 기술자, 게시물 및 채팅 기록",
 };
-const platformMembershipTierLabels: Record<
-  MyPlatformMembership["tierCode"],
-  string
-> = {
-  free: "免费会员",
-  silver: "白银会员",
-  gold: "黄金会员",
-  black_diamond: "黑钻会员",
-};
-
 const accountSettings: Array<{
   info: string;
   label: string;
@@ -1161,7 +1152,7 @@ function CompleteUserCenterPage({
                   testPoints={testPoints}
                   theme={formalData.membership.theme}
                   tierLabel={
-                    platformMembershipTierLabels[formalData.membership.tierCode]
+                    platformMembershipTierText(formalData.membership.tierCode, language)
                   }
                   usageCount={usageCount}
                 />
@@ -1270,7 +1261,7 @@ function CompleteUserCenterPage({
                         )}
                       </div>
                       <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1 text-xs font-black text-[color:var(--client-primary-strong)]">{platformMembershipTierLabels[formalData.membership.tierCode]}</span>
+                        <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1 text-xs font-black text-[color:var(--client-primary-strong)]">{platformMembershipTierText(formalData.membership.tierCode, language)}</span>
                         <span
                           className={cn(
                             "inline-flex h-7 shrink-0 items-center text-[11px] font-black",

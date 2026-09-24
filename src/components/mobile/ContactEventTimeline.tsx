@@ -47,7 +47,7 @@ export function ContactEventTimeline({
   commentPlaceholder?: string;
   emptyLabel?: ReactNode;
   events: ContactEventTimelineEntry[];
-  layout?: "responsive" | "three-column";
+  layout?: "responsive" | "three-column" | "compact-three-column";
   onCommentButtonClick?: () => void;
   onCommentSubmit?: (comment: string) => void;
   showCommentComposer?: boolean;
@@ -136,6 +136,8 @@ export function ContactEventTimeline({
               "contact-event-row grid",
               layout === "three-column"
                 ? "grid-cols-[96px,22px,minmax(0,1fr)] gap-3"
+                : layout === "compact-three-column"
+                  ? "grid-cols-[68px,18px,minmax(0,1fr)] gap-2"
                 : "grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3"
             )}
             data-tone={event.tone ?? "default"}
@@ -143,7 +145,7 @@ export function ContactEventTimeline({
           >
             <div className={cn(
               "break-words whitespace-pre-line pt-1 text-[11px] font-medium leading-5 text-[color:var(--client-muted)] tabular-nums",
-              layout === "three-column" ? "text-right" : "col-span-2 text-left sm:col-span-1 sm:text-right"
+              layout !== "responsive" ? "text-right" : "col-span-2 text-left sm:col-span-1 sm:text-right"
             )}>
               {event.preserveAtLabel ? event.atLabel : formatContactTimelineAtLabel(event.atLabel, message)}
             </div>
@@ -161,6 +163,8 @@ export function ContactEventTimeline({
                 "contact-event-avatar-row grid items-start",
                 layout === "three-column"
                   ? "grid-cols-[40px,minmax(0,1fr)] gap-2.5"
+                  : layout === "compact-three-column"
+                    ? "grid-cols-[32px,minmax(0,1fr)] gap-2"
                   : "grid-cols-[32px,minmax(0,1fr)] gap-2 sm:grid-cols-[40px,minmax(0,1fr)] sm:gap-2.5"
               )}>
                 <ContactEventTimelineAvatar
@@ -269,7 +273,7 @@ function ContactEventTimelineCommentRow({
   commentAuthorName: string;
   commentDraft: string;
   commentOpen: boolean;
-  layout: "responsive" | "three-column";
+  layout: "responsive" | "three-column" | "compact-three-column";
   onChange: (value: string) => void;
   onClose: () => void;
   onOpen: () => void;
@@ -291,9 +295,11 @@ function ContactEventTimelineCommentRow({
       "contact-event-comment-row grid",
       layout === "three-column"
         ? "grid-cols-[96px,22px,minmax(0,1fr)] gap-3"
+        : layout === "compact-three-column"
+          ? "grid-cols-[68px,18px,minmax(0,1fr)] gap-2"
         : "grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3"
     )}>
-      <div className={layout === "three-column" ? "block" : "hidden sm:block"} />
+      <div className={layout === "responsive" ? "hidden sm:block" : "block"} />
       <div className="relative flex justify-center py-1">
         <button
           aria-label={buttonLabel}
@@ -376,7 +382,7 @@ export function ContactEventTimelinePanel({
   emptyLabel?: ReactNode;
   events: ContactEventTimelineEntry[];
   headerVariant?: "bar" | "plain";
-  layout?: "responsive" | "three-column";
+  layout?: "responsive" | "three-column" | "compact-three-column";
   onCommentButtonClick?: () => void;
   onCommentSubmit?: (comment: string) => void;
   showCommentComposer?: boolean;
