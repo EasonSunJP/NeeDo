@@ -172,7 +172,7 @@ function ClaimCard({
         </span>
       </div>
 
-      <div className="p-4">
+      <div className="px-4 pb-2 pt-4">
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[10px] font-black text-[color:var(--client-muted)]">{t("claimService")}</p>
@@ -213,7 +213,7 @@ function ClaimCard({
         <button
           aria-controls={`claim-details-${claim.id}`}
           aria-expanded={expanded}
-          className="focus-ring mt-3 min-h-11 w-full text-center text-xs font-black text-[color:var(--client-primary)]"
+          className="focus-ring mx-auto mt-1 block min-h-10 w-fit px-3 text-center text-xs font-black text-[color:var(--client-primary)]"
           data-action={expanded ? "hide-claim-details" : "show-claim-details"}
           onClick={() => setExpanded((current) => !current)}
           type="button"

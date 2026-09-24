@@ -135,7 +135,10 @@ describe("ExchangeReceivedClaims", () => {
     expect(card.textContent).toContain("真实服务 1");
     expect(card.textContent).not.toContain("GINZA Calm Body Lab");
     expect(card.textContent).not.toContain("可在约定时间到店");
-    await act(async () => card.querySelector<HTMLButtonElement>('[data-action="show-claim-details"]')!.click());
+    const detailsButton = card.querySelector<HTMLButtonElement>('[data-action="show-claim-details"]')!;
+    expect(detailsButton.className).toContain("w-fit");
+    expect(detailsButton.className).not.toContain("w-full");
+    await act(async () => detailsButton.click());
     expect(card.textContent).toContain("GINZA Calm Body Lab");
     expect(card.textContent).toContain("服务者 1");
     expect(card.textContent).toContain("手动抢单");
