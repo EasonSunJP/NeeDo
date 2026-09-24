@@ -29,6 +29,13 @@ describe("shop taxonomy editor model", () => {
     })).toEqual({ categoryIds: [2], keywordIds: [20], removedKeywordIds: [10] });
   });
 
+  it("switches the single Request category and clears its keywords", () => {
+    expect(toggleTaxonomyCategory({
+      categoryId: 2, categoryIds: [1], categoryLimit: 1,
+      keywordIds: [10], keywords: [{ id: 10, categoryId: 1 }]
+    })).toEqual({ categoryIds: [2], keywordIds: [], removedKeywordIds: [10] });
+  });
+
   it("enforces category and keyword limits before issuing a request", () => {
     expect(() => toggleTaxonomyCategory({
       categoryId: 3,

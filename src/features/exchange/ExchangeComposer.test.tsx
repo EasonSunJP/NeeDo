@@ -11,6 +11,7 @@ import {
 import { ExchangeComposer, getExchangeComposerMode } from "./ExchangeComposer";
 import { normalizeRequestDraft, type RequestComposerDraft } from "./exchange-composer-model";
 import { exchangeText } from "./i18n";
+import { shopTaxonomyApi } from "../shop-taxonomy/api";
 import type { ExchangePost } from "./types";
 
 const { authHasPermission } = vi.hoisted(() => ({
@@ -72,6 +73,7 @@ const publishedPost: ExchangePost = {
 };
 
 const validDemandDraft: RequestComposerDraft = {
+  categoryId: 1, businessKeywordIds: [10],
   contentLocale: "ja", title: "A demand", detail: "Details", cover: null,
   serviceStartDate: "2026-08-31", serviceStartTime: "13:00",
   serviceEndDate: "2026-08-31", serviceEndTime: "14:00",
@@ -175,7 +177,7 @@ function setInputValue(input: HTMLInputElement | HTMLTextAreaElement | HTMLSelec
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function fillDemandForm(container: ParentNode) {
+async function fillDemandForm(container: ParentNode) {
   const values: Record<string, string> = {
     title: "正式发布的需求",
     detail: "持久化正文",
@@ -190,11 +192,21 @@ function fillDemandForm(container: ParentNode) {
     budgetMaxJpy: "8000",
     addressLine1: "新宿区"
   };
-  Object.entries(values).forEach(([name, value]) => {
-    const input = container.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${name}"]`);
-    if (!input) throw new Error(`missing ${name}`);
-    setInputValue(input, value);
+  await act(async () => {
+    Object.entries(values).forEach(([name, value]) => {
+      const input = container.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${name}"]`);
+      if (!input) throw new Error(`missing ${name}`);
+      setInputValue(input, value);
+    });
   });
+  await waitFor(() => expect([...container.querySelectorAll<HTMLButtonElement>('button[aria-pressed="false"]')]
+    .find((button) => button.textContent === "按摩")).toBeTruthy());
+  await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-pressed="false"]')]
+    .find((button) => button.textContent === "按摩")?.click());
+  await waitFor(() => expect([...container.querySelectorAll<HTMLButtonElement>('button[aria-pressed="false"]')]
+    .find((button) => button.textContent === "上门按摩")).toBeTruthy());
+  await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-pressed="false"]')]
+    .find((button) => button.textContent === "上门按摩")?.click());
 }
 
 async function waitFor(assertion: () => void) {
@@ -224,6 +236,12 @@ describe("ExchangeComposer publication", () => {
     root = createRoot(container);
     vi.clearAllMocks();
     authHasPermission.mockReturnValue(false);
+    vi.spyOn(shopTaxonomyApi, "listCategories").mockResolvedValue({
+      list: [{ id: 1, code: "massage", label: "按摩", qualificationPolicy: "OPEN" }], total: 1, page: 1, page_size: 100
+    });
+    vi.spyOn(shopTaxonomyApi, "listKeywords").mockResolvedValue({
+      list: [{ id: 10, code: "home", categoryId: 1, label: "上门按摩", qualificationPolicy: "OPEN" }], total: 1, page: 1, page_size: 100
+    });
     vi.mocked(getRequestPublicationContext).mockResolvedValue({
       canPublish: true,
       capacitySource: "customer_membership",
@@ -263,7 +281,7 @@ describe("ExchangeComposer publication", () => {
     await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
-    await act(async () => fillDemandForm(document.body));
+    await fillDemandForm(document.body);
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-testid="exchange-composer-locale-rail"] [aria-label="English"]')?.click());
     expect(document.body.querySelector<HTMLInputElement>('[name="title"]')?.value).toBe("");
     await act(async () => setInputValue(document.body.querySelector<HTMLInputElement>('[name="title"]')!, "English request"));
@@ -284,7 +302,7 @@ describe("ExchangeComposer publication", () => {
     await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
-    await act(async () => fillDemandForm(document.body));
+    await fillDemandForm(document.body);
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-testid="exchange-composer-locale-rail"] [aria-label="同步到全部语言版本"]')?.click());
     expect(document.body.textContent).toContain("当前版本的文字会覆盖其他四个版本");
     await act(async () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.includes("确认同步"))?.click());
@@ -305,7 +323,7 @@ describe("ExchangeComposer publication", () => {
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
 
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-testid="exchange-composer-locale-rail"] [aria-label="日本語"]')?.click());
-    fillDemandForm(document.body);
+    await fillDemandForm(document.body);
 
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
     expect(publishExchangePost).not.toHaveBeenCalled();
@@ -344,7 +362,7 @@ describe("ExchangeComposer publication", () => {
     await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
-    fillDemandForm(document.body);
+    await fillDemandForm(document.body);
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-publish"]')?.click());
     await waitFor(() => expect(document.body.textContent).toContain("发布失败，请保留表单并重试"));
@@ -359,7 +377,7 @@ describe("ExchangeComposer publication", () => {
     await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
-    fillDemandForm(document.body);
+    await fillDemandForm(document.body);
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
     expect(document.body.querySelector('[data-testid="exchange-publication-review"]')).not.toBeNull();
 
@@ -390,7 +408,7 @@ describe("ExchangeComposer publication", () => {
     await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
-    fillDemandForm(document.body);
+    await fillDemandForm(document.body);
     setInputValue(document.body.querySelector<HTMLInputElement>('[name="targetProviderCount"]')!, "3");
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-publish"]')?.click());
@@ -424,7 +442,7 @@ describe("ExchangeComposer publication", () => {
     await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
-    fillDemandForm(document.body);
+    await fillDemandForm(document.body);
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-publish"]')?.click());
 

@@ -3,6 +3,8 @@ import { applyRequestDraftPatch, normalizeRequestDraft, type RequestComposerDraf
 import type { ExchangeRequestPublicationContext } from "./types";
 
 const draft: RequestComposerDraft = {
+  categoryId: 1,
+  businessKeywordIds: [10],
   contentLocale: "zh-CN",
   title: "上门服务",
   detail: "请提前联系",
@@ -36,6 +38,14 @@ const context = {
 } satisfies ExchangeRequestPublicationContext;
 
 describe("Request composer application deadline", () => {
+  it("requires a category and at least one keyword for a new Request", () => {
+    expect(normalizeRequestDraft({ ...draft, categoryId: null }, context)).toEqual({ ok: false, errorKey: "requestTagsRequired" });
+    expect(normalizeRequestDraft({ ...draft, businessKeywordIds: [] }, context)).toEqual({ ok: false, errorKey: "requestTagsRequired" });
+    expect(normalizeRequestDraft(draft, context)).toMatchObject({
+      ok: true,
+      value: { categoryId: 1, businessKeywordIds: [10] }
+    });
+  });
   it("accepts a half-hour application deadline strictly before service starts", () => {
     expect(normalizeRequestDraft(draft, context)).toEqual({ ok: true, value: expect.objectContaining({ expiresAt: expect.any(String) }) });
     for (const expiresTime of ["10:00", "10:30", "11:30", "09:45"]) {

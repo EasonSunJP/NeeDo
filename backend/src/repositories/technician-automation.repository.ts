@@ -355,6 +355,17 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       include: { demand: true, servicePrepayment: true }
     });
     if (!post?.demand || post.serviceEndAt <= now) return [];
+    const requestCategoryId = post.demand.categoryId ?? null;
+    const requestKeywordIds = Array.isArray(post.demand.businessKeywordIdsJson)
+      ? post.demand.businessKeywordIdsJson.filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0)
+      : [];
+    if (requestCategoryId !== null && requestKeywordIds.length === 0) return [];
+    const taxonomyShop = requestCategoryId === null ? {} : {
+      businessKeywordSelections: {
+        some: { businessKeywordId: { in: requestKeywordIds }, activeKey: { not: null }, deletedAt: null,
+          businessKeyword: { is: { categoryId: requestCategoryId, isActive: true, deletedAt: null } } }
+      }
+    };
     const prepaymentBaseAmountJpy = post.demand.budgetMode === "PER_PROVIDER"
       ? post.demand.budgetMaxJpy * post.demand.targetProviderCount
       : post.demand.budgetMaxJpy;
@@ -372,10 +383,10 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         status: "AVAILABLE",
         deletedAt: null,
         OR: [
-          { serviceId: { not: null }, technicianServiceId: null, shop: { is: { pricingMode: "MERCHANT" } }, service: { is: { status: "published", deletedAt: null } } },
-          { serviceId: null, technicianServiceId: { not: null }, shop: { is: { pricingMode: "TECHNICIAN" } }, technicianService: { is: { isActive: true, isBookable: true, reviewStatus: "APPROVED", deletedAt: null } } }
+          { serviceId: { not: null }, technicianServiceId: null, shop: { is: { pricingMode: "MERCHANT" } }, service: { is: { status: "published", deletedAt: null, ...(requestCategoryId === null ? {} : { categoryId: requestCategoryId, category: { is: { isActive: true, deletedAt: null } } }) } } },
+          { serviceId: null, technicianServiceId: { not: null }, shop: { is: { pricingMode: "TECHNICIAN" } }, technicianService: { is: { isActive: true, isBookable: true, reviewStatus: "APPROVED", deletedAt: null, ...(requestCategoryId === null ? {} : { categoryId: requestCategoryId, category: { is: { isActive: true, deletedAt: null } } }) } } }
         ],
-        shop: { is: { status: "published", deletedAt: null, entitySuspensions: { none: { status: "ACTIVE", activeKey: { not: null }, deletedAt: null } } } },
+        shop: { is: { status: "published", deletedAt: null, ...taxonomyShop, entitySuspensions: { none: { status: "ACTIVE", activeKey: { not: null }, deletedAt: null } } } },
         technicianProfile: {
           is: {
             status: "published",
@@ -610,7 +621,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
             slot.technicianProfile.workStates,
             slot.shopId
           ),
-          tagsMatch: null
+          tagsMatch: requestCategoryId === null ? null : true
         }
       };
       // Select only after evaluation; an earlier unrelated service must not consume

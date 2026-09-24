@@ -8,6 +8,7 @@ import type {
 
 export type ExchangeComposerErrorKey =
   | "required"
+  | "requestTagsRequired"
   | "invalidWindow"
   | "invalidRequestWindow"
   | "applicationDeadlinePassed"
@@ -71,6 +72,8 @@ function normalizeContentTranslations(translations: ContentTranslations | undefi
 
 export type RequestComposerDraft = {
   contentLocale: ExchangeContentLocale;
+  categoryId: number | null;
+  businessKeywordIds: number[];
   contentTranslations?: Partial<Record<ExchangeContentLocale, { title: string; detail: string }>>;
   cover: DemandCoverDraft | null;
   title: string;
@@ -126,6 +129,9 @@ export function normalizeRequestDraft(
 ): { ok: true; value: PublishExchangeDemandInput } | { ok: false; errorKey: ExchangeComposerErrorKey } {
   const contentTranslations = normalizeContentTranslations(draft.contentTranslations);
   if (!contentTranslations) return { ok: false, errorKey: "required" };
+  if (!draft.categoryId || draft.businessKeywordIds.length < 1 || draft.businessKeywordIds.length > 10) {
+    return { ok: false, errorKey: "requestTagsRequired" };
+  }
   if (draft.cover?.status === "uploading") return { ok: false, errorKey: "demandCoverUploading" };
   if (draft.cover && (
     draft.cover.status !== "ready"
@@ -174,6 +180,8 @@ export function normalizeRequestDraft(
     ok: true,
     value: {
       type: "demand",
+      categoryId: draft.categoryId,
+      businessKeywordIds: draft.businessKeywordIds,
       ...(draft.cover ? { coverMediaAssetPublicId: draft.cover.publicId! } : {}),
       title: draft.title.trim(),
       detail: draft.detail.trim(),

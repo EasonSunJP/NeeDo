@@ -33,6 +33,15 @@ const document = (): ExchangeOpenApiDocument =>
   createOpenApiDocument(env) as unknown as ExchangeOpenApiDocument;
 
 describe("formal Exchange OpenAPI contract", () => {
+  it("documents required Request taxonomy and legacy untagged projections", () => {
+    const schemas = document().components.schemas;
+    expect(schemas.ExchangeDemandPublishRequest.required).toEqual(expect.arrayContaining(["categoryId", "businessKeywordIds"]));
+    expect(schemas.ExchangeDemandPublishRequest.properties.businessKeywordIds).toMatchObject({
+      minItems: 1, maxItems: 10, uniqueItems: true
+    });
+    expect(schemas.ExchangeDemand.properties.categoryId).toMatchObject({ type: ["integer", "null"] });
+  });
+
   it("documents pending binary uploads and the immutable demand cover contract", () => {
     const api = document();
     expect(api.paths["/api/v1/exchange/demand-cover"]?.post).toMatchObject({

@@ -30,6 +30,8 @@ const demandRow = {
   deletedAt: null,
   demand: {
     coverMediaAsset: null,
+    categoryId: 1,
+    businessKeywordIdsJson: [10],
     serviceMode: "STORE",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -58,6 +60,17 @@ const demandRow = {
 };
 
 describe("ExchangePostRepository", () => {
+  it("accepts only active keywords in the selected Request category", async () => {
+    const findMany = jest.fn(async () => [{ id: 10 }]);
+    const repository = new ExchangePostRepository({ businessKeyword: { findMany } } as never);
+    await expect(repository.assertDemandTaxonomy(1, [10])).resolves.toBeUndefined();
+    expect(findMany).toHaveBeenCalledWith({ where: expect.objectContaining({
+      id: { in: [10] }, categoryId: 1, isActive: true, deletedAt: null
+    }), select: { id: true } });
+    findMany.mockResolvedValueOnce([]);
+    await expect(repository.assertDemandTaxonomy(1, [10])).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   const coverPublication = (): ExchangePublishRepositoryInput => ({
     actor: {
       userId: 7, identityId: 17, ownerIdentityId: 99, identityType: "customer",
@@ -66,7 +79,7 @@ describe("ExchangePostRepository", () => {
       customerMembership: null, shopScope: null
     },
     input: {
-      type: "demand", serviceMode: "store", title: demandRow.title, detail: demandRow.detail,
+      type: "demand", categoryId: 1, businessKeywordIds: [10], serviceMode: "store", title: demandRow.title, detail: demandRow.detail,
       contentLocale: "ja", contentTranslations: { en: { title: "Hair styling in Shibuya", detail: "Please help before the event." } }, serviceStartAt: demandRow.serviceStartAt, serviceEndAt: demandRow.serviceEndAt,
       expiresAt: demandRow.expiresAt, targetProviderCount: 1, matchMode: "quick", budgetMode: "total",
       budgetMinJpy: null, budgetMaxJpy: 12000, addressLine1: "渋谷区", addressLine2: null,
@@ -825,6 +838,8 @@ describe("ExchangePostRepository", () => {
           },
           demand: {
             cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
+            categoryId: 1,
+            businessKeywordIds: [10],
             serviceMode: "store",
             targetProviderCount: 1,
             targetProviderLimitSnapshot: 1,
@@ -1519,6 +1534,8 @@ describe("ExchangePostRepository", () => {
       },
       input: {
         type: "demand" as const,
+        categoryId: 1,
+        businessKeywordIds: [10],
         serviceMode: "store" as const,
         title: demandRow.title,
         detail: demandRow.detail,
@@ -1584,6 +1601,8 @@ describe("ExchangePostRepository", () => {
           demand: {
             create: {
               coverMediaAssetId: null,
+              categoryId: 1,
+              businessKeywordIdsJson: [10],
               serviceMode: "STORE",
               targetProviderCount: 1,
               targetProviderLimitSnapshot: 1,

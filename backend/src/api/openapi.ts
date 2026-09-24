@@ -5088,6 +5088,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: [
           "cover",
+          "categoryId",
+          "businessKeywordIds",
           "serviceMode",
           "targetProviderCount",
           "targetProviderLimitSnapshot",
@@ -5111,6 +5113,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           serviceMode: { type: "string", enum: ["home", "store"] },
+          categoryId: { type: ["integer", "null"], minimum: 1, description: "Null for demands published before taxonomy matching." },
+          businessKeywordIds: { type: "array", items: { type: "integer", minimum: 1 } },
           targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
           targetProviderLimitSnapshot: { type: "integer", minimum: 1, maximum: 20 },
           publisherCapacitySource: {
@@ -6271,6 +6275,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "serviceStartAt",
           "serviceEndAt",
           "expiresAt",
+          "categoryId",
+          "businessKeywordIds",
           "serviceMode",
           "targetProviderCount",
           "matchMode",
@@ -6303,6 +6309,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           serviceEndAt: { type: "string", format: "date-time", description: "Service end; must be on a 30-minute boundary." },
           expiresAt: { type: "string", format: "date-time", description: "Application deadline; must be on a 30-minute boundary and at least 30 minutes before serviceStartAt." },
           serviceMode: { type: "string", enum: ["home", "store"] },
+          categoryId: { type: "integer", minimum: 1 },
+          businessKeywordIds: { type: "array", minItems: 1, maxItems: 10, uniqueItems: true, items: { type: "integer", minimum: 1 } },
           targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
           matchMode: { type: "string", enum: ["quick", "selective"] },
           budgetMode: { type: "string", enum: ["total", "per_provider"] },

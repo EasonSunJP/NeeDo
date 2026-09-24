@@ -236,6 +236,8 @@ export type ExchangePriority = {
 
 export type ExchangeDemand = {
   cover: { url: string; isDefault: boolean };
+  categoryId?: number | null;
+  businessKeywordIds?: number[];
   serviceMode: ExchangeDemandServiceMode;
   targetProviderCount: number;
   targetProviderLimitSnapshot: number;
@@ -373,6 +375,8 @@ type ExchangePublishCommon = {
 export type PublishExchangeDemandInput = ExchangePublishCommon & {
   type: "demand";
   coverMediaAssetPublicId?: string;
+  categoryId: number;
+  businessKeywordIds: number[];
   serviceMode: ExchangeDemandServiceMode;
   targetProviderCount: number;
   matchMode: ExchangeMatchMode;

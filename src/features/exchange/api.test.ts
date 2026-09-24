@@ -149,6 +149,8 @@ describe("formal Exchange API client", () => {
   it("publishes each subtype without client-controlled actor fields", async () => {
     await publishExchangePost({
       type: "demand",
+      categoryId: 1,
+      businessKeywordIds: [10],
       serviceMode: "store",
       title: formalPost.title,
       detail: formalPost.detail,
@@ -172,6 +174,8 @@ describe("formal Exchange API client", () => {
     expect(httpClient.request).toHaveBeenCalledWith("/exchange/posts", {
       body: {
         type: "demand",
+        categoryId: 1,
+        businessKeywordIds: [10],
         serviceMode: "store",
         title: formalPost.title,
         detail: formalPost.detail,

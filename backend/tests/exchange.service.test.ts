@@ -77,6 +77,8 @@ const post: ExchangePostPayload = {
   },
   demand: {
     cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
+    categoryId: 1,
+    businessKeywordIds: [10],
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -129,6 +131,8 @@ const resolvedIntelligenceService = {
 
 const demandInput = {
   type: "demand" as const,
+  categoryId: 1,
+  businessKeywordIds: [10],
   serviceMode: "store" as const,
   title: post.title,
   detail: post.detail,
@@ -205,6 +209,7 @@ const createRepository = () => {
       page_size: 20
     })),
     findPostByIdempotencyKey: jest.fn(async () => null),
+    assertDemandTaxonomy: jest.fn(async () => undefined),
     resolveIntelligencePublicationService: jest.fn(async () => ({
       kind: "success" as const,
       value: resolvedIntelligenceService

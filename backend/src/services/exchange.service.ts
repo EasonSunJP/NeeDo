@@ -184,6 +184,7 @@ export interface ExchangeRepositoryPort {
     serviceRef: ExchangeIntelligenceServiceRef;
     now: Date;
   }): Promise<ExchangeIntelligencePublicationServiceResolution>;
+  assertDemandTaxonomy(categoryId: number, businessKeywordIds: number[]): Promise<void>;
   createPost(input: ExchangePublishRepositoryInput): Promise<{ id: number }>;
   createAudit(input: AuditLogCreateInput): Promise<void>;
   findPostByIdOrThrow(
@@ -414,6 +415,7 @@ export class ExchangeService {
         }
 
         if (input.type === "demand") {
+          await repository.assertDemandTaxonomy(input.categoryId, input.businessKeywordIds);
           if (!capacity || !this.exchangeRequestFeeService || !this.ledgerService) {
             throw this.requestFeeUnavailable();
           }

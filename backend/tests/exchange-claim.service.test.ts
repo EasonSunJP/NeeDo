@@ -105,7 +105,9 @@ const request = {
   demand: {
     matchMode: "selective" as const,
     budgetMinJpy: 10_000,
-    budgetMaxJpy: 30_000
+    budgetMaxJpy: 30_000,
+    categoryId: 1,
+    businessKeywordIds: [10]
   }
 };
 
@@ -147,6 +149,7 @@ const createRepository = (overrides: Partial<ExchangeClaimRepositoryPort> = {}) 
     notifyQuickBudgetDecisionRequired: jest.fn(async () => undefined),
     completeMatch: jest.fn(async () => null),
     lockOption: jest.fn(async () => option),
+    matchesRequestTaxonomy: jest.fn(async () => true),
     hasActiveClaimForRequestTechnician: jest.fn(async () => false),
     hasOverlappingActiveClaim: jest.fn(async () => false),
     hasOverlappingMatchParticipant: jest.fn(async () => false),
@@ -334,6 +337,21 @@ describe("ExchangeClaimService", () => {
       })
     );
     expect(quickMatchingService.attemptAfterClaim).not.toHaveBeenCalled();
+  });
+
+  it("rejects a tagged Request when the locked service fails taxonomy matching", async () => {
+    const repository = createRepository({ matchesRequestTaxonomy: jest.fn(async () => false) });
+    const service = new ExchangeClaimService(
+      repository,
+      { resolveActor: jest.fn(async () => merchantActor) },
+      () => now
+    );
+    await expect(service.createClaim(
+      merchantAccess, 41,
+      { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: null },
+      "claim-key-taxonomy-mismatch", requestContext
+    )).rejects.toMatchObject({ code: expect.any(Number) });
+    expect(repository.create).not.toHaveBeenCalled();
   });
 
   it("passes a dynamic option's service reference through the locked claim path", async () => {

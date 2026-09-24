@@ -64,6 +64,7 @@ export interface ExchangeClaimRepositoryPort extends ExchangeQuickMatchingReposi
     now?: Date,
     serviceRef?: ExchangeClaimServiceRef
   ): Promise<ExchangeClaimLockedOption | null>;
+  matchesRequestTaxonomy(request: ExchangeClaimRequestRecord, option: ExchangeClaimLockedOption): Promise<boolean>;
   hasActiveClaimForRequestTechnician(
     exchangePostId: number,
     technicianProfileId: number
@@ -201,6 +202,9 @@ export class ExchangeClaimService {
           input.serviceRef as ExchangeClaimServiceRef | undefined
         );
         if (!option || option.technicianProfileId !== candidate.technicianProfileId) {
+          throw this.scheduleUnavailable();
+        }
+        if (!(await repository.matchesRequestTaxonomy(request!, option))) {
           throw this.scheduleUnavailable();
         }
         this.assertOptionWithinRequest(request!, option);

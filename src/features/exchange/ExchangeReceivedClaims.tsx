@@ -141,6 +141,24 @@ function ClaimCard({
     : claim.source === "shop_dispatch"
       ? "claimSourceShopDispatch"
       : "claimSourceManual";
+  const detailsToggle = (
+    <button
+      aria-controls={`claim-details-${claim.id}`}
+      aria-expanded={expanded}
+      aria-label={t(expanded ? "claimHideDetails" : "claimShowDetails")}
+      className="focus-ring flex h-10 w-10 items-center justify-center rounded-xl text-[color:var(--client-primary)] hover:bg-[color:var(--client-primary-soft)]"
+      data-action={expanded ? "hide-claim-details" : "show-claim-details"}
+      onClick={() => setExpanded((current) => !current)}
+      title={t(expanded ? "claimHideDetails" : "claimShowDetails")}
+      type="button"
+    >
+      <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="square" strokeLinejoin="miter" strokeWidth="3" viewBox="0 0 24 24">
+        <path d={expanded
+          ? "M3 3l7 7m0 0V5m0 5H5M21 3l-7 7m0 0V5m0 5h5M3 21l7-7m0 0v5m0-5H5M21 21l-7-7m0 0v5m0-5h5"
+          : "M10 10 3 3m0 0h5M3 3v5M14 10l7-7m0 0h-5m5 0v5M10 14l-7 7m0 0h5m-5 0v-5M14 14l7 7m0 0h-5m5 0v-5"} />
+      </svg>
+    </button>
+  );
   return (
     <article
       className={`overflow-hidden rounded-[24px] border bg-[color:var(--client-bg-soft)] transition-colors ${selected ? "border-[color:var(--client-primary)] ring-2 ring-[color:var(--client-primary-soft)]" : "border-[color:var(--client-line)]"}`}
@@ -173,12 +191,15 @@ function ClaimCard({
       </div>
 
       <div className="px-4 pb-2 pt-4">
-        <div className="flex items-end justify-between gap-3">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[10px] font-black text-[color:var(--client-muted)]">{t("claimService")}</p>
             <h3 className="mt-1 truncate text-base font-black text-[color:var(--client-text)]">{claim.service.name}</h3>
           </div>
-          <strong className="shrink-0 text-xl font-black text-[color:var(--client-primary)]">¥{claim.quoteAmountJpy.toLocaleString("ja-JP")}</strong>
+          <div className="flex shrink-0 flex-col items-end">
+            <strong className="text-xl font-black text-[color:var(--client-primary)]">¥{claim.quoteAmountJpy.toLocaleString("ja-JP")}</strong>
+            {!expanded ? detailsToggle : null}
+          </div>
         </div>
 
         {expanded ? (
@@ -210,14 +231,7 @@ function ClaimCard({
             </dl>
           </div>
         ) : null}
-        <button
-          aria-controls={`claim-details-${claim.id}`}
-          aria-expanded={expanded}
-          className="focus-ring mx-auto mt-1 block min-h-10 w-fit px-3 text-center text-xs font-black text-[color:var(--client-primary)]"
-          data-action={expanded ? "hide-claim-details" : "show-claim-details"}
-          onClick={() => setExpanded((current) => !current)}
-          type="button"
-        >{t(expanded ? "claimHideDetails" : "claimShowDetails")}</button>
+        {expanded ? <div className="mt-1 flex justify-end">{detailsToggle}</div> : null}
       </div>
     </article>
   );

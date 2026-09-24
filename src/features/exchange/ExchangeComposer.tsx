@@ -15,6 +15,7 @@ import {
 } from "./api";
 import { ExchangeComposerShell, type ExchangeComposerStep } from "./ExchangeComposerShell";
 import { DemandCoverField } from "./DemandCoverField";
+import { shopTaxonomyCopy } from "../shop-taxonomy/i18n";
 import { ExchangePublicationReview } from "./ExchangePublicationReview";
 import { IntelligenceComposerFields } from "./IntelligenceComposerFields";
 import { RequestComposerFields } from "./RequestComposerFields";
@@ -61,6 +62,8 @@ function contentLocaleLabel(locale: ExchangeContentLocale) {
 function createEmptyRequestDraft(contentLocale: ExchangeContentLocale): RequestComposerDraft {
   return {
     contentLocale,
+    categoryId: null,
+    businessKeywordIds: [],
     cover: null,
     title: "",
     detail: "",
@@ -181,6 +184,7 @@ export function ExchangeComposer({
   const [step, setStep] = useState<ExchangeComposerStep>("edit");
   const [pending, setPending] = useState(false);
   const [requestDraft, setRequestDraft] = useState<RequestComposerDraft>(() => createEmptyRequestDraft(contentLocale));
+  const [requestKeywordLabels, setRequestKeywordLabels] = useState<string[]>([]);
   const [intelligenceDraft, setIntelligenceDraft] = useState<IntelligenceComposerDraft>(() => createEmptyIntelligenceDraft(contentLocale));
   const [requestContext, setRequestContext] = useState<ExchangeRequestPublicationContext | null>(null);
   const [requestContextStatus, setRequestContextStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -282,6 +286,7 @@ export function ExchangeComposer({
     setSyncOpen(false);
     setSavedLocale(null);
     setRequestDraft(createEmptyRequestDraft(contentLocale));
+    setRequestKeywordLabels([]);
     setIntelligenceDraft(createEmptyIntelligenceDraft(contentLocale));
     setRequestContext(null);
     setRequestContextStatus("idle");
@@ -437,6 +442,7 @@ export function ExchangeComposer({
           ...(normalizedPayload.type === "demand"
             ? [
               { label: t("serviceMode"), value: t(normalizedPayload.serviceMode === "home" ? "home" : "store") },
+              { label: shopTaxonomyCopy[language].title, value: requestKeywordLabels.join("、") },
               { label: t("addressLine1"), value: normalizedPayload.addressLine1 },
               { label: t("serviceWindow"), value: `${formatComposerDateTime(normalizedPayload.serviceStartAt, language)} ～ ${formatComposerDateTime(normalizedPayload.serviceEndAt, language)}` },
               { label: t("applicationDeadlineTime"), value: formatComposerDateTime(normalizedPayload.expiresAt, language) },
@@ -564,6 +570,7 @@ export function ExchangeComposer({
                   draft={selectedDraft as RequestComposerDraft}
                   language={language}
                   onChange={editRequest}
+                  onKeywordLabelsChange={setRequestKeywordLabels}
                 />
               </>
             ) : (

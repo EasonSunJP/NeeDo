@@ -136,7 +136,9 @@ describe("ExchangeReceivedClaims", () => {
     expect(card.textContent).not.toContain("GINZA Calm Body Lab");
     expect(card.textContent).not.toContain("可在约定时间到店");
     const detailsButton = card.querySelector<HTMLButtonElement>('[data-action="show-claim-details"]')!;
-    expect(detailsButton.className).toContain("w-fit");
+    expect(detailsButton.getAttribute("aria-label")).toBe(exchangeText("claimShowDetails", "zh"));
+    expect(detailsButton.textContent).toBe("");
+    expect(detailsButton.querySelector("svg path")).not.toBeNull();
     expect(detailsButton.className).not.toContain("w-full");
     await act(async () => detailsButton.click());
     expect(card.textContent).toContain("GINZA Calm Body Lab");
@@ -146,7 +148,11 @@ describe("ExchangeReceivedClaims", () => {
     expect(card.querySelector('a[href="#/profiles/technician/NT0000001"]')).not.toBeNull();
     expect(card.querySelector('a[href="#/profiles/shop/shop0000000007"]')).not.toBeNull();
     expect(card.querySelector('a[href="#/stores/shop0000000007/technicians/NT0000001/services"]')).not.toBeNull();
-    await act(async () => card.querySelector<HTMLButtonElement>('[data-action="hide-claim-details"]')!.click());
+    const collapseButton = card.querySelector<HTMLButtonElement>('[data-action="hide-claim-details"]')!;
+    expect(collapseButton.getAttribute("aria-label")).toBe(exchangeText("claimHideDetails", "zh"));
+    expect(collapseButton.textContent).toBe("");
+    expect(collapseButton.querySelector("svg path")?.getAttribute("d")).not.toBe(detailsButton.querySelector("svg path")?.getAttribute("d"));
+    await act(async () => collapseButton.click());
     expect(card.textContent).not.toContain("GINZA Calm Body Lab");
   });
 

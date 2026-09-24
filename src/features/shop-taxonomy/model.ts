@@ -29,6 +29,13 @@ export function toggleTaxonomyCategory(input: {
   }
 
   if (input.categoryIds.length >= input.categoryLimit) {
+    if (input.categoryLimit === 1) {
+      return {
+        categoryIds: [input.categoryId],
+        keywordIds: [],
+        removedKeywordIds: input.keywordIds
+      };
+    }
     throw new Error("category_limit");
   }
 

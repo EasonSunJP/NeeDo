@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { ExchangeClaimRepository } from "../src/repositories/exchange-claim.repository";
 import { encodeDynamicAvailabilityId } from "../src/domain/dynamic-booking-window";
 import { BookingRepository } from "../src/repositories/booking.repository";
+import type { ExchangeClaimRequestRecord } from "../src/repositories/exchange-claim.repository";
 
 type SqlQuery = { sql?: string; strings?: readonly string[]; values?: unknown[] };
 
@@ -75,6 +76,36 @@ const claimRow = {
 };
 
 describe("ExchangeClaimRepository option projection", () => {
+  it("requires both the service category and an active shop keyword for tagged Requests", async () => {
+    const request: ExchangeClaimRequestRecord = {
+      id: 41, authorUserId: 99, ownerIdentityId: 98, type: "demand", status: "published",
+      serviceStartAt: now, serviceEndAt: now, expiresAt: now,
+      demand: { matchMode: "selective", budgetMinJpy: null, budgetMaxJpy: 30000,
+        categoryId: 1, businessKeywordIds: [10] }
+    };
+    const service = { findUnique: jest.fn(async () => ({ categoryId: 2, category: { isActive: true, deletedAt: null } })) };
+    let matchedKeyword: { id: number } | null = { id: 1 };
+    const keywords = { findFirst: jest.fn(async () => matchedKeyword) };
+    const repository = new ExchangeClaimRepository({
+      service,
+      shopBusinessKeyword: keywords
+    } as unknown as PrismaClient);
+    const lockedOption = {
+      scheduleSlotId: 91, shopId: 11, technicianProfileId: 81, technicianUserId: 8,
+      serviceId: 501, technicianServiceId: null, serviceName: "massage", durationMinutes: 60,
+      startsAt: now, endsAt: now
+    };
+    await expect(repository.matchesRequestTaxonomy(request, lockedOption)).resolves.toBe(false);
+    service.findUnique.mockResolvedValue({ categoryId: 1, category: { isActive: true, deletedAt: null } });
+    matchedKeyword = null;
+    await expect(repository.matchesRequestTaxonomy(request, lockedOption)).resolves.toBe(false);
+    matchedKeyword = { id: 1 };
+    await expect(repository.matchesRequestTaxonomy(request, lockedOption)).resolves.toBe(true);
+    expect(keywords.findFirst).toHaveBeenCalledWith({ where: expect.objectContaining({
+      shopId: 11, businessKeywordId: { in: [10] }, deletedAt: null
+    }), select: { id: true } });
+  });
+
   it("paginates merchant options through formal affiliation, schedule and overlap authorities", async () => {
     const queryRaw = jest.fn(async (query: SqlQuery) =>
       query.sql?.includes("SELECT COUNT(*) AS total") ? [{ total: 1n }] : [optionRow]
@@ -137,6 +168,8 @@ describe("ExchangeClaimRepository option projection", () => {
     expect(sql).toContain("FROM `booking_orders` AS busy_order");
     expect(sql).toContain("slot.`shop_id` =");
     expect(sql).toContain("suspension.`active_key` IS NOT NULL");
+    expect(sql).toContain("demand.`category_id`");
+    expect(sql).toContain("JSON_CONTAINS(demand.`business_keyword_ids_json`");
   });
 
   it("scopes technician options to the current technician profile and optional formal filters", async () => {

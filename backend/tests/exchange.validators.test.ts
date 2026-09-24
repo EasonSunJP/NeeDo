@@ -19,6 +19,8 @@ const validDemand = (overrides: Record<string, unknown> = {}) => ({
   ...common,
   expiresAt: "2026-08-31T08:30:00+09:00",
   type: "demand" as const,
+  categoryId: 1,
+  businessKeywordIds: [10],
   serviceMode: "store" as const,
   targetProviderCount: 1,
   matchMode: "quick" as const,
@@ -48,6 +50,13 @@ const validIntelligence = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("formal NeeDo Exchange validators", () => {
+  it("requires one category and one to ten distinct business keywords", () => {
+    expect(publishExchangePostSchema.safeParse(validDemand({ categoryId: undefined })).success).toBe(false);
+    expect(publishExchangePostSchema.safeParse(validDemand({ businessKeywordIds: [] })).success).toBe(false);
+    expect(publishExchangePostSchema.safeParse(validDemand({ businessKeywordIds: [10, 10] })).success).toBe(false);
+    expect(publishExchangePostSchema.safeParse(validDemand({ businessKeywordIds: Array.from({ length: 11 }, (_, i) => i + 1) })).success).toBe(false);
+    expect(publishExchangePostSchema.safeParse(validDemand()).success).toBe(true);
+  });
   it("normalizes bounded pagination and accepts only the two public tabs", () => {
     expect(exchangeListQuerySchema.parse({ type: "demand" })).toEqual({
       type: "demand",

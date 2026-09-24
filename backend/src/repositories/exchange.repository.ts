@@ -944,6 +944,26 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     };
   }
 
+  public async assertDemandTaxonomy(categoryId: number, businessKeywordIds: number[]): Promise<void> {
+    const keywords = await this.client.businessKeyword.findMany({
+      where: {
+        id: { in: businessKeywordIds },
+        categoryId,
+        isActive: true,
+        deletedAt: null,
+        category: { isActive: true, deletedAt: null }
+      },
+      select: { id: true }
+    });
+    if (keywords.length !== businessKeywordIds.length) {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.exchange.request_tags_unavailable",
+        statusCode: 400
+      });
+    }
+  }
+
   public async createPost(input: ExchangePublishRepositoryInput): Promise<{ id: number }> {
     const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
     const capacity = input.capacity;
@@ -1033,7 +1053,9 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
                   addressLine2Public: input.input.addressLine2Public,
                   addressLine3Public: input.input.addressLine3Public,
                   publisherIdentityPublic: input.input.publisherIdentityPublic,
-                  serviceMode: demandServiceModeToDatabase[input.input.serviceMode]
+                  serviceMode: demandServiceModeToDatabase[input.input.serviceMode],
+                  categoryId: input.input.categoryId,
+                  businessKeywordIdsJson: input.input.businessKeywordIds
                 }
               },
               matching: {
@@ -1880,6 +1902,12 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       : [];
   }
 
+  private numberList(value: Prisma.JsonValue | null): number[] {
+    return Array.isArray(value)
+      ? value.filter((item): item is number => typeof item === "number" && Number.isSafeInteger(item) && item > 0)
+      : [];
+  }
+
   private uniqueStrings(values: Array<string | null | undefined>): string[] {
     return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
   }
@@ -1957,6 +1985,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
             ? { url: row.demand.coverMediaAsset.url, isDefault: false }
             : { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
           serviceMode: demandServiceModeFromDatabase[row.demand.serviceMode],
+          categoryId: row.demand.categoryId,
+          businessKeywordIds: this.numberList(row.demand.businessKeywordIdsJson),
           targetProviderCount: row.demand.targetProviderCount,
           targetProviderLimitSnapshot: row.demand.targetProviderLimitSnapshot,
           publisherCapacitySource: capacitySourceFromDatabase[row.demand.publisherCapacitySource],

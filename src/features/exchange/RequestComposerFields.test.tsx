@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getRequestPublicationContext, publishExchangePost } from "./api";
 import { ExchangeComposer } from "./ExchangeComposer";
+import { shopTaxonomyApi } from "../shop-taxonomy/api";
 
 const { authHasPermission } = vi.hoisted(() => ({
   authHasPermission: vi.fn<(permission: string) => boolean>()
@@ -41,7 +42,14 @@ function clickAction(action: "composer-next") {
   button.click();
 }
 
-function fillValidRequestDraft() {
+async function fillValidRequestDraft() {
+  const massageCategory = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[aria-pressed="false"]'))
+    .find((button) => button.textContent === "按摩");
+  if (!massageCategory) throw new Error("missing Request category");
+  await act(async () => massageCategory.click());
+  await waitFor(() => expect(document.body.textContent).toContain("上门按摩"));
+  await act(async () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[aria-pressed="false"]'))
+    .find((button) => button.textContent === "上门按摩")?.click());
   const values = {
     title: "需要三位技师提供服务",
     detail: "请按指定时间到达并通过平台联系。",
@@ -92,6 +100,12 @@ describe("RequestComposerFields formal publication contract", () => {
     root = createRoot(container);
     vi.clearAllMocks();
     authHasPermission.mockReturnValue(false);
+    vi.spyOn(shopTaxonomyApi, "listCategories").mockResolvedValue({
+      list: [{ id: 1, code: "massage", label: "按摩", qualificationPolicy: "OPEN" }], total: 1, page: 1, page_size: 100
+    });
+    vi.spyOn(shopTaxonomyApi, "listKeywords").mockResolvedValue({
+      list: [{ id: 10, code: "home", categoryId: 1, label: "上门按摩", qualificationPolicy: "OPEN" }], total: 1, page: 1, page_size: 100
+    });
     vi.mocked(getRequestPublicationContext).mockResolvedValue({
       canPublish: true,
       capacitySource: "customer_membership",
@@ -131,7 +145,7 @@ describe("RequestComposerFields formal publication contract", () => {
     expect(document.body.textContent).toContain("地址3（可选，仅对应募成功者展示）");
     expect(document.body.querySelector('[name="addressLine1Public"]')).toBeNull();
 
-    fillValidRequestDraft();
+    await fillValidRequestDraft();
     await act(async () => clickAction("composer-next"));
 
     const review = document.body.querySelector('[data-testid="exchange-publication-review"]');
@@ -151,7 +165,7 @@ describe("RequestComposerFields formal publication contract", () => {
     expect(document.body.querySelector('[data-testid="exchange-post-type-selector"]')).toBeNull();
 
     await act(async () => locale?.querySelector<HTMLButtonElement>('[aria-label="日本語"]')?.click());
-    fillValidRequestDraft();
+    await fillValidRequestDraft();
     await act(async () => clickAction("composer-next"));
 
     expect(document.body.querySelector('[data-testid="exchange-publication-review"]')?.textContent).toContain("日本語");
@@ -231,7 +245,7 @@ describe("RequestComposerFields formal publication contract", () => {
   it("reviews selective per-provider intent with an optional lower bound", async () => {
     await renderAndOpen();
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
-    fillValidRequestDraft();
+    await fillValidRequestDraft();
     const minimum = document.body.querySelector<HTMLInputElement>('[name="budgetMinJpy"]')!;
     const selective = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="radio"]')).find((button) => button.textContent === "选配");
     const perProvider = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="radio"]')).find((button) => button.textContent === "单价");

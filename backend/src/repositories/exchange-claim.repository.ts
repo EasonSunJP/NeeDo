@@ -70,6 +70,8 @@ export interface ExchangeClaimRequestRecord {
     matchMode: "quick" | "selective";
     budgetMinJpy: number | null;
     budgetMaxJpy: number;
+    categoryId: number | null;
+    businessKeywordIds: number[];
   } | null;
 }
 
@@ -303,6 +305,29 @@ export class ExchangeClaimRepository {
           AND technician_service.\`review_status\` = 'approved'
           AND technician_service.\`deleted_at\` IS NULL
         )
+      )`,
+      Prisma.sql`(
+        demand.\`category_id\` IS NULL OR (
+          COALESCE(shop_service.\`category_id\`, technician_service.\`category_id\`) = demand.\`category_id\`
+          AND EXISTS (
+            SELECT 1 FROM \`categories\` AS selected_category
+            WHERE selected_category.\`id\` = demand.\`category_id\`
+              AND selected_category.\`is_active\` = TRUE
+              AND selected_category.\`deleted_at\` IS NULL
+          )
+          AND EXISTS (
+            SELECT 1 FROM \`shop_business_keywords\` AS selected_keyword
+            JOIN \`business_keywords\` AS keyword
+              ON keyword.\`id\` = selected_keyword.\`business_keyword_id\`
+            WHERE selected_keyword.\`shop_id\` = slot.\`shop_id\`
+              AND selected_keyword.\`deleted_at\` IS NULL
+              AND selected_keyword.\`active_key\` IS NOT NULL
+              AND keyword.\`category_id\` = demand.\`category_id\`
+              AND keyword.\`is_active\` = TRUE
+              AND keyword.\`deleted_at\` IS NULL
+              AND JSON_CONTAINS(demand.\`business_keyword_ids_json\`, JSON_ARRAY(selected_keyword.\`business_keyword_id\`))
+          )
+        )
       )`
     ];
 
@@ -468,6 +493,14 @@ export class ExchangeClaimRepository {
       });
       if (activeCount >= matching.effectiveTargetProviderCount) return { list: [], total: 0 };
     }
+    const categoryId = request.demand.categoryId;
+    const businessKeywordIds = request.demand.businessKeywordIds;
+    const taxonomyShop = categoryId === null ? {} : {
+      businessKeywordSelections: {
+        some: { businessKeywordId: { in: businessKeywordIds }, deletedAt: null, activeKey: { not: null },
+          businessKeyword: { is: { categoryId, isActive: true, deletedAt: null } } }
+      }
+    };
     const dayMs = 24 * 60 * 60_000;
     const dynamicShopIds = [...new Set(cycles
       .filter((cycle) => cycle.periodStart <= new Date(request.serviceEndAt.getTime() + dayMs)
@@ -484,7 +517,8 @@ export class ExchangeClaimRepository {
           status: "published",
           deletedAt: null,
           category: { is: { isActive: true, deletedAt: null } },
-          shop: { is: { pricingMode: "MERCHANT", status: "published", deletedAt: null } },
+          shop: { is: { pricingMode: "MERCHANT", status: "published", deletedAt: null, ...taxonomyShop } },
+          ...(categoryId === null ? {} : { categoryId }),
           ...(input.serviceRef?.startsWith("shop:")
             ? { id: Number(input.serviceRef.slice(5)) }
             : input.serviceRef ? { id: -1 } : {})
@@ -498,7 +532,9 @@ export class ExchangeClaimRepository {
           isBookable: true,
           reviewStatus: TechnicianServiceReviewStatus.APPROVED,
           deletedAt: null,
-          shop: { is: { pricingMode: "TECHNICIAN", status: "published", deletedAt: null } },
+          shop: { is: { pricingMode: "TECHNICIAN", status: "published", deletedAt: null, ...taxonomyShop } },
+          ...(categoryId === null ? {} : { categoryId }),
+          ...(categoryId === null ? {} : { category: { is: { isActive: true, deletedAt: null } } }),
           ...(input.scope.kind === "technician"
             ? { technicianId: input.scope.technicianProfileId } : {}),
           ...(input.technicianProfileId ? { technicianId: input.technicianProfileId } : {}),
@@ -683,7 +719,7 @@ export class ExchangeClaimRepository {
         serviceEndAt: true,
         expiresAt: true,
         demand: {
-          select: { matchMode: true, budgetMinJpy: true, budgetMaxJpy: true, deletedAt: true }
+          select: { matchMode: true, budgetMinJpy: true, budgetMaxJpy: true, categoryId: true, businessKeywordIdsJson: true, deletedAt: true }
         }
       }
     });
@@ -707,7 +743,11 @@ export class ExchangeClaimRepository {
             matchMode:
               row.demand.matchMode === DatabaseExchangeMatchMode.SELECTIVE ? "selective" : "quick",
             budgetMinJpy: row.demand.budgetMinJpy,
-            budgetMaxJpy: row.demand.budgetMaxJpy
+            budgetMaxJpy: row.demand.budgetMaxJpy,
+            categoryId: row.demand.categoryId ?? null,
+            businessKeywordIds: Array.isArray(row.demand.businessKeywordIdsJson)
+              ? row.demand.businessKeywordIdsJson.filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0)
+              : []
           }
         : null
     };
@@ -876,6 +916,33 @@ export class ExchangeClaimRepository {
 
   public completeMatch(input: CompleteExchangeMatchInput): Promise<ExchangeMatchingPayload | null> {
     return this.matchingRepository().completeMatch(input);
+  }
+
+  public async matchesRequestTaxonomy(
+    request: ExchangeClaimRequestRecord,
+    option: ExchangeClaimLockedOption
+  ): Promise<boolean> {
+    const taxonomy = request.demand;
+    if (!taxonomy) return false;
+    if (taxonomy.categoryId === null) return true;
+    if (taxonomy.businessKeywordIds.length === 0) return false;
+    const [service, keyword] = await Promise.all([
+      option.serviceId !== null
+        ? this.client.service.findUnique({ where: { id: option.serviceId }, select: { categoryId: true, category: { select: { isActive: true, deletedAt: true } } } })
+        : this.client.technicianService.findUnique({ where: { id: option.technicianServiceId! }, select: { categoryId: true, category: { select: { isActive: true, deletedAt: true } } } }),
+      this.client.shopBusinessKeyword.findFirst({
+        where: {
+          shopId: option.shopId,
+          businessKeywordId: { in: taxonomy.businessKeywordIds },
+          activeKey: { not: null },
+          deletedAt: null,
+          businessKeyword: { is: { categoryId: taxonomy.categoryId, isActive: true, deletedAt: null } }
+        },
+        select: { id: true }
+      })
+    ]);
+    return service?.categoryId === taxonomy.categoryId
+      && service.category.isActive && service.category.deletedAt === null && keyword !== null;
   }
 
   public async lockOption(

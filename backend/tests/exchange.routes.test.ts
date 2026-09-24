@@ -96,6 +96,8 @@ const post: ExchangePostPayload = {
   },
   demand: {
     cover: { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
+    categoryId: 1,
+    businessKeywordIds: [10],
     serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
@@ -424,6 +426,8 @@ describe("formal Exchange routes", () => {
     const scopedMerchantStaffToken = await login("merchant-staff-scoped-demand@example.test");
     const demandBody = {
       type: "demand",
+      categoryId: 1,
+      businessKeywordIds: [10],
       serviceMode: "store",
       title: post.title,
       detail: post.detail,

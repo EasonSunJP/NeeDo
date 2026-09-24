@@ -1592,6 +1592,7 @@ model Category {
   shopSelections     ShopServiceCategory[]
   qualifications     ShopServiceQualification[]
   applicationSelections MerchantApplicationServiceCategory[]
+  exchangeDemands    ExchangeDemand[]
 
   @@index([parentId])
   @@index([sortOrder])
@@ -6336,13 +6337,17 @@ model ExchangeDemand {
   addressLine3Public          Boolean                         @default(false) @map("address_line_3_public")
   publisherIdentityPublic     Boolean                         @default(false) @map("publisher_identity_public")
   serviceMode                 ExchangeDemandServiceMode       @default(STORE) @map("service_mode")
+  categoryId                  Int?                            @map("category_id")
+  businessKeywordIdsJson      Json?                           @map("business_keyword_ids_json")
   createdAt                   DateTime                        @default(now()) @map("created_at")
   updatedAt                   DateTime                        @updatedAt @map("updated_at")
   deletedAt                   DateTime?                       @map("deleted_at")
 
   post ExchangePost @relation(fields: [postId], references: [id], onDelete: Restrict)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   coverMediaAsset MediaAsset? @relation("ExchangeDemandCover", fields: [coverMediaAssetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  @@index([categoryId, deletedAt])
   @@index([serviceMode, deletedAt])
   @@index([deletedAt])
   @@map("exchange_demands")

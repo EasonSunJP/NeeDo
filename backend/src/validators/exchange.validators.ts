@@ -32,6 +32,9 @@ const demandPostSchema = z
     type: z.literal("demand"),
     ...commonPostShape,
     coverMediaAssetPublicId: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
+    categoryId: z.number().int().positive(),
+    businessKeywordIds: z.array(z.number().int().positive()).min(1).max(10)
+      .refine((ids) => new Set(ids).size === ids.length, "businessKeywordIds must be unique"),
     serviceMode: z.enum(["home", "store"]),
     targetProviderCount: z.coerce.number().int().min(1).max(20),
     matchMode: z.enum(["quick", "selective"]),

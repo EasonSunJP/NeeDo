@@ -41,6 +41,8 @@ export interface ExchangePriorityPayload {
 
 export interface ExchangeDemandPayload {
   cover: { url: string; isDefault: boolean };
+  categoryId: number | null;
+  businessKeywordIds: number[];
   serviceMode: ExchangeDemandServiceMode;
   targetProviderCount: number;
   targetProviderLimitSnapshot: number;

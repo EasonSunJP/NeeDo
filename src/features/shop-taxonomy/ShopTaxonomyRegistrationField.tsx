@@ -15,12 +15,18 @@ const registrationChipClassName = "focus-ring inline-flex min-h-10 items-center 
 
 export function ShopTaxonomyRegistrationField({
   api = shopTaxonomyApi,
+  categoryLimit = 5,
+  description,
+  keywordLimit = 5,
   language,
   onChange,
   onKeywordLabelsChange,
   value
 }: {
   api?: ShopTaxonomyApi;
+  categoryLimit?: number;
+  description?: string;
+  keywordLimit?: number;
   language: Language;
   onChange: (value: ShopTaxonomyRegistrationValue) => void;
   onKeywordLabelsChange?: (labels: string[]) => void;
@@ -82,14 +88,14 @@ export function ShopTaxonomyRegistrationField({
       const next = toggleTaxonomyCategory({
         categoryId,
         categoryIds: value.serviceCategoryIds,
-        categoryLimit: 5,
+        categoryLimit,
         keywordIds: value.businessKeywordIds,
         keywords: loadedKeywords
       });
       onChange({ serviceCategoryIds: next.categoryIds, businessKeywordIds: next.keywordIds });
       setMessage(next.removedKeywordIds.length > 0 ? copy.removed(next.removedKeywordIds.length) : "");
     } catch {
-      setMessage(copy.categoryLimit(5));
+      setMessage(copy.categoryLimit(categoryLimit));
     }
   };
 
@@ -97,11 +103,11 @@ export function ShopTaxonomyRegistrationField({
     try {
       onChange({
         serviceCategoryIds: value.serviceCategoryIds,
-        businessKeywordIds: toggleTaxonomyKeyword({ keywordId, keywordIds: value.businessKeywordIds, keywordLimit: 5 })
+        businessKeywordIds: toggleTaxonomyKeyword({ keywordId, keywordIds: value.businessKeywordIds, keywordLimit })
       });
       setMessage("");
     } catch {
-      setMessage(copy.keywordLimit(5));
+      setMessage(copy.keywordLimit(keywordLimit));
     }
   };
 
@@ -110,7 +116,7 @@ export function ShopTaxonomyRegistrationField({
       <div>
         <TitleWithInfo
           as="h2"
-          info={copy.description}
+          info={description ?? copy.description}
           label={copy.infoLabel}
           title={copy.title}
           titleClassName="text-[17px] font-black text-[color:var(--client-text)]"
@@ -118,7 +124,7 @@ export function ShopTaxonomyRegistrationField({
         />
       </div>
       <div>
-        <p className="mb-2 text-[11px] font-black text-[color:var(--client-muted)]">{copy.categoryCount(value.serviceCategoryIds.length, 5)}</p>
+        <p className="mb-2 text-[11px] font-black text-[color:var(--client-muted)]">{copy.categoryCount(value.serviceCategoryIds.length, categoryLimit)}</p>
         <div className="flex flex-wrap gap-2">
           {categories.map((category) => {
             const selected = value.serviceCategoryIds.includes(category.id);
@@ -140,7 +146,7 @@ export function ShopTaxonomyRegistrationField({
         </div>
       </div>
       <div>
-        <p className="mb-2 text-[11px] font-black text-[color:var(--client-muted)]">{copy.keywordCount(value.businessKeywordIds.length, 5)}</p>
+        <p className="mb-2 text-[11px] font-black text-[color:var(--client-muted)]">{copy.keywordCount(value.businessKeywordIds.length, keywordLimit)}</p>
         <div className="grid gap-3">
           {value.serviceCategoryIds.map((categoryId) => (
             <div className="space-y-2" key={categoryId}>

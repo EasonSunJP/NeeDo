@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Language } from "../../i18n/translations";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
+import { ShopTaxonomyRegistrationField } from "../shop-taxonomy/ShopTaxonomyRegistrationField";
 import { exchangeText } from "./i18n";
 import type { RequestComposerDraft } from "./exchange-composer-model";
 import type { ExchangeRequestPublicationContext } from "./types";
@@ -98,12 +99,14 @@ export function RequestComposerFields({
   context,
   draft,
   language,
-  onChange
+  onChange,
+  onKeywordLabelsChange
 }: {
   context: ExchangeRequestPublicationContext;
   draft: RequestComposerDraft;
   language: Language;
   onChange: (patch: Partial<RequestComposerDraft>) => void;
+  onKeywordLabelsChange?: (labels: string[]) => void;
 }) {
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
   return (
@@ -117,6 +120,22 @@ export function RequestComposerFields({
             {t("demand")}
           </div>
         </Field>
+
+        <ShopTaxonomyRegistrationField
+          categoryLimit={1}
+          description={t("requestTagsInfo")}
+          keywordLimit={10}
+          language={language}
+          onKeywordLabelsChange={onKeywordLabelsChange}
+          onChange={(value) => onChange({
+            categoryId: value.serviceCategoryIds[0] ?? null,
+            businessKeywordIds: value.businessKeywordIds
+          })}
+          value={{
+            serviceCategoryIds: draft.categoryId ? [draft.categoryId] : [],
+            businessKeywordIds: draft.businessKeywordIds
+          }}
+        />
 
         <SegmentedChoice
           label={t("serviceMode")}
