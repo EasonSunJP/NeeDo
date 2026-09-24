@@ -60,6 +60,28 @@ const demandRow = {
 };
 
 describe("ExchangePostRepository", () => {
+  it("projects only an active confirmed Request service prepayment as paid", async () => {
+    const findFirst = jest.fn(async () => ({
+      ...demandRow,
+      servicePrepayment: { percent: 35, paymentMethod: "NDP", status: "CONFIRMED", deletedAt: null }
+    }));
+    const repository = new ExchangePostRepository({ exchangePost: { findFirst } } as never);
+    const paid = await repository.findPostById(41, 17, now);
+    expect(paid?.demand?.payment).toEqual({ prepaidPercent: 35, selectedMethod: "ndp" });
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      include: expect.objectContaining({
+        servicePrepayment: { select: { percent: true, paymentMethod: true, status: true, deletedAt: true } }
+      })
+    }));
+
+    findFirst.mockResolvedValueOnce({
+      ...demandRow,
+      servicePrepayment: { percent: 35, paymentMethod: "NDP", status: "REFUNDED", deletedAt: null }
+    });
+    const refunded = await repository.findPostById(41, 17, now);
+    expect(refunded?.demand?.payment).toEqual({ prepaidPercent: 0, selectedMethod: null });
+  });
+
   it("accepts only active keywords in the selected Request category", async () => {
     const findMany = jest.fn(async () => [{ id: 10 }]);
     const repository = new ExchangePostRepository({ businessKeyword: { findMany } } as never);
@@ -849,6 +871,7 @@ describe("ExchangePostRepository", () => {
             budgetMode: "total",
             budgetMinJpy: 8_000,
             budgetMaxJpy: 12_000,
+            payment: { prepaidPercent: 0, selectedMethod: null },
             address: {
               line1: "渋谷区",
               line2: "道玄坂1-2-3",

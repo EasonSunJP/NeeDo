@@ -5,15 +5,16 @@ import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActio
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { ServiceFlowSection } from "../../components/mobile/ServiceFlowSection";
-import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { ShareNetworkIconPath } from "../../components/ui/ShareNetworkIcon";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import type { MessageCenterContext } from "../../lib/messageCenter";
 import { shareContent } from "../../lib/share";
-import { mapExchangeIntelligencePublisherToProfileData, UnifiedProfileCard } from "../../shared/profile-card";
+import { getScopedProfileDetailPath } from "../../shared/profile-detail/paths";
+import { mapExchangeIntelligencePublisherToProfileData, UnifiedProfileCard, UnifiedSimpleProfileCard } from "../../shared/profile-card";
 import { mapExchangeIntelligenceServiceToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
+import { usePlatformSettings } from "../platform-settings/PlatformSettingsProvider";
 import {
   getExchangePost,
   likeExchangePost,
@@ -199,20 +200,7 @@ function DetailHero({ label, post, publisherAlt }: { label: string; post: Exchan
   );
 }
 
-function publisherIdentityLabel(identityType: string, language: Language) {
-  if (["merchant", "merchant_owner", "merchant_staff"].includes(identityType)) {
-    return exchangeText("merchantIdentity", language);
-  }
-  if (identityType === "technician") return exchangeText("technicianIdentity", language);
-  if (["customer", "user", "u"].includes(identityType)) {
-    return exchangeText("customerIdentity", language);
-  }
-  return identityType;
-}
-
-function PublisherCard({ post, language }: { post: ExchangePost; language: Language }) {
-  const areas = post.intelligence?.serviceAreas ?? [];
-  const intelligenceAddress = post.intelligence?.addressLabel || post.areaLabel;
+function PublisherCard({ post, language, context }: { post: ExchangePost; language: Language; context: MessageCenterContext }) {
   const requestAddress = post.demand?.address;
   const requestAddressLines = requestAddress &&
     (requestAddress.disclosure === "owner" || requestAddress.disclosure === "matched_participant")
@@ -220,48 +208,33 @@ function PublisherCard({ post, language }: { post: ExchangePost; language: Langu
         (line): line is string => line !== null
       )
     : [];
-  const publisherName = post.publisher?.displayName ?? exchangeText("publisherHidden", language);
   return (
-    <section className={`${detailCardClassName} overflow-hidden p-0`} data-no-i18n="true">
-      <div className="relative overflow-hidden bg-[linear-gradient(135deg,color-mix(in_srgb,var(--client-primary)_14%,transparent),transparent_72%)] px-4 pb-4 pt-5">
-        <div className="flex items-center gap-4">
-          <AvatarImage
-            alt={publisherName}
-            className="h-24 w-24 shrink-0 rounded-[24px] border border-[color:var(--client-line)] object-cover shadow-soft"
-            src={post.publisher?.avatarUrl ?? undefined}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xl font-black text-[color:var(--client-text)]">{publisherName}</p>
-            {post.publisher ? (
-              <p className="mt-1 truncate font-mono text-xs font-bold text-[color:var(--client-primary)]">{post.publisher.publicId}</p>
-            ) : null}
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {post.publisher ? (
-                <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-muted)]">{publisherIdentityLabel(post.publisher.identityType, language)}</span>
-              ) : null}
-              {post.intelligence ? (
-                <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-muted)]">
-                  {exchangeText(post.intelligence.serviceMode, language)}
-                </span>
-              ) : null}
-            </div>
-          </div>
+    <section data-no-i18n="true" data-testid="exchange-request-publisher">
+      {post.publisher ? (
+        <UnifiedSimpleProfileCard
+          className="w-full"
+          data={{
+            id: post.publisher.publicId,
+            entityType: "user",
+            displayName: post.publisher.displayName,
+            avatar: post.publisher.avatarUrl ?? undefined,
+            tags: [],
+            badgeList: []
+          }}
+          detailTo={["customer", "user", "u"].includes(post.publisher.identityType)
+            ? getScopedProfileDetailPath(context, "user", post.publisher.publicId)
+            : undefined}
+          variant="list"
+        />
+      ) : (
+        <div className={detailCardClassName}>{exchangeText("publisherHidden", language)}</div>
+      )}
+      {post.publisher ? <p className="mt-1 px-3 font-mono text-xs font-bold text-[color:var(--client-muted)]">{post.publisher.publicId}</p> : null}
+      {requestAddressLines.length > 0 ? (
+        <div className="mt-2 grid gap-1 px-3 text-xs font-semibold leading-5 text-[color:var(--client-muted)]" data-testid="exchange-request-address">
+          {requestAddressLines.map((line, index) => <p key={`${index}-${line}`}>{line}</p>)}
         </div>
-        {post.demand ? (
-          <div className="mt-4 grid gap-1 text-xs font-semibold leading-5 text-[color:var(--client-muted)]" data-testid="exchange-request-address">
-            {requestAddressLines.map((line, index) => <p key={`${index}-${line}`}>{line}</p>)}
-          </div>
-        ) : (
-          <>
-            <p className="mt-4 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">{intelligenceAddress}</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {areas.map((area) => (
-                <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-bold text-[color:var(--client-muted)]" key={area}>{area}</span>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      ) : null}
     </section>
   );
 }
@@ -269,6 +242,7 @@ function PublisherCard({ post, language }: { post: ExchangePost; language: Langu
 export function ExchangePostDetailPage({ context }: { context: MessageCenterContext }) {
   const navigate = useNavigate();
   const { language } = useI18n();
+  const platform = usePlatformSettings();
   const { postId } = useParams();
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
   const validPostId = Boolean(postId && /^[1-9]\d*$/u.test(postId));
@@ -415,7 +389,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
   const active = post.status === "published";
   const serviceFlow = post.type === "intelligence"
     ? [t("flowSelectTechnician"), t("flowConfirmTime"), t("flowPrepare"), t("flowInService"), t("flowReview")]
-    : [t("flowReviewDemand"), t("flowContact"), t("flowConfirmScope"), t("flowAwaitMatching"), t("flowReview")];
+    : [t("flowConfirmDemand"), t("flowApply"), ...(post.demand?.matchMode === "selective" ? [t("flowPublisherSelect")] : []), t("flowMatched"), t("flowExecuteService")];
   const requirementTags = post.intelligence
     ? [t(post.intelligence.serviceMode), ...post.intelligence.serviceAreas, post.areaLabel, post.contentLocale]
     : [t(post.demand?.serviceMode === "home" ? "home" : "store"), post.areaLabel, post.contentLocale];
@@ -559,30 +533,50 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
           <ExchangeMatchedBookingCard context={context} language={language} postId={String(post.id)} />
         ) : null}
 
-        <section className={detailCardClassName} data-no-i18n="true">
+        <section className={detailCardClassName} data-no-i18n="true" data-testid="exchange-payment-information">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("paymentInformation")}</h2>
               <p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">
-                {post.type === "intelligence" && intelligenceBookable
+                {post.type === "demand"
+                  ? t("requestPaymentAfterMatch")
+                  : post.type === "intelligence" && intelligenceBookable
                   ? t("intelligenceBookingAvailable")
                   : t(post.status === "matched" ? "matchedBookingAvailablePaymentDeferred" : "bookingPaymentDeferred")}
               </p>
             </div>
-            <Badge tone="green">{post.type === "intelligence" && intelligenceBookable ? t("intelligenceBookNow") : t("notEnabled")}</Badge>
+            {post.type === "intelligence" ? <Badge tone="green">{intelligenceBookable ? t("intelligenceBookNow") : t("notEnabled")}</Badge> : null}
           </div>
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            {[
-              { label: post.type === "demand" ? t("budget") : t("price"), value: price, highlight: true },
-              { label: t("prepayment"), value: "—", highlight: false },
-              { label: t("arrivalPayment"), value: "—", highlight: false }
-            ].map((row) => (
-              <div className={detailInnerCardClassName} key={row.label}>
-                <p className="text-[11px] font-bold text-[color:var(--client-muted)]">{row.label}</p>
-                <strong className={row.highlight ? "mt-1 block text-[18px] font-black leading-tight text-[color:var(--client-primary)]" : "mt-1 block text-sm text-[color:var(--client-text)]"}>{row.value}</strong>
+          {post.demand ? (
+            <div className="mt-4 space-y-2">
+              <div className={`${detailInnerCardClassName} flex items-center justify-between gap-3`}>
+                <span className="text-xs font-bold text-[color:var(--client-muted)]">{t("alreadyPrepaid")}</span>
+                <strong className="text-lg font-black text-[color:var(--client-primary)]">{post.demand.payment?.prepaidPercent ?? 0}%</strong>
               </div>
-            ))}
-          </div>
+              <div className={detailInnerCardClassName}>
+                <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("paymentMethods")}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {platform.status === "ready" ? platform.settings.paymentMethods.map((method) => {
+                    const selected = post.demand?.payment?.selectedMethod === method;
+                    return <span className={`rounded-full border px-3 py-1.5 text-xs font-black ${selected ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]" : "border-[color:var(--client-line)] text-[color:var(--client-muted)]"}`} data-payment-method={method} data-selected={selected} key={method}>{t(method === "cash" ? "cashMethod" : "ndpMethod")}</span>;
+                  }) : null}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {[
+                { label: t("price"), value: price, highlight: true },
+                { label: t("prepayment"), value: "—", highlight: false },
+                { label: t("arrivalPayment"), value: "—", highlight: false }
+              ].map((row) => (
+                <div className={detailInnerCardClassName} key={row.label}>
+                  <p className="text-[11px] font-bold text-[color:var(--client-muted)]">{row.label}</p>
+                  <strong className={row.highlight ? "mt-1 block text-[18px] font-black leading-tight text-[color:var(--client-primary)]" : "mt-1 block text-sm text-[color:var(--client-text)]"}>{row.value}</strong>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <ServiceFlowSection
@@ -592,7 +586,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
           title={t("serviceFlow")}
         />
 
-        {post.type === "demand" ? <PublisherCard language={language} post={post} /> : null}
+        {post.type === "demand" ? <PublisherCard context={context} language={language} post={post} /> : null}
 
         {post.intelligence?.publisherCard?.type === "shop" ? (
           <div data-no-i18n="true" data-testid="exchange-intelligence-publisher-card">

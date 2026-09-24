@@ -248,6 +248,9 @@ const postInclude = (viewerIdentityId: number, participantIdentityId = viewerIde
       where: { deletedAt: null },
       include: { coverMediaAsset: { select: { url: true } } }
     },
+    servicePrepayment: {
+      select: { percent: true, paymentMethod: true, status: true, deletedAt: true }
+    },
     authorIdentity: {
       select: {
         type: true,
@@ -1997,6 +2000,16 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           budgetMode: budgetModeFromDatabase[row.demand.budgetMode],
           budgetMinJpy: row.demand.budgetMinJpy,
           budgetMaxJpy: row.demand.budgetMaxJpy,
+          payment: {
+            prepaidPercent: row.servicePrepayment && row.servicePrepayment.deletedAt === null &&
+              ["CONFIRMED", "CAPTURED", "REFUND_PENDING"].includes(row.servicePrepayment.status)
+              ? row.servicePrepayment.percent
+              : 0,
+            selectedMethod: row.servicePrepayment && row.servicePrepayment.deletedAt === null &&
+              !["RELEASED", "REFUNDED"].includes(row.servicePrepayment.status)
+              ? row.servicePrepayment.paymentMethod.toLowerCase() as "onsite" | "bank_transfer" | "cash" | "ndp" | "other"
+              : null
+          },
           address: projectedRequestAddress!.address
         }
       : null;

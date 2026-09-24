@@ -5099,6 +5099,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "budgetMode",
           "budgetMinJpy",
           "budgetMaxJpy",
+          "payment",
           "address"
         ],
         properties: {
@@ -5133,6 +5134,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             maximum: 1000000000
           },
           budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          payment: {
+            type: "object",
+            additionalProperties: false,
+            required: ["prepaidPercent", "selectedMethod"],
+            properties: {
+              prepaidPercent: { type: "integer", minimum: 0, maximum: 100 },
+              selectedMethod: { type: ["string", "null"], enum: ["onsite", "bank_transfer", "cash", "ndp", "other", null] }
+            }
+          },
           address: { $ref: "#/components/schemas/ExchangeRequestAddress" }
         }
       },

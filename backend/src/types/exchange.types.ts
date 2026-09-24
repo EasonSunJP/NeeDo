@@ -52,6 +52,10 @@ export interface ExchangeDemandPayload {
   budgetMode: ExchangeBudgetMode;
   budgetMinJpy: number | null;
   budgetMaxJpy: number;
+  payment: {
+    prepaidPercent: number;
+    selectedMethod: "onsite" | "bank_transfer" | "cash" | "ndp" | "other" | null;
+  };
   address: ExchangeRequestAddressPayload;
 }
 

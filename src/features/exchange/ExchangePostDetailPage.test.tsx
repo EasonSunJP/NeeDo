@@ -23,12 +23,16 @@ const receivedClaimsMock = vi.hoisted(() => ({
   onEffectiveBudgetChange: undefined as undefined | ((budgetMaxJpy: number) => void)
 }));
 const claimPanelMock = vi.hoisted(() => ({ scrollIntoView: vi.fn() }));
+const platformMock = vi.hoisted(() => ({ paymentMethods: ["cash", "ndp"] as Array<"cash" | "ndp"> }));
 
 vi.mock("../../i18n/I18nProvider", () => ({
   useI18n: () => ({ language: mockI18n.language }),
   useOptionalI18n: () => ({ language: mockI18n.language })
 }));
 vi.mock("../../lib/share", () => ({ shareContent: vi.fn() }));
+vi.mock("../platform-settings/PlatformSettingsProvider", () => ({
+  usePlatformSettings: () => ({ status: "ready", settings: { paymentMethods: platformMock.paymentMethods } })
+}));
 vi.mock("../../theme/ClientThemeProvider", () => ({
   getClientThemeClassName: () => "client-theme-dark-green",
   useClientTheme: () => ({ theme: "dark-green", isNight: true })
@@ -312,6 +316,45 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("¥8,000–¥12,000");
     expect(document.body.querySelector('[data-testid="formal-interactions"]')).not.toBeNull();
     expect(document.body.innerHTML).toContain('data-no-i18n="true"');
+  });
+
+  it("shows the persisted prepayment and selected supported method without repeating the Request budget", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      demand: { ...demandPost.demand!, payment: { prepaidPercent: 35, selectedMethod: "ndp" } }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+
+    const payment = document.body.querySelector('[data-testid="exchange-payment-information"]');
+    expect(payment?.textContent).toContain("已预付");
+    expect(payment?.textContent).toContain("35%");
+    expect(payment?.textContent).not.toContain("¥12,000");
+    expect(payment?.querySelector('[data-payment-method="ndp"]')?.getAttribute("data-selected")).toBe("true");
+    expect(payment?.querySelector('[data-payment-method="cash"]')?.getAttribute("data-selected")).toBe("false");
+  });
+
+  it.each([
+    ["quick", ["确认需求", "应募", "匹配成功", "执行服务"]],
+    ["selective", ["确认需求", "应募", "等待发布者确定", "匹配成功", "执行服务"]]
+  ] as const)("shows the %s Request flow", async (matchMode, expected) => {
+    vi.mocked(getExchangePost).mockResolvedValue({ ...demandPost, demand: { ...demandPost.demand!, matchMode } });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+    const flow = document.body.querySelector('[data-testid="exchange-detail-page"]')?.textContent ?? "";
+    let previous = -1;
+    for (const stage of expected) {
+      const position = flow.indexOf(stage, previous + 1);
+      expect(position).toBeGreaterThan(previous);
+      previous = position;
+    }
+  });
+
+  it("uses the shared user simple card for a visible Request publisher", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(demandPost);
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+    expect(document.body.querySelector('[data-testid="exchange-request-publisher"] [data-card-kind="user"]')).not.toBeNull();
   });
 
   it("shows the authored system-language version in the detail without a translate button", async () => {
@@ -676,7 +719,7 @@ describe("ExchangePostDetailPage", () => {
     });
     await renderDetail();
     await waitFor(() => expect(document.body.textContent).toContain("匹配已完成，请查看已选服务者的预约状态；支付不会自动扣款"));
-    expect(document.body.textContent).toContain("确认预约后，每位已匹配服务者各有一张独立订单；支付仍未启用");
+    expect(document.body.textContent).toContain("匹配后通过正式订单结算");
     expect(document.body.querySelector('[data-testid="formal-received-claims"]')).not.toBeNull();
     expect(document.body.querySelector<HTMLButtonElement>('[data-action="matching-inbox"]')?.disabled).toBe(true);
   });
