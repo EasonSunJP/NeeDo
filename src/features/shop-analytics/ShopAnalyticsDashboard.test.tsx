@@ -398,6 +398,7 @@ describe("ShopAnalyticsDashboard formal API", () => {
 
   it("opens the shared top-layer data popup when a trend node is tapped", async () => {
     const loadDashboard = vi.fn().mockResolvedValue(dashboard);
+    container.classList.add("client-shell");
     await act(async () => root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />));
     await waitFor(() => expect(container.textContent).toContain("128,000"));
 
@@ -410,6 +411,8 @@ describe("ShopAnalyticsDashboard formal API", () => {
     expect(popup?.textContent).toContain("￥58,000");
     expect(popup?.textContent).toContain("4");
     expect(popup?.className).toContain("z-[320]");
+    expect(popup?.parentElement).toBe(container);
+    expect(popup?.style.transform).toContain("translateY(12px)");
   });
 
   it("lets each bottom legend hide and restore only its own series", async () => {

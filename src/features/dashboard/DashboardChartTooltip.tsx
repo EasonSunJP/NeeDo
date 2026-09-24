@@ -21,7 +21,7 @@ function anchorFromElement(element: SVGElement, index: number): DashboardChartTo
   return {
     clientX: bounds.left + bounds.width / 2,
     clientY: bounds.top + bounds.height / 2,
-    host: element.closest<HTMLElement>("[data-dashboard-tooltip-portal-host], .admin-shell, .merchant-admin-shell") ?? document.body,
+    host: element.closest<HTMLElement>("[data-dashboard-tooltip-portal-host], .admin-shell, .merchant-admin-shell, .client-shell") ?? document.body,
     index
   };
 }
@@ -30,7 +30,7 @@ function anchorFromMouseEvent(event: ReactMouseEvent<SVGElement>, index: number)
   return {
     clientX: event.clientX,
     clientY: event.clientY,
-    host: event.currentTarget.closest<HTMLElement>("[data-dashboard-tooltip-portal-host], .admin-shell, .merchant-admin-shell") ?? document.body,
+    host: event.currentTarget.closest<HTMLElement>("[data-dashboard-tooltip-portal-host], .admin-shell, .merchant-admin-shell, .client-shell") ?? document.body,
     index
   };
 }
@@ -89,7 +89,7 @@ export function DashboardChartTooltip({
   const transformX = x > viewportWidth - 240
     ? "translateX(calc(-100% - 12px))"
     : "translateX(12px)";
-  const transformY = y < 150
+  const transformY = y + 140 < viewportHeight
     ? "translateY(12px)"
     : "translateY(calc(-100% - 12px))";
 
