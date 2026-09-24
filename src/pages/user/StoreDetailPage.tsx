@@ -113,6 +113,8 @@ registerTranslationEntries({
   "正在同步": { "zh-Hant": "正在同步", ja: "同期中", en: "Syncing", ko: "동기화 중" },
   "正在读取可预约状态…": { "zh-Hant": "正在讀取可預約狀態…", ja: "予約可能状況を読み込み中…", en: "Loading availability…", ko: "예약 가능 상태를 불러오는 중…" },
   "正在读取可预约服务…": { "zh-Hant": "正在讀取可預約服務…", ja: "予約可能なサービスを読み込み中…", en: "Loading available services…", ko: "예약 가능한 서비스를 불러오는 중…" },
+  "返回店铺首页": { "zh-Hant": "返回店舖首頁", ja: "戻る", en: "Back to store home", ko: "매장 홈으로 돌아가기" },
+  "暂无可用优惠情报，请返回店铺的首页": { "zh-Hant": "暫無可用優惠情報，請返回店舖首頁", ja: "お得な情報がありません。店舗のホームページで予約してください。", en: "No offers are available. Please return to the store home page to book.", ko: "현재 이용 가능한 혜택 정보가 없습니다. 예약하려면 매장 홈으로 돌아가 주세요." },
   "同步失败，请重新读取后再试": { "zh-Hant": "同步失敗，請重新讀取後再試", ja: "同期できませんでした。再読み込みしてからもう一度お試しください", en: "Sync failed. Reload the drafts and try again.", ko: "동기화하지 못했습니다. 초안을 다시 불러온 후 재시도하세요." }
 });
 
@@ -4623,7 +4625,13 @@ export function StoreDetailExperience({
       ) : null}
 
       {activeTab === "offers" ? (
-        <div className="space-y-4">
+        config.offers.length === 0 ? (
+          <div className="flex min-h-[calc(100dvh-18rem)] items-center justify-center px-6 text-center">
+            <p className="max-w-sm text-sm font-semibold leading-7 text-[color:var(--client-muted)]">
+              {translateText("暂无可用优惠情报，请返回店铺的首页", language)}
+            </p>
+          </div>
+        ) : <div className="space-y-4">
           <section>
             <SectionTitle caption="优惠、营业提醒和近期主推都放在这里" title="情报" />
             <div className="mt-3 grid gap-2.5">
@@ -5065,7 +5073,11 @@ export function StoreDetailExperience({
             <AppIcon className="h-4 w-4" name="chat" />
             <span className="min-w-0 text-center leading-tight">聊天咨询</span>
           </SecondaryButton>
-          {renderBookingAction(storeBottomPrimaryButtonClassName, bookingCtaCopy(store.openStatus))}
+          {activeTab === "offers" ? (
+            <PrimaryButton className={storeBottomPrimaryButtonClassName} onClick={() => changeStoreTab("home")}>
+              <span className="min-w-0 text-center leading-tight">{translateText("返回店铺首页", language)}</span>
+            </PrimaryButton>
+          ) : renderBookingAction(storeBottomPrimaryButtonClassName, bookingCtaCopy(store.openStatus))}
         </div>
       </div>
 
