@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import pageSource from "./StoreDetailPage.tsx?raw";
 
 describe("StoreDetailPage routed booking defaults", () => {
+  it("shows an empty offer message and returns to the store home tab", () => {
+    expect(pageSource).toContain('config.offers.length === 0');
+    expect(pageSource).toContain('暂无可用优惠情报，请返回店铺的首页');
+    expect(pageSource).toContain('translateText("返回店铺首页", language)');
+    expect(pageSource).toContain('onClick={() => changeStoreTab("home")}');
+    expect(pageSource).toContain('ja: "戻る"');
+    expect(pageSource).toContain('ja: "お得な情報がありません。店舗のホームページで予約してください。"');
+  });
+
   it("shows the validated rebook notice on the original formal shop service list", () => {
     expect(pageSource).toContain("routeState?.notice === \"原服务已停止，请重新选择服务\"");
     expect(pageSource).toContain("<UnifiedFormalStoreDetail notice={notice}");
