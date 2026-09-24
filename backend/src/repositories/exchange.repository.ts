@@ -10,7 +10,9 @@ import {
   ExchangePostType as DatabaseExchangePostType,
   ExchangePublisherCapacitySource as DatabaseExchangePublisherCapacitySource,
   ExchangeRequestFinancialState as DatabaseExchangeRequestFinancialState,
-  ExchangeServiceMode as DatabaseExchangeServiceMode
+  ExchangeServiceMode as DatabaseExchangeServiceMode,
+  PlatformMembershipTierCode,
+  PlatformMembershipVersionStatus
 } from "@prisma/client";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { CONTENT_LOCALES, type ContentLocaleCode } from "../constants/content-locales";
@@ -244,11 +246,38 @@ const intelligenceShopInclude = {
   }
 };
 
-const postInclude = (viewerIdentityId: number, participantIdentityId = viewerIdentityId) =>
+const postInclude = (viewerIdentityId: number, participantIdentityId: number, now: Date) =>
   ({
     author: {
       select: {
         id: true,
+        platformMembershipEntitlements: {
+          where: {
+            deletedAt: null,
+            startsAt: { lte: now },
+            supersededAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+            tierVersion: {
+              status: { in: [PlatformMembershipVersionStatus.PUBLISHED, PlatformMembershipVersionStatus.ARCHIVED] },
+              deletedAt: null,
+              tier: { deletedAt: null }
+            }
+          },
+          orderBy: [{ startsAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: { tierVersion: { select: { tier: { select: { code: true } } } } }
+        },
+        membershipAdjustments: {
+          where: {
+            deletedAt: null,
+            supersededAt: null,
+            effectiveFrom: { lte: now },
+            tierVersionId: { not: null }
+          },
+          orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
+          take: 1,
+          select: { tierVersion: { select: { tier: { select: { code: true } } } } }
+        },
         customerProfile: {
           select: {
             bio: true, bioLocalesJson: true, isPublic: true, visibility: true,
@@ -586,7 +615,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             skip: pagination.skip,
             take: pagination.take,
-            include: postInclude(input.viewerIdentityId, input.participantIdentityId)
+            include: postInclude(input.viewerIdentityId, input.participantIdentityId ?? input.viewerIdentityId, input.now)
           })
           .then((records) => records.map((record) => ({ record })));
     const [rows, total] = await Promise.all([
@@ -696,7 +725,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
 
     const records = await this.client.exchangePost.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      include: postInclude(input.viewerIdentityId, input.participantIdentityId)
+      include: postInclude(input.viewerIdentityId, input.participantIdentityId ?? input.viewerIdentityId, input.now)
     });
     const recordsById = new Map(records.map((record) => [record.id, record]));
     return ranked.flatMap((row) => {
@@ -722,7 +751,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           { type: DatabaseExchangePostType.INTELLIGENCE, ...await this.intelligenceVisibilityWhere(shopViewer) }
         ]
       },
-      include: postInclude(viewerIdentityId, participantIdentityId)
+      include: postInclude(viewerIdentityId, participantIdentityId, now)
     });
 
     return row ? this.mapPost(row, viewerIdentityId, now, undefined, claimProviderUserId) : null;
@@ -800,7 +829,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   ): Promise<ExchangePublicationRecord | null> {
     const existing = await this.client.exchangePost.findFirst({
       where: { idempotencyKey, ownerIdentityId, deletedAt: null },
-      include: postInclude(ownerIdentityId)
+      include: postInclude(ownerIdentityId, ownerIdentityId, now)
     });
     if (!existing) return null;
 
@@ -1225,7 +1254,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   ): Promise<ExchangePostPayload> {
     const row = await this.client.exchangePost.findFirstOrThrow({
       where: { id: postId, deletedAt: null },
-      include: postInclude(viewerIdentityId)
+      include: postInclude(viewerIdentityId, viewerIdentityId, now)
     });
 
     return this.mapPost(row, viewerIdentityId, now);
@@ -2011,8 +2040,14 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
                 ? row.author.customerProfile.bio : null,
               bioLocales: row.author.customerProfile?.isPublic && row.author.customerProfile.visibility === "public"
                 ? readLocalizedBioMap(row.author.customerProfile.bioLocalesJson) : {},
-              membershipLevel: row.author.customerProfile
-                ? resolveEffectiveCustomerMembershipLevel(row.author.customerProfile, now) : null,
+              membershipLevel: (() => {
+                const code = row.author.membershipAdjustments[0]?.tierVersion?.tier.code
+                  ?? row.author.platformMembershipEntitlements[0]?.tierVersion.tier.code;
+                if (code === PlatformMembershipTierCode.SILVER) return "silver";
+                if (code === PlatformMembershipTierCode.GOLD) return "gold";
+                if (code === PlatformMembershipTierCode.BLACK_DIAMOND) return "black_diamond";
+                return "free";
+              })(),
               credit: row.author.customerProfile?.reviewSummary?.deletedAt === null
                 ? {
                     ratingAverage: String(row.author.customerProfile.reviewSummary.ratingAverage),

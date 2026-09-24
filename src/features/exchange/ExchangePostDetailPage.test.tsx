@@ -366,6 +366,17 @@ describe("ExchangePostDetailPage", () => {
     expect(card?.textContent).toContain("信用评价 4.8/5");
   });
 
+  it("shows the platform black diamond membership on the publisher card", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      publisher: { ...demandPost.publisher!, membershipLevel: "black_diamond" }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+    const card = document.body.querySelector('[data-testid="exchange-request-publisher"] [data-card-kind="user"]');
+    expect(card?.textContent).toContain("黑钻会员");
+  });
+
   it("does not present the content locale as a service requirement", async () => {
     vi.mocked(getExchangePost).mockResolvedValue(demandPost);
     await renderDetail();

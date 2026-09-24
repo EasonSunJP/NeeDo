@@ -6,7 +6,8 @@ const now = new Date("2026-08-30T03:00:00.000Z");
 const demandRow = {
   id: 41,
   authorUserId: 7,
-  author: { id: 7, customerProfile: { bio: "サービス前に連絡してください", bioLocalesJson: null,
+  author: { id: 7, platformMembershipEntitlements: [{ tierVersion: { tier: { code: "BLACK_DIAMOND" } } }],
+    membershipAdjustments: [], customerProfile: { bio: "サービス前に連絡してください", bioLocalesJson: null,
     isPublic: true, visibility: "public", membershipLevel: "gold", membershipGrantMode: "SELF_SERVICE",
     membershipStartsAt: null, membershipExpiresAt: null,
     reviewSummary: { ratingAverage: 4.5, reviewCount: 2, deletedAt: null } } },
@@ -873,7 +874,7 @@ describe("ExchangePostRepository", () => {
             contactUserId: 7,
             bio: "サービス前に連絡してください",
             bioLocales: {},
-            membershipLevel: "gold",
+            membershipLevel: "black_diamond",
             credit: { ratingAverage: "4.5", reviewCount: 2 }
           },
           counts: { comments: 4, likes: 21, shares: 5 },

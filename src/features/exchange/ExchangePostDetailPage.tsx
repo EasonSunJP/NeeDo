@@ -212,7 +212,8 @@ function PublisherCard({ post, language, context }: { post: ExchangePost; langua
   const membership = post.publisher?.membershipLevel
     ? exchangeText(post.publisher.membershipLevel === "silver" ? "silverMembership"
       : post.publisher.membershipLevel === "gold" ? "goldMembership"
-        : post.publisher.membershipLevel === "black" ? "blackMembership" : "freeMembership", language)
+        : post.publisher.membershipLevel === "black_diamond" || post.publisher.membershipLevel === "black"
+          ? "blackMembership" : "freeMembership", language)
     : null;
   const rating = post.publisher?.credit?.reviewCount
     ? Number(post.publisher.credit.ratingAverage).toFixed(1) : "—";
