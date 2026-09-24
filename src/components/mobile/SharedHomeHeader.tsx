@@ -5,6 +5,8 @@ import { cn } from "../../lib/utils";
 import { AvatarImage } from "../ui/AvatarImage";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
+import { NotificationBadge } from "../ui/NotificationBadge";
+import { useOfficialNoticeUnreadCount } from "../ui/OfficialNoticeBell";
 import { resolveCustomerMembership } from "../../shared/profile-card/customerMembership";
 
 function ChevronIcon({ className }: { className?: string }) {
@@ -77,6 +79,8 @@ export function SharedHomeHeader({
   secondaryActionTo,
   secondaryActionLabel,
   secondaryActionIcon = "bell",
+  secondaryActionUnreadCount = 0,
+  compactLocationLabel = false,
   settingsTo,
   settingsLabel = "打开设置",
   rightAction,
@@ -98,7 +102,9 @@ export function SharedHomeHeader({
   locationTo?: string;
   secondaryActionTo?: string;
   secondaryActionLabel?: string;
-  secondaryActionIcon?: "bell" | "chat";
+  secondaryActionIcon?: "bell" | "chat" | "broadcast";
+  secondaryActionUnreadCount?: number;
+  compactLocationLabel?: boolean;
   settingsTo?: string;
   settingsLabel?: string;
   rightAction?: ReactNode;
@@ -108,7 +114,12 @@ export function SharedHomeHeader({
   className?: string;
 }) {
   const { isNight } = useClientTheme();
-  const resolvedLocationLabel = locationLabel.trim() || "定位中";
+  const officialNoticeUnreadCount = useOfficialNoticeUnreadCount(secondaryActionIcon === "broadcast");
+  const fullLocationLabel = locationLabel.trim() || "定位中";
+  const resolvedLocationLabel = compactLocationLabel
+    ? fullLocationLabel.split(/\s*[/／·•]\s*/u).filter(Boolean).at(-1) ?? fullLocationLabel
+    : fullLocationLabel;
+  const actionUnreadCount = secondaryActionIcon === "broadcast" ? officialNoticeUnreadCount : secondaryActionUnreadCount;
   const useBrightIcons = forceLight ? false : dark || isNight;
   const locationToneClass = dark
     ? "border-white/12 bg-white/10 text-white shadow-[0_16px_34px_rgba(0,0,0,0.24)]"
@@ -180,16 +191,19 @@ export function SharedHomeHeader({
 
       <div className="flex shrink-0 items-center gap-2">
         {secondaryActionTo && secondaryActionLabel ? (
-          <IconButton
-            className={cn(
-              dark
-                ? "border-white/12 bg-white/10 text-white shadow-[0_16px_34px_rgba(0,0,0,0.24)]"
-                : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] text-[color:var(--client-text)]"
-            )}
-            icon={secondaryActionIcon}
-            label={secondaryActionLabel}
-            to={secondaryActionTo}
-          />
+          <div className="relative">
+            <IconButton
+              className={cn(
+                dark
+                  ? "border-white/12 bg-white/10 text-white shadow-[0_16px_34px_rgba(0,0,0,0.24)]"
+                  : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] text-[color:var(--client-text)]"
+              )}
+              icon={secondaryActionIcon}
+              label={secondaryActionLabel}
+              to={secondaryActionTo}
+            />
+            {actionUnreadCount > 0 ? <NotificationBadge className="pointer-events-none absolute -right-1 -top-1" count={actionUnreadCount} size="sm" /> : null}
+          </div>
         ) : null}
         {rightAction ?? (
           settingsTo ? (

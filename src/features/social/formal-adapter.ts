@@ -138,6 +138,7 @@ export function mapFormalSocialPost(post: RealtimeSocialPost): SocialPost {
 
   return {
     id: String(post.id),
+    viewerViewed: Boolean(post.viewerInteraction?.viewed),
     authorId: String(post.authorUserId),
     authorType: entityType,
     text: post.content,

@@ -7,12 +7,20 @@ describe("SocialNotificationsPage", () => {
     expect(source).toContain("buildTimelineUpdateNotifications");
     expect(source).toContain('getTimelineFeed("friends", actorKey)');
     expect(source).toContain('getTimelineFeed("nearby", actorKey, nearbyLocationContext)');
-    expect(source).not.toContain("getNotifications(actorKey)");
+    expect(source).not.toContain("getNotifications(actorKey).map");
   });
 
   it("opens the corresponding post from every update", () => {
     expect(source).toContain("to={socialPaths.post(scope, item.postId)}");
     expect(source).toContain('title="动态通知"');
+  });
+
+  it("uses a close action and title info, and shows the post view state", () => {
+    expect(source).toContain('closeTo={socialPaths.timeline(scope)}');
+    expect(source).toContain('info="附近与好友新动态"');
+    expect(source).not.toContain('subtitle="附近与好友新动态"');
+    expect(source).toContain("unread={item.unread}");
+    expect(source).not.toContain("actions={<SocialTopActions");
   });
 
   it.each([

@@ -208,7 +208,7 @@ async function renderStaffPage() {
   await renderPortalPage("/merchant/staff");
 }
 
-async function renderDataGate(initialEntry: string) {
+async function renderDataGate(initialEntry: string, onSettled?: () => void) {
   await act(async () => {
     root.render(
       createElement(
@@ -217,8 +217,8 @@ async function renderDataGate(initialEntry: string) {
         createElement(
           Routes,
           null,
-          createElement(Route, { path: "/merchant", element: createElement(MerchantPortalPage) }),
-          createElement(Route, { path: "/merchant/:view", element: createElement(MerchantPortalPage) })
+          createElement(Route, { path: "/merchant", element: createElement(MerchantPortalPage, { onSettled }) }),
+          createElement(Route, { path: "/merchant/:view", element: createElement(MerchantPortalPage, { onSettled }) })
         )
       )
     );
@@ -283,12 +283,14 @@ describe("MerchantPortal formal employment data", () => {
 
     it("shows the themed merchant loading state while the active shop request is pending", async () => {
       vi.spyOn(backofficeRealDataApi, "merchantShop").mockReturnValue(new Promise(() => {}));
+      const onSettled = vi.fn();
 
-      await renderDataGate("/merchant/me");
+      await renderDataGate("/merchant/me", onSettled);
 
       const loading = container.querySelector('[data-testid="merchant-loading-state"]');
       expect(loading).not.toBeNull();
       expect(loading?.closest(".client-shell")).not.toBeNull();
+      expect(onSettled).not.toHaveBeenCalled();
     });
 
     it("starts loading formal staff without waiting for the active shop request", async () => {
@@ -337,10 +339,12 @@ describe("MerchantPortal formal employment data", () => {
       vi.spyOn(persistentResourceCache, "load").mockImplementation(() => new Promise(() => {}));
       vi.spyOn(backofficeRealDataApi, "merchantShop").mockReturnValue(new Promise(() => {}));
 
-      await renderDataGate("/merchant");
+      const onSettled = vi.fn();
+      await renderDataGate("/merchant", onSettled);
 
       expect(container.querySelector('[data-testid="merchant-loading-state"]')).toBeNull();
       expect(container.textContent).toContain("测试门店");
+      expect(onSettled).toHaveBeenCalledTimes(1);
     });
 
     it("renders five role sections as direct siblings with inline counts and an independent form", async () => {

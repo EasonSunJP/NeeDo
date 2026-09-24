@@ -13,7 +13,7 @@ export function SocialMediaViewerPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const scope = getSocialScopeFromPathname(location.pathname);
-  const { getActorForScope, getPostById, getUnreadNotificationCount, profiles } = useSocial();
+  const { getActorForScope, getPostById, profiles } = useSocial();
   const actorKey = getActorForScope(scope);
   const post = postId ? getPostById(postId, actorKey) : undefined;
   const currentIndex = Number(searchParams.get("index") ?? 0);
@@ -26,7 +26,7 @@ export function SocialMediaViewerPage() {
   if (!post || !media) {
     return (
       <PageScaffold contentClassName="space-y-6 pb-28" navItems={navItemsForSocialScope(scope)}>
-        <AppTopBar actions={<SocialTopActions scope={scope} unreadCount={getUnreadNotificationCount(actorKey)} />} subtitle="媒体不可用" title="媒体查看" />
+        <AppTopBar actions={<SocialTopActions scope={scope} />} subtitle="媒体不可用" title="媒体查看" />
         <SocialEmptyState
           action={<PrimaryButton to={socialPaths.timeline(scope)}>回到动态首页</PrimaryButton>}
           description="当前媒体链接已失效，或者原动态不再可用。"
@@ -46,7 +46,7 @@ export function SocialMediaViewerPage() {
   return (
     <PageScaffold className="bg-[#050505]" contentClassName="space-y-6 pb-28" navItems={navItemsForSocialScope(scope)}>
       <AppTopBar
-        actions={<SocialTopActions scope={scope} unreadCount={getUnreadNotificationCount(actorKey)} />}
+        actions={<SocialTopActions scope={scope} />}
         subtitle={`${mediaIndex + 1} / ${post.media.length}`}
         title="媒体查看"
       />

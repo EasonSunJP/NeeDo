@@ -18,6 +18,7 @@ import { cn } from "../../../lib/utils";
 import { useHomeLayoutStore } from "../../../state/homeLayoutStore";
 import { useHomeLocationPreference, type HomeLocationPreferenceState } from "../../../state/homeLocationStore";
 import { useSocial } from "../context";
+import { useTimelineUnreadCount } from "../useTimelineUnreadCount";
 import { getSocialScopeFromPathname, socialPaths } from "../paths";
 import { type SocialTimelineLocationContext } from "../timeline";
 import { buildTimelineUpdateNotifications } from "../timeline-notifications";
@@ -264,6 +265,7 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
     refreshFeeds
   } = useSocial();
   const actorKey = getActorForScope(scope);
+  const unreadNotificationCount = useTimelineUnreadCount(scope);
   const actor = profiles[actorKey];
   const portalConfig = roleBasedTabConfig[scope];
   const { config: homeLocationConfig } = useHomeLayoutStore();
@@ -528,6 +530,7 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
                 locationTo={scope === "user" ? "/me/settings/service-range" : portalConfig.settingsPath}
                 secondaryActionLabel="动态通知"
                 secondaryActionTo={socialPaths.notifications(scope)}
+                secondaryActionUnreadCount={unreadNotificationCount}
               />
               <div className="mt-3">
                 <SocialTimelineHeaderSearch

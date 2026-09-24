@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState, type ComponentType, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { RouteScrollReset } from "./components/ui/RouteScrollReset";
 import { deploymentVersionLabel } from "./config/deploymentVersion";
@@ -36,6 +36,7 @@ import { TechniciansPage } from "./pages/admin/TechniciansPage";
 import { EmployeesPage } from "./pages/admin/EmployeesPage";
 import { LegacyUserManagementRedirect } from "./features/platform-user-management/LegacyUserManagementRedirect";
 import { MerchantPortalPage, MerchantStaffDetailRoutePage } from "./pages/mobile/MerchantPortalPage";
+import { ClientNotificationsPage } from "./pages/mobile/ClientNotificationsPage";
 import { BusinessCpsPage } from "./pages/mobile/BusinessCpsPage";
 import { AffiliateMarketplacePage } from "./pages/mobile/AffiliateMarketplacePage";
 import { AffiliateTaskDetailPage } from "./pages/mobile/AffiliateTaskDetailPage";
@@ -1159,7 +1160,10 @@ export default function App() {
   const [splashPortal, setSplashPortal] = useState<SplashPortal | null>(currentPortal);
   const [lastPortal, setLastPortal] = useState<SplashPortal | null>(null);
   const [isTransitionSplash, setIsTransitionSplash] = useState(false);
+  const [merchantReadyRouteKey, setMerchantReadyRouteKey] = useState<string | null>(null);
   const visibleSplashPortal = currentPortal !== lastPortal ? currentPortal : splashPortal;
+  const waitingForMerchantPortal = location.pathname === "/merchant" && currentPortal === "merchant" && merchantReadyRouteKey !== location.key;
+  const markMerchantPortalReady = useCallback(() => setMerchantReadyRouteKey(location.key), [location.key]);
   const portalTransition = Boolean(lastPortal && currentPortal && currentPortal !== lastPortal) || isTransitionSplash;
   const protect = (portal: PortalScope, element: ReactElement) => (
     <RequirePortalAuth portal={portal}>
@@ -1224,7 +1228,7 @@ export default function App() {
               <EntityStoreBootstrap />
               <NeedoPetAssetBootstrap disabled={reducedPerformance} />
               <SocialProvider>
-                {visibleSplashPortal ? <SplashScreen onDone={completeSplash} portal={visibleSplashPortal} portalTransition={portalTransition} reducedPerformance={reducedPerformance} /> : null}
+                {visibleSplashPortal ? <SplashScreen onDone={waitingForMerchantPortal ? undefined : completeSplash} portal={visibleSplashPortal} portalTransition={portalTransition} reducedPerformance={reducedPerformance} /> : null}
                 <RouteScrollReset />
                 <ShareFeedbackViewport />
                 <NeedoPet disabled={Boolean(visibleSplashPortal) || reducedPerformance} />
@@ -1287,6 +1291,7 @@ export default function App() {
               <Route path="/moments/search" element={protect("user", <SocialSearchPage />)} />
               <Route path="/moments/tags/:tag" element={protect("user", <SocialSearchPage />)} />
               <Route path="/moments/notifications" element={protect("user", <SocialNotificationsPage />)} />
+              <Route path="/notifications" element={protect("user", <ClientNotificationsPage />)} />
               <Route path="/moments/users/:userId" element={protect("user", <SocialAccountProfilePage />)} />
               <Route path="/moments/posts/:postId/replies" element={protect("user", <SocialLegacyReplyRedirectPage />)} />
               <Route path="/moments/posts/:postId/repost" element={protect("user", <SocialRepostPage />)} />
@@ -1367,7 +1372,7 @@ export default function App() {
               <Route path="/me/settings/delete-account" element={protect("user", <UserSettingsDeleteAccountPage />)} />
               <Route path="/support" element={protect("user", <SupportPage />)} />
 
-              <Route path="/merchant" element={protect("merchant", <MerchantPortalPage />)} />
+              <Route path="/merchant" element={protect("merchant", <MerchantPortalPage onSettled={markMerchantPortalReady} />)} />
               <Route path="/merchant/technician-applications" element={protectPermission("merchant", "merchant:technician-application:read", <TechnicianApplicationsReviewPage />)} />
               <Route path="/merchant/messages" element={protect("merchant", <ImScopeProvider scope="merchant"><ImMessagesEntryPage /></ImScopeProvider>)} />
               <Route path="/merchant/messages/new" element={protect("merchant", <ImScopeProvider scope="merchant"><ImNewConversationPage /></ImScopeProvider>)} />
@@ -1391,6 +1396,7 @@ export default function App() {
               <Route path="/merchant/moments/search" element={protect("merchant", <SocialSearchPage />)} />
               <Route path="/merchant/moments/tags/:tag" element={protect("merchant", <SocialSearchPage />)} />
               <Route path="/merchant/moments/notifications" element={protect("merchant", <SocialNotificationsPage />)} />
+              <Route path="/merchant/notifications" element={protect("merchant", <ClientNotificationsPage />)} />
               <Route path="/merchant/moments/users/:userId" element={protect("merchant", <SocialAccountProfilePage />)} />
               <Route path="/merchant/moments/posts/:postId/replies" element={protect("merchant", <SocialLegacyReplyRedirectPage />)} />
               <Route path="/merchant/moments/posts/:postId/repost" element={protect("merchant", <SocialRepostPage />)} />
@@ -1535,6 +1541,7 @@ export default function App() {
               <Route path="/technician/moments/search" element={protect("technician", <SocialSearchPage />)} />
               <Route path="/technician/moments/tags/:tag" element={protect("technician", <SocialSearchPage />)} />
               <Route path="/technician/moments/notifications" element={protect("technician", <SocialNotificationsPage />)} />
+              <Route path="/technician/notifications" element={protect("technician", <ClientNotificationsPage />)} />
               <Route path="/technician/moments/users/:userId" element={protect("technician", <SocialAccountProfilePage />)} />
               <Route path="/technician/moments/posts/:postId/replies" element={protect("technician", <SocialLegacyReplyRedirectPage />)} />
               <Route path="/technician/moments/posts/:postId/repost" element={protect("technician", <SocialRepostPage />)} />

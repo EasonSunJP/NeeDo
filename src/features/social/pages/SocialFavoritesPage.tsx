@@ -25,7 +25,7 @@ export function SocialFavoritesPage() {
   const { language } = useOptionalI18n();
   const copy = favoritesCopy[language];
   const scope = "user" as const;
-  const { getActorForScope, getUnreadNotificationCount, state } = useSocial();
+  const { getActorForScope, state } = useSocial();
   const actorKey = getActorForScope(scope);
   const interactions = state.interactions[actorKey] ?? {};
   const bookmarkedPosts = state.posts.filter((post) => interactions[post.id]?.bookmarked);
@@ -33,7 +33,7 @@ export function SocialFavoritesPage() {
   return (
     <PageScaffold contentClassName="space-y-5 pb-28" navItems={navItemsForSocialScope(scope)}>
       <AppTopBar
-        actions={<div className="flex items-center gap-2"><Link className="rounded-full border border-[color:var(--client-line)] px-3 py-2 text-xs font-black text-[color:var(--client-primary)]" to="/me/favorites/chat-records">{copy.chatRecords}</Link><SocialTopActions scope={scope} unreadCount={getUnreadNotificationCount(actorKey)} /></div>}
+        actions={<div className="flex items-center gap-2"><Link className="rounded-full border border-[color:var(--client-line)] px-3 py-2 text-xs font-black text-[color:var(--client-primary)]" to="/me/favorites/chat-records">{copy.chatRecords}</Link><SocialTopActions scope={scope} /></div>}
         info={copy.count(bookmarkedPosts.length)}
         title={copy.title}
       />

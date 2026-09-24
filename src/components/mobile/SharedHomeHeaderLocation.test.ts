@@ -7,6 +7,17 @@ import userScheduleSource from "../../pages/user/UserSchedulePage.tsx?raw";
 import userScheduleDetailSource from "../../pages/user/UserTechnicianScheduleDetailPage.tsx?raw";
 
 describe("SharedHomeHeader location entry", () => {
+  it("links each portal home notification shortcut and compacts the displayed location", () => {
+    expect(userSource).toContain('secondaryActionTo="/notifications"');
+    expect(merchantSource).toContain('secondaryActionTo="/merchant/notifications"');
+    expect(technicianSource).toContain('secondaryActionTo="/technician/notifications"');
+    expect(userSource).toContain("compactLocationLabel");
+    expect(merchantSource).toContain("compactLocationLabel");
+    expect(technicianSource).toContain("compactLocationLabel");
+    expect(appSource).toContain('path="/notifications"');
+    expect(appSource).toContain('path="/merchant/notifications"');
+    expect(appSource).toContain('path="/technician/notifications"');
+  });
   it("routes remaining user, merchant, and technician location controls to the shared service-range page", () => {
     expect(userSource).toContain('locationTo="/me/settings/service-range"');
     expect(userScheduleDetailSource).toContain('locationTo="/me/settings/service-range"');

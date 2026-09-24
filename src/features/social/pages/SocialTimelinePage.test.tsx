@@ -128,10 +128,28 @@ describe("SocialTimelinePage", () => {
     ]);
   });
 
+  it("marks only unseen posts as unread using the server view record", () => {
+    const notices = buildTimelineUpdateNotifications({
+      actorKey: "user:current-user",
+      friendPosts: [{ ...posts[0], viewerViewed: true }],
+      nearbyPosts: [{ ...posts[1], viewerViewed: false }],
+      profiles
+    });
+    expect(notices.map((notice) => ({ id: notice.postId, unread: notice.unread }))).toEqual([
+      { id: "post-schedule", unread: true },
+      { id: "post-layout", unread: false }
+    ]);
+  });
+
   it("links timeline notices to their post and does not mix in system notifications", () => {
     expect(source).toContain('to={socialPaths.post(scope, item.postId)}');
     expect(source).toContain('title="附近与好友新动态"');
     expect(source).not.toContain("getNotifications(actorKey)");
+  });
+
+  it("shows the authoritative unread count on the header notification bell", () => {
+    expect(source).toContain("secondaryActionUnreadCount={unreadNotificationCount}");
+    expect(source).toContain("useTimelineUnreadCount(scope)");
   });
 
   it("renders the timeline header search as an inline form instead of a navigation link", () => {

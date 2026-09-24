@@ -6,6 +6,7 @@ export type TimelineUpdateNotification = {
   postId: string;
   createdAt: string;
   content: "好友发布了新动态" | "附近发布了新动态";
+  unread: boolean;
 };
 
 export function buildTimelineUpdateNotifications({
@@ -40,7 +41,8 @@ export function buildTimelineUpdateNotifications({
         actorKey: postActorKey,
         postId: post.id,
         createdAt: post.createdAt,
-        content
+        content,
+        unread: post.viewerViewed !== true
       });
     });
   };

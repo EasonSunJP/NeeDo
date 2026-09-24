@@ -326,6 +326,7 @@ export interface SocialPostPayload {
     liked: boolean;
     bookmarked: boolean;
     shared: boolean;
+    viewed?: boolean;
   };
 }
 
@@ -338,6 +339,7 @@ type SocialInteractionMap = {
   likedPostIds: Set<number>;
   bookmarkedPostIds: Set<number>;
   sharedPostIds: Set<number>;
+  viewedPostIds: Set<number>;
 };
 
 export interface SocialPostInteractionMutationInput {
@@ -6754,11 +6756,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       return {
         likedPostIds: new Set(),
         bookmarkedPostIds: new Set(),
-        sharedPostIds: new Set()
+        sharedPostIds: new Set(),
+        viewedPostIds: new Set()
       };
     }
 
-    const [likes, bookmarks, shares] = await Promise.all([
+    const [likes, bookmarks, shares, views] = await Promise.all([
       this.client.socialPostLike.findMany({
         where: {
           postId: { in: uniquePostIds },
@@ -6783,13 +6786,18 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         },
         select: { postId: true },
         distinct: ["postId"]
+      }),
+      this.client.socialPostView.findMany({
+        where: { postId: { in: uniquePostIds }, actorIdentityId: viewerIdentityId, deletedAt: null },
+        select: { postId: true }
       })
     ]);
 
     return {
       likedPostIds: new Set(likes.map((item) => item.postId)),
       bookmarkedPostIds: new Set(bookmarks.map((item) => item.postId)),
-      sharedPostIds: new Set(shares.map((item) => item.postId))
+      sharedPostIds: new Set(shares.map((item) => item.postId)),
+      viewedPostIds: new Set(views.map((item) => item.postId))
     };
   }
 
@@ -6836,7 +6844,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     interactionMap: SocialInteractionMap = {
       likedPostIds: new Set(),
       bookmarkedPostIds: new Set(),
-      sharedPostIds: new Set()
+      sharedPostIds: new Set(),
+      viewedPostIds: new Set()
     }
   ): SocialPostPayload {
     const envelope = this.jsonRecord(socialPost.media);
@@ -6869,7 +6878,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       viewerInteraction: {
         liked: interactionMap.likedPostIds.has(socialPost.id),
         bookmarked: interactionMap.bookmarkedPostIds.has(socialPost.id),
-        shared: interactionMap.sharedPostIds.has(socialPost.id)
+        shared: interactionMap.sharedPostIds.has(socialPost.id),
+        viewed: interactionMap.viewedPostIds.has(socialPost.id)
       },
       author: this.mapSocialAuthor(socialPost.author, socialPost.authorIdentity)
     };

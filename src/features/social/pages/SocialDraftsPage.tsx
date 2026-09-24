@@ -13,8 +13,7 @@ export function SocialDraftsPage() {
   const { language } = useOptionalI18n();
   const location = useLocation();
   const scope = getSocialScopeFromPathname(location.pathname);
-  const { state, profiles, getActorForScope, getUnreadNotificationCount, clearDraft } = useSocial();
-  const actorKey = getActorForScope(scope);
+  const { state, profiles, clearDraft } = useSocial();
   const drafts = useMemo(
     () =>
       Object.entries(state.drafts)
@@ -26,7 +25,7 @@ export function SocialDraftsPage() {
   return (
     <PageScaffold contentClassName="space-y-6 pb-28" navItems={navItemsForSocialScope(scope)}>
       <AppTopBar
-        actions={<SocialTopActions scope={scope} unreadCount={getUnreadNotificationCount(actorKey)} />}
+        actions={<SocialTopActions scope={scope} />}
         info="退出发帖页后自动保存到本地"
         title="草稿列表"
       />

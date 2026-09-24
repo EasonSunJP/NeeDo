@@ -42,7 +42,8 @@ describe("RealtimeRepository Social friends", () => {
       },
       socialPostLike: { findMany: jest.fn(async () => []) },
       socialPostBookmark: { findMany: jest.fn(async () => []) },
-      socialPostShare: { findMany: jest.fn(async () => []) }
+      socialPostShare: { findMany: jest.fn(async () => []) },
+      socialPostView: { findMany: jest.fn(async () => [{ postId: 64774 }]) }
     };
 
     const result = await new RealtimeRepository(client as unknown as PrismaClient).listSocialPosts(
@@ -54,7 +55,8 @@ describe("RealtimeRepository Social friends", () => {
       authorUserId: 1,
       viewerFollowsAuthor: false,
       authorFollowsViewer: false,
-      viewerIsFriend: true
+      viewerIsFriend: true,
+      viewerInteraction: { viewed: true }
     });
     expect(client.contact.findMany).toHaveBeenCalledWith({
       where: {
@@ -106,7 +108,8 @@ describe("RealtimeRepository Social friends", () => {
       },
       socialPostLike: { findMany: jest.fn(async () => []) },
       socialPostBookmark: { findMany: jest.fn(async () => []) },
-      socialPostShare: { findMany: jest.fn(async () => []) }
+      socialPostShare: { findMany: jest.fn(async () => []) },
+      socialPostView: { findMany: jest.fn(async () => []) }
     };
 
     const result = await new RealtimeRepository(client as unknown as PrismaClient).listSocialPosts(

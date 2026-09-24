@@ -6,6 +6,7 @@ import { cn, hasLocalizedTitleText } from "../../lib/utils";
 import { clientAppMaxWidth, FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../mobile/FloatingHomeHeader";
 import { MobileShell, type MobileNavItem } from "../mobile/MobileShell";
 import { ShareNetworkIconPath } from "../ui/ShareNetworkIcon";
+import { NotificationBellGlyph } from "../ui/NotificationBellGlyph";
 import { TitleWithInfo } from "../ui/TitleWithInfo";
 
 function shouldRenderTitleEyebrow(eyebrow?: ReactNode) {
@@ -205,10 +206,12 @@ function iconPath(name: IconName) {
         </>
       );
     case "bell":
+      return <NotificationBellGlyph />;
+    case "broadcast":
       return (
         <>
-          <path d="M8.5 17.5h7l-1-1.8v-3.1a3.5 3.5 0 1 0-7 0v3.1l-1 1.8Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
-          <path d="M10 18.5a2 2 0 0 0 4 0" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+          <circle cx="12" cy="12" r="2.2" fill="currentColor" />
+          <path d="M7.5 7.5a6.4 6.4 0 0 0 0 9M16.5 7.5a6.4 6.4 0 0 1 0 9M4.5 4.5a10.6 10.6 0 0 0 0 15M19.5 4.5a10.6 10.6 0 0 1 0 15" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
         </>
       );
     case "sparkles":
@@ -297,6 +300,7 @@ export type IconName =
   | "globe"
   | "shield"
   | "bell"
+  | "broadcast"
   | "sparkles"
   | "moments"
   | "completed"

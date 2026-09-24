@@ -82,6 +82,7 @@ export interface SocialMentionCandidate {
 
 export interface SocialPost {
   id: string;
+  viewerViewed?: boolean;
   authorId: string;
   authorType: SocialEntityType;
   text: string;

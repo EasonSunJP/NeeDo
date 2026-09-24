@@ -44,6 +44,7 @@ import { resolveImMessageRichText, type ImMessageRichTextPart } from "../../im/r
 import { useImStore } from "../../im/store";
 import type { ContactRelation, ImUser } from "../../im/model";
 import { useSocial } from "../context";
+import { useTimelineUnreadCount } from "../useTimelineUnreadCount";
 import { socialPaths, socialReplyFocusState } from "../paths";
 import { buildTechnicianWeeklyScheduleItems, type TechnicianWeeklyScheduleTone } from "../profileHeaderPresentation";
 import { getCustomerCustomProfileReviewTags } from "../profileReviewPresentation";
@@ -2546,13 +2547,12 @@ export function SocialSidebarSection({
 
 export function SocialTopActions({
   scope,
-  unreadCount,
   hideSearch = false
 }: {
   scope: SocialPortalScope;
-  unreadCount?: number;
   hideSearch?: boolean;
 }) {
+  const unreadCount = useTimelineUnreadCount(scope);
   return (
     <>
       {hideSearch ? null : <IconButton icon="search" label="搜索动态" to={socialPaths.search(scope)} />}

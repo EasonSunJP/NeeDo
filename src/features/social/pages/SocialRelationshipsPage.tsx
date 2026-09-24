@@ -11,7 +11,7 @@ export function SocialRelationshipsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const scope = getSocialScopeFromPathname(location.pathname);
-  const { profiles, getActorForScope, getFollowers, getFollowing, getUnreadNotificationCount } = useSocial();
+  const { profiles, getActorForScope, getFollowers, getFollowing } = useSocial();
   const actorKey = getActorForScope(scope);
   const profile = entityType && id ? profiles[`${entityType}:${id}`] : undefined;
   const routeMode = location.pathname.endsWith("/following") ? "following" : "followers";
@@ -26,7 +26,7 @@ export function SocialRelationshipsPage() {
   if (!profile) {
     return (
       <PageScaffold contentClassName="space-y-6 pb-28" navItems={navItemsForSocialScope(scope)}>
-        <AppTopBar actions={<SocialTopActions scope={scope} unreadCount={getUnreadNotificationCount(actorKey)} />} subtitle="资料不可用" title="关注关系" />
+        <AppTopBar actions={<SocialTopActions scope={scope} />} subtitle="资料不可用" title="关注关系" />
         <SocialEmptyState
           action={<PrimaryButton to={socialPaths.timeline(scope)}>返回动态首页</PrimaryButton>}
           description="当前资料不存在，无法查看关注关系。"
@@ -39,7 +39,7 @@ export function SocialRelationshipsPage() {
   return (
     <PageScaffold contentClassName="space-y-6 pb-28" navItems={navItemsForSocialScope(scope)}>
       <AppTopBar
-        actions={<SocialTopActions scope={scope} unreadCount={getUnreadNotificationCount(actorKey)} />}
+        actions={<SocialTopActions scope={scope} />}
         subtitle={profile.displayName}
         title="关注关系"
       />
