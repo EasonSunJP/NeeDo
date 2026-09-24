@@ -86,14 +86,11 @@ function FeedProbe({ initialType = "demand" }: { initialType?: "demand" | "intel
       <span data-testid="loading">{String(feed.loading)}</span>
       <span data-testid="loading-more">{String(feed.loadingMore)}</span>
       <span data-testid="ids">{feed.posts.map((post) => post.id).join(",")}</span>
-      <span data-testid="likes">{feed.posts.find((post) => post.id === 41)?.counts.likes ?? 0}</span>
-      <span data-testid="liked">{String(feed.posts.find((post) => post.id === 41)?.viewer.liked ?? false)}</span>
       <span data-testid="error">{feed.error ? `${feed.error.kind}:${feed.error.message}` : "none"}</span>
       <button data-action="intelligence" onClick={() => feed.setActiveType("intelligence")} type="button">intelligence</button>
       <button data-action="more" onClick={feed.loadMore} type="button">more</button>
       <button data-action="refresh" onClick={feed.refresh} type="button">refresh</button>
       <button data-action="upsert" onClick={() => feed.upsertPost({ ...demandPost, id: 42 })} type="button">upsert</button>
-      <button data-action="counts" onClick={() => feed.replaceCounts(41, { comments: 4, likes: 11, shares: 3 }, { liked: true })} type="button">counts</button>
       <button data-action="remove" onClick={() => feed.removePost(41)} type="button">remove</button>
     </div>
   );
@@ -194,17 +191,13 @@ describe("useExchangeFeed", () => {
     expect(container.querySelector('[data-testid="ids"]')?.textContent).toBe("");
   });
 
-  it("reconciles inserts, server counts, viewer state, and removals in one canonical map", async () => {
+  it("reconciles inserts and removals in one canonical map", async () => {
     vi.mocked(listExchangePosts).mockResolvedValue(page([demandPost], 1, 1));
     await act(async () => root.render(<FeedProbe />));
     await waitFor(() => expect(container.querySelector('[data-testid="ids"]')?.textContent).toBe("41"));
 
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="upsert"]')?.click());
     expect(container.querySelector('[data-testid="ids"]')?.textContent).toBe("42,41");
-
-    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="counts"]')?.click());
-    expect(container.querySelector('[data-testid="likes"]')?.textContent).toBe("11");
-    expect(container.querySelector('[data-testid="liked"]')?.textContent).toBe("true");
 
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="remove"]')?.click());
     expect(container.querySelector('[data-testid="ids"]')?.textContent).toBe("42");

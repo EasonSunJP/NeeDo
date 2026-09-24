@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { floatingHeaderControlButtonClassName, IconMetricAction } from "../../components/client-ui/AppScaffold";
+import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
 import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
@@ -200,6 +200,12 @@ function DetailHero({ label, post, publisherAlt }: { label: string; post: Exchan
   );
 }
 
+function publisherIdentityLabel(identityType: string, language: Language) {
+  if (["merchant", "merchant_owner", "merchant_staff"].includes(identityType)) return exchangeText("merchantIdentity", language);
+  if (identityType === "technician") return exchangeText("technicianIdentity", language);
+  return exchangeText("customerIdentity", language);
+}
+
 function PublisherCard({ post, language, context }: { post: ExchangePost; language: Language; context: MessageCenterContext }) {
   const requestAddress = post.demand?.address;
   const requestAddressLines = requestAddress &&
@@ -218,7 +224,8 @@ function PublisherCard({ post, language, context }: { post: ExchangePost; langua
             entityType: "user",
             displayName: post.publisher.displayName,
             avatar: post.publisher.avatarUrl ?? undefined,
-            tags: [],
+            description: post.publisher.publicId,
+            tags: [publisherIdentityLabel(post.publisher.identityType, language)],
             badgeList: []
           }}
           detailTo={["customer", "user", "u"].includes(post.publisher.identityType)
@@ -229,7 +236,6 @@ function PublisherCard({ post, language, context }: { post: ExchangePost; langua
       ) : (
         <div className={detailCardClassName}>{exchangeText("publisherHidden", language)}</div>
       )}
-      {post.publisher ? <p className="mt-1 px-3 font-mono text-xs font-bold text-[color:var(--client-muted)]">{post.publisher.publicId}</p> : null}
       {requestAddressLines.length > 0 ? (
         <div className="mt-2 grid gap-1 px-3 text-xs font-semibold leading-5 text-[color:var(--client-muted)]" data-testid="exchange-request-address">
           {requestAddressLines.map((line, index) => <p key={`${index}-${line}`}>{line}</p>)}
@@ -443,27 +449,12 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
               name="favorite"
               onClick={() => void toggleLike()}
             />
-            {post.type === "demand" ? (
-              <div data-action="detail-share">
-                <IconMetricAction
-                  className="!h-11"
-                  count={post.counts.shares}
-                  disabled={!active || actionPending !== null}
-                  icon="share"
-                  iconClassName="h-6 w-6"
-                  label={t("share")}
-                  onClick={() => void share()}
-                  shellClassName={floatingHeaderControlButtonClassName}
-                />
-              </div>
-            ) : (
-              <HeaderActionButton
-                disabled={!active || actionPending !== null}
-                label={t("share")}
-                name="share"
-                onClick={() => void share()}
-              />
-            )}
+            <HeaderActionButton
+              disabled={!active || actionPending !== null}
+              label={t("share")}
+              name="share"
+              onClick={() => void share()}
+            />
           </div>
         )}
         info={`${formatTime(post.serviceStartAt, language)}–${formatTime(post.serviceEndAt, language)} · ${post.areaLabel}`}

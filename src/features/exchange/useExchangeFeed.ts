@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiClientError } from "../../api/httpClient";
 import { listExchangePosts } from "./api";
-import type {
-  ExchangeInteractionCounts,
-  ExchangePost,
-  ExchangePostType,
-  ExchangeViewerState
-} from "./types";
+import type { ExchangePost, ExchangePostType } from "./types";
 
 export type ExchangeFeedErrorKind = "unauthorized" | "forbidden" | "unavailable" | "unknown";
 
@@ -208,28 +203,6 @@ export function useExchangeFeed(initialType: ExchangePostType, pageSize = 20) {
     });
   }, []);
 
-  const replaceCounts = useCallback((
-    postId: number,
-    counts: ExchangeInteractionCounts,
-    viewer?: Partial<ExchangeViewerState>
-  ) => {
-    setState((current) => {
-      const post = current.items[postId];
-      if (!post) return current;
-      return {
-        ...current,
-        items: {
-          ...current.items,
-          [postId]: {
-            ...post,
-            counts,
-            viewer: { ...post.viewer, ...viewer }
-          }
-        }
-      };
-    });
-  }, []);
-
   const removePost = useCallback((postId: number) => {
     setState((current) => {
       const items = { ...current.items };
@@ -274,7 +247,6 @@ export function useExchangeFeed(initialType: ExchangePostType, pageSize = 20) {
     refresh,
     loadMore,
     upsertPost,
-    replaceCounts,
     removePost
   };
 }

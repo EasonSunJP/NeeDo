@@ -5,9 +5,7 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { likeExchangePost, recordExchangeShare } from "./api";
-import { shareContent } from "../../lib/share";
-import type { ExchangeInteractionCounts, ExchangePost, ExchangeViewerState } from "./types";
+import type { ExchangePost } from "./types";
 import { useExchangeFeed } from "./useExchangeFeed";
 import { ExchangeFeedPage, getDefaultExchangePostType } from "./ExchangeFeedPage";
 
@@ -17,8 +15,7 @@ vi.mock("../../i18n/I18nProvider", () => ({
 }));
 vi.mock("../../theme/ClientThemeProvider", () => ({ useClientTheme: () => ({ theme: "dark-green" }) }));
 vi.mock("./useExchangeFeed", () => ({ useExchangeFeed: vi.fn() }));
-vi.mock("./api", () => ({ likeExchangePost: vi.fn(), recordExchangeShare: vi.fn(), unlikeExchangePost: vi.fn() }));
-vi.mock("../../lib/share", () => ({ shareContent: vi.fn() }));
+vi.mock("../../components/mobile/MomentActionBar", () => ({ MomentActionBar: () => <div data-testid="moment-action-bar" /> }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const demandPost: ExchangePost = {
@@ -120,7 +117,6 @@ const baseResource: ReturnType<typeof useExchangeFeed> = {
   refresh: vi.fn(),
   loadMore: vi.fn(),
   upsertPost: vi.fn(),
-  replaceCounts: vi.fn(),
   removePost: vi.fn()
 };
 
@@ -133,44 +129,13 @@ function renderFeed(overrides: Partial<typeof baseResource> = {}, context: "user
   );
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: Error) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, resolve, reject };
-}
-
-async function mountInteractiveDemandFeed() {
-  const container = document.createElement("div");
-  const root = createRoot(container);
-  document.body.appendChild(container);
-  let currentPost = demandPost;
-  const replaceCounts = vi.fn((postId: number, counts: ExchangeInteractionCounts, viewer?: Partial<ExchangeViewerState>) => {
-    if (postId === currentPost.id) currentPost = { ...currentPost, counts, viewer: { ...currentPost.viewer, ...viewer } };
-  });
-  vi.mocked(useExchangeFeed).mockImplementation(() => ({ ...baseResource, posts: [currentPost], replaceCounts }));
-  vi.stubGlobal("crypto", { randomUUID: vi.fn().mockReturnValue("123e4567-e89b-42d3-a456-426614174000") });
-  const render = () => act(async () => root.render(<MemoryRouter><ExchangeFeedPage context="user" /></MemoryRouter>));
-  await render();
-  const buttons = () => container.querySelectorAll<HTMLButtonElement>('[data-post-id="41"] .flex.items-center.justify-between button');
-  expect(buttons()).toHaveLength(3);
-  return {
-    buttons,
-    currentPost: () => currentPost,
-    render,
-    replaceCounts,
-    cleanup: async () => {
-      await act(async () => root.unmount());
-      container.remove();
-      vi.unstubAllGlobals();
-    }
-  };
-}
-
 describe("ExchangeFeedPage", () => {
+  it.each(["demand", "intelligence"] as const)("removes the %s list-card interaction row", (type) => {
+    const post = type === "demand" ? demandPost : intelligencePost;
+    const markup = renderFeed({ activeType: type, posts: [post] });
+    expect(markup).not.toContain('data-testid="moment-action-bar"');
+  });
+
   it("shows the authored system-language version in the feed", () => {
     const markup = renderFeed({ posts: [{ ...demandPost, contentLocale: "ja", title: "日本語タイトル", detail: "日本語説明", contentTranslations: { "zh-CN": { title: "中文标题", detail: "中文说明" } } }] });
     expect(markup).toContain("中文标题");
@@ -205,7 +170,7 @@ describe("ExchangeFeedPage", () => {
     expect(useExchangeFeed).toHaveBeenLastCalledWith("demand", 20);
   });
 
-  it("restores the original high-fidelity search, tabs, offer card, and interaction bar", () => {
+  it("retains search, tabs, and offer details without the removed interaction row", () => {
     const markup = renderFeed();
     expect(markup).toContain("搜索需要的服务");
     expect(markup).toContain('data-image-layout="wide"');
@@ -219,76 +184,16 @@ describe("ExchangeFeedPage", () => {
     expect(markup).toContain("这段正文由测试账号用简体中文发布，不应自动翻译。");
     expect(markup).toContain("東京都千代田区");
     expect(markup).toContain("¥8,000–¥12,000");
-    expect(markup).toContain("4");
-    expect(markup).toContain("21");
-    expect(markup).toContain("6");
     expect(markup).toContain('data-no-i18n="true"');
     expect(markup).toContain('data-post-id="41"');
-    expect(markup).toContain("转发");
+    expect(markup).not.toContain('data-testid="moment-action-bar"');
   });
 
-  it("keeps demand likes unchanged until a successful server response", async () => {
-    const failed = deferred<ExchangeInteractionCounts>();
-    const succeeded = deferred<ExchangeInteractionCounts>();
-    vi.mocked(likeExchangePost).mockImplementationOnce(() => failed.promise).mockImplementationOnce(() => succeeded.promise);
-    const feed = await mountInteractiveDemandFeed();
-    try {
-      await act(async () => feed.buttons()[0]?.click());
-      expect(feed.buttons()[0]?.textContent).toContain("21");
-      expect(feed.replaceCounts).not.toHaveBeenCalled();
-      await act(async () => { failed.reject(new Error("error.network")); await failed.promise.catch(() => undefined); });
-      expect(feed.currentPost().counts.likes).toBe(21);
-      expect(feed.buttons()[0]?.textContent).toContain("21");
-      expect(feed.replaceCounts).not.toHaveBeenCalled();
-
-      await act(async () => feed.buttons()[0]?.click());
-      expect(feed.buttons()[0]?.textContent).toContain("21");
-      expect(feed.replaceCounts).not.toHaveBeenCalled();
-      await act(async () => { succeeded.resolve({ comments: 6, likes: 30, shares: 6 }); await succeeded.promise; });
-      expect(feed.replaceCounts).toHaveBeenCalledExactlyOnceWith(41, { comments: 6, likes: 30, shares: 6 }, { liked: true });
-      await feed.render();
-      expect(feed.buttons()[0]?.textContent).toContain("30");
-    } finally {
-      await feed.cleanup();
-    }
-  });
-
-  it("keeps demand shares unchanged until the share record succeeds", async () => {
-    const failed = deferred<ExchangeInteractionCounts>();
-    const succeeded = deferred<ExchangeInteractionCounts>();
-    vi.mocked(shareContent).mockResolvedValue({ status: "copied", url: "https://needo.test/needo/posts/41" });
-    vi.mocked(recordExchangeShare).mockImplementationOnce(() => failed.promise).mockImplementationOnce(() => succeeded.promise);
-    const feed = await mountInteractiveDemandFeed();
-    try {
-      expect(feed.buttons()[2]?.textContent).toBe("转发 6");
-      await act(async () => feed.buttons()[2]?.click());
-      expect(recordExchangeShare).toHaveBeenCalledWith("41", "123e4567-e89b-42d3-a456-426614174000");
-      expect(feed.currentPost().counts.shares).toBe(6);
-      expect(feed.buttons()[0]?.textContent).toContain("21");
-      expect(feed.replaceCounts).not.toHaveBeenCalled();
-      await act(async () => { failed.reject(new Error("error.network")); await failed.promise.catch(() => undefined); });
-      expect(feed.currentPost().counts.shares).toBe(6);
-      expect(feed.replaceCounts).not.toHaveBeenCalled();
-
-      await act(async () => feed.buttons()[2]?.click());
-      expect(feed.currentPost().counts.shares).toBe(6);
-      expect(feed.replaceCounts).not.toHaveBeenCalled();
-      await act(async () => { succeeded.resolve({ comments: 6, likes: 21, shares: 7 }); await succeeded.promise; });
-      expect(feed.replaceCounts).toHaveBeenCalledExactlyOnceWith(41, { comments: 6, likes: 21, shares: 7 }, { liked: false });
-      expect(feed.currentPost().counts.shares).toBe(7);
-      await feed.render();
-      expect(feed.buttons()[2]?.textContent).toBe("转发 7");
-    } finally {
-      await feed.cleanup();
-    }
-  });
-
-  it("opens the matching demand detail from the comment action and does not record cancelled shares", async () => {
+  it("opens the matching demand detail from the list card", async () => {
     const container = document.createElement("div");
     const root = createRoot(container);
     document.body.appendChild(container);
     vi.mocked(useExchangeFeed).mockReturnValue(baseResource);
-    vi.mocked(shareContent).mockResolvedValue({ status: "cancelled", url: "https://needo.test/needo/posts/41" });
     function Destination() {
       return <div data-testid="destination">{useLocation().pathname}</div>;
     }
@@ -302,11 +207,8 @@ describe("ExchangeFeedPage", () => {
           </Routes>
         </MemoryRouter>
       ));
-      const buttons = container.querySelectorAll<HTMLButtonElement>('[data-post-id="41"] .flex.items-center.justify-between button');
-      expect(buttons).toHaveLength(3);
-      await act(async () => buttons[2]?.click());
-      expect(recordExchangeShare).not.toHaveBeenCalled();
-      await act(async () => buttons[1]?.click());
+      expect(container.querySelector('[data-post-id="41"]')).not.toBeNull();
+      await act(async () => container.querySelector<HTMLElement>('[data-post-id="41"]')?.click());
       expect(container.querySelector('[data-testid="destination"]')?.textContent).toBe("/needo/posts/41");
     } finally {
       await act(async () => root.unmount());
@@ -508,6 +410,6 @@ describe("ExchangeFeedPage", () => {
     expect(source).toContain("FloatingHomeHeader");
     expect(source).toContain("FloatingHeaderSearchBar");
     expect(source).toContain("FeatureSegmentedTabs");
-    expect(source).toContain("MomentActionBar");
+    expect(source).not.toContain("MomentActionBar");
   });
 });

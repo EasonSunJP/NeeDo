@@ -3,18 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import { FloatingHeaderSearchBar } from "../../components/mobile/FloatingHeaderSearchBar";
 import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
-import { MomentActionBar } from "../../components/mobile/MomentActionBar";
 import { OfferInfoCard } from "../../components/mobile/OfferInfoCard";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import type { MessageCenterContext } from "../../lib/messageCenter";
-import { shareContent } from "../../lib/share";
-import { likeExchangePost, recordExchangeShare, unlikeExchangePost } from "./api";
 import { ExchangeComposer } from "./ExchangeComposer";
 import { ExchangeIntelligenceShopCard } from "./ExchangeIntelligenceShopCard";
 import { exchangeText } from "./i18n";
 import { localizedExchangePostText } from "./localized-post";
-import type { ExchangeInteractionCounts, ExchangePost, ExchangePostType } from "./types";
+import type { ExchangePost, ExchangePostType } from "./types";
 import { useExchangeFeed, type ExchangeFeedError } from "./useExchangeFeed";
 
 export function getDefaultExchangePostType(context: MessageCenterContext): ExchangePostType {
@@ -121,57 +118,18 @@ function PostCard({
   post,
   context,
   language,
-  nowMs,
-  onCountsChange
+  nowMs
 }: {
   post: ExchangePost;
   context: MessageCenterContext;
   language: Language;
   nowMs: number;
-  onCountsChange: (postId: number, counts: ExchangeInteractionCounts, liked?: boolean) => void;
 }) {
   const navigate = useNavigate();
-  const [pending, setPending] = useState<"like" | "share" | null>(null);
-  const [actionError, setActionError] = useState(false);
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
   const displayText = localizedExchangePostText(post, language);
   const detailPath = `${exchangeBasePath(context)}/posts/${post.id}`;
   const openDetail = () => navigate(detailPath);
-
-  async function toggleLike() {
-    if (pending) return;
-    setPending("like");
-    setActionError(false);
-    try {
-      const counts = post.viewer.liked
-        ? await unlikeExchangePost(String(post.id), globalThis.crypto.randomUUID())
-        : await likeExchangePost(String(post.id), globalThis.crypto.randomUUID());
-      onCountsChange(post.id, counts, !post.viewer.liked);
-    } catch {
-      setActionError(true);
-    } finally {
-      setPending(null);
-    }
-  }
-
-  async function share() {
-    if (pending) return;
-    setPending("share");
-    setActionError(false);
-    try {
-      const url = typeof window === "undefined"
-        ? detailPath
-        : `${window.location.origin}${window.location.pathname}#${detailPath}`;
-      const result = await shareContent({ title: displayText.title, text: displayText.detail, url });
-      if (result.status !== "shared" && result.status !== "copied") return;
-      const counts = await recordExchangeShare(String(post.id), globalThis.crypto.randomUUID());
-      onCountsChange(post.id, counts, post.viewer.liked);
-    } catch {
-      setActionError(true);
-    } finally {
-      setPending(null);
-    }
-  }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.target !== event.currentTarget) return;
@@ -191,7 +149,6 @@ function PostCard({
       tabIndex={0}
     >
       <OfferInfoCard
-        className={pending ? "opacity-90" : undefined}
         expiryCountdown={formatCountdown(post.expiresAt, nowMs, language)}
         expiryLabel={t(post.type === "demand" ? "applicationDeadlineTime" : "validity")}
         expiryValue={formatExpiryDate(post.expiresAt, language)}
@@ -205,24 +162,6 @@ function PostCard({
             value: <span data-no-i18n="true">{post.intelligence?.serviceAreas.join(" · ") || post.areaLabel}</span>
           }
         ]}
-        footer={
-          <div onClick={(event) => event.stopPropagation()}>
-            <MomentActionBar
-              bordered={false}
-              forwardLabel={post.type === "demand" ? `${t("shares")} ${post.counts.shares}` : t("shares")}
-              likeCount={post.counts.likes}
-              liked={post.viewer.liked}
-              onForward={() => void share()}
-              onLike={() => void toggleLike()}
-              onReply={openDetail}
-              replyCount={post.counts.comments}
-              tone="client"
-            />
-            {actionError ? (
-              <p className="mt-2 text-[11px] font-bold text-[color:var(--client-accent)]" role="alert">{t("interactionFailed")}</p>
-            ) : null}
-          </div>
-        }
         image={post.type === "demand" ? post.demand?.cover.url : undefined}
         imageAlt={post.type === "demand" ? displayText.title : undefined}
         imageLabel={t(post.type)}
@@ -335,11 +274,6 @@ export function ExchangeFeedPage({ context }: { context: MessageCenterContext })
               key={post.id}
               language={language}
               nowMs={nowMs}
-              onCountsChange={(postId, counts, liked) => feed.replaceCounts(
-                postId,
-                counts,
-                liked === undefined ? undefined : { liked }
-              )}
               post={post}
             />
           ))
