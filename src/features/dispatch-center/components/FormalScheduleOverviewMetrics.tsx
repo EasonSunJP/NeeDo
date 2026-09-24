@@ -62,6 +62,6 @@ export default function FormalScheduleOverviewMetrics({
     <div className="grid grid-cols-3 gap-2">
       {cards.map(([label, value]) => <article className="min-w-0 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-3 py-2.5" key={label}><p className={cn("truncate text-[10px] font-black leading-none", labelTextClass)}>{label}</p><strong className="mt-2 block truncate text-[14px] font-black leading-none text-ink">{loading ? t("加载中") : value}</strong></article>)}
     </div>
-    <ScheduleStatusChart buckets={statistics.buckets} description={t("空闲、已预约时长与出勤人数")} title={t("排班状态")} />
+    <ScheduleStatusChart buckets={statistics.buckets} description={t("排班时长占比与出勤人数")} title={t("排班状态")} />
   </>;
 }

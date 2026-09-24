@@ -588,7 +588,7 @@ function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDa
             />
             <ScheduleStatusChart
               buckets={dashboard.series.buckets}
-              description={t("空闲、已预约时长与出勤人数")}
+              description={t("排班时长占比与出勤人数")}
               title={t("排班状态")}
             />
           </section>

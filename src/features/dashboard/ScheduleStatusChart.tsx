@@ -1,3 +1,4 @@
+import { useId, type MouseEvent } from "react";
 import type { DashboardBucketPayload } from "../../api/backofficeRealData";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -21,6 +22,11 @@ function x(index: number, count: number) {
   return count <= 1 ? plot.left + plotWidth / 2 : plot.left + (index / (count - 1)) * plotWidth;
 }
 
+function formatScheduleShare(value: number, bucket: ScheduleStatusChartBucket, language: Parameters<typeof formatDashboardNumber>[1]) {
+  const total = bucket.scheduleAvailableHours + bucket.scheduleBookedHours;
+  return `${formatDashboardNumber(total > 0 ? value / total * 100 : 0, language)}%`;
+}
+
 export function ScheduleStatusChart({ title, description, buckets }: {
   title: string;
   description: string;
@@ -33,11 +39,11 @@ export function ScheduleStatusChart({ title, description, buckets }: {
     { key: "scheduleAvailableHours" as const, label: t("空闲时长"), unit: t("小时"), color: "var(--admin-success, #10b981)" }
   ];
   const attendance = { label: t("出勤人数"), unit: t("人"), color: "var(--admin-accent, #3b82f6)" };
-  const durationAxis = createDashboardAxis(buckets.flatMap((bucket) => series.map((item) => bucket[item.key])));
+  const chartId = useId().replaceAll(":", "");
+  const percentTicks = [0, 25, 50, 75, 100];
   const attendanceAxis = createDashboardAxis(buckets.map((bucket) => bucket.scheduleAttendanceCount));
   const groupWidth = plotWidth / Math.max(1, buckets.length);
-  const gap = Math.max(1, Math.min(4, groupWidth * 0.08));
-  const barWidth = Math.max(2, Math.min(18, (groupWidth * 0.72 - gap) / 2));
+  const barWidth = Math.max(2, Math.min(18, groupWidth * 0.5));
   const line = buckets.map((bucket, index) =>
     `${index ? "L" : "M"} ${x(index, buckets.length).toFixed(2)} ${attendanceAxis.y(bucket.scheduleAttendanceCount, plot.top, plotHeight).toFixed(2)}`
   ).join(" ");
@@ -60,7 +66,7 @@ export function ScheduleStatusChart({ title, description, buckets }: {
           {[...series, attendance].map((item, index) => (
             <span className="inline-flex items-center gap-2 text-xs font-black text-ink/60" key={item.label}>
               <span aria-hidden="true" className={index === 2 ? "h-2.5 w-2.5 rounded-full" : "h-2.5 w-2.5"} style={{ background: item.color }} />
-              {item.label} · {item.unit}
+              {item.label} · {index === 2 ? item.unit : "%"}
             </span>
           ))}
         </div>
@@ -71,9 +77,16 @@ export function ScheduleStatusChart({ title, description, buckets }: {
             role="img"
             viewBox={`0 0 ${width} ${height}`}
           >
-            {durationAxis.ticks.map((tick) => {
-              const y = durationAxis.y(tick, plot.top, plotHeight);
-              return <g key={tick}><line stroke="var(--admin-line, rgba(148, 163, 184, 0.25))" strokeDasharray="4 6" vectorEffect="non-scaling-stroke" x1={plot.left} x2={width - plot.right} y1={y} y2={y} /><text data-axis-side="left" data-no-i18n fill="currentColor" fontSize="10" textAnchor="end" x={plot.left - 8} y={y + 4}>{formatDashboardNumber(tick, language)}</text></g>;
+            <defs>
+              {buckets.map((bucket, index) => bucket.scheduleAvailableHours + bucket.scheduleBookedHours > 0 ? (
+                <clipPath id={`${chartId}-bar-${index}`} key={bucket.key}>
+                  <rect height={plotHeight} rx="3" width={barWidth} x={x(index, buckets.length) - barWidth / 2} y={plot.top} />
+                </clipPath>
+              ) : null)}
+            </defs>
+            {percentTicks.map((tick) => {
+              const y = plot.top + plotHeight * (1 - tick / 100);
+              return <g key={tick}><line stroke="var(--admin-line, rgba(148, 163, 184, 0.25))" strokeDasharray="4 6" vectorEffect="non-scaling-stroke" x1={plot.left} x2={width - plot.right} y1={y} y2={y} /><text data-axis-side="left" data-no-i18n fill="currentColor" fontSize="10" textAnchor="end" x={plot.left - 8} y={y + 4}>{tick}%</text></g>;
             })}
             {attendanceAxis.ticks.map((tick) => (
               <text data-axis-side="right" data-no-i18n fill="currentColor" fontSize="10" key={tick} textAnchor="start" x={width - plot.right + 8} y={attendanceAxis.y(tick, plot.top, plotHeight) + 4}>
@@ -85,26 +98,27 @@ export function ScheduleStatusChart({ title, description, buckets }: {
                 {bucket.label}
               </text>
             ))}
-            {buckets.flatMap((bucket, bucketIndex) => series.map((item, seriesIndex) => {
-              const y = durationAxis.y(bucket[item.key], plot.top, plotHeight);
+            {buckets.map((bucket, bucketIndex) => {
+              const available = Math.max(0, bucket.scheduleAvailableHours);
+              const booked = Math.max(0, bucket.scheduleBookedHours);
+              const total = available + booked;
+              if (total <= 0) return null;
+              const availableHeight = plotHeight * available / total;
+              const bookedHeight = plotHeight - availableHeight;
+              const barX = x(bucketIndex, buckets.length) - barWidth / 2;
+              const events = {
+                onClick: (event: MouseEvent<SVGRectElement>) => tooltip.select(bucketIndex, event),
+                onMouseEnter: (event: MouseEvent<SVGRectElement>) => tooltip.hover(bucketIndex, event),
+                onMouseLeave: tooltip.leave,
+                onMouseMove: (event: MouseEvent<SVGRectElement>) => tooltip.hover(bucketIndex, event)
+              };
               return (
-                <rect
-                  data-schedule-status-bar={seriesIndex ? "available" : "booked"}
-                  fill={item.color}
-                  height={plot.top + plotHeight - y}
-                  key={`${bucket.key}-${item.key}`}
-                  onClick={(event) => tooltip.select(bucketIndex, event)}
-                  onMouseEnter={(event) => tooltip.hover(bucketIndex, event)}
-                  onMouseLeave={tooltip.leave}
-                  onMouseMove={(event) => tooltip.hover(bucketIndex, event)}
-                  rx="3"
-                  vectorEffect="non-scaling-stroke"
-                  width={barWidth}
-                  x={x(bucketIndex, buckets.length) - (barWidth * 2 + gap) / 2 + seriesIndex * (barWidth + gap)}
-                  y={y}
-                />
+                <g clipPath={`url(#${chartId}-bar-${bucketIndex})`} key={bucket.key}>
+                  {availableHeight > 0 ? <rect {...events} data-schedule-bucket={bucket.key} data-schedule-status-bar="available" fill={series[1].color} height={availableHeight} width={barWidth} x={barX} y={plot.top} /> : null}
+                  {bookedHeight > 0 ? <rect {...events} data-schedule-bucket={bucket.key} data-schedule-status-bar="booked" fill={series[0].color} height={bookedHeight} width={barWidth} x={barX} y={plot.top + availableHeight} /> : null}
+                </g>
               );
-            }))}
+            })}
             {buckets.length ? (
               <>
                 <path d={line} data-schedule-attendance-line="true" fill="none" stroke={attendance.color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" vectorEffect="non-scaling-stroke" />
@@ -143,7 +157,7 @@ export function ScheduleStatusChart({ title, description, buckets }: {
             ) : null}
           </svg>
         </div>
-        <table className="sr-only"><caption><span>{title}</span><span>精确数据</span></caption><thead><tr><th>期间</th>{series.map((item) => <th key={item.key}>{item.label}（{item.unit}）</th>)}<th>{attendance.label}（{attendance.unit}）</th></tr></thead><tbody>{buckets.map((bucket) => <tr key={bucket.key}><th data-no-i18n>{bucket.label}</th>{series.map((item) => <td data-no-i18n key={item.key}>{formatDashboardNumber(bucket[item.key], language)}</td>)}<td data-no-i18n>{formatDashboardNumber(bucket.scheduleAttendanceCount, language)}</td></tr>)}</tbody></table>
+        <table className="sr-only"><caption><span>{title}</span><span>精确数据</span></caption><thead><tr><th>期间</th>{series.map((item) => <th key={item.key}>{item.label}（{item.unit}）</th>)}<th>{attendance.label}（{attendance.unit}）</th></tr></thead><tbody>{buckets.map((bucket) => <tr key={bucket.key}><th data-no-i18n>{bucket.label}</th>{series.map((item) => <td data-no-i18n key={item.key}>{formatDashboardNumber(bucket[item.key], language)} ({formatScheduleShare(bucket[item.key], bucket, language)})</td>)}<td data-no-i18n>{formatDashboardNumber(bucket.scheduleAttendanceCount, language)}</td></tr>)}</tbody></table>
       </figure>
       <DashboardChartTooltip
         anchor={tooltip.active}
@@ -153,7 +167,7 @@ export function ScheduleStatusChart({ title, description, buckets }: {
             color: item.color,
             key: item.key,
             label: item.label,
-            value: `${formatDashboardNumber(selectedBucket[item.key], language)} ${item.unit}`
+            value: `${formatDashboardNumber(selectedBucket[item.key], language)} ${item.unit} (${formatScheduleShare(selectedBucket[item.key], selectedBucket, language)})`
           })),
           {
             color: attendance.color,
