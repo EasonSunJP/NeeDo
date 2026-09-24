@@ -51,7 +51,7 @@ function formatCount(value: number) {
   return Math.round(value).toLocaleString("zh-CN");
 }
 
-const shopTrendDimensions = { width: 620, height: 260, left: 42, right: 24, top: 24, bottom: 54 };
+const shopTrendDimensions = { width: 620, height: 260, left: 88, right: 70, top: 24, bottom: 54 };
 
 function pointsAttribute(points: Array<{ x: number; y: number }>) {
   return points.map(({ x, y }) => `${x},${y}`).join(" ");
@@ -90,6 +90,8 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
   const revenuePeak = Math.max(...buckets.map((bucket) => bucket.serviceGmvJpy), 0);
   const orderPeak = Math.max(...buckets.map((bucket) => bucket.orderCount), 0);
   const usableHeight = shopTrendDimensions.height - shopTrendDimensions.top - shopTrendDimensions.bottom;
+  const revenueAxisTicks = [...new Set([revenuePeak, Math.round(revenuePeak / 2), 0])];
+  const orderAxisTicks = [...new Set([orderPeak, Math.round(orderPeak / 2), 0])];
 
   if (buckets.length === 0) {
     return (
@@ -122,8 +124,8 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
           role="img"
           viewBox={`0 0 ${shopTrendDimensions.width} ${shopTrendDimensions.height}`}
         >
-          {Array.from({ length: 4 }, (_, index) => {
-            const y = shopTrendDimensions.top + (usableHeight / 3) * index;
+          {Array.from({ length: 3 }, (_, index) => {
+            const y = shopTrendDimensions.top + (usableHeight / 2) * index;
             return (
               <line
                 key={y}
@@ -136,6 +138,22 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
               />
             );
           })}
+          <g data-axis="revenue" fill="var(--client-primary)" fontSize="14" fontWeight="800" textAnchor="end">
+            <line stroke="var(--client-primary)" strokeOpacity="0.65" x1={shopTrendDimensions.left} x2={shopTrendDimensions.left} y1={shopTrendDimensions.top} y2={shopTrendDimensions.top + usableHeight} />
+            {revenueAxisTicks.map((tick) => (
+              <text key={tick} x={shopTrendDimensions.left - 9} y={shopTrendDimensions.top + usableHeight * (1 - tick / Math.max(revenuePeak, 1)) + 5}>
+                {yen(tick)}
+              </text>
+            ))}
+          </g>
+          <g data-axis="orders" fill="var(--client-accent)" fontSize="14" fontWeight="800" textAnchor="start">
+            <line stroke="var(--client-accent)" strokeOpacity="0.65" x1={shopTrendDimensions.width - shopTrendDimensions.right} x2={shopTrendDimensions.width - shopTrendDimensions.right} y1={shopTrendDimensions.top} y2={shopTrendDimensions.top + usableHeight} />
+            {orderAxisTicks.map((tick) => (
+              <text key={tick} x={shopTrendDimensions.width - shopTrendDimensions.right + 9} y={shopTrendDimensions.top + usableHeight * (1 - tick / Math.max(orderPeak, 1)) + 5}>
+                {formatCount(tick)}
+              </text>
+            ))}
+          </g>
           {showRevenue ? (
             <g data-series="revenue">
               <polyline fill="none" points={pointsAttribute(revenueCoordinates)} stroke="var(--client-primary)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" />
@@ -159,6 +177,10 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
           ) : null)}
         </svg>
       </div>
+
+      <p className="mt-2 text-[11px] font-semibold leading-5 text-[color:var(--client-muted)]" data-no-i18n>
+        {text("订单数含已确认至已完成订单；营业额仅计已完成且未退款订单。")}
+      </p>
 
       <div aria-label={text("订单趋势图例")} className="mt-2 grid grid-cols-2 gap-2" data-no-i18n>
         <button

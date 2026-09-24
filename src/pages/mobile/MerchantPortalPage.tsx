@@ -1598,8 +1598,8 @@ function MerchantStorePricingModeControl({
   }, [menuOpen, onMenuOpenChange]);
 
   return (
-    <div className="relative z-[70] w-full" data-testid="merchant-store-pricing-mode-control" ref={rootRef}>
-      <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+    <div className="relative z-[70] h-full w-full" data-testid="merchant-store-pricing-mode-control" ref={rootRef}>
+      <div className="h-full rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.18)] backdrop-blur-xl">
         <div className="flex items-center justify-between gap-2">
           <button
             aria-pressed={technicianPricing}
@@ -1736,8 +1736,8 @@ function MerchantStorePrivacyControl({
   }, [menuOpen, onMenuOpenChange]);
 
   return (
-    <div className="relative z-[70] w-full" data-testid="merchant-store-privacy-control" ref={rootRef}>
-      <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+    <div className="relative z-[70] h-full w-full" data-testid="merchant-store-privacy-control" ref={rootRef}>
+      <div className="h-full rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.18)] backdrop-blur-xl">
         <div className="flex items-center justify-between gap-2">
           <button
             aria-label={loadFailed ? t("重试读取隐私模式") : undefined}
@@ -3038,7 +3038,7 @@ export function MerchantPortalContent({
             <section className="space-y-3">
               <div className="px-1">
                 <SectionTitle caption="展示今日待确认、进行中和即将开始的预约，减少来回切页。" title="今日预约">
-                  <Suspense fallback={<Button size="sm" to="/merchant/schedule/auto-dispatch" variant="secondary">自动派单 · —</Button>}><AutoDispatchEntryButton /></Suspense>
+                  <Suspense fallback={null}><AutoDispatchEntryButton /></Suspense>
                 </SectionTitle>
               </div>
               <div className="space-y-3">

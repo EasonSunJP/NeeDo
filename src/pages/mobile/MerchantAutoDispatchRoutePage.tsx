@@ -1,20 +1,16 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { shopAutoDispatchApi, type ShopAutoDispatchRule, type ShopAutoDispatchRuleInput } from "../../api/shopAutoDispatch";
+import { shopAutoDispatchApi, toShopAutoDispatchInput, type ShopAutoDispatchRule } from "../../api/shopAutoDispatch";
 import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Button } from "../../components/ui/Button";
+import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 
 const fieldClass = "mt-2 h-12 w-full rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 font-black text-[color:var(--client-text)]";
 const timeValue = (minutes: number) => `${Math.floor(minutes / 60).toString().padStart(2, "0")}:${(minutes % 60).toString().padStart(2, "0")}`;
 const readMinutes = (value: string) => value.split(":").map(Number).reduce((hour, minute) => hour * 60 + minute);
-const toInput = (rule: ShopAutoDispatchRule): ShopAutoDispatchRuleInput => {
-  const { id: _id, shopId: _shopId, candidates: _candidates, createdAt: _createdAt, updatedAt: _updatedAt, ...input } = rule;
-  return input;
-};
-
 export function MerchantAutoDispatchRoutePage() {
   const navigate = useNavigate();
   const { isNight } = useClientTheme();
@@ -43,7 +39,7 @@ export function MerchantAutoDispatchRoutePage() {
     setStatus("saving");
     setMessage("");
     try {
-      setRule(await shopAutoDispatchApi.update(toInput(rule)));
+      setRule(await shopAutoDispatchApi.update(toShopAutoDispatchInput(rule)));
       setStatus("ready");
       setMessage("自动派单规则已保存。");
     } catch {
@@ -59,7 +55,7 @@ export function MerchantAutoDispatchRoutePage() {
         <section className="rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5 shadow-panel">
           <div className="flex items-center justify-between gap-4">
             <div><h1 className="text-xl font-black">店铺自动派单规则</h1><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">切换状态后保存，规则才会正式生效。</p></div>
-            <button aria-pressed={rule.enabled} className={`h-12 min-w-28 rounded-full font-black ${rule.enabled ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-red-500 text-white"}`} onClick={() => patch({ enabled: !rule.enabled })} type="button">{rule.enabled ? "ON" : "OFF"}</button>
+            <ToggleSwitch ariaLabel="开启自动派单" checked={rule.enabled} disabled={status === "saving"} onChange={(enabled) => patch({ enabled })} size="md" />
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs font-black">
             <div className="rounded-2xl bg-[color:var(--client-bg)] p-3"><span className="block text-lg">{rule.candidates.length}</span>候选员工</div>

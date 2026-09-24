@@ -1,6 +1,7 @@
 import type { TranslationEntry } from "../../i18n/translations";
 
 export const shopAnalyticsTranslations: Record<string, TranslationEntry> = {
+  "订单数含已确认至已完成订单；营业额仅计已完成且未退款订单。": { "zh-Hant": "訂單數包含已確認至已完成的訂單；營業額僅計入已完成且未退款的訂單。", ja: "注文数には確定から完了までの注文を含みます。売上は完了済みで返金されていない注文のみ計上します。", en: "Order count includes confirmed through completed orders. Revenue includes only completed, non-refunded orders.", ko: "주문 수에는 확정부터 완료까지의 주문이 포함됩니다. 매출은 완료되고 환불되지 않은 주문만 집계합니다." },
   "搜索今日预约": { "zh-Hant": "搜尋今日預約", ja: "本日の予約を検索", en: "Search today's bookings", ko: "오늘 예약 검색" },
   "搜索预约、客户、员工、状态": { "zh-Hant": "搜尋預約、顧客、員工、狀態", ja: "予約、顧客、スタッフ、状態を検索", en: "Search bookings, customers, staff, or status", ko: "예약, 고객, 직원 또는 상태 검색" },
   "今日预约时间线": { "zh-Hant": "今日預約時間線", ja: "本日の予約タイムライン", en: "Today's booking timeline", ko: "오늘 예약 타임라인" },

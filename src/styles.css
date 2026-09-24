@@ -2244,6 +2244,15 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   gap: 8px;
 }
 
+.client-shell .client-feature-segmented-tabs.store-public-tabs {
+  gap: 2px;
+}
+
+.client-shell .store-public-tabs .client-feature-segmented-tab {
+  padding-inline: 4px !important;
+  font-size: clamp(10px, 2.8vw, 13px) !important;
+}
+
 .client-shell :is(
   .client-liquid-glass-header,
   .client-liquid-glass-nav,

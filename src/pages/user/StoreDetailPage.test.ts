@@ -607,7 +607,9 @@ describe("StoreDetailPage routed booking defaults", () => {
 
   it("keeps the fixed store header compact and out of page vertical rhythm spacing", () => {
     expect(pageSource).toContain('contentClassName="pb-40 pt-[calc(env(safe-area-inset-top,0px)+148px)] sm:pt-[calc(env(safe-area-inset-top,0px)+156px)]"');
-    expect(pageSource).toContain('<div className="mt-2 overflow-x-auto">{tabSwitcher}</div>');
+    expect(pageSource).toContain('<div className="mt-2 min-w-0">{tabSwitcher}</div>');
+    expect(pageSource).toContain('variant={embedded ? "default" : "header"}');
+    expect(pageSource).not.toContain('min-w-[480px]');
     expect(pageSource).toContain('<div className="space-y-3">{content}</div>');
     expect(pageSource).not.toContain('contentClassName="space-y-3 pb-40');
     expect(pageSource).not.toContain("pointer-events-none fixed inset-x-0 top-0 z-30");

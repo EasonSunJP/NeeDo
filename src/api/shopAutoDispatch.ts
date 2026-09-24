@@ -32,6 +32,11 @@ export interface ShopAutoDispatchRule {
 
 export type ShopAutoDispatchRuleInput = Omit<ShopAutoDispatchRule, "id" | "shopId" | "candidates" | "createdAt" | "updatedAt">;
 
+export function toShopAutoDispatchInput(rule: ShopAutoDispatchRule): ShopAutoDispatchRuleInput {
+  const { id: _id, shopId: _shopId, candidates: _candidates, createdAt: _createdAt, updatedAt: _updatedAt, ...input } = rule;
+  return input;
+}
+
 export const shopAutoDispatchApi = {
   read() {
     return httpClient.request<ShopAutoDispatchRule>("/merchant-admin/auto-dispatch-rule");

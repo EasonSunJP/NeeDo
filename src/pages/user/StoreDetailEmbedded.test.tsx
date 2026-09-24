@@ -23,6 +23,7 @@ const pricingModeMock = vi.hoisted(() => ({ getBookingNavigation: vi.fn() }));
 const backofficeMock = vi.hoisted(() => ({
   createService: vi.fn(),
   merchantShopPresentation: vi.fn(),
+  updateMerchantShopPresentationLocale: vi.fn(),
   services: vi.fn(),
   updateTechnician: vi.fn()
 }));
@@ -45,6 +46,9 @@ beforeEach(async () => {
   pricingModeMock.getBookingNavigation.mockReset().mockResolvedValue(null);
   backofficeMock.createService.mockReset();
   backofficeMock.merchantShopPresentation.mockReset().mockReturnValue(new Promise(() => {}));
+  backofficeMock.updateMerchantShopPresentationLocale.mockReset().mockImplementation(async (locale, lockVersion, content) => ({
+    locale, lockVersion: lockVersion + 1, content, updatedAt: "2026-09-01T00:00:00.000Z"
+  }));
   backofficeMock.services.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
   backofficeMock.updateTechnician.mockReset();
   container = document.createElement("div");
@@ -186,6 +190,18 @@ it("moves merchant editing between localized shop tabs and ends it on non-shop t
   await click("地图");
   expect(container.textContent).toContain("完成修改");
   expect(container.querySelector('[data-testid="shop-presentation-locale-rail"]')).not.toBeNull();
+  expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent?.trim() === "取消")).toBe(true);
+  await click("保存并关闭");
+  expect(backofficeMock.updateMerchantShopPresentationLocale).toHaveBeenCalledTimes(1);
+  expect(container.querySelector('[data-testid="shop-presentation-locale-rail"]')).toBeNull();
+  await click("编辑位置");
+  await click("取消");
+  expect(backofficeMock.updateMerchantShopPresentationLocale).toHaveBeenCalledTimes(1);
+  await click("编辑位置");
+  backofficeMock.updateMerchantShopPresentationLocale.mockRejectedValueOnce(new Error("保存失败"));
+  await click("保存并关闭");
+  expect(container.querySelector('[data-testid="shop-presentation-locale-rail"]')).not.toBeNull();
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("保存失败");
   await click("情报");
   expect(container.querySelector('[data-testid="shop-presentation-locale-rail"]')).toBeNull();
   expect(container.querySelector('[aria-label="编辑情报展示"]')).toBeNull();

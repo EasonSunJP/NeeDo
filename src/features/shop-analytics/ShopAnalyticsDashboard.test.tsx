@@ -385,6 +385,9 @@ describe("ShopAnalyticsDashboard formal API", () => {
     expect(container.textContent).toContain("同一期间 · 双独立刻度");
     expect(container.textContent).toContain("￥70,000 峰值");
     expect(container.textContent).toContain("5单 峰值");
+    expect(container.querySelector('[data-axis="revenue"]')?.textContent).toContain("￥70,000");
+    expect(container.querySelector('[data-axis="orders"]')?.textContent).toContain("5");
+    expect(container.textContent).toContain("营业额仅计已完成且未退款订单");
     expect(
       container.querySelectorAll('[data-series="revenue"] [data-chart-node="true"]')
     ).toHaveLength(dashboard.series.buckets.length);

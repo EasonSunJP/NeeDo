@@ -3859,7 +3859,7 @@ export function StoreDetailExperience({
   };
   const fallbackImageUrls = new Set([sourceStore.cover, ...sourceStore.gallery]);
   const savePresentationLocale = async () => {
-    if (!presentationWorkspace) return;
+    if (!presentationWorkspace || presentationSaveState === "saving") return false;
     setPresentationSaveState("saving");
     setPresentationError("");
     try {
@@ -3876,10 +3876,25 @@ export function StoreDetailExperience({
       } : current);
       setPresentationDrafts((current) => ({ ...current, [presentationLocale]: editableStore }));
       setPresentationSaveState("saved");
+      return true;
     } catch (error) {
       setPresentationError(error instanceof Error ? error.message : "error.shop_presentation.save_failed");
       setPresentationSaveState("error");
+      return false;
     }
+  };
+  const cancelMerchantEditing = () => {
+    const saved = presentationWorkspace?.locales[presentationLocale];
+    setEditableStore(saved
+      ? applyShopPresentationLocale(sourceStore, saved, presentationWorkspace.media, presentationWorkspace.services)
+      : sourceStore);
+    setPresentationDrafts({});
+    setPresentationSaveState("idle");
+    setPresentationError("");
+    setActiveEditor(null);
+  };
+  const saveAndCloseMerchantEditing = async () => {
+    if (await savePresentationLocale()) setActiveEditor(null);
   };
   const synchronizePresentationLocales = async () => {
     if (!presentationWorkspace) return;
@@ -4200,10 +4215,11 @@ export function StoreDetailExperience({
 
   const tabSwitcher = (
     <FeatureSegmentedTabs
-      className={embedded ? undefined : "min-w-[480px] sm:min-w-0"}
+      className={embedded ? undefined : "store-public-tabs"}
       items={tabs}
       onChange={changeStoreTab}
       value={activeTab}
+      variant={embedded ? "default" : "header"}
     />
   );
   const blockOrderStyle = (blockId: StoreDecorationBlockId): CSSProperties => ({
@@ -4931,7 +4947,7 @@ export function StoreDetailExperience({
 
     return (
       <div className="space-y-4 pb-6">
-        <section className="relative z-50 space-y-3 overflow-visible">
+        <section className="relative z-20 space-y-3 overflow-visible">
           {activeTab !== "moments" && activeTab !== "offers"
             ? renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")
             : null}
@@ -4955,6 +4971,19 @@ export function StoreDetailExperience({
         </section>
         {presentationLocaleRail}
         <div className="relative z-0">{content}</div>
+        {activeEditor && isMerchantEditable ? (
+          <>
+            <ClientEdgeMask edge="bottom" style={storeDisplayEditorBottomMaskStyle} />
+            <StickyBottomBar className={storeDisplayEditorBottomShellClassName} panelClassName={storeDisplayEditorBottomPanelClassName} style={storeDisplayEditorBottomBarStyle}>
+              <div className="grid w-full grid-cols-2 gap-2">
+                <button className="focus-ring h-12 min-w-0 rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-sm font-black text-[color:var(--client-text)] disabled:opacity-55" disabled={presentationSaveState === "saving"} onClick={cancelMerchantEditing} type="button">取消</button>
+                <button className="focus-ring h-12 min-w-0 rounded-full bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-55" disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"} onClick={() => { void saveAndCloseMerchantEditing(); }} type="button">
+                  {presentationSaveState === "saving" ? "保存中…" : "保存并关闭"}
+                </button>
+              </div>
+            </StickyBottomBar>
+          </>
+        ) : null}
         {lightbox}
         {fullscreenEditor}
         {storeImageEditor}
@@ -5013,7 +5042,7 @@ export function StoreDetailExperience({
                 />
               </div>
             </div>
-            <div className="mt-2 overflow-x-auto">{tabSwitcher}</div>
+            <div className="mt-2 min-w-0">{tabSwitcher}</div>
           </div>
         </div>
       </FloatingHomeHeader>
