@@ -136,6 +136,13 @@ describe("ExchangeFeedPage", () => {
     expect(markup).not.toContain('data-testid="moment-action-bar"');
   });
 
+  it("keeps publisher identity out of demand remarks", () => {
+    const markup = renderFeed();
+    expect(markup).toContain("这段正文由测试账号用简体中文发布，不应自动翻译。");
+    expect(markup).not.toContain("测试客户 41");
+    expect(markup).not.toContain("u0000000041");
+  });
+
   it("shows the authored system-language version in the feed", () => {
     const markup = renderFeed({ posts: [{ ...demandPost, contentLocale: "ja", title: "日本語タイトル", detail: "日本語説明", contentTranslations: { "zh-CN": { title: "中文标题", detail: "中文说明" } } }] });
     expect(markup).toContain("中文标题");
@@ -178,8 +185,8 @@ describe("ExchangeFeedPage", () => {
     expect(markup).toContain("适用范围");
     expect(markup).toContain("备注");
     expect(markup).toContain("应募有效截止时间");
-    expect(markup).toContain("测试客户 41");
-    expect(markup).toContain("u0000000041");
+    expect(markup).not.toContain("测试客户 41");
+    expect(markup).not.toContain("u0000000041");
     expect(markup).toContain("東京駅附近寻找中文口译");
     expect(markup).toContain("这段正文由测试账号用简体中文发布，不应自动翻译。");
     expect(markup).toContain("東京都千代田区");
@@ -243,7 +250,7 @@ describe("ExchangeFeedPage", () => {
       "merchant"
     );
 
-    expect(markup).toContain("发布者已隐藏身份");
+    expect(markup).not.toContain("发布者已隐藏身份");
     expect(markup).toContain("東京駅附近寻找中文口译");
     expect(markup).not.toContain("测试客户 41");
     expect(markup).not.toContain("u0000000041");

@@ -79,10 +79,7 @@ function priceLabel(post: ExchangePost) {
 
 function postTags(post: ExchangePost, language: Language) {
   if (post.demand) {
-    const identity = post.publisher
-      ? `${post.publisher.displayName} · ${post.publisher.publicId}`
-      : exchangeText("publisherHidden", language);
-    return [identity, exchangeText(post.demand.serviceMode === "home" ? "home" : "store", language), post.areaLabel];
+    return [exchangeText(post.demand.serviceMode === "home" ? "home" : "store", language), post.areaLabel];
   }
   if (!post.intelligence) return [post.areaLabel];
   const tags = [
