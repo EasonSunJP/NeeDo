@@ -7,6 +7,39 @@ import {
 } from "../src/domain/exchange-address-privacy";
 
 describe("Exchange Request address privacy", () => {
+  it("shows only an explicitly public new address line 1 before matching", () => {
+    const address = {
+      line1: "東京都新宿区新宿1-1-1",
+      line2: "新宿ビル 5階 501号室",
+      line3: "受付で連絡",
+      line1GenerallyVisible: true,
+      line2GenerallyVisible: false,
+      line3GenerallyVisible: false,
+      disclosure: "general" as const
+    };
+    const projection = projectExchangeRequestAddress({ areaLabel: address.line1, address });
+    expect(projection).toEqual({
+      areaLabel: "東京都新宿区",
+      address: { ...address, line2: null, line3: null }
+    });
+    expect(projectExchangeRequestAddress(projection)).toEqual(projection);
+  });
+
+  it("keeps a historical address line 1 private", () => {
+    const projection = projectExchangeRequestAddress({
+      areaLabel: "東京都新宿区新宿1-1-1",
+      address: {
+        line1: "東京都新宿区新宿1-1-1",
+        line2: "新宿ビル 5階 501号室",
+        line3: null,
+        line2GenerallyVisible: false,
+        line3GenerallyVisible: false,
+        disclosure: "general"
+      }
+    });
+    expect(projection.address).toEqual(expect.objectContaining({ line1: null, line2: null, line1GenerallyVisible: false }));
+  });
+
   it.each([
     ["東京都渋谷区道玄坂1-12-1", "東京都渋谷区"],
     ["〒530-0001 大阪府大阪市北区梅田1-1-3", "大阪府大阪市北区"],

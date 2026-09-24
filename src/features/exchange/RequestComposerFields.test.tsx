@@ -141,7 +141,10 @@ describe("RequestComposerFields formal publication contract", () => {
     expect(document.body.textContent).toContain("服务开始日期 *");
     expect(document.body.textContent).toContain("服务结束时间 *");
     expect(document.body.textContent).toContain("应募有效截止时间 *");
-    expect(document.body.textContent).toContain("地址2（可选，仅对应募成功者展示）");
+    expect(document.body.textContent).toContain("地址1发布后所有人可见");
+    expect(document.body.querySelector<HTMLInputElement>('[name="addressLine1"]')?.placeholder).toBe("例如：东京都新宿区新宿1-1-1");
+    expect(document.body.textContent).toContain("地址2（建筑物名、楼层、房间号；仅匹配成功者可见）");
+    expect(document.body.querySelector<HTMLInputElement>('[name="addressLine2"]')?.placeholder).toBe("例如：新宿大厦 5楼 501室");
     expect(document.body.textContent).toContain("地址3（可选，仅对应募成功者展示）");
     expect(document.body.querySelector('[name="addressLine1Public"]')).toBeNull();
 

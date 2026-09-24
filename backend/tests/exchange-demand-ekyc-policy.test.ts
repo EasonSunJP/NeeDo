@@ -19,6 +19,8 @@ const access: AuthenticatedAccessContext = {
 };
 const demandInput = {
   type: "demand" as const,
+  categoryId: 1,
+  businessKeywordIds: [10],
   title: "Request",
   detail: "Need a service",
   contentLocale: "en" as const,
@@ -32,6 +34,7 @@ const demandInput = {
   budgetMinJpy: null,
   budgetMaxJpy: 10_000,
   addressLine1: "Tokyo",
+  addressLine1Public: false,
   addressLine2: null,
   addressLine3: null,
   addressLine2Public: false,
@@ -107,6 +110,7 @@ function fixture() {
         handler(repository, { tx: true })
     ),
     resolveActor: jest.fn(async () => actor),
+    assertDemandTaxonomy: jest.fn(async () => undefined),
     findPostByIdempotencyKey: jest.fn(async () => null),
     resolveIntelligencePublicationService: jest.fn(async () => ({
       kind: "success",

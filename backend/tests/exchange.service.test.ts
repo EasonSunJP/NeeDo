@@ -88,6 +88,7 @@ const post: ExchangePostPayload = {
     budgetMode: "total",
     budgetMinJpy: 8_000,
     budgetMaxJpy: 12_000,
+    payment: { prepaidPercent: 0, selectedMethod: null },
     address: {
       line1: "渋谷区",
       line2: "道玄坂1-2-3",
@@ -146,6 +147,7 @@ const demandInput = {
   budgetMinJpy: 8_000,
   budgetMaxJpy: 12_000,
   addressLine1: post.areaLabel,
+  addressLine1Public: false,
   addressLine2: "道玄坂1-2-3",
   addressLine3: null,
   addressLine2Public: false,
@@ -507,6 +509,7 @@ describe("ExchangeService", () => {
       line1: null,
       line2: null,
       line3: null,
+      line1GenerallyVisible: false,
       line2GenerallyVisible: false,
       line3GenerallyVisible: false,
       disclosure: "general"

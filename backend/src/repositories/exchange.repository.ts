@@ -1051,6 +1051,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
                   budgetMinJpy: input.input.budgetMinJpy,
                   budgetMaxJpy: input.input.budgetMaxJpy,
                   addressLine1: input.input.addressLine1,
+                  addressLine1Public: input.input.addressLine1Public,
                   addressLine2: input.input.addressLine2,
                   addressLine3: input.input.addressLine3,
                   addressLine2Public: input.input.addressLine2Public,
@@ -1974,6 +1975,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           areaLabel: row.areaLabel,
           address: {
             line1: row.demand.addressLine1,
+            line1GenerallyVisible: row.demand.addressLine1Public,
             line2: row.demand.addressLine2,
             line3: row.demand.addressLine3,
             line2GenerallyVisible: row.demand.addressLine2Public,

@@ -258,6 +258,7 @@ export type ExchangeRequestAddress = {
   line1: string | null;
   line2: string | null;
   line3: string | null;
+  line1GenerallyVisible?: boolean;
   line2GenerallyVisible: boolean;
   line3GenerallyVisible: boolean;
   disclosure: "owner" | "general" | "matched_participant";
@@ -388,6 +389,7 @@ export type PublishExchangeDemandInput = ExchangePublishCommon & {
   budgetMinJpy: number | null;
   budgetMaxJpy: number;
   addressLine1: string;
+  addressLine1Public?: boolean;
   addressLine2: string | null;
   addressLine3: string | null;
   addressLine2Public: boolean;

@@ -869,6 +869,7 @@ export class ExchangeService {
             budgetMinJpy: input.budgetMinJpy ?? null,
             budgetMaxJpy: input.budgetMaxJpy,
             addressLine1: input.addressLine1,
+            addressLine1Public: input.addressLine1Public,
             addressLine2: input.addressLine2 ?? null,
             addressLine3: input.addressLine3 ?? null,
             addressLine2Public: input.addressLine2Public,

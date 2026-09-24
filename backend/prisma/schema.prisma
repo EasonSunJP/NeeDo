@@ -6331,6 +6331,7 @@ model ExchangeDemand {
   budgetMinJpy                Int?                            @map("budget_min_jpy")
   budgetMaxJpy                Int                             @map("budget_max_jpy")
   addressLine1                String                          @map("address_line_1") @db.VarChar(255)
+  addressLine1Public          Boolean                         @default(false) @map("address_line_1_public")
   addressLine2                String?                         @map("address_line_2") @db.VarChar(255)
   addressLine3                String?                         @map("address_line_3") @db.VarChar(255)
   addressLine2Public          Boolean                         @default(false) @map("address_line_2_public")

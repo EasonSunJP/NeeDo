@@ -5153,6 +5153,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "line1",
           "line2",
           "line3",
+          "line1GenerallyVisible",
           "line2GenerallyVisible",
           "line3GenerallyVisible",
           "disclosure"
@@ -5163,17 +5164,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             minLength: 1,
             maxLength: 255,
             description:
-              "Null before matching; returned only to the publisher or an exact participant of a completed match."
+              "Before matching, returned only when the publisher explicitly made address line 1 public on a new Request. Historical Requests remain redacted."
           },
           line2: { type: ["string", "null"], minLength: 1, maxLength: 255 },
           line3: { type: ["string", "null"], minLength: 1, maxLength: 255 },
+          line1GenerallyVisible: { type: "boolean" },
           line2GenerallyVisible: { type: "boolean" },
           line3GenerallyVisible: { type: "boolean" },
           disclosure: {
             type: "string",
             enum: ["owner", "matched_participant", "general"],
             description:
-              "Server-authoritative address scope. General responses contain no exact address lines."
+              "Server-authoritative address scope. General responses contain only an explicitly public line 1; lines 2 and 3 remain private."
           }
         }
       },
@@ -6332,6 +6334,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
           addressLine1: { type: "string", minLength: 1, maxLength: 255 },
+          addressLine1Public: { type: "boolean", default: false, description: "Explicit publication consent for address line 1. Omitted on historical clients and false by default." },
           addressLine2: {
             type: ["string", "null"],
             minLength: 1,

@@ -197,6 +197,7 @@ export function normalizeRequestDraft(
       budgetMinJpy,
       budgetMaxJpy,
       addressLine1: draft.addressLine1.trim(),
+      addressLine1Public: true,
       addressLine2,
       addressLine3,
       addressLine2Public: addressLine2 !== null && draft.addressLine2Public,

@@ -343,6 +343,7 @@ describe("ExchangeComposer publication", () => {
         matchMode: "quick",
         budgetMode: "total",
         addressLine1: "新宿区",
+        addressLine1Public: true,
         addressLine2: null,
         addressLine3: null,
         addressLine2Public: false,

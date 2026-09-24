@@ -42,6 +42,7 @@ const demandPostSchema = z
     budgetMinJpy: moneyJpy.nullable().optional().default(null),
     budgetMaxJpy: moneyJpy,
     addressLine1: authoredText(255),
+    addressLine1Public: z.boolean().default(false),
     addressLine2: authoredText(255).nullable().optional().default(null),
     addressLine3: authoredText(255).nullable().optional().default(null),
     addressLine2Public: z

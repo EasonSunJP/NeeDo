@@ -443,7 +443,7 @@ export function ExchangeComposer({
             ? [
               { label: t("serviceMode"), value: t(normalizedPayload.serviceMode === "home" ? "home" : "store") },
               { label: shopTaxonomyCopy[language].title, value: requestKeywordLabels.join("、") },
-              { label: t("addressLine1"), value: normalizedPayload.addressLine1 },
+              { label: t("addressLine1"), value: `${normalizedPayload.addressLine1} · ${t("addressLine1PublicNotice")}` },
               { label: t("serviceWindow"), value: `${formatComposerDateTime(normalizedPayload.serviceStartAt, language)} ～ ${formatComposerDateTime(normalizedPayload.serviceEndAt, language)}` },
               { label: t("applicationDeadlineTime"), value: formatComposerDateTime(normalizedPayload.expiresAt, language) },
               { label: t("targetProviderCount"), value: String(normalizedPayload.targetProviderCount) },

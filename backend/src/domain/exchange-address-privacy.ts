@@ -24,10 +24,9 @@ const longestAdministrativePrefix = (
   candidates.find((candidate) => value.startsWith(candidate.nameJa)) ?? null;
 
 /**
- * Exchange Requests historically persisted address line 1 as both the exact
- * address and the public area label. Only a recognised Japanese administrative
- * boundary is safe to project to an unmatched viewer. Unknown formats fail
- * closed instead of returning a possibly precise address.
+ * Historical Requests persisted address line 1 without a publication notice.
+ * Only explicitly public new lines may be returned to unmatched viewers.
+ * Otherwise, project a recognised administrative boundary and fail closed.
  */
 export const coarseExchangeServiceArea = (value: string): string => {
   const normalized = value
@@ -53,9 +52,10 @@ export const projectExchangeRequestAddress = (input: {
   return {
     areaLabel: coarseExchangeServiceArea(input.address.line1 ?? input.areaLabel),
     address: {
-      line1: null,
+      line1: input.address.line1GenerallyVisible ? input.address.line1 : null,
       line2: null,
       line3: null,
+      line1GenerallyVisible: input.address.line1GenerallyVisible ?? false,
       line2GenerallyVisible: false,
       line3GenerallyVisible: false,
       disclosure: "general"

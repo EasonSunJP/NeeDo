@@ -57,6 +57,10 @@ describe("formal NeeDo Exchange validators", () => {
     expect(publishExchangePostSchema.safeParse(validDemand({ businessKeywordIds: Array.from({ length: 11 }, (_, i) => i + 1) })).success).toBe(false);
     expect(publishExchangePostSchema.safeParse(validDemand()).success).toBe(true);
   });
+  it("defaults old publication clients to private address line 1", () => {
+    expect(publishExchangePostSchema.parse(validDemand())).toEqual(expect.objectContaining({ addressLine1Public: false }));
+    expect(publishExchangePostSchema.parse(validDemand({ addressLine1Public: true }))).toEqual(expect.objectContaining({ addressLine1Public: true }));
+  });
   it("normalizes bounded pagination and accepts only the two public tabs", () => {
     expect(exchangeListQuerySchema.parse({ type: "demand" })).toEqual({
       type: "demand",

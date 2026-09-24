@@ -63,6 +63,7 @@ export interface ExchangeRequestAddressPayload {
   line1: string | null;
   line2: string | null;
   line3: string | null;
+  line1GenerallyVisible?: boolean;
   line2GenerallyVisible: boolean;
   line3GenerallyVisible: boolean;
   disclosure: "owner" | "matched_participant" | "general";

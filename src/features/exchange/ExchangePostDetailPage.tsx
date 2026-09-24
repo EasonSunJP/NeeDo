@@ -208,11 +208,12 @@ function publisherIdentityLabel(identityType: string, language: Language) {
 
 function PublisherCard({ post, language, context }: { post: ExchangePost; language: Language; context: MessageCenterContext }) {
   const requestAddress = post.demand?.address;
-  const requestAddressLines = requestAddress &&
-    (requestAddress.disclosure === "owner" || requestAddress.disclosure === "matched_participant")
-    ? [requestAddress.line1, requestAddress.line2, requestAddress.line3].filter(
-        (line): line is string => line !== null
-      )
+  const fullAddress = requestAddress?.disclosure === "owner" || requestAddress?.disclosure === "matched_participant";
+  const requestAddressLines = requestAddress
+    ? (fullAddress
+      ? [requestAddress.line1, requestAddress.line2, requestAddress.line3]
+      : requestAddress.line1GenerallyVisible === true ? [requestAddress.line1] : []
+    ).filter((line): line is string => line !== null)
     : [];
   return (
     <section data-no-i18n="true" data-testid="exchange-request-publisher">

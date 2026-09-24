@@ -360,6 +360,28 @@ describe("ExchangePostDetailPage", () => {
     expect(card?.textContent).toContain("用户");
   });
 
+  it("shows only a consented first address line to an unmatched viewer", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      demand: {
+        ...demandPost.demand!,
+        address: {
+          line1: "東京都新宿区新宿1-1-1",
+          line2: null,
+          line3: null,
+          line1GenerallyVisible: true,
+          line2GenerallyVisible: false,
+          line3GenerallyVisible: false,
+          disclosure: "general"
+        }
+      }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+    const address = document.body.querySelector('[data-testid="exchange-request-address"]');
+    expect(address?.textContent).toBe("東京都新宿区新宿1-1-1");
+  });
+
   it("shows the authored system-language version in the detail without a translate button", async () => {
     vi.mocked(getExchangePost).mockResolvedValue({
       ...demandPost,

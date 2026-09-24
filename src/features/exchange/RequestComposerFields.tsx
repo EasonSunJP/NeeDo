@@ -226,8 +226,9 @@ export function RequestComposerFields({
         </div>
 
         <Field label={t("addressLine1")} required>
-          <input className={fieldClassName} maxLength={255} name="addressLine1" onChange={(event) => onChange({ addressLine1: event.target.value })} value={draft.addressLine1} />
+          <input className={fieldClassName} maxLength={255} name="addressLine1" onChange={(event) => onChange({ addressLine1: event.target.value })} placeholder={t("addressLine1Example")} value={draft.addressLine1} />
         </Field>
+        <p className="text-xs font-semibold text-[color:var(--client-muted)]">{t("addressLine1PublicNotice")}</p>
 
         <Field label={t("addressLine2")}>
           <input
@@ -238,6 +239,7 @@ export function RequestComposerFields({
               addressLine2: event.target.value,
               addressLine2Public: false
             })}
+            placeholder={t("addressLine2Example")}
             value={draft.addressLine2}
           />
         </Field>

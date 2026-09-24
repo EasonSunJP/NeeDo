@@ -42,6 +42,7 @@ const demandRow = {
     budgetMinJpy: 8_000,
     budgetMaxJpy: 12_000,
     addressLine1: "渋谷区",
+    addressLine1Public: false,
     addressLine2: "道玄坂1-2-3",
     addressLine3: "Prince Tower 12F",
     addressLine2Public: false,
@@ -104,7 +105,7 @@ describe("ExchangePostRepository", () => {
       type: "demand", categoryId: 1, businessKeywordIds: [10], serviceMode: "store", title: demandRow.title, detail: demandRow.detail,
       contentLocale: "ja", contentTranslations: { en: { title: "Hair styling in Shibuya", detail: "Please help before the event." } }, serviceStartAt: demandRow.serviceStartAt, serviceEndAt: demandRow.serviceEndAt,
       expiresAt: demandRow.expiresAt, targetProviderCount: 1, matchMode: "quick", budgetMode: "total",
-      budgetMinJpy: null, budgetMaxJpy: 12000, addressLine1: "渋谷区", addressLine2: null,
+      budgetMinJpy: null, budgetMaxJpy: 12000, addressLine1: "渋谷区", addressLine1Public: false, addressLine2: null,
       addressLine3: null, addressLine2Public: false, addressLine3Public: false,
       publisherIdentityPublic: false, coverMediaAssetPublicId: "a".repeat(64)
     },
@@ -876,6 +877,7 @@ describe("ExchangePostRepository", () => {
               line1: "渋谷区",
               line2: "道玄坂1-2-3",
               line3: "Prince Tower 12F",
+              line1GenerallyVisible: false,
               line2GenerallyVisible: false,
               line3GenerallyVisible: true,
               disclosure: "owner"
@@ -985,6 +987,7 @@ describe("ExchangePostRepository", () => {
             line1: null,
             line2: null,
             line3: null,
+            line1GenerallyVisible: false,
             line2GenerallyVisible: false,
             line3GenerallyVisible: false,
             disclosure: "general"
@@ -995,6 +998,35 @@ describe("ExchangePostRepository", () => {
     expect(JSON.stringify(result)).not.toContain("道玄坂1-12-1");
     expect(JSON.stringify(result)).not.toContain("渋谷マークシティ");
     expect(JSON.stringify(result)).not.toContain("田中");
+  });
+
+  it("projects a newly consented address line 1 while keeping building and room private", async () => {
+    const findFirst = jest.fn(async () => ({
+      ...demandRow,
+      areaLabel: "東京都新宿区新宿1-1-1",
+      demand: {
+        ...demandRow.demand,
+        addressLine1: "東京都新宿区新宿1-1-1",
+        addressLine1Public: true,
+        addressLine2: "新宿ビル 5階 501号室",
+        addressLine3: "受付で連絡"
+      },
+      matchParticipants: []
+    }));
+    const repository = new ExchangePostRepository({ exchangePost: { findFirst } } as never);
+
+    const result = await repository.findPostById(41, 999, now);
+
+    expect(result?.areaLabel).toBe("東京都新宿区");
+    expect(result?.demand?.address).toEqual(expect.objectContaining({
+      line1: "東京都新宿区新宿1-1-1",
+      line2: null,
+      line3: null,
+      line1GenerallyVisible: true,
+      disclosure: "general"
+    }));
+    expect(JSON.stringify(result)).not.toContain("新宿ビル");
+    expect(JSON.stringify(result)).not.toContain("受付で連絡");
   });
 
   it("returns the complete Request address only to the publisher and exact matched identity", async () => {
@@ -1158,6 +1190,7 @@ describe("ExchangePostRepository", () => {
             line1: null,
             line2: null,
             line3: null,
+            line1GenerallyVisible: false,
             line2GenerallyVisible: false,
             line3GenerallyVisible: false,
             disclosure: "general"
@@ -1572,6 +1605,7 @@ describe("ExchangePostRepository", () => {
         budgetMinJpy: 8_000,
         budgetMaxJpy: 12_000,
         addressLine1: "渋谷区",
+        addressLine1Public: false,
         addressLine2: "道玄坂1-2-3",
         addressLine3: "Prince Tower 12F",
         addressLine2Public: false,
@@ -1636,6 +1670,7 @@ describe("ExchangePostRepository", () => {
               budgetMinJpy: 8_000,
               budgetMaxJpy: 12_000,
               addressLine1: "渋谷区",
+              addressLine1Public: false,
               addressLine2: "道玄坂1-2-3",
               addressLine3: "Prince Tower 12F",
               addressLine2Public: false,

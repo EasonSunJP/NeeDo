@@ -107,6 +107,7 @@ const post: ExchangePostPayload = {
     budgetMode: "total",
     budgetMinJpy: 8_000,
     budgetMaxJpy: 12_000,
+    payment: { prepaidPercent: 0, selectedMethod: null },
     address: {
       line1: "渋谷区",
       line2: null,
@@ -407,6 +408,7 @@ describe("formal Exchange routes", () => {
         line1: null,
         line2: null,
         line3: null,
+        line1GenerallyVisible: false,
         line2GenerallyVisible: false,
         line3GenerallyVisible: false,
         disclosure: "general"
