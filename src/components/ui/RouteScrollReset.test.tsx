@@ -34,6 +34,7 @@ it("keeps page position for drawer open and close, but resets for actual paginat
 
     await act(async () => navigate("/admin/technicians"));
     expect(scroll).toHaveBeenCalledTimes(3);
+    expect(scroll).toHaveBeenLastCalledWith({ top: 0, left: 0, behavior: "instant" });
 
     await act(async () => navigate("/admin/technicians?detailTechnicianId=23"));
     expect(scroll).toHaveBeenCalledTimes(3);

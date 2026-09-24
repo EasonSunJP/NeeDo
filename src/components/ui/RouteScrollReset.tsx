@@ -18,7 +18,7 @@ export function RouteScrollReset() {
   const scrollSearch = params.toString();
 
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [location.pathname, scrollSearch, location.hash]);
 
   return null;
