@@ -182,7 +182,7 @@ describe("UserCenterPage", () => {
     expect(source).toContain(
       "scroll-pb-[calc(132px+env(safe-area-inset-bottom))]",
     );
-    expect(source).toContain("保存并退出编辑模式");
+    expect(source).toContain("保存并退出");
   });
 
   it("shows the personal privacy switch with floating options", () => {

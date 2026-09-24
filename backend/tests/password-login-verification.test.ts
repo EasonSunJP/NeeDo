@@ -29,6 +29,7 @@ const setting = (overrides: Partial<PlatformSettingsRecord> = {}): PlatformSetti
   ndpPaymentEnabled: true,
   anytimeServiceTestEnabled: false,
   overdueAppointmentGateEnabled: false,
+  membershipCardFollowUiTheme: true,
   createdByUserId: null,
   createdAt: new Date("2026-09-01T00:00:00.000Z"),
   updatedAt: new Date("2026-09-01T00:00:00.000Z"),

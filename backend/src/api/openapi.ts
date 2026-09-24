@@ -155,6 +155,7 @@ const platformSettingsVersionOpenApiProperties = {
     description:
       "Operations-only switch. When true, a later service start is blocked by an earlier expired unresolved appointment for the same customer or technician."
   },
+  membershipCardFollowUiTheme: { type: "boolean", description: "When true, membership cards use the current client UI theme; when false, published tier colors apply." },
   createdByUserId: { type: ["integer", "null"], minimum: 1 },
   createdAt: { type: "string", format: "date-time" },
   updatedAt: { type: "string", format: "date-time" },
@@ -3636,7 +3637,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "array",
             uniqueItems: true,
             items: { type: "string", enum: ["cash", "ndp"] }
-          }
+          },
+          membershipCardFollowUiTheme: { type: "boolean", description: "Present when cardTheme=1 is requested; omitted for older clients." }
         }
       },
       PlatformSettingsVersion: {
@@ -3697,6 +3699,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           anytimeServiceTestEnabled: { type: "boolean" },
           overdueAppointmentGateEnabled: { type: "boolean" },
+          membershipCardFollowUiTheme: { type: "boolean" },
           loginLogoMediaPublicId: { type: ["string", "null"], pattern: "^[a-f0-9]{64}$" },
           requestButtonMediaPublicId: {
             type: ["string", "null"],
@@ -17955,6 +17958,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         operationId: "getPublicPlatformSettings",
         tags: ["Platform Settings"],
         summary: "Read the public platform settings projection",
+        parameters: [{ name: "cardTheme", in: "query", required: false, schema: { type: "string", enum: ["1"] }, description: "Request the membership card theme mode without changing the legacy response shape." }],
         responses: {
           "200": jsonDataResponse("Active public platform settings", {
             $ref: "#/components/schemas/PlatformPublicSettings"

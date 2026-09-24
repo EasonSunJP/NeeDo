@@ -17,6 +17,7 @@ export const platformBasicSettingsBodySchema = z
     passwordLoginOtpOnNewIp: z.boolean(),
     anytimeServiceTestEnabled: z.boolean(),
     overdueAppointmentGateEnabled: z.boolean(),
+    membershipCardFollowUiTheme: z.boolean().optional(),
     loginLogoMediaPublicId: mediaPublicIdSchema,
     requestButtonMediaPublicId: mediaPublicIdSchema
   })

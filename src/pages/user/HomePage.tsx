@@ -1293,7 +1293,7 @@ export function HomePage() {
 
         <PublishedCarousel scene="user-home" cardHeightClassName="h-[204px]" />
 
-        <section className="py-0.5">
+        <section className="py-0.5 [container-type:inline-size]">
           <div
             className="home-quick-actions__viewport scrollbar-none"
             data-page-drag-ignore="true"

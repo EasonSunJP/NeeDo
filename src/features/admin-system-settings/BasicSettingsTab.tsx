@@ -5,6 +5,7 @@ import { AdminToggleSwitch } from "../../components/admin/AdminToggleSwitch";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DEFAULT_LOGIN_LOGO_URL, DEFAULT_REQUEST_BUTTON_URL } from "../platform-settings/defaultBrandMedia";
+import { usePlatformSettings } from "../platform-settings/PlatformSettingsProvider";
 import { useI18n } from "../../i18n/I18nProvider";
 import { adminSystemSettingsApi } from "./api";
 import { adminSystemSettingsText } from "./i18n";
@@ -38,6 +39,7 @@ function draftFrom(settings: OperationsPlatformSettings): Draft {
     passwordLoginOtpOnNewIp: settings.passwordLoginOtpOnNewIp,
     anytimeServiceTestEnabled: settings.anytimeServiceTestEnabled,
     overdueAppointmentGateEnabled: settings.overdueAppointmentGateEnabled,
+    membershipCardFollowUiTheme: settings.membershipCardFollowUiTheme,
     loginLogoMediaPublicId: settings.loginLogo?.publicId ?? null,
     requestButtonMediaPublicId: settings.requestButton?.publicId ?? null
   };
@@ -54,6 +56,7 @@ function SettingToggle({ title, description, checked, disabled, onChange }: { ti
 
 export function BasicSettingsTab({ settings, canWrite, canUpload, canActivateMedia, labels, onDirtyChange, onSaved }: Props) {
   const { language } = useI18n();
+  const { reload: reloadPublicSettings } = usePlatformSettings();
   const t = (source: string) => adminSystemSettingsText(source, language);
   const initial = useMemo(() => draftFrom(settings), [settings]);
   const [draft, setDraft] = useState(initial);
@@ -88,6 +91,7 @@ export function BasicSettingsTab({ settings, canWrite, canUpload, canActivateMed
       await adminSystemSettingsApi.updateBasic({ expectedVersion: settings.version, ...draft });
       setState("saved");
       await onSaved();
+      reloadPublicSettings();
     } catch (error) {
       setState(error instanceof ApiClientError && error.status === 409 ? "conflict" : "error");
     }
@@ -118,6 +122,13 @@ export function BasicSettingsTab({ settings, canWrite, canUpload, canActivateMed
         checked={draft.overdueAppointmentGateEnabled}
         disabled={!canWrite}
         onChange={(value) => update("overdueAppointmentGateEnabled", value)}
+      />
+      <SettingToggle
+        title={t("信息卡跟随 UI 配色")}
+        description={t("默认开启。关闭后各会员等级的信息卡使用运营后台发布的对应配色。")}
+        checked={draft.membershipCardFollowUiTheme}
+        disabled={!canWrite}
+        onChange={(value) => update("membershipCardFollowUiTheme", value)}
       />
 
       <section className="rounded-2xl border border-line bg-paper p-5">

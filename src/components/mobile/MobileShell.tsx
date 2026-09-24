@@ -395,7 +395,7 @@ export function MobileShell({
       )}
     >
       <main
-        className="client-app-frame client-app-content-container safe-main-top min-h-[100dvh] overflow-x-hidden [container-type:inline-size] [overflow-x:clip]"
+        className="client-app-frame client-app-content-container safe-main-top min-h-[100dvh] overflow-x-hidden [overflow-x:clip]"
         onClickCapture={handlePageClickCapture}
         onDragStartCapture={handlePageDragStartCapture}
         onPointerCancel={handlePagePointerCancel}

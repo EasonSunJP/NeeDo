@@ -8,7 +8,8 @@ const publicSettings = {
   loginMethods: { password: true as const, google: true },
   loginLogo: null,
   requestButton: null,
-  paymentMethods: ["cash", "ndp"] as const
+  paymentMethods: ["cash", "ndp"] as const,
+  membershipCardFollowUiTheme: true
 };
 
 const operationsSettings = {
@@ -23,6 +24,7 @@ const operationsSettings = {
   passwordLoginOtpOnNewIp: false,
   anytimeServiceTestEnabled: false,
   overdueAppointmentGateEnabled: false,
+  membershipCardFollowUiTheme: true,
   loginLogoMediaAssetId: null,
   requestButtonMediaAssetId: null,
   offlinePaymentEnabled: true,
@@ -53,6 +55,7 @@ const basicBody = {
   passwordLoginOtpOnNewIp: true,
   anytimeServiceTestEnabled: true,
   overdueAppointmentGateEnabled: true,
+  membershipCardFollowUiTheme: true,
   loginLogoMediaPublicId: null,
   requestButtonMediaPublicId: null
 };
@@ -75,10 +78,14 @@ describe("platform settings API", () => {
 
     const response = await request(fixture.app).get("/api/v1/platform/settings/public").expect(200);
 
-    expect(response.body.data).toEqual(publicSettings);
+    const { membershipCardFollowUiTheme, ...legacySettings } = publicSettings;
+    expect(membershipCardFollowUiTheme).toBe(true);
+    expect(response.body.data).toEqual(legacySettings);
+    const extended = await request(fixture.app).get("/api/v1/platform/settings/public?cardTheme=1").expect(200);
+    expect(extended.body.data).toEqual(publicSettings);
     expect(response.body.data).not.toHaveProperty("id");
     expect(response.body.data).not.toHaveProperty("passwordLoginOtpRule");
-    expect(service.getPublic).toHaveBeenCalledTimes(1);
+    expect(service.getPublic).toHaveBeenCalledTimes(2);
   });
 
   it("requires the read permission for the operations projection", async () => {
@@ -137,6 +144,19 @@ describe("platform settings API", () => {
       expect.objectContaining({ userId: 1 }),
       expect.objectContaining({ ip: expect.any(String) }),
       basicBody
+    );
+
+    const { membershipCardFollowUiTheme: _cardTheme, ...legacyBody } = basicBody;
+    void _cardTheme;
+    await request(fixture.app)
+      .put("/api/v1/backoffice/system-settings/basic")
+      .set("Authorization", `Bearer ${token}`)
+      .send(legacyBody)
+      .expect(200);
+    expect(service.updateBasic).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.anything(),
+      legacyBody
     );
   });
 

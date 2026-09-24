@@ -14,6 +14,10 @@ describe("MobileShell shared navigation", () => {
     );
   });
 
+  it("keeps fixed headers and action bars anchored to the viewport", () => {
+    expect(mobileShellSource).not.toContain('client-app-content-container safe-main-top min-h-[100dvh] overflow-x-hidden [container-type:inline-size]');
+  });
+
   it("allows a page to opt out of the shared bottom navigation without deleting nav items globally", () => {
     expect(mobileShellSource).toContain("showBottomNav = true");
     expect(mobileShellSource).toContain("showBottomNav?: boolean");

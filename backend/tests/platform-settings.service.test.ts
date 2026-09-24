@@ -43,6 +43,7 @@ const setting = (overrides: Partial<PlatformSettingsRecord> = {}): PlatformSetti
   ndpPaymentEnabled: true,
   anytimeServiceTestEnabled: false,
   overdueAppointmentGateEnabled: false,
+  membershipCardFollowUiTheme: true,
   createdByUserId: null,
   createdAt: new Date("2026-09-01T00:00:00.000Z"),
   updatedAt: new Date("2026-09-01T00:00:00.000Z"),
@@ -61,6 +62,7 @@ const basicInput = {
   passwordLoginOtpOnNewIp: true,
   anytimeServiceTestEnabled: true,
   overdueAppointmentGateEnabled: true,
+  membershipCardFollowUiTheme: false,
   loginLogoMediaPublicId: null,
   requestButtonMediaPublicId: null
 };
@@ -102,6 +104,7 @@ describe("PlatformSettingsService", () => {
       passwordLoginOtpOnNewIp: true,
       anytimeServiceTestEnabled: true,
       overdueAppointmentGateEnabled: true,
+      membershipCardFollowUiTheme: false,
       offlinePaymentEnabled: true,
       ndpPaymentEnabled: true
     });
@@ -112,6 +115,17 @@ describe("PlatformSettingsService", () => {
         ndpPaymentEnabled: true
       })
     ).rejects.toMatchObject({ statusCode: 409, message: "error.platform_settings.version_conflict" });
+  });
+
+  it("preserves the card theme mode for a legacy basic settings update", async () => {
+    const harness = createHarness();
+    const { membershipCardFollowUiTheme: _cardTheme, ...legacyInput } = basicInput;
+    void _cardTheme;
+    await harness.service.updateBasic(actor, context, legacyInput);
+    expect(harness.current().membershipCardFollowUiTheme).toBe(true);
+    expect(harness.repository.replaceWithAudit).toHaveBeenCalledWith(expect.objectContaining({
+      changes: expect.objectContaining({ membershipCardFollowUiTheme: true })
+    }));
   });
 
   it("returns a safe public projection without internal ids or actor data", async () => {
@@ -154,7 +168,8 @@ describe("PlatformSettingsService", () => {
         altText: "NeeDo"
       },
       requestButton: null,
-      paymentMethods: ["ndp"]
+      paymentMethods: ["ndp"],
+      membershipCardFollowUiTheme: true
     });
     expect(projection).not.toHaveProperty("id");
     expect(projection).not.toHaveProperty("createdByUserId");

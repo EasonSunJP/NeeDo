@@ -69,6 +69,7 @@ const settings = {
   passwordLoginOtpOnNewIp: true,
   anytimeServiceTestEnabled: false,
   overdueAppointmentGateEnabled: false,
+  membershipCardFollowUiTheme: true,
   loginLogoMediaAssetId: null,
   requestButtonMediaAssetId: null,
   offlinePaymentEnabled: true,
@@ -198,6 +199,21 @@ describe("SystemSettingsPage interactions", () => {
     expect(container.textContent?.match(/系统默认 · 当前启用/g)).toHaveLength(2);
     expect(Array.from(container.querySelectorAll('input[type="file"]')).every((input) => input.classList.contains("sr-only"))).toBe(true);
     expect(Array.from(container.querySelectorAll("label")).filter((label) => label.textContent?.includes("选择新图片"))).toHaveLength(2);
+  });
+
+  it("publishes the default-on membership card UI theme switch", async () => {
+    mocked.hasPermission.mockImplementation((permission?: string) => permission === "backoffice:system-settings:write");
+    mocked.updateBasic.mockResolvedValue({ ...settings, membershipCardFollowUiTheme: false, version: 3 });
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/admin/settings/system?tab=basic"] }, createElement(SystemSettingsPage)));
+    });
+    const toggle = container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="信息卡跟随 UI 配色"]');
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+    await act(async () => toggle?.click());
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    const save = [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "保存并发布");
+    await act(async () => save?.click());
+    expect(mocked.updateBasic).toHaveBeenCalledWith(expect.objectContaining({ membershipCardFollowUiTheme: false }));
   });
 
   it("downloads each active brand image, including the effective default", async () => {

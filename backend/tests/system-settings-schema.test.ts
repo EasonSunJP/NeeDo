@@ -25,6 +25,10 @@ const overdueAppointmentGateMigrationPath = join(
 const overdueAppointmentGateMigration = existsSync(overdueAppointmentGateMigrationPath)
   ? readFileSync(overdueAppointmentGateMigrationPath, "utf8")
   : "";
+const membershipThemeMigrationPath = join(process.cwd(), "prisma/migrations/20260924150000_membership_card_follow_ui_theme/migration.sql");
+const membershipThemeMigration = existsSync(membershipThemeMigrationPath)
+  ? readFileSync(membershipThemeMigrationPath, "utf8")
+  : "";
 const anytimeServiceDefaultOnMigrationPath = join(
   process.cwd(),
   "prisma/migrations/20260911153000_anytime_service_test_default_on/migration.sql"
@@ -77,6 +81,7 @@ describe("operations system settings schema", () => {
     expect(block).toContain("ndpPaymentEnabled");
     expect(block).toContain("anytimeServiceTestEnabled");
     expect(block).toContain("overdueAppointmentGateEnabled");
+    expect(block).toMatch(/membershipCardFollowUiTheme\s+Boolean\s+@default\(true\)/);
     expect(block).toContain("createdByUserId");
     expect(block).toContain('@@map("platform_setting_versions")');
   });
@@ -89,6 +94,11 @@ describe("operations system settings schema", () => {
       "`overdue_appointment_gate_enabled`"
     );
     expect(overdueAppointmentGateMigration).toMatch(/DEFAULT\s+false/i);
+  });
+
+  it("defaults published information cards to the client UI theme", () => {
+    expect(membershipThemeMigration).toContain("`membership_card_follow_ui_theme`");
+    expect(membershipThemeMigration).toMatch(/DEFAULT\s+TRUE/i);
   });
 
   it("keeps the original additive migration and promotes the test-stage default to enabled", () => {

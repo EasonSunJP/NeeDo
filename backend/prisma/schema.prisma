@@ -3136,6 +3136,7 @@ model PlatformSettingVersion {
   ndpPaymentEnabled            Boolean                       @default(true) @map("ndp_payment_enabled")
   anytimeServiceTestEnabled      Boolean                       @default(true) @map("anytime_service_test_enabled")
   overdueAppointmentGateEnabled Boolean                       @default(false) @map("overdue_appointment_gate_enabled")
+  membershipCardFollowUiTheme   Boolean                       @default(true) @map("membership_card_follow_ui_theme")
   createdByUserId              Int?                          @map("created_by_user_id")
   createdAt                    DateTime                      @default(now()) @map("created_at")
   updatedAt                    DateTime                      @updatedAt @map("updated_at")

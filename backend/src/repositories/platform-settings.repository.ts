@@ -45,6 +45,7 @@ const settingSelect = Prisma.validator<Prisma.PlatformSettingVersionSelect>()({
   ndpPaymentEnabled: true,
   anytimeServiceTestEnabled: true,
   overdueAppointmentGateEnabled: true,
+  membershipCardFollowUiTheme: true,
   createdByUserId: true,
   createdAt: true,
   updatedAt: true,
@@ -75,6 +76,7 @@ export interface PlatformSettingsRecord {
   ndpPaymentEnabled: boolean;
   anytimeServiceTestEnabled: boolean;
   overdueAppointmentGateEnabled: boolean;
+  membershipCardFollowUiTheme: boolean;
   createdByUserId: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -91,6 +93,7 @@ export interface PlatformBasicSettingsChanges {
   passwordLoginOtpOnNewIp: boolean;
   anytimeServiceTestEnabled: boolean;
   overdueAppointmentGateEnabled: boolean;
+  membershipCardFollowUiTheme: boolean;
   loginLogoMediaPublicId: string | null;
   requestButtonMediaPublicId: string | null;
 }
@@ -239,6 +242,10 @@ export class PlatformSettingsRepository implements PlatformSettingsRepositoryPor
           input.section === "basic"
             ? input.changes.overdueAppointmentGateEnabled
             : current.overdueAppointmentGateEnabled,
+        membershipCardFollowUiTheme:
+          input.section === "basic"
+            ? input.changes.membershipCardFollowUiTheme
+            : current.membershipCardFollowUiTheme,
         loginLogoMediaAssetId,
         requestButtonMediaAssetId,
         offlinePaymentEnabled:
@@ -305,6 +312,7 @@ export class PlatformSettingsRepository implements PlatformSettingsRepositoryPor
       ndpPaymentEnabled: setting.ndpPaymentEnabled,
       anytimeServiceTestEnabled: setting.anytimeServiceTestEnabled,
       overdueAppointmentGateEnabled: setting.overdueAppointmentGateEnabled,
+      membershipCardFollowUiTheme: setting.membershipCardFollowUiTheme,
       createdByUserId: setting.createdByUserId,
       createdAt: setting.createdAt,
       updatedAt: setting.updatedAt,

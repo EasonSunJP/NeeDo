@@ -19,6 +19,7 @@ const operationsSettings = {
   passwordLoginOtpOnNewIp: true,
   anytimeServiceTestEnabled: false,
   overdueAppointmentGateEnabled: false,
+  membershipCardFollowUiTheme: true,
   loginLogoMediaAssetId: null,
   requestButtonMediaAssetId: null,
   offlinePaymentEnabled: true,

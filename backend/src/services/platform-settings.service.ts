@@ -20,8 +20,9 @@ import type { PlatformSettingsResolver } from "./platform-settings.resolver";
 
 type AuditInputFactory = Pick<AuditLogService, "createInput">;
 
-export interface PlatformBasicSettingsUpdateInput extends PlatformBasicSettingsChanges {
+export interface PlatformBasicSettingsUpdateInput extends Omit<PlatformBasicSettingsChanges, "membershipCardFollowUiTheme"> {
   expectedVersion: number;
+  membershipCardFollowUiTheme?: boolean;
 }
 
 export interface PlatformPaymentSettingsUpdateInput extends PlatformPaymentSettingsChanges {
@@ -63,7 +64,8 @@ export class PlatformSettingsService {
       paymentMethods: [
         ...(setting.offlinePaymentEnabled ? (["cash"] as const) : []),
         ...(setting.ndpPaymentEnabled ? (["ndp"] as const) : [])
-      ]
+      ],
+      membershipCardFollowUiTheme: setting.membershipCardFollowUiTheme
     };
   }
 
@@ -114,6 +116,7 @@ export class PlatformSettingsService {
         passwordLoginOtpOnNewIp: input.passwordLoginOtpOnNewIp,
         anytimeServiceTestEnabled: input.anytimeServiceTestEnabled,
         overdueAppointmentGateEnabled: input.overdueAppointmentGateEnabled,
+        membershipCardFollowUiTheme: input.membershipCardFollowUiTheme ?? current.membershipCardFollowUiTheme,
         loginLogoMediaPublicId: input.loginLogoMediaPublicId,
         requestButtonMediaPublicId: input.requestButtonMediaPublicId
       },
@@ -199,6 +202,7 @@ export class PlatformSettingsService {
         current.overdueAppointmentGateEnabled,
         input.overdueAppointmentGateEnabled
       ],
+      ["membershipCardFollowUiTheme", current.membershipCardFollowUiTheme, input.membershipCardFollowUiTheme ?? current.membershipCardFollowUiTheme],
       ["loginLogoMediaPublicId", current.loginLogo?.publicId ?? null, input.loginLogoMediaPublicId],
       [
         "requestButtonMediaPublicId",

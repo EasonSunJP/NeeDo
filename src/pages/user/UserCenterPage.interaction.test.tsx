@@ -497,6 +497,27 @@ describe("UserCenterPage inline profile editing", () => {
     expect(container.textContent).toContain("ID u3141592653");
   });
 
+  it("keeps the profile card order and avatar size while editing, with paired bottom actions", async () => {
+    await renderUserCenter();
+    const viewAvatar = container.querySelector('[data-platform-membership-detail-card="true"] img');
+    expect(viewAvatar?.parentElement?.className).toContain("h-28 w-28");
+    await click(findIconButton("编辑资料"));
+    const editAvatar = container.querySelector<HTMLImageElement>('img[alt="用户头像"]');
+    expect(editAvatar?.className).toContain("h-28 w-28");
+    expect(document.activeElement).not.toBe(container.querySelector('textarea[aria-label="昵称"]'));
+    const content = container.textContent ?? "";
+    expect(content.indexOf("基础信息")).toBeLessThan(content.indexOf("语言能力"));
+    const languageRow = [...container.querySelectorAll("p")].find((element) => element.textContent === "语言能力");
+    const bioEditor = container.querySelector('[data-testid="localized-text-editor"]');
+    expect(languageRow?.compareDocumentPosition(bioEditor!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const dock = container.querySelector('[data-testid="user-profile-save-action"]');
+    expect(dock?.textContent).toContain("取消");
+    expect(dock?.textContent).toContain("保存并退出");
+    await click(findButton("取消"));
+    expect(container.querySelector('[data-testid="user-profile-save-action"]')).toBeNull();
+    expect(testState.updateMine).not.toHaveBeenCalled();
+  });
+
   it("copies only the formal NeeDo ID when the complete ID row is clicked", async () => {
     await renderUserCenter();
 
@@ -562,7 +583,7 @@ describe("UserCenterPage inline profile editing", () => {
     expect(nickname).not.toBeNull();
     await inputValue(nickname!, "客户端草稿");
 
-    const saveAction = findButton("保存并退出编辑模式") as HTMLButtonElement;
+    const saveAction = findButton("保存并退出") as HTMLButtonElement;
     await click(saveAction);
     await click(saveAction);
     expect(saveAction.disabled).toBe(true);
@@ -585,7 +606,7 @@ describe("UserCenterPage inline profile editing", () => {
     await renderUserCenter();
 
     await click(findIconButton("编辑资料"));
-    await click(findButton("保存并退出编辑模式"));
+    await click(findButton("保存并退出"));
 
     await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));
   });
@@ -601,7 +622,7 @@ describe("UserCenterPage inline profile editing", () => {
     const nickname = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]');
     expect(nickname).not.toBeNull();
     await inputValue(nickname!, "服务端新姓名");
-    await click(findButton("保存并退出编辑模式"));
+    await click(findButton("保存并退出"));
 
     await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));
   });
@@ -614,7 +635,7 @@ describe("UserCenterPage inline profile editing", () => {
     await renderUserCenter();
 
     await click(findIconButton("编辑资料"));
-    await click(findButton("保存并退出编辑模式"));
+    await click(findButton("保存并退出"));
 
     await waitFor(() => expect(container.textContent).toContain("资料已保存，已退出编辑模式"));
     expect(writeSpy).toHaveBeenCalledTimes(1);
@@ -629,7 +650,7 @@ describe("UserCenterPage inline profile editing", () => {
     await click(findIconButton("编辑资料"));
     const nickname = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]');
     await inputValue(nickname!, "保留的草稿");
-    await click(findButton("保存并退出编辑模式"));
+    await click(findButton("保存并退出"));
 
     await waitFor(() => expect(container.textContent).toContain("资料保存失败，请保留当前内容后重试"));
     expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]')?.value).toBe("保留的草稿");
@@ -642,7 +663,7 @@ describe("UserCenterPage inline profile editing", () => {
 
     const age = container.querySelector<HTMLInputElement>('input[data-profile-field="age"]');
     await inputValue(age!, "not-a-number");
-    await click(findButton("保存并退出编辑模式"));
+    await click(findButton("保存并退出"));
 
     expect(container.textContent).toContain("年龄必须是 0 到 150 之间的整数");
     expect(age?.value).toBe("not-a-number");
@@ -660,7 +681,7 @@ describe("UserCenterPage inline profile editing", () => {
     );
     await renderUserCenter();
     await click(findIconButton("编辑资料"));
-    await click(findButton("保存并退出编辑模式"));
+    await click(findButton("保存并退出"));
 
     expect(container.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
     expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]')?.readOnly).toBe(true);
@@ -682,7 +703,7 @@ describe("UserCenterPage inline profile editing", () => {
     expect(findButton("不公开")).not.toBeNull();
     await click(findButton("女"));
     await click(findButton("不公开"));
-    await click(findButton("保存并退出编辑模式"));
+    await click(findButton("保存并退出"));
 
     await waitFor(() => expect(testState.updateMine).toHaveBeenCalled());
     expect(testState.updateMine).toHaveBeenCalledWith(expect.objectContaining({ gender: "private" }));

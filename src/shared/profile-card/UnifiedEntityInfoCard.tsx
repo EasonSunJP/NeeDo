@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { AppIcon } from "../../components/client-ui/AppScaffold";
 import type { Language } from "../../i18n/translations";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
@@ -66,6 +66,7 @@ export function UnifiedEntityInfoCard({
   onOpenDetails,
   showMetrics = true,
   showLanguageTags = true,
+  style,
 }: {
   actionSlot?: ReactNode;
   className?: string;
@@ -77,6 +78,7 @@ export function UnifiedEntityInfoCard({
   onOpenDetails?: () => void;
   showMetrics?: boolean;
   showLanguageTags?: boolean;
+  style?: CSSProperties;
 }) {
   const { language: currentLanguage } = useOptionalI18n();
   const language = languageOverride ?? currentLanguage;
@@ -253,6 +255,7 @@ export function UnifiedEntityInfoCard({
       kind={data.kind}
       metrics={showMetrics ? metrics : []}
       onOpenDetails={onOpenDetails}
+      style={style}
     />
   );
 }

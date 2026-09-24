@@ -93,6 +93,8 @@ export const adminSystemSettingsCopy: Record<Language, Copy> = {
 };
 
 const phrases: Record<string, Partial<Record<Language, string>>> = {
+  "信息卡跟随 UI 配色": { "zh-Hant": "資訊卡跟隨 UI 配色", ja: "情報カードに UI 配色を適用", en: "Match info cards to UI theme", ko: "정보 카드에 UI 테마 색상 적용" },
+  "默认开启。关闭后各会员等级的信息卡使用运营后台发布的对应配色。": { "zh-Hant": "預設開啟。關閉後，各會員等級的資訊卡使用營運後台發布的對應配色。", ja: "既定でオン。オフにすると、各会員ランクのカードに管理画面で公開した配色を適用します。", en: "On by default. When off, each membership tier uses its published card colors.", ko: "기본값은 켜짐입니다. 끄면 회원 등급별로 운영 화면에 게시된 카드 색상을 사용합니다." },
   "显示 Test NDP 数据": { "zh-Hant": "顯示 Test NDP 資料", ja: "Test NDP データを表示", en: "Show Test NDP data", ko: "Test NDP 데이터 표시" },
   "此设置只影响当前管理员。关闭后运营数据、余额和入账入口均不显示 Test NDP。": { "zh-Hant": "此設定只影響目前管理員。關閉後營運資料、餘額和入帳入口均不顯示 Test NDP。", ja: "この設定は現在の管理者だけに適用されます。オフにすると運営データ、残高、入金操作に Test NDP は表示されません。", en: "This setting affects only the current administrator. When off, Test NDP is omitted from operations data, balances, and credit actions.", ko: "이 설정은 현재 관리자에게만 적용됩니다. 끄면 운영 데이터, 잔액 및 입금 작업에서 Test NDP가 표시되지 않습니다." },
   "个人设置": { "zh-Hant": "個人設定", ja: "個人設定", en: "Personal setting", ko: "개인 설정" },
