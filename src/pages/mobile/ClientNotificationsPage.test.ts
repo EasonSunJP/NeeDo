@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { translateText } from "../../i18n/translations";
 import source from "./ClientNotificationsPage.tsx?raw";
 
 describe("client official notification inbox", () => {
@@ -11,5 +12,10 @@ describe("client official notification inbox", () => {
   it("marks a selected notice read and refreshes the shared badge", () => {
     expect(source).toContain("officialNoticesApi.markRead(item.publicId)");
     expect(source).toContain("OFFICIAL_NOTICE_CHANGED_EVENT");
+  });
+
+  it("uses status wording for read notices in Japanese and Korean", () => {
+    expect(translateText("已读", "ja")).toBe("既読");
+    expect(translateText("已读", "ko")).toBe("읽음");
   });
 });

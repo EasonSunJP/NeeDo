@@ -11483,7 +11483,7 @@ export const translations: TranslationMap = {
   "已调整外勤预留人数": { "zh-Hant": "已調整外勤預留人數", ja: "関連項目は完了しました。", en: "Number of people has been completed.", ko: "사람 수이(가) 완료되었습니다." },
   "已调整为候补。": { "zh-Hant": "已調整為候補。", ja: "候補に変更しました。", en: "Changed to standby.", ko: "후보로 변경했습니다." },
   "已定预约": { "zh-Hant": "已定預約", ja: "予約は既に済んでいます", en: "Appointment already booked", ko: "이미 예약이 완료되었습니다." },
-  "已读": { "zh-Hant": "已讀", ja: "読む", en: "Read", ko: "읽다" },
+  "已读": { "zh-Hant": "已讀", ja: "既読", en: "Read", ko: "읽음" },
   "已发布": { "zh-Hant": "已發布", ja: "公開済み", en: "Published", ko: "게시됨" },
   "已发布到本店，用户端和商户手机端会读取同一份内容。": { "zh-Hant": "已發布到本店，用戶端和商戶手機端會讀取同一份內容。", ja: "この店舗に公開しました。ユーザー側と事業者モバイル側は同じ内容を読み込みます。", en: "Published to this store. The user app and merchant mobile app will read the same content.", ko: "이 매장에 게시되었습니다. 사용자 앱과 사업자 모바일 앱은 같은 내용을 읽습니다." },
   "已发布技师": { "zh-Hant": "已發布技師", ja: "スタッフが配置されました", en: "Independent staffs have been posted", ko: "스태프들이 배치되었습니다" },

@@ -148,7 +148,7 @@ export function SharedHomeHeader({
         <AppIcon className="h-4 w-4" name={locationIcon} />
       </span>
       <span className="min-w-0 flex-1">
-        {locationCaption ? <span className={cn("block text-[11px] font-bold", captionToneClass)}>{locationCaption}</span> : null}
+        {locationCaption ? <span className={cn("block truncate whitespace-nowrap text-[11px] font-bold", captionToneClass)}>{locationCaption}</span> : null}
         <span className={cn("block truncate text-[14px] font-black", labelToneClass)}>{resolvedLocationLabel}</span>
       </span>
       {onLocationClick || locationTo ? <ChevronIcon className={useBrightIcons ? "text-white/55" : "text-[color:var(--client-muted)]"} /> : null}
