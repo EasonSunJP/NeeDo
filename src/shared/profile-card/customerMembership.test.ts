@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { translateText } from "../../i18n/translations";
 import { formatCustomerMembershipLevel, resolveCustomerMembership } from "./customerMembership";
 import { platformMembershipTierText } from "./platformMembershipTierText";
 
@@ -22,5 +23,7 @@ describe("customer membership labels", () => {
     expect(platformMembershipTierText("silver", "en")).toBe("Silver membership");
     expect(platformMembershipTierText("silver", "ko")).toBe("실버 회원");
     expect(platformMembershipTierText("black_diamond", "ja")).toBe("ブラックダイヤ会員");
+    expect(translateText("黑钻", "ja")).toBe("ブラックダイヤ");
+    expect(translateText("黑钻会员", "ja")).toBe("ブラックダイヤ会員");
   });
 });

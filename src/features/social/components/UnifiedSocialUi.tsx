@@ -34,6 +34,7 @@ import { buildStoreBookingRoute } from "../../../lib/storeBookingRoute";
 import { getVisibleRelatedShopsForTechnician, type TechnicianRelatedShopEntry } from "../../../lib/technicianRelatedShops";
 import { cn } from "../../../lib/utils";
 import { useOptionalI18n } from "../../../i18n/I18nProvider";
+import { translateText } from "../../../i18n/translations";
 import { CustomerMembershipBadge } from "../../../shared/profile-card";
 import { resolveCustomerMembership } from "../../../shared/profile-card/customerMembership";
 import { useEntityStore } from "../../../state/entityStore";
@@ -2645,7 +2646,7 @@ export function NotificationRow({
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-black text-[color:var(--client-text)]">{actor?.displayName ?? "系统通知"}</span>
       </div>
-      <p className="mt-1 text-sm leading-6 text-[color:var(--client-text)]" data-no-i18n>{content}</p>
+      <p className="mt-1 text-sm leading-6 text-[color:var(--client-text)]" data-no-i18n>{translateText(content, language)}</p>
       <p className="mt-2 text-xs font-semibold text-[color:var(--client-muted)]" data-no-i18n>{formatRelativeTime(at, language)}</p>
     </div>
   );

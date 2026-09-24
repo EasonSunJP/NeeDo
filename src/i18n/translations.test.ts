@@ -1265,7 +1265,7 @@ describe("translations", () => {
       "UI 切换": { "zh-Hant": "介面主題", ja: "表示テーマ", en: "Theme", ko: "테마" },
       "语言": { "zh-Hant": "語言", ja: "言語", en: "Language", ko: "언어" },
       "身份切换": { "zh-Hant": "身分切換", ja: "利用者区分の切り替え", en: "Switch identity", ko: "사용자 유형 전환" },
-      "服务范围": { "zh-Hant": "服務範圍", ja: "サービス提供エリア", en: "Service Area", ko: "서비스 지역" },
+      "服务范围": { "zh-Hant": "服務範圍", ja: "サービスエリア", en: "Service Area", ko: "서비스 지역" },
       "账户与安全": { "zh-Hant": "帳號與安全", ja: "アカウントとセキュリティ", en: "Account and Security", ko: "계정 및 보안" },
       "已完善": { "zh-Hant": "已完善", ja: "設定済み", en: "Completed", ko: "설정 완료" },
       "待完善": { "zh-Hant": "待補全", ja: "要設定", en: "Needs completion", ko: "보완 필요" },
@@ -1649,9 +1649,12 @@ describe("translations", () => {
     expect(translateText("全部分类", "en")).toBe("All");
     expect(translateText("全部分类", "ko")).toBe("전체");
 
-    expect(translateText("当前服务区域", "ja")).toBe("現在のサービスエリア");
+    expect(translateText("当前服务区域", "ja")).toBe("現エリア");
     expect(translateText("当前服务区域", "en")).toBe("Current Service Area");
     expect(translateText("当前服务区域", "ko")).toBe("현재 서비스 지역");
+    expect(translateText("服务范围", "ja")).toBe("サービスエリア");
+    expect(translateText("城市（都道府县）", "ja")).toBe("都道府県");
+    expect(translateText("街道", "ja")).toBe("町名");
 
     expect(translateText("已绑定", "ja")).toBe("紐付け済み");
     expect(translateText("已绑定", "en")).toBe("Linked");
