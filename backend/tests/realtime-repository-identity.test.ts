@@ -41,6 +41,7 @@ describe("RealtimeRepository formal identity payloads", () => {
       follow: { findMany: jest.fn(async () => []) },
       contact: { findMany: jest.fn(async () => []) },
       socialPostLike: { findMany: jest.fn(async () => []) },
+      socialPostView: { findMany: jest.fn(async () => []) },
       socialPostBookmark: { findMany: jest.fn(async () => []) },
       socialPostShare: { findMany: jest.fn(async () => []) }
     } as unknown as PrismaClient;
@@ -104,6 +105,7 @@ describe("RealtimeRepository formal identity payloads", () => {
       follow: { findMany: jest.fn(async () => []) },
       contact: { findMany: jest.fn(async () => []) },
       socialPostLike: { findMany: jest.fn(async () => []) },
+      socialPostView: { findMany: jest.fn(async () => []) },
       socialPostBookmark: { findMany: jest.fn(async () => []) },
       socialPostShare: { findMany: jest.fn(async () => []) }
     } as unknown as PrismaClient;

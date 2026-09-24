@@ -8,8 +8,7 @@ async function loadSocialPage<TModule, TName extends keyof TModule>(
   loader: () => Promise<TModule>,
   name: TName
 ) {
-  await import("./registerRouteI18n");
-  const module = await loader();
+  const [, module] = await Promise.all([import("./registerRouteI18n"), loader()]);
   return { default: module[name] as ComponentType<any> };
 }
 
@@ -27,7 +26,7 @@ const FullSocialAccountProfilePage = lazy(() => loadSocialPage(() => import("./p
 
 function FullSocialRoute({ page: Page }: { page: ComponentType }) {
   const { language } = useI18n();
-  return <Suspense fallback={<div className="grid min-h-[100dvh] place-items-center text-sm font-black">{translateText("正在加载…", language)}</div>}><Page /></Suspense>;
+  return <Suspense fallback={<div className="grid min-h-[100dvh] place-items-center bg-[color:var(--client-bg)] text-sm font-black text-[color:var(--client-text)]">{translateText("正在加载…", language)}</div>}><Page /></Suspense>;
 }
 
 export function SocialTimelinePage() { return <FullSocialRoute page={FullSocialTimelinePage} />; }

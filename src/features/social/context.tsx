@@ -73,7 +73,6 @@ type SocialContextValue = {
   getFollowers: (profileKeyValue: string) => SocialProfile[];
   getFollowing: (profileKeyValue: string) => SocialProfile[];
   getNotifications: (recipientKey: string) => SocialNotification[];
-  getUnreadNotificationCount: (recipientKey: string) => number;
   search: (query: string) => SocialSearchResult;
   getTagFeed: (tag: string) => SocialPost[];
   getTrendingTags: () => Array<{ tag: string; count: number }>;
@@ -1294,7 +1293,6 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       getFollowers,
       getFollowing,
       getNotifications,
-      getUnreadNotificationCount: (key) => getNotifications(key).filter((item) => !item.read).length,
       search,
       getTagFeed: (tag) => state.posts.filter((post) => post.hashtags.some((item) => item.toLowerCase() === tag.toLowerCase())),
       getTrendingTags,
@@ -1368,4 +1366,8 @@ export function useSocial() {
   }
 
   return context;
+}
+
+export function useOptionalSocial() {
+  return useContext(SocialContext);
 }

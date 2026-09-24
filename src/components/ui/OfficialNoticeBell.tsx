@@ -8,8 +8,9 @@ import {
 import { useRealtimeUnreadCounts } from "../../features/realtime/useRealtimeUnreadCounts";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { NotificationBadge } from "./NotificationBadge";
+import { NotificationBellGlyph } from "./NotificationBellGlyph";
 
-export function OfficialNoticeBell({ to }: { to: string }) {
+export function useOfficialNoticeUnreadCount(enabled = true) {
   const { language } = useOptionalI18n();
   const { notifications: realtimeNotificationVersion } = useRealtimeUnreadCounts();
   const previousRealtimeNotificationVersion = useRef(realtimeNotificationVersion);
@@ -19,6 +20,7 @@ export function OfficialNoticeBell({ to }: { to: string }) {
     [language]
   );
   const refresh = useCallback(async () => {
+    if (!enabled) return;
     try {
       const result = await officialNoticesApi.listInbox({
         locale,
@@ -30,19 +32,25 @@ export function OfficialNoticeBell({ to }: { to: string }) {
     } catch {
       // Keep the last durable official-notice count while the recipient API reconnects.
     }
-  }, [locale]);
+  }, [enabled, locale]);
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
     if (previousRealtimeNotificationVersion.current === realtimeNotificationVersion) return;
     previousRealtimeNotificationVersion.current = realtimeNotificationVersion;
-    window.dispatchEvent(new Event(OFFICIAL_NOTICE_CHANGED_EVENT));
-  }, [realtimeNotificationVersion]);
+    if (enabled) window.dispatchEvent(new Event(OFFICIAL_NOTICE_CHANGED_EVENT));
+  }, [enabled, realtimeNotificationVersion]);
   useEffect(() => {
     const handleChange = () => { void refresh(); };
     window.addEventListener(OFFICIAL_NOTICE_CHANGED_EVENT, handleChange);
     return () => window.removeEventListener(OFFICIAL_NOTICE_CHANGED_EVENT, handleChange);
   }, [refresh]);
+
+  return unreadCount;
+}
+
+export function OfficialNoticeBell({ to }: { to: string }) {
+  const unreadCount = useOfficialNoticeUnreadCount();
 
   return (
     <NavLink
@@ -51,18 +59,7 @@ export function OfficialNoticeBell({ to }: { to: string }) {
       to={to}
     >
       <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-        <path
-          d="M12 4a6 6 0 0 0-6 6v2.5L4.7 15a1 1 0 0 0 .7 1.7H18.6a1 1 0 0 0 .7-1.7L18 12.5V10a6 6 0 0 0-6-6Z"
-          stroke="currentColor"
-          strokeLinejoin="round"
-          strokeWidth="2"
-        />
-        <path
-          d="M9.5 19a2.5 2.5 0 0 0 5 0"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeWidth="2"
-        />
+        <NotificationBellGlyph />
       </svg>
       {unreadCount > 0 ? (
         <NotificationBadge

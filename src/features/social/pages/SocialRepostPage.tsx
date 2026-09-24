@@ -50,7 +50,6 @@ export function SocialRepostPage() {
   const {
     getActorForScope,
     getPostById,
-    getUnreadNotificationCount,
     shareSocialPostToFriends
   } = useSocial();
   const actorKey = getActorForScope(scope);
@@ -109,7 +108,7 @@ export function SocialRepostPage() {
   if (!post) {
     return (
       <PageScaffold contentClassName="space-y-6 pb-28" navItems={navItemsForSocialScope(scope)}>
-        <AppTopBar actions={<SocialTopActions scope={scope} unreadCount={getUnreadNotificationCount(actorKey)} />} subtitle={copy.missingSubtitle} title={copy.title} />
+        <AppTopBar actions={<SocialTopActions scope={scope} />} subtitle={copy.missingSubtitle} title={copy.title} />
         <SocialEmptyState
           action={<PrimaryButton to={socialPaths.timeline(scope)}>{copy.returnTimeline}</PrimaryButton>}
           description={copy.missingDescription}
@@ -122,7 +121,7 @@ export function SocialRepostPage() {
   return (
     <PageScaffold contentClassName="space-y-6 pb-28" navItems={navItemsForSocialScope(scope)}>
       <AppTopBar
-        actions={<SocialTopActions scope={scope} unreadCount={getUnreadNotificationCount(actorKey)} />}
+        actions={<SocialTopActions scope={scope} />}
         info={copy.subtitle}
         title={copy.title}
       />

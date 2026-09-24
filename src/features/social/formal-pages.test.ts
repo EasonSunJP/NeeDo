@@ -20,4 +20,10 @@ describe("single complete social pages", () => {
     expect(routeSource).toContain('translateText("正在加载…", language)');
     expect(routeSource).not.toContain(">正在加载动态...</div>");
   });
+
+  it("loads timeline code and translations together and uses a themed first-frame fallback", () => {
+    expect(routeSource).toContain("Promise.all([import(\"./registerRouteI18n\"), loader()])");
+    expect(routeSource).toContain("bg-[color:var(--client-bg)]");
+    expect(routeSource).toContain("text-[color:var(--client-text)]");
+  });
 });

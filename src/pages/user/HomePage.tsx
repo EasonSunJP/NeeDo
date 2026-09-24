@@ -1254,8 +1254,12 @@ export function HomePage() {
             avatarSrc={session?.avatarUrl ?? currentCustomer?.avatar ?? ""}
             avatarTo={userPortalConfig.myPath}
             locationLabel={selectedLocation.label}
+            compactLocationLabel
             locationCaption="当前服务区域"
             locationTo="/me/settings/service-range"
+            secondaryActionIcon="broadcast"
+            secondaryActionLabel="通知"
+            secondaryActionTo="/notifications"
             settingsLabel="系统设置"
             settingsTo={userPortalConfig.settingsPath}
           />

@@ -147,6 +147,12 @@ describe("route-level loading boundaries", () => {
     expect(appSource).toContain("portalTransition ? 80 : reducedPerformance ? 80 : 620");
   });
 
+  it("keeps the merchant splash until the entry page data has settled", () => {
+    expect(appSource).toContain('merchantReadyRouteKey !== location.key');
+    expect(appSource).toContain('onSettled={markMerchantPortalReady}');
+    expect(appSource).toContain('onDone={waitingForMerchantPortal ? undefined : completeSplash}');
+  });
+
   it("keeps settings and legal workspaces out of the initial portal bundle", () => {
     expect(appSource).not.toContain(
       'from "./pages/user/UserSettingsPages";'

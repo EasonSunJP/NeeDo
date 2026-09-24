@@ -1702,6 +1702,7 @@ export function ImConversationListPage() {
   const { store, config, scope } = useImRuntime();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const focusLatestUnread = searchParams.get("focusLatestUnread");
   const temporaryView = searchParams.get("view") === "temporary";
   const queryFromParams = searchParams.get("q") ?? "";
   const selectedTags = useMemo(() => readTagFilterParams(searchParams), [searchParams]);
@@ -1718,6 +1719,7 @@ export function ImConversationListPage() {
   const [campaignResult, setCampaignResult] = useState<TagMessageCampaignResult | null>(null);
   const [keywordResult, setKeywordResult] = useState<ImSearchResult>(emptySearchResult);
   const scrollStorageKey = `needo.im.messages.scroll.v2.${scope}`;
+  const lastFocusedUnreadTokenRef = useRef<string | null>(null);
   const pinnedCollapsedStorageKey = `needo.im.messages.pinned-collapsed.v2.${scope}`;
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
@@ -1792,12 +1794,12 @@ export function ImConversationListPage() {
 
     const saved = window.localStorage.getItem(scrollStorageKey);
 
-    if (!saved) {
+    if (!saved || focusLatestUnread) {
       return;
     }
 
     window.scrollTo({ top: Number(saved), behavior: "auto" });
-  }, [store.status]);
+  }, [focusLatestUnread, store.status]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1974,6 +1976,37 @@ export function ImConversationListPage() {
   );
   const pinnedConversations = filteredConversations.filter((conversation) => conversation.isPinned);
   const regularConversations = filteredConversations.filter((conversation) => !conversation.isPinned);
+  const latestUnreadConversation = useMemo(() => store.conversations
+    .filter((conversation) => conversation.unreadCount > 0)
+    .sort((left, right) => Date.parse(right.lastMessageTime) - Date.parse(left.lastMessageTime))[0], [store.conversations]);
+
+  useEffect(() => {
+    if (!focusLatestUnread || store.status !== "ready" || !latestUnreadConversation || lastFocusedUnreadTokenRef.current === focusLatestUnread) return;
+    const targetIsTemporary = latestUnreadConversation.businessContextType === "shop_booking_contact" || latestUnreadConversation.businessContextType === "booking_contact";
+    if (temporaryView !== targetIsTemporary || query || selectedTags.length > 0) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("q");
+      next.delete("tag");
+      next.delete("tags");
+      if (targetIsTemporary) next.set("view", "temporary");
+      else next.delete("view");
+      setQuery("");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    if (latestUnreadConversation.isPinned && pinnedCollapsed) {
+      setPinnedCollapsed(false);
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const row = document.getElementById(`im-conversation-${latestUnreadConversation.id}`);
+      if (row) {
+        row.scrollIntoView({ block: "center", behavior: "smooth" });
+        lastFocusedUnreadTokenRef.current = focusLatestUnread;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusLatestUnread, latestUnreadConversation, pinnedCollapsed, query, searchParams, selectedTags.length, setSearchParams, store.status, temporaryView]);
   const openQuickEntry = (mode: "group" | "friend" | "collect" | "scan") => {
     setQuickMenuOpen(false);
     navigate(appendQuery(config.routes.newConversation, { mode }));
@@ -2016,7 +2049,8 @@ export function ImConversationListPage() {
     const avatarTarget = getConversationProfileTarget(scope, store, conversation);
 
     return (
-      <UnifiedConversationItem
+      <div id={`im-conversation-${conversation.id}`} key={conversation.id}>
+        <UnifiedConversationItem
         actions={[
           {
             key: "pin",
@@ -2061,7 +2095,6 @@ export function ImConversationListPage() {
         avatarTo={avatarTarget}
         conversationType={conversation.type}
         group={conversation.type === "group"}
-        key={conversation.id}
         mention={conversation.mentionAll ? "@所有人" : conversation.mentionMe ? "@我" : undefined}
         muted={conversation.isMuted}
         pinned={conversation.isPinned}
@@ -2072,7 +2105,8 @@ export function ImConversationListPage() {
         title={title}
         onClick={() => openConversation(conversation.id)}
         unreadCount={conversation.unreadCount}
-      />
+        />
+      </div>
     );
   };
 

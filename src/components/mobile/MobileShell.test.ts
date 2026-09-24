@@ -47,8 +47,13 @@ describe("MobileShell shared navigation", () => {
   it("routes friend-request unread count only to the contacts destination", () => {
     expect(mobileShellSource).toContain("contacts: realtimeCounts.friendRequests");
     expect(mobileShellSource).toContain("messages: realtimeCounts.conversations");
-    expect(mobileShellSource).toContain("moments: realtimeCounts.notifications");
+    expect(mobileShellSource).toContain("moments: timelineUnreadCount");
     expect(mobileShellSource).not.toContain("messages: realtimeCounts.friendRequests");
     expect(mobileShellSource).not.toContain("moments: realtimeCounts.friendRequests");
+  });
+
+  it("uses a second chat-nav tap to focus the latest unread conversation", () => {
+    expect(mobileShellSource).toContain("focusLatestUnread");
+    expect(mobileShellSource).toContain("realtimeCounts.conversations > 0");
   });
 });

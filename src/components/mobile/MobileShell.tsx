@@ -7,10 +7,11 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { ImRoleType } from "../../features/im/model";
 import { DEFAULT_REQUEST_BUTTON_URL } from "../../features/platform-settings/defaultBrandMedia";
 import { useRealtimeUnreadCounts } from "../../features/realtime/useRealtimeUnreadCounts";
+import { useTimelineUnreadCount } from "../../features/social/useTimelineUnreadCount";
 import { usePlatformSettings } from "../../features/platform-settings/PlatformSettingsProvider";
 import type { SocialPortalScope } from "../../features/social/types";
 import { cn } from "../../lib/utils";
@@ -46,6 +47,8 @@ type NavigationNotificationCounts = {
   messages: number;
   moments: number;
 };
+
+let lastMessageNavTap = { path: "", at: 0 };
 
 function getClientPortalRole(pathname: string): ClientPortalRole {
   if (pathname === "/merchant" || pathname.startsWith("/merchant/") || pathname === "/shop" || pathname.startsWith("/shop/")) {
@@ -197,6 +200,7 @@ export function MobileShell({
   showTopEdgeMask?: boolean;
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { isNight, theme } = useClientTheme();
   const bottomEdgeMaskStyle = {
     ...liquidGlassBottomEdgeMaskStyle,
@@ -204,6 +208,7 @@ export function MobileShell({
   } as CSSProperties;
   const portalRole = getClientPortalRole(location.pathname);
   const realtimeCounts = useRealtimeUnreadCounts();
+  const timelineUnreadCount = useTimelineUnreadCount(portalRole);
   const resolvedNavItems = navItems ?? getDefaultNavItems(location.pathname);
   const displayedNavItems = showBottomNav ? resolvedNavItems : [];
   const featuredItem = displayedNavItems.find((item) => item.featured);
@@ -218,7 +223,7 @@ export function MobileShell({
   const navNotificationCounts: NavigationNotificationCounts = {
     contacts: realtimeCounts.friendRequests,
     messages: realtimeCounts.conversations,
-    moments: realtimeCounts.notifications
+    moments: timelineUnreadCount
   };
   const featuredItemNotificationCount = featuredItem
     ? getNavItemNotificationCount(featuredItem, portalRole, navNotificationCounts)
@@ -470,6 +475,15 @@ export function MobileShell({
                   }
                   end={item.end ?? (item.to === "/" || item.to === "/merchant" || item.to === "/technician")}
                   key={item.to}
+                  onClick={item.icon === "message" && realtimeCounts.conversations > 0 ? (event) => {
+                    const now = Date.now();
+                    const isSecondTap = lastMessageNavTap.path === item.to && now - lastMessageNavTap.at < 450;
+                    lastMessageNavTap = { path: item.to, at: now };
+                    if (isSecondTap) {
+                      event.preventDefault();
+                      navigate(`${item.to}?focusLatestUnread=${now}`);
+                    }
+                  } : undefined}
                   to={item.to}
                 >
                   {({ isActive }) => (

@@ -7,7 +7,7 @@ import { useHomeLocationPreference } from "../../../state/homeLocationStore";
 import { useSocial } from "../context";
 import { getSocialScopeFromPathname, socialPaths } from "../paths";
 import { buildTimelineUpdateNotifications } from "../timeline-notifications";
-import { navItemsForSocialScope, NotificationRow, SocialEmptyState, SocialTopActions } from "../components/SocialUi";
+import { navItemsForSocialScope, NotificationRow, SocialEmptyState } from "../components/SocialUi";
 
 export function SocialNotificationsPage() {
   const location = useLocation();
@@ -41,8 +41,8 @@ export function SocialNotificationsPage() {
   return (
     <PageScaffold contentClassName="space-y-6 pb-28" navItems={navItemsForSocialScope(scope)}>
       <AppTopBar
-        actions={<SocialTopActions scope={scope} />}
-        subtitle="附近与好友新动态"
+        closeTo={socialPaths.timeline(scope)}
+        info="附近与好友新动态"
         title="动态通知"
       />
 
@@ -56,7 +56,7 @@ export function SocialNotificationsPage() {
               content={item.content}
               key={item.id}
               to={socialPaths.post(scope, item.postId)}
-              unread
+              unread={item.unread}
             />
           ))
         ) : (

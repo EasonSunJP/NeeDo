@@ -79,11 +79,13 @@ describe("formal social adapter", () => {
       viewerInteraction: {
         liked: true,
         bookmarked: true,
-        shared: true
+        shared: true,
+        viewed: true
       }
     });
 
     expect(mapped).toMatchObject({
+      viewerViewed: true,
       likeCount: 31,
       repostCount: 7,
       viewCount: 922,

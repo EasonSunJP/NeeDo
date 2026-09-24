@@ -1818,11 +1818,11 @@ function MerchantStorePrivacyControl({
   );
 }
 
-export function MerchantPortalPage() {
-  return <MerchantPortalDataGate />;
+export function MerchantPortalPage({ onSettled }: { onSettled?: () => void }) {
+  return <MerchantPortalDataGate onSettled={onSettled} />;
 }
 
-function MerchantPortalDataGate() {
+function MerchantPortalDataGate({ onSettled }: { onSettled?: () => void }) {
   const { session } = useAuth();
   const persistentCacheScope = getAuthenticatedPersistentCacheScope();
   const merchantShopOwnerKey = session
@@ -1865,17 +1865,19 @@ function MerchantPortalDataGate() {
     }
   );
 
+  const merchantShopFailed = !merchantShopQuery.loading && Boolean(
+    merchantShopQuery.error || (merchantShopPage && !storeApiId)
+  );
+  const formalStoreFailed = Boolean(storeApiId && !formalStoreQuery.loading && formalStoreQuery.error);
+  const formalStaffFailed = Boolean(storeApiId && !formalStaffQuery.loading && formalStaffQuery.error);
+  const failed = merchantShopFailed || formalStoreFailed || formalStaffFailed;
+  const ready = Boolean(storeApiId && formalStoreQuery.data && formalStaffQuery.data);
+
+  useEffect(() => {
+    if (ready || failed) onSettled?.();
+  }, [failed, onSettled, ready]);
+
   if (!storeApiId || !formalStoreQuery.data || !formalStaffQuery.data) {
-    const merchantShopFailed = !merchantShopQuery.loading && Boolean(
-      merchantShopQuery.error || (merchantShopPage && !storeApiId)
-    );
-    const formalStoreFailed = Boolean(
-      storeApiId && !formalStoreQuery.loading && formalStoreQuery.error
-    );
-    const formalStaffFailed = Boolean(
-      storeApiId && !formalStaffQuery.loading && formalStaffQuery.error
-    );
-    const failed = merchantShopFailed || formalStoreFailed || formalStaffFailed;
     return (
       <MobileShell navItems={merchantNavItems} showBottomNav={false}>
         <section className="client-app-gutter grid min-h-[75dvh] place-items-center py-12" data-testid="merchant-loading-state">
@@ -2962,7 +2964,11 @@ export function MerchantPortalContent({
               avatarSrc={store.cover}
               avatarTo={merchantPortalConfig.myPath}
               locationLabel={getMerchantLocationLabel(store)}
+              compactLocationLabel
               locationTo="/merchant/settings/service-range"
+              secondaryActionIcon="broadcast"
+              secondaryActionLabel="通知"
+              secondaryActionTo="/merchant/notifications"
               settingsLabel="打开设置中心"
               settingsTo={merchantPortalConfig.settingsPath}
             />

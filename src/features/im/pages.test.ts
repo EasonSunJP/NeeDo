@@ -21,6 +21,11 @@ import longPressSource from "./useImLongPressAction.ts?raw";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
+  it("focuses the newest unread conversation after a second chat-nav tap", () => {
+    expect(pagesSource).toContain('searchParams.get("focusLatestUnread")');
+    expect(pagesSource).toContain("conversation.unreadCount > 0");
+    expect(pagesSource).toContain("row.scrollIntoView({ block: \"center\", behavior: \"smooth\" })");
+  });
   it("renders the add-tag editor as one glass sheet without a nested outer card", () => {
     const pageStart = pagesSource.indexOf("export function ImContactTagsPage");
     const pageEnd = pagesSource.indexOf("export function ImServiceAccountsPage", pageStart);

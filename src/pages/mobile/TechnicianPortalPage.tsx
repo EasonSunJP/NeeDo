@@ -282,7 +282,11 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
             avatarTo="/technician/me"
             locationCaption="当前服务区域"
             locationLabel={profile.serviceAreas[0] ?? profile.city ?? "服务区域未设置"}
+            compactLocationLabel
             locationTo="/technician/settings/service-range"
+            secondaryActionIcon="broadcast"
+            secondaryActionLabel="通知"
+            secondaryActionTo="/technician/notifications"
             settingsLabel="打开技师设置"
             settingsTo="/technician/settings"
           />

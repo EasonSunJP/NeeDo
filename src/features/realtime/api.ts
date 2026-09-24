@@ -260,6 +260,7 @@ export type RealtimeSocialPost = {
     liked: boolean;
     bookmarked: boolean;
     shared: boolean;
+    viewed?: boolean;
   };
 };
 
