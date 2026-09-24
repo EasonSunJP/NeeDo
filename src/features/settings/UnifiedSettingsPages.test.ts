@@ -465,8 +465,13 @@ describe("UnifiedSettingsServiceRangePage", () => {
     expect(serviceRangeSource).toContain("onClose={closeServiceRangePage}");
   });
 
-  it("keeps search in the header area and removes framed title/location blocks", () => {
-    expect(serviceRangeSource).toContain("FloatingHeaderSearchBar");
+  it("keeps four location tabs in the glass header and one active level at a time", () => {
+    expect(serviceRangeSource).toContain("footer={<FeatureSegmentedTabs");
+    expect(serviceRangeSource).toContain('variant="header"');
+    expect(serviceRangeSource).toContain('>("street")');
+    expect(serviceRangeSource).toContain('activeStep === "prefecture" && filteredPrefectures.map');
+    expect(serviceRangeSource).toContain('activeStep === "district" && filteredDistricts.map');
+    expect(serviceRangeSource).toContain('activeStep === "street" && filteredStreets.map');
     expect(serviceRangeSource).toContain("serviceRangeSearchQuery");
     expect(serviceRangeSource).toContain('placeholder={t("搜索地点")}');
     expect(serviceRangeSource).not.toContain("<SurfacePanel>");
@@ -507,6 +512,11 @@ describe("UnifiedSettingsServiceRangePage", () => {
     expect(serviceRangeSource).toContain("getServiceAreaPrefectures()");
     expect(serviceRangeSource).toContain("getServiceAreaDistricts(selectedPrefectureId)");
     expect(serviceRangeSource).toContain("getServiceAreaStreets(selectedDistrictId)");
+  });
+
+  it("keeps Japanese proper place names out of automatic UI translation", () => {
+    expect(serviceRangeSource).toMatch(/data-no-i18n[\s\S]*?\{prefecture\.name\}<span/u);
+    expect(serviceRangeSource).toMatch(/data-no-i18n[\s\S]*?\{district\.name\}<span/u);
   });
 });
 

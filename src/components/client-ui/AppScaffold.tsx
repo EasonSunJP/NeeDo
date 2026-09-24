@@ -1038,6 +1038,7 @@ export function FeatureSegmentedTabs<T extends string>({
 
         return (
           <button
+            aria-pressed={active}
             className={cn(
               "client-feature-segmented-tab flex min-w-0 flex-1 items-center justify-center rounded-full px-1 py-2 text-center text-[11px] font-black leading-none sm:px-2 sm:text-[13px]",
               isCompactTabGroup && "client-feature-segmented-tab--compact px-3 text-[13px]",

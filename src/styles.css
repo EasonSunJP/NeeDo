@@ -2249,8 +2249,15 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
 }
 
 .client-shell .store-public-tabs .client-feature-segmented-tab {
+  align-self: center;
+  height: 34px;
+  min-height: 34px !important;
   padding-inline: 4px !important;
   font-size: clamp(10px, 2.8vw, 13px) !important;
+}
+
+.client-shell .store-public-tabs .client-feature-segmented-tab[aria-pressed="true"] {
+  flex-grow: 1.25;
 }
 
 .client-shell :is(
