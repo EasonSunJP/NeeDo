@@ -34,7 +34,7 @@ export function LocalizedContentLocaleRail({
   return (
     <aside
       aria-label={ariaLabel}
-      className="fixed right-[calc(env(safe-area-inset-right,0px)+8px)] top-[58%] z-[70] flex w-14 -translate-y-1/2 flex-col gap-1.5 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur"
+      className="client-liquid-glass-surface fixed right-[calc(env(safe-area-inset-right,0px)+8px)] top-[58%] z-[70] flex w-14 -translate-y-1/2 flex-col gap-1.5 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_42%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur-xl"
       data-testid={testId}
     >
       <div aria-label={ariaLabel} className="flex max-h-[55dvh] w-full min-w-0 flex-col gap-1 overflow-y-auto" role="tablist">
