@@ -153,7 +153,7 @@ describe("ExchangeComposer identity boundary", () => {
     }
 
     expect(exchangeText("tellPlatform", "ja")).toBe("需要設定");
-    expect(exchangeText("demandComposerIntro", "ja")).toBe("希望条件をご記入ください。");
+    expect(exchangeText("demandComposerIntro", "ja")).toContain("住所1は公開後すべての人に表示されます");
     expect(exchangeText("required", "ja")).toBe("「＊」のついた必須項目を必ずご記入ください。");
     expect(exchangeText("authoredLanguage", "ja")).toBe("言語");
     expect(exchangeText("bookable", "ja")).toBe("予約可");
