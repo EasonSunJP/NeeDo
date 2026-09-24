@@ -228,6 +228,11 @@ function findButton(label: string) {
     .find((button) => button.textContent?.trim() === label);
 }
 
+function findServiceButton(label: string) {
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-testid="technician-service-card"] button'))
+    .find((button) => button.textContent?.trim() === label && !button.closest('[data-testid="localized-content-locale-rail"]'));
+}
+
 function findInput(label: string) {
   const field = Array.from(container.querySelectorAll<HTMLLabelElement>("label"))
     .find((candidate) => candidate.textContent?.includes(label));
@@ -576,7 +581,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     await openNewServiceEditor();
     const file = new File([new Uint8Array([0xff, 0xd8])], "cover.jpg", { type: "image/jpeg" });
     await selectServiceCover(file);
-    await act(async () => findButton("保存")?.click());
+    await act(async () => findServiceButton("保存")?.click());
     await flushUntil(() => expect(uploadRequest).toHaveBeenCalledTimes(1));
 
     expect(createRequest).toHaveBeenCalledTimes(1);
@@ -614,7 +619,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
       if (name) setInputValue(name, "正式新增服务");
       if (price) setInputValue(price, "9800");
     });
-    await act(async () => findButton("保存")?.click());
+    await act(async () => findServiceButton("保存")?.click());
     await flushUntil(() => expect(createRequest).toHaveBeenCalledTimes(1));
 
     expect(createRequest).toHaveBeenCalledWith(71, expect.objectContaining({
@@ -637,7 +642,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="编辑"]')?.click());
     const file = new File([new Uint8Array([1, 2, 3])], "replacement.webp", { type: "image/webp" });
     await selectServiceCover(file);
-    await act(async () => findButton("保存")?.click());
+    await act(async () => findServiceButton("保存")?.click());
     await flushUntil(() => expect(uploadRequest).toHaveBeenCalledTimes(1));
 
     expect(updateRequest).toHaveBeenCalledTimes(1);
@@ -654,7 +659,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     await flushUntil(() => expect(container.textContent).toContain("肩颈调理"));
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="编辑"]')?.click());
     await act(async () => findButton("移除图片")?.click());
-    await act(async () => findButton("保存")?.click());
+    await act(async () => findServiceButton("保存")?.click());
     await flushUntil(() => expect(removeCoverRequest).toHaveBeenCalledTimes(1));
 
     expect(updateRequest).toHaveBeenCalledTimes(1);
@@ -677,7 +682,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
       container.querySelector<HTMLButtonElement>('button[aria-label="编辑"]')?.click()
     );
     await act(async () => findButton("移除图片")?.click());
-    await act(async () => findButton("保存")?.click());
+    await act(async () => findServiceButton("保存")?.click());
     await flushUntil(() =>
       expect(container.querySelector('[role="alert"]')?.textContent).toContain(
         "服务已保存，封面移除失败，请重试"
@@ -732,7 +737,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     await openNewServiceEditor();
     const file = new File([new Uint8Array([0xff, 0xd8])], "retry.jpg", { type: "image/jpeg" });
     await selectServiceCover(file);
-    await act(async () => findButton("保存")?.click());
+    await act(async () => findServiceButton("保存")?.click());
     await flushUntil(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain("服务已保存，封面上传失败，请重试"));
 
     expect(createRequest).toHaveBeenCalledTimes(1);
@@ -775,7 +780,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     await selectServiceCover(
       new File([new Uint8Array([0xff, 0xd8])], "discarded-retry.jpg", { type: "image/jpeg" })
     );
-    await act(async () => findButton("保存")?.click());
+    await act(async () => findServiceButton("保存")?.click());
     await flushUntil(() =>
       expect(container.querySelector('[role="alert"]')?.textContent).toContain(
         "服务已保存，封面上传失败，请重试"
@@ -819,7 +824,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     await act(async () => name && setInputValue(name, "客户端编辑名称"));
     const file = new File([new Uint8Array([1, 2, 3])], "retry-existing.webp", { type: "image/webp" });
     await selectServiceCover(file);
-    await act(async () => findButton("保存")?.click());
+    await act(async () => findServiceButton("保存")?.click());
     await flushUntil(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain("服务已保存，封面上传失败，请重试"));
 
     expect(updateRequest).toHaveBeenCalledTimes(1);
