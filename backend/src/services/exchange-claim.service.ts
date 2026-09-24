@@ -204,6 +204,11 @@ export class ExchangeClaimService {
         if (!option || option.technicianProfileId !== candidate.technicianProfileId) {
           throw this.scheduleUnavailable();
         }
+        if (request!.demand?.preferredTechnicianGender !== undefined
+          && request!.demand.preferredTechnicianGender !== "any"
+          && option.technicianGender !== request!.demand.preferredTechnicianGender) {
+          throw this.scheduleUnavailable();
+        }
         if (!(await repository.matchesRequestTaxonomy(request!, option))) {
           throw this.scheduleUnavailable();
         }

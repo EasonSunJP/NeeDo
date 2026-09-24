@@ -36,6 +36,7 @@ const demandPostSchema = z
     businessKeywordIds: z.array(z.number().int().positive()).min(1).max(10)
       .refine((ids) => new Set(ids).size === ids.length, "businessKeywordIds must be unique"),
     serviceMode: z.enum(["home", "store"]),
+    preferredTechnicianGender: z.enum(["any", "male", "female"]).default("any"),
     targetProviderCount: z.coerce.number().int().min(1).max(20),
     matchMode: z.enum(["quick", "selective"]),
     budgetMode: z.enum(["total", "per_provider"]),

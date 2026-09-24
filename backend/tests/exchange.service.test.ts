@@ -80,6 +80,7 @@ const post: ExchangePostPayload = {
     categoryId: 1,
     businessKeywordIds: [10],
     serviceMode: "store",
+    preferredTechnicianGender: "any",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
     publisherCapacitySource: "customer_membership",
@@ -135,6 +136,7 @@ const demandInput = {
   categoryId: 1,
   businessKeywordIds: [10],
   serviceMode: "store" as const,
+  preferredTechnicianGender: "any" as const,
   title: post.title,
   detail: post.detail,
   contentLocale: "ja" as const,
@@ -204,6 +206,7 @@ const createRepository = () => {
     resolveActor: jest.fn(async () => actor),
     listPosts: jest.fn(async () => ({ list: [post], total: 1, page: 1, page_size: 20 })),
     findPostById: jest.fn(async () => post),
+    listRecentPublisherReviews: jest.fn(async () => []),
     listComments: jest.fn(async () => ({
       list: [comment],
       total: 1,
@@ -684,6 +687,22 @@ describe("ExchangeService", () => {
     await expect(service.getPost(access, 41)).resolves.toMatchObject({
       viewer: { canViewClaims: true }
     });
+  });
+
+  it("limits publisher reviews to a visible customer and a provider identity", async () => {
+    const repository = createRepository();
+    const service = new ExchangeService(repository, () => now);
+    repository.findPostById.mockResolvedValue({ ...post, publisher: { ...post.publisher!, contactUserId: 99,
+      credit: { ratingAverage: "4.5", reviewCount: 2 } } });
+    await expect(service.getPublisherReviews(access, 41)).rejects.toMatchObject({ statusCode: 404 });
+    const providerAccess = { ...access, currentIdentityType: "technician", currentIdentityScopeType: "technician_profile", currentIdentityScopeId: 81 };
+    repository.resolveActor.mockResolvedValue({ ...actor, identityType: "technician", scopeType: "technician_profile", scopeId: 81 });
+    await expect(service.getPublisherReviews(providerAccess, 41)).resolves.toMatchObject({
+      contactUserId: 99, credit: { ratingAverage: "4.5", reviewCount: 2 }, reviews: []
+    });
+    expect(repository.listRecentPublisherReviews).toHaveBeenCalledWith(41, new Date(now.getTime() - 30 * 24 * 60 * 60_000));
+    repository.findPostById.mockResolvedValue({ ...post, publisher: null });
+    await expect(service.getPublisherReviews(providerAccess, 41)).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it("keeps a matched selective Request readable by its owner after reload", async () => {

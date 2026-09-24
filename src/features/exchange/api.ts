@@ -16,6 +16,7 @@ import type {
   ExchangeListInput,
   ExchangeMatching,
   ExchangePost,
+  ExchangePublisherReviews,
   ExchangeRequestPublicationContext,
   Paginated,
   PaginationInput,
@@ -38,6 +39,10 @@ export function listExchangePosts(input: ExchangeListInput): Promise<Paginated<E
 
 export function getExchangePost(postId: string, signal?: AbortSignal): Promise<ExchangePost> {
   return httpClient.request<ExchangePost>(`/exchange/posts/${postId}`, { signal });
+}
+
+export function getExchangePublisherReviews(postId: string, signal?: AbortSignal): Promise<ExchangePublisherReviews> {
+  return httpClient.request<ExchangePublisherReviews>(`/exchange/posts/${postId}/publisher-reviews`, { signal });
 }
 
 export function listExchangeClaimOptions(

@@ -116,6 +116,7 @@ const option = {
   shopId: 11,
   technicianProfileId: 81,
   technicianUserId: 8,
+  technicianGender: "female",
   serviceId: 501,
   technicianServiceId: null,
   serviceName: "ヘアセット",
@@ -350,6 +351,20 @@ describe("ExchangeClaimService", () => {
       merchantAccess, 41,
       { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: null },
       "claim-key-taxonomy-mismatch", requestContext
+    )).rejects.toMatchObject({ code: expect.any(Number) });
+    expect(repository.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a claim when the locked technician does not match the requested gender", async () => {
+    const repository = createRepository({
+      lockRequest: jest.fn(async () => ({ ...request, demand: { ...request.demand, preferredTechnicianGender: "male" as const } })),
+      lockOption: jest.fn(async () => ({ ...option, technicianGender: "female" }))
+    });
+    const service = new ExchangeClaimService(repository, { resolveActor: jest.fn(async () => merchantActor) }, () => now);
+    await expect(service.createClaim(
+      merchantAccess, 41,
+      { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: null },
+      "claim-gender-mismatch-0001", requestContext
     )).rejects.toMatchObject({ code: expect.any(Number) });
     expect(repository.create).not.toHaveBeenCalled();
   });

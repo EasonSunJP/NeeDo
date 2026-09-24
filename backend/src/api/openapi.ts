@@ -2176,6 +2176,19 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
         }
       })
     },
+    [`${base}/{id}/publisher-reviews`]: {
+      get: exchangeOperation("Read recent technician reviews of a visible Request publisher", "exchange:posts:detail", {
+        description: "Available only to merchant or technician identities when the Request publisher chose to reveal their identity. Returns up to 30 technician comments from the last 30 days.",
+        parameters: [postId],
+        responses: {
+          "200": jsonDataResponse("Request publisher credit and recent reviews", {
+            $ref: "#/components/schemas/ExchangePublisherReviews"
+          }),
+          ...exchangeErrorResponses,
+          "404": { description: "Request missing or publisher identity hidden from this viewer" }
+        }
+      })
+    },
     [`${base}/{id}/withdraw`]: {
       post: exchangeOperation(
         "Withdraw the active identity's own post",
@@ -5031,7 +5044,41 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           publicId: { type: "string", minLength: 1, maxLength: 32 },
           identityType: { type: "string", minLength: 1, maxLength: 50 },
           displayName: { type: "string", minLength: 1, maxLength: 100 },
-          avatarUrl: { type: ["string", "null"], format: "uri" }
+          avatarUrl: { type: ["string", "null"], format: "uri" },
+          contactUserId: { type: "integer", minimum: 1 },
+          bio: { type: ["string", "null"] },
+          bioLocales: { type: "object", additionalProperties: { type: "string" } },
+          membershipLevel: { type: ["string", "null"] },
+          credit: {
+            type: ["object", "null"],
+            properties: { ratingAverage: { type: "string" }, reviewCount: { type: "integer", minimum: 0 } }
+          }
+        }
+      },
+      ExchangePublisherReviews: {
+        type: "object",
+        additionalProperties: false,
+        required: ["contactUserId", "credit", "reviews"],
+        properties: {
+          contactUserId: { type: "integer", minimum: 1 },
+          credit: {
+            type: ["object", "null"],
+            properties: { ratingAverage: { type: "string" }, reviewCount: { type: "integer", minimum: 0 } }
+          },
+          reviews: {
+            type: "array",
+            maxItems: 30,
+            items: {
+              type: "object",
+              required: ["id", "rating", "comment", "createdAt"],
+              properties: {
+                id: { type: "integer", minimum: 1 },
+                rating: { type: "integer", minimum: 1, maximum: 5 },
+                comment: { type: "string" },
+                createdAt: { type: "string", format: "date-time" }
+              }
+            }
+          }
         }
       },
       ExchangeInteractionCounts: {
@@ -5091,6 +5138,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "categoryId",
           "businessKeywordIds",
           "serviceMode",
+          "preferredTechnicianGender",
           "targetProviderCount",
           "targetProviderLimitSnapshot",
           "publisherCapacitySource",
@@ -5114,6 +5162,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           serviceMode: { type: "string", enum: ["home", "store"] },
+          preferredTechnicianGender: { type: "string", enum: ["any", "male", "female"] },
           categoryId: { type: ["integer", "null"], minimum: 1, description: "Null for demands published before taxonomy matching." },
           businessKeywordIds: { type: "array", items: { type: "integer", minimum: 1 } },
           targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
@@ -6321,6 +6370,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           serviceEndAt: { type: "string", format: "date-time", description: "Service end; must be on a 30-minute boundary." },
           expiresAt: { type: "string", format: "date-time", description: "Application deadline; must be on a 30-minute boundary and at least 30 minutes before serviceStartAt." },
           serviceMode: { type: "string", enum: ["home", "store"] },
+          preferredTechnicianGender: { type: "string", enum: ["any", "male", "female"], default: "any" },
           categoryId: { type: "integer", minimum: 1 },
           businessKeywordIds: { type: "array", minItems: 1, maxItems: 10, uniqueItems: true, items: { type: "integer", minimum: 1 } },
           targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },

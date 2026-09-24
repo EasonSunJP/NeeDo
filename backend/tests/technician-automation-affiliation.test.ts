@@ -13,6 +13,7 @@ describe("technician automation shop-affiliation gates", () => {
     const postEndAt = new Date(now.getTime() + 4 * 3_600_000);
     const profiles = Array.from({ length: 26 }, (_, index) => ({
       id: 31 + index,
+      gender: index % 2 === 0 ? "female" : "male",
       userId: 100 + index,
       workStates: [{ shopId: 11, status: "on_duty" }],
       technicianShopAffiliations: [{ shopId: 11 }],
@@ -40,7 +41,8 @@ describe("technician automation shop-affiliation gates", () => {
       exchangePost: { findFirst: jest.fn(async () => ({
         id: 601, authorUserId: 9, serviceStartAt: startsAt, serviceEndAt: postEndAt,
         areaLabel: "Tokyo", servicePrepayment: null,
-        demand: { budgetMode: "TOTAL", targetProviderCount: 1, budgetMaxJpy: 12000, serviceMode: "STORE" }
+        demand: { budgetMode: "TOTAL", targetProviderCount: 1, budgetMaxJpy: 12000,
+          serviceMode: "STORE", preferredTechnicianGender: "any" }
       })) },
       scheduleSlot: { findMany: jest.fn(async () => []) },
       availability: { findMany: jest.fn(async (args?: { where?: { technicianProfileId?: number } }) =>
@@ -49,8 +51,9 @@ describe("technician automation shop-affiliation gates", () => {
           id: profile.id, technicianProfileId: profile.id, shopId: 11,
           startsAt: now, endsAt: postEndAt
         }))) },
-      technicianProfile: { findMany: jest.fn(async (args?: { where?: { id?: number } }) =>
-        profiles.filter((profile) => typeof args?.where?.id !== "number" || profile.id === args.where.id)) },
+      technicianProfile: { findMany: jest.fn(async (args?: { where?: { id?: number; gender?: string } }) =>
+        profiles.filter((profile) => (typeof args?.where?.id !== "number" || profile.id === args.where.id)
+          && (!args?.where?.gender || profile.gender === args.where.gender))) },
       userIdentity: { findMany: jest.fn(async () => profiles.map((profile) => ({
         id: profile.id + 100, scopeId: profile.id,
         publicIdentifier: { publicId: `s${profile.id}` }
@@ -77,6 +80,18 @@ describe("technician automation shop-affiliation gates", () => {
       expect(listDynamic).toHaveBeenCalledWith(expect.objectContaining({
         scope: { kind: "merchant", shopId: 11 }
       }), 0, profiles.map((profile) => profile.id), expect.any(Function));
+      client.exchangePost.findFirst.mockResolvedValueOnce({
+        id: 601, authorUserId: 9, serviceStartAt: startsAt, serviceEndAt: postEndAt,
+        areaLabel: "Tokyo", servicePrepayment: null,
+        demand: { budgetMode: "TOTAL", targetProviderCount: 1, budgetMaxJpy: 12000,
+          serviceMode: "STORE", preferredTechnicianGender: "female" }
+      });
+      const femaleCandidates = await repository.loadRequestCandidates(601);
+      expect(femaleCandidates).toHaveLength(13);
+      expect(femaleCandidates.every((candidate) => profiles.find((profile) => profile.id === candidate.technicianProfileId)?.gender === "female")).toBe(true);
+      expect(client.technicianProfile.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ gender: "female" })
+      }));
       listDynamic.mockClear();
       client.technicianAutomationSetting.findMany.mockResolvedValueOnce([{
         technicianProfileId: 31,

@@ -20,6 +20,7 @@ export type PlatformMembershipSimpleCardProps = {
   languages?: string[];
   level: number | null;
   needoId: string;
+  nameSuffix?: ReactNode;
   onOpenDetails?: () => void;
   rating?: number | null;
   reviewCount?: number | null;
@@ -116,6 +117,7 @@ export function PlatformMembershipSimpleCard(
         specialReviewTags: props.specialReviewTags ?? [],
       }}
       onOpenDetails={props.onOpenDetails}
+      nameSuffix={props.nameSuffix}
       showLanguageTags={false}
     />
   );

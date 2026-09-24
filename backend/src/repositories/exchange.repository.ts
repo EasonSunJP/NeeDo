@@ -57,6 +57,8 @@ import { toAuditLogCreateData } from "./audit-log.repository";
 import { AppError } from "../utils/app-error";
 import { ERROR_CODES } from "../constants/error-codes";
 import { projectExchangeRequestAddress } from "../domain/exchange-address-privacy";
+import { readLocalizedBioMap } from "../domain/technician-localized-content";
+import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { ShopVisibilityRepository, type ShopVisibilityViewer } from "./shop-visibility.repository";
 
 function readPostTranslations(value: Prisma.JsonValue | null): ExchangePostPayload["contentTranslations"] {
@@ -244,6 +246,19 @@ const intelligenceShopInclude = {
 
 const postInclude = (viewerIdentityId: number, participantIdentityId = viewerIdentityId) =>
   ({
+    author: {
+      select: {
+        id: true,
+        customerProfile: {
+          select: {
+            bio: true, bioLocalesJson: true, isPublic: true, visibility: true,
+            membershipLevel: true, membershipGrantMode: true,
+            membershipStartsAt: true, membershipExpiresAt: true,
+            reviewSummary: { select: { ratingAverage: true, reviewCount: true, deletedAt: true } }
+          }
+        }
+      }
+    },
     demand: {
       where: { deletedAt: null },
       include: { coverMediaAsset: { select: { url: true } } }
@@ -713,6 +728,32 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     return row ? this.mapPost(row, viewerIdentityId, now, undefined, claimProviderUserId) : null;
   }
 
+  public async listRecentPublisherReviews(postId: number, since: Date) {
+    const post = await this.client.exchangePost.findUnique({
+      where: { id: postId },
+      select: { author: { select: { customerProfile: { select: { id: true } } } } }
+    });
+    const customerProfileId = post?.author.customerProfile?.id;
+    if (!customerProfileId) return [];
+    const reviews = await this.client.orderReview.findMany({
+      where: {
+        customerProfileId,
+        targetType: "CUSTOMER",
+        authorType: "USER",
+        reviewer: { is: { technicianProfile: { isNot: null } } },
+        AND: [{ comment: { not: null } }, { comment: { not: "" } }],
+        createdAt: { gte: since },
+        deletedAt: null
+      },
+      select: { id: true, rating: true, comment: true, createdAt: true },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 30
+    });
+    return reviews.flatMap((review) => review.comment?.trim()
+      ? [{ id: review.id, rating: review.rating, comment: review.comment, createdAt: review.createdAt.toISOString() }]
+      : []);
+  }
+
   private async intelligenceVisibilityWhere(viewer?: ShopVisibilityViewer): Promise<Prisma.ExchangePostWhereInput> {
     const shopWhere: Prisma.ShopWhereInput = {
       ...(await this.shopVisibility.buildVisibilityWhere(viewer) as Prisma.ShopWhereInput),
@@ -1058,6 +1099,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
                   addressLine3Public: input.input.addressLine3Public,
                   publisherIdentityPublic: input.input.publisherIdentityPublic,
                   serviceMode: demandServiceModeToDatabase[input.input.serviceMode],
+                  preferredTechnicianGender: input.input.preferredTechnicianGender,
                   categoryId: input.input.categoryId,
                   businessKeywordIdsJson: input.input.businessKeywordIds
                 }
@@ -1962,7 +2004,21 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
             publicId: row.publisherPublicId,
             identityType: row.publisherIdentityType,
             displayName: row.publisherDisplayName,
-            avatarUrl: row.publisherAvatarUrl
+            avatarUrl: row.publisherAvatarUrl,
+            ...(["customer", "user", "u"].includes(row.publisherIdentityType) ? {
+              contactUserId: row.author.id,
+              bio: row.author.customerProfile?.isPublic && row.author.customerProfile.visibility === "public"
+                ? row.author.customerProfile.bio : null,
+              bioLocales: row.author.customerProfile?.isPublic && row.author.customerProfile.visibility === "public"
+                ? readLocalizedBioMap(row.author.customerProfile.bioLocalesJson) : {},
+              membershipLevel: row.author.customerProfile
+                ? resolveEffectiveCustomerMembershipLevel(row.author.customerProfile, now) : null,
+              credit: row.author.customerProfile?.reviewSummary?.deletedAt === null
+                ? {
+                    ratingAverage: String(row.author.customerProfile.reviewSummary.ratingAverage),
+                    reviewCount: row.author.customerProfile.reviewSummary.reviewCount
+                  } : null
+            } : {})
           };
 
     const requestAddressDisclosure = ownerView
@@ -1990,6 +2046,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
             ? { url: row.demand.coverMediaAsset.url, isDefault: false }
             : { url: "/images/exchange-demand-default-cover.svg", isDefault: true },
           serviceMode: demandServiceModeFromDatabase[row.demand.serviceMode],
+          preferredTechnicianGender: (row.demand.preferredTechnicianGender === "male" || row.demand.preferredTechnicianGender === "female"
+            ? row.demand.preferredTechnicianGender : "any") as "any" | "male" | "female",
           categoryId: row.demand.categoryId,
           businessKeywordIds: this.numberList(row.demand.businessKeywordIdsJson),
           targetProviderCount: row.demand.targetProviderCount,

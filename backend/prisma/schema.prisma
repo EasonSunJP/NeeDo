@@ -6338,6 +6338,7 @@ model ExchangeDemand {
   addressLine3Public          Boolean                         @default(false) @map("address_line_3_public")
   publisherIdentityPublic     Boolean                         @default(false) @map("publisher_identity_public")
   serviceMode                 ExchangeDemandServiceMode       @default(STORE) @map("service_mode")
+  preferredTechnicianGender   String                          @default("any") @map("preferred_technician_gender") @db.VarChar(12)
   categoryId                  Int?                            @map("category_id")
   businessKeywordIdsJson      Json?                           @map("business_keyword_ids_json")
   createdAt                   DateTime                        @default(now()) @map("created_at")

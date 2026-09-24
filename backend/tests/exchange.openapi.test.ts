@@ -40,6 +40,8 @@ describe("formal Exchange OpenAPI contract", () => {
       minItems: 1, maxItems: 10, uniqueItems: true
     });
     expect(schemas.ExchangeDemand.properties.categoryId).toMatchObject({ type: ["integer", "null"] });
+    expect(schemas.ExchangeDemand.properties.preferredTechnicianGender).toMatchObject({ enum: ["any", "male", "female"] });
+    expect(schemas.ExchangeDemandPublishRequest.properties.preferredTechnicianGender).toMatchObject({ default: "any" });
   });
 
   it("documents pending binary uploads and the immutable demand cover contract", () => {
@@ -76,6 +78,7 @@ describe("formal Exchange OpenAPI contract", () => {
       ["/api/v1/exchange/posts", "get"],
       ["/api/v1/exchange/posts", "post"],
       ["/api/v1/exchange/posts/{id}", "get"],
+      ["/api/v1/exchange/posts/{id}/publisher-reviews", "get"],
       ["/api/v1/exchange/posts/{id}/withdraw", "post"],
       ["/api/v1/exchange/posts/{id}/comments", "get"],
       ["/api/v1/exchange/posts/{id}/comments", "post"],

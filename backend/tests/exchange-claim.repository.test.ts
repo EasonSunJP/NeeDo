@@ -169,6 +169,7 @@ describe("ExchangeClaimRepository option projection", () => {
     expect(sql).toContain("slot.`shop_id` =");
     expect(sql).toContain("suspension.`active_key` IS NOT NULL");
     expect(sql).toContain("demand.`category_id`");
+    expect(sql).toContain("demand.`preferred_technician_gender`");
     expect(sql).toContain("JSON_CONTAINS(demand.`business_keyword_ids_json`");
   });
 

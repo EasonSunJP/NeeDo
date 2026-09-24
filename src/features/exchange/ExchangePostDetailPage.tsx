@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
 import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
@@ -11,8 +12,9 @@ import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import type { MessageCenterContext } from "../../lib/messageCenter";
 import { shareContent } from "../../lib/share";
-import { getScopedProfileDetailPath } from "../../shared/profile-detail/paths";
-import { mapExchangeIntelligencePublisherToProfileData, UnifiedProfileCard, UnifiedSimpleProfileCard } from "../../shared/profile-card";
+import { mapExchangeIntelligencePublisherToProfileData, PlatformMembershipSimpleCard, UnifiedProfileCard } from "../../shared/profile-card";
+import { localizedText } from "../../shared/localized-content/localizedText";
+import { getImRoleConfig } from "../im/role-config";
 import { mapExchangeIntelligenceServiceToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
 import { usePlatformSettings } from "../platform-settings/PlatformSettingsProvider";
 import {
@@ -200,48 +202,66 @@ function DetailHero({ label, post, publisherAlt }: { label: string; post: Exchan
   );
 }
 
-function publisherIdentityLabel(identityType: string, language: Language) {
-  if (["merchant", "merchant_owner", "merchant_staff"].includes(identityType)) return exchangeText("merchantIdentity", language);
-  if (identityType === "technician") return exchangeText("technicianIdentity", language);
-  return exchangeText("customerIdentity", language);
-}
-
 function PublisherCard({ post, language, context }: { post: ExchangePost; language: Language; context: MessageCenterContext }) {
+  const navigate = useNavigate();
   const requestAddress = post.demand?.address;
   const fullAddress = requestAddress?.disclosure === "owner" || requestAddress?.disclosure === "matched_participant";
-  const requestAddressLines = requestAddress
-    ? (fullAddress
-      ? [requestAddress.line1, requestAddress.line2, requestAddress.line3]
-      : requestAddress.line1GenerallyVisible === true ? [requestAddress.line1] : []
-    ).filter((line): line is string => line !== null)
-    : [];
+  const line1 = fullAddress || requestAddress?.line1GenerallyVisible === true
+    ? requestAddress?.line1 : post.areaLabel;
+  const line2 = fullAddress ? requestAddress?.line2 ?? "—" : "***";
+  const membership = post.publisher?.membershipLevel
+    ? exchangeText(post.publisher.membershipLevel === "silver" ? "silverMembership"
+      : post.publisher.membershipLevel === "gold" ? "goldMembership"
+        : post.publisher.membershipLevel === "black" ? "blackMembership" : "freeMembership", language)
+    : null;
+  const rating = post.publisher?.credit?.reviewCount
+    ? Number(post.publisher.credit.ratingAverage).toFixed(1) : "—";
+  const contactPath = post.publisher?.contactUserId
+    ? `${getImRoleConfig(context).routes.directoryProfile(String(post.publisher.contactUserId))}?sourcePostId=${post.id}`
+    : undefined;
+  const publisherKind = ["merchant", "merchant_owner", "merchant_staff"].includes(post.publisher?.identityType ?? "")
+    ? "shop" : post.publisher?.identityType === "technician" ? "technician" : "customer";
   return (
-    <section data-no-i18n="true" data-testid="exchange-request-publisher">
+    <section className="space-y-3" data-no-i18n="true" data-testid="exchange-request-publisher">
       {post.publisher ? (
-        <UnifiedSimpleProfileCard
+        <PlatformMembershipSimpleCard
           className="w-full"
-          data={{
-            id: post.publisher.publicId,
-            entityType: "user",
-            displayName: post.publisher.displayName,
-            avatar: post.publisher.avatarUrl ?? undefined,
-            description: post.publisher.publicId,
-            tags: [publisherIdentityLabel(post.publisher.identityType, language)],
-            badgeList: []
-          }}
-          detailTo={["customer", "user", "u"].includes(post.publisher.identityType)
-            ? getScopedProfileDetailPath(context, "user", post.publisher.publicId)
-            : undefined}
-          variant="list"
+          avatarUrl={post.publisher.avatarUrl}
+          bio={localizedText(post.publisher.bio ?? null, post.publisher.bioLocales, language) ?? ""}
+          displayName={post.publisher.displayName}
+          ekycVerified={false}
+          entityKind={publisherKind}
+          level={null}
+          needoId={post.publisher.publicId}
+          nameSuffix={membership || ["customer", "user", "u"].includes(post.publisher.identityType) ? (
+            <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-black text-[color:var(--client-primary)]">
+              {membership ? <span className="rounded-full bg-[color:var(--client-primary-soft)] px-2.5 py-1">{membership}</span> : null}
+              <span className="rounded-full bg-[color:var(--client-primary-soft)] px-2.5 py-1">{exchangeText("creditRating", language)} {rating}{rating === "—" ? "" : "/5"}</span>
+            </div>
+          ) : undefined}
+          onOpenDetails={contactPath ? () => navigate(contactPath) : undefined}
         />
       ) : (
         <div className={detailCardClassName}>{exchangeText("publisherHidden", language)}</div>
       )}
-      {requestAddressLines.length > 0 ? (
-        <div className="mt-2 grid gap-1 px-3 text-xs font-semibold leading-5 text-[color:var(--client-muted)]" data-testid="exchange-request-address">
-          {requestAddressLines.map((line, index) => <p key={`${index}-${line}`}>{line}</p>)}
+      <div className={detailCardClassName} data-testid="exchange-request-address">
+        <div className="flex items-center gap-2 text-sm font-black text-[color:var(--client-text)]">
+          <AppIcon className="h-5 w-5 text-[color:var(--client-primary)]" name="map" />
+          {exchangeText("serviceAddress", language)}
         </div>
-      ) : null}
+        <div className="mt-3 grid gap-2">
+          <div className={detailInnerCardClassName}>
+            <p className="text-xs font-bold text-[color:var(--client-muted)]">{exchangeText("addressLine1Short", language)}</p>
+            <p className="mt-1 break-words text-sm font-black text-[color:var(--client-text)]">{line1 || post.areaLabel}</p>
+          </div>
+          <div className={detailInnerCardClassName}>
+            <p className="text-xs font-bold text-[color:var(--client-muted)]">{exchangeText("addressLine2Short", language)}</p>
+            <p className="mt-1 break-words text-sm font-black text-[color:var(--client-text)]">{line2}</p>
+            {!fullAddress ? <p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">{exchangeText("addressLine2AfterMatch", language)}</p> : null}
+          </div>
+          {fullAddress && requestAddress?.line3 ? <div className={detailInnerCardClassName}>{requestAddress.line3}</div> : null}
+        </div>
+      </div>
     </section>
   );
 }
@@ -398,8 +418,11 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     ? [t("flowSelectTechnician"), t("flowConfirmTime"), t("flowPrepare"), t("flowInService"), t("flowReview")]
     : [t("flowConfirmDemand"), t("flowApply"), ...(post.demand?.matchMode === "selective" ? [t("flowPublisherSelect")] : []), t("flowMatched"), t("flowExecuteService")];
   const requirementTags = post.intelligence
-    ? [t(post.intelligence.serviceMode), ...post.intelligence.serviceAreas, post.areaLabel, post.contentLocale]
-    : [t(post.demand?.serviceMode === "home" ? "home" : "store"), post.areaLabel, post.contentLocale];
+    ? [t(post.intelligence.serviceMode), ...post.intelligence.serviceAreas, post.areaLabel]
+    : [t(post.demand?.serviceMode === "home" ? "home" : "store"), post.areaLabel,
+        ...(post.demand?.preferredTechnicianGender && post.demand.preferredTechnicianGender !== "any"
+          ? [t(post.demand.preferredTechnicianGender === "male" ? "maleGender" : "femaleGender")]
+          : [])];
   const demandActionTarget = post.viewer.canViewClaims
     ? '[data-testid="exchange-received-claims"]'
     : post.viewer.canViewMatching

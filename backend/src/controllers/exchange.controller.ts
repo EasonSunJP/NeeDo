@@ -70,6 +70,13 @@ export class ExchangeController {
       .json(successResponse(await this.service.getPost(getAuthenticatedAccess(response), id)));
   });
 
+  public getPublisherReviews = this.handle(async (request, response) => {
+    const { id } = exchangePostIdParamSchema.parse(request.params);
+    response.status(200).json(successResponse(
+      await this.service.getPublisherReviews(getAuthenticatedAccess(response), id)
+    ));
+  });
+
   public publish = this.handle(async (request, response) => {
     const input = publishExchangePostSchema.parse(request.body);
     const created = await this.service.publish(

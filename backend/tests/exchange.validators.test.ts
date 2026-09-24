@@ -61,6 +61,11 @@ describe("formal NeeDo Exchange validators", () => {
     expect(publishExchangePostSchema.parse(validDemand())).toEqual(expect.objectContaining({ addressLine1Public: false }));
     expect(publishExchangePostSchema.parse(validDemand({ addressLine1Public: true }))).toEqual(expect.objectContaining({ addressLine1Public: true }));
   });
+  it("accepts only unrestricted, male, or female technician preferences", () => {
+    expect(publishExchangePostSchema.parse(validDemand())).toEqual(expect.objectContaining({ preferredTechnicianGender: "any" }));
+    expect(publishExchangePostSchema.parse(validDemand({ preferredTechnicianGender: "female" }))).toEqual(expect.objectContaining({ preferredTechnicianGender: "female" }));
+    expect(publishExchangePostSchema.safeParse(validDemand({ preferredTechnicianGender: "private" })).success).toBe(false);
+  });
   it("normalizes bounded pagination and accepts only the two public tabs", () => {
     expect(exchangeListQuerySchema.parse({ type: "demand" })).toEqual({
       type: "demand",

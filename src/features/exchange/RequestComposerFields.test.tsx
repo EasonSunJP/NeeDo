@@ -216,6 +216,16 @@ describe("RequestComposerFields formal publication contract", () => {
     expect(document.body.querySelector<HTMLButtonElement>('button[role="radio"]')?.getAttribute("aria-checked")).toBe("true");
   });
 
+  it("offers an unrestricted default and explicit technician gender choices", async () => {
+    await renderAndOpen();
+    await waitFor(() => expect(document.body.querySelector('[aria-label="指定技师性别"]')).not.toBeNull());
+    const group = document.body.querySelector('[role="radiogroup"][aria-label="指定技师性别"]');
+    expect(group?.textContent).toContain("不限");
+    expect(group?.textContent).toContain("男");
+    expect(group?.textContent).toContain("女");
+    expect(group?.querySelector('[aria-checked="true"]')?.textContent).toBe("不限");
+  });
+
   it("keeps Next disabled until the server returns publication authority", async () => {
     vi.mocked(getRequestPublicationContext).mockReturnValue(new Promise(() => undefined));
     await renderAndOpen();

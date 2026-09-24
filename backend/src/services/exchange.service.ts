@@ -12,6 +12,7 @@ import type {
   ExchangeInteractionCounts,
   ExchangePostPage,
   ExchangePostPayload,
+  ExchangePublisherReviewsPayload,
   ExchangePostType,
   ExchangePublisherCapacity,
   ExchangeRequestPublicationContextPayload
@@ -170,6 +171,7 @@ export interface ExchangeRepositoryPort {
     participantIdentityId?: number,
     shopViewer?: ShopVisibilityViewer
   ): Promise<ExchangePostPayload | null>;
+  listRecentPublisherReviews(postId: number, since: Date): Promise<ExchangePublisherReviewsPayload["reviews"]>;
   listComments(
     postId: number,
     input: { page: number; pageSize: number }
@@ -374,6 +376,22 @@ export class ExchangeService {
     if (!post) throw this.postNotFound();
     this.assertCanReadPost(actor, post);
     return this.decorateClaimCapabilities(enforceExchangeRequestAddressPrivacy(post), actor);
+  }
+
+  public async getPublisherReviews(
+    access: AuthenticatedAccessContext,
+    postId: number
+  ): Promise<ExchangePublisherReviewsPayload> {
+    const actor = await this.resolveActor(access);
+    if (!CLAIM_PROVIDER_IDENTITIES.has(actor.identityType)) throw this.postNotFound();
+    const post = await this.getPost(access, postId);
+    if (post.type !== "demand" || !post.publisher?.contactUserId) throw this.postNotFound();
+    const since = new Date(this.now().getTime() - 30 * 24 * 60 * 60_000);
+    return {
+      contactUserId: post.publisher.contactUserId,
+      credit: post.publisher.credit ?? null,
+      reviews: await this.repository.listRecentPublisherReviews(postId, since)
+    };
   }
 
   public async publish(
@@ -869,6 +887,7 @@ export class ExchangeService {
             budgetMinJpy: input.budgetMinJpy ?? null,
             budgetMaxJpy: input.budgetMaxJpy,
             addressLine1: input.addressLine1,
+            preferredTechnicianGender: input.preferredTechnicianGender,
             addressLine1Public: input.addressLine1Public,
             addressLine2: input.addressLine2 ?? null,
             addressLine3: input.addressLine3 ?? null,

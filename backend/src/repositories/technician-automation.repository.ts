@@ -390,6 +390,8 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         technicianProfile: {
           is: {
             status: "published",
+            ...(post.demand.preferredTechnicianGender === "male" || post.demand.preferredTechnicianGender === "female"
+              ? { gender: post.demand.preferredTechnicianGender } : {}),
             verifiedAt: { not: null },
             deletedAt: null,
             user: { is: { isActive: true, deletedAt: null } },
@@ -487,7 +489,8 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     }
     if (!selection || selection.scheduleSlotId < 0) {
       eligibleSlots.push(...await this.loadDynamicRequestSlots(
-        postId, post.authorUserId, post.serviceStartAt, post.serviceEndAt, now, eligibleSlots, selection
+        postId, post.authorUserId, post.serviceStartAt, post.serviceEndAt, now, eligibleSlots,
+        post.demand.preferredTechnicianGender, selection
       ));
     }
     const bookingSettings = eligibleSlots.length === 0 ? [] : await this.client.technicianAutomationSetting.findMany({
@@ -640,6 +643,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     serviceEndAt: Date,
     now: Date,
     persistedSlots: RequestCandidateSlot[],
+    preferredTechnicianGender?: string,
     selection?: { technicianProfileId: number; scheduleSlotId: number; serviceRef?: ExchangeClaimServiceRef }
   ): Promise<RequestCandidateSlot[]> {
     if (serviceEndAt <= now) return [];
@@ -666,6 +670,8 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     const profiles = await this.client.technicianProfile.findMany({
       where: {
         id: selection?.technicianProfileId ?? { in: technicianIds },
+        ...(preferredTechnicianGender === "male" || preferredTechnicianGender === "female"
+          ? { gender: preferredTechnicianGender } : {}),
         status: "published",
         verifiedAt: { not: null },
         deletedAt: null,

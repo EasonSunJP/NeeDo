@@ -91,7 +91,9 @@ const demandPost: ExchangePost = {
   serviceEndAt: "2026-08-31T06:00:00.000Z",
   expiresAt: "2026-08-31T06:00:00.000Z",
   publishedAt: "2026-08-30T04:00:00.000Z",
-  publisher: { publicId: "u0000000041", identityType: "customer", displayName: "测试客户 41", avatarUrl: null },
+  publisher: { publicId: "u0000000041", identityType: "customer", displayName: "测试客户 41", avatarUrl: null,
+    contactUserId: 41, bio: "愿意与服务者提前确认细节", membershipLevel: "gold",
+    credit: { ratingAverage: "4.80", reviewCount: 12 } },
   counts: { comments: 4, likes: 21, shares: 6 },
   viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
   demand: {
@@ -279,6 +281,7 @@ async function renderDetail(
         <Route path={basePath} element={<div data-testid="exchange-root">{basePath}</div>} />
         <Route path="/checkout/:serviceId" element={<CheckoutDestination />} />
         <Route path="/checkout/technician-service/:technicianServiceId" element={<CheckoutDestination />} />
+        <Route path="/technician/contacts/directory/:userId" element={<CheckoutDestination />} />
       </Routes>
     </MemoryRouter>
   ));
@@ -312,7 +315,7 @@ describe("ExchangePostDetailPage", () => {
 
     expect(getExchangePost).toHaveBeenCalledWith("41", expect.any(AbortSignal));
     expect(document.body.textContent).toContain("测试客户 41");
-    expect(document.body.textContent).toContain("u0000000041");
+    expect(document.body.textContent).not.toContain("u0000000041");
     expect(document.body.textContent).toContain("¥8,000–¥12,000");
     expect(document.body.querySelector('[data-testid="formal-interactions"]')).not.toBeNull();
     expect(document.body.innerHTML).toContain('data-no-i18n="true"');
@@ -356,8 +359,30 @@ describe("ExchangePostDetailPage", () => {
     await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
     const card = document.body.querySelector('[data-testid="exchange-request-publisher"] [data-card-kind="user"]');
     expect(card).not.toBeNull();
-    expect(card?.textContent).toContain("u0000000041");
-    expect(card?.textContent).toContain("用户");
+    expect(card?.textContent).not.toContain("u0000000041");
+    expect(card?.textContent).not.toContain("用户");
+    expect(card?.textContent).toContain("愿意与服务者提前确认细节");
+    expect(card?.textContent).toContain("黄金会员");
+    expect(card?.textContent).toContain("信用评价 4.8/5");
+  });
+
+  it("does not present the content locale as a service requirement", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(demandPost);
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("服务要求"));
+    const heading = Array.from(document.body.querySelectorAll("h2")).find((element) => element.textContent === "服务要求");
+    expect(heading?.closest("section")?.textContent).not.toContain("zh-CN");
+  });
+
+  it("opens the publisher's contact information from the shared name card", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(demandPost);
+    await renderDetail("/technician/needo/posts/41", "technician");
+    await waitFor(() => expect(document.body.textContent).toContain("测试客户 41"));
+    await act(async () => document.body.querySelector<HTMLButtonElement>(
+      '[data-testid="exchange-request-publisher"] [data-testid="unified-info-card"] button[aria-label]'
+    )?.click());
+    expect(document.body.querySelector('[data-testid="checkout-destination"]')?.textContent)
+      .toBe("/technician/contacts/directory/41?sourcePostId=41");
   });
 
   it("shows only a consented first address line to an unmatched viewer", async () => {
@@ -379,7 +404,9 @@ describe("ExchangePostDetailPage", () => {
     await renderDetail();
     await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
     const address = document.body.querySelector('[data-testid="exchange-request-address"]');
-    expect(address?.textContent).toBe("東京都新宿区新宿1-1-1");
+    expect(address?.textContent).toContain("東京都新宿区新宿1-1-1");
+    expect(address?.textContent).toContain("地址2***");
+    expect(address?.textContent).toContain("匹配成功后向参与者显示地址2");
   });
 
   it("shows the authored system-language version in the detail without a translate button", async () => {

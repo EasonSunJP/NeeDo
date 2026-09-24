@@ -1,6 +1,7 @@
 import type {
   ExchangeContentLocale,
   ExchangeDemandServiceMode,
+  ExchangeTechnicianGenderPreference,
   ExchangeRequestPublicationContext,
   PublishExchangeDemandInput,
   PublishExchangeIntelligenceInput
@@ -86,6 +87,7 @@ export type RequestComposerDraft = {
   expiresTime: string;
   targetProviderCount: string;
   serviceMode: ExchangeDemandServiceMode;
+  preferredTechnicianGender: ExchangeTechnicianGenderPreference;
   matchMode: "quick" | "selective";
   budgetMode: "total" | "per_provider";
   budgetMinJpy: string;
@@ -192,6 +194,7 @@ export function normalizeRequestDraft(
       expiresAt,
       targetProviderCount,
       serviceMode: draft.serviceMode,
+      preferredTechnicianGender: draft.preferredTechnicianGender,
       matchMode: draft.matchMode,
       budgetMode: draft.budgetMode,
       budgetMinJpy,

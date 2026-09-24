@@ -17,6 +17,7 @@ const draft: RequestComposerDraft = {
   expiresTime: "09:30",
   targetProviderCount: "1",
   serviceMode: "home",
+  preferredTechnicianGender: "any",
   matchMode: "quick",
   budgetMode: "total",
   budgetMinJpy: "",

@@ -2,6 +2,7 @@ export type ExchangePostType = "demand" | "intelligence";
 export type ExchangePostStatus = "published" | "withdrawn" | "expired" | "matched" | "closed";
 export type ExchangeServiceMode = "store" | "onsite" | "flexible";
 export type ExchangeDemandServiceMode = "home" | "store";
+export type ExchangeTechnicianGenderPreference = "any" | "male" | "female";
 export type ExchangeContentLocale = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
 export type ExchangeDemandCoverUpload = {
   publicId: string;
@@ -21,6 +22,17 @@ export type ExchangeActor = {
   identityType: string;
   displayName: string;
   avatarUrl: string | null;
+  contactUserId?: number;
+  bio?: string | null;
+  bioLocales?: Partial<Record<ExchangeContentLocale, string>>;
+  membershipLevel?: string | null;
+  credit?: { ratingAverage: string; reviewCount: number } | null;
+};
+
+export type ExchangePublisherReviews = {
+  contactUserId: number;
+  credit: { ratingAverage: string; reviewCount: number } | null;
+  reviews: Array<{ id: number; rating: number; comment: string; createdAt: string }>;
 };
 
 export type ExchangeInteractionCounts = {
@@ -239,6 +251,7 @@ export type ExchangeDemand = {
   categoryId?: number | null;
   businessKeywordIds?: number[];
   serviceMode: ExchangeDemandServiceMode;
+  preferredTechnicianGender?: ExchangeTechnicianGenderPreference;
   targetProviderCount: number;
   targetProviderLimitSnapshot: number;
   publisherCapacitySource: ExchangePublisherCapacitySource;
@@ -383,6 +396,7 @@ export type PublishExchangeDemandInput = ExchangePublishCommon & {
   categoryId: number;
   businessKeywordIds: number[];
   serviceMode: ExchangeDemandServiceMode;
+  preferredTechnicianGender: ExchangeTechnicianGenderPreference;
   targetProviderCount: number;
   matchMode: ExchangeMatchMode;
   budgetMode: ExchangeBudgetMode;

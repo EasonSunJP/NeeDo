@@ -61,6 +61,7 @@ export function UnifiedEntityInfoCard({
   data,
   density = "default",
   detailTo,
+  nameSuffix,
   language: languageOverride,
   onOpenDetails,
   showMetrics = true,
@@ -71,6 +72,7 @@ export function UnifiedEntityInfoCard({
   data: UnifiedEntityInfoCardData;
   density?: "default" | "compact";
   detailTo?: string;
+  nameSuffix?: ReactNode;
   language?: Language;
   onOpenDetails?: () => void;
   showMetrics?: boolean;
@@ -213,6 +215,7 @@ export function UnifiedEntityInfoCard({
       showEmptyTags={showLanguageTags}
       tags={detailTags}
     >
+      {nameSuffix}
       {data.kind === "shop" && data.address ? (
         <p className="mt-1 flex items-center gap-1.5 text-[10px] font-bold leading-4 text-[color:var(--client-muted)] sm:mt-2 sm:gap-2 sm:text-[14px] sm:leading-5">
           <span

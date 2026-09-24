@@ -45,7 +45,7 @@ function SegmentedChoice<TValue extends string>({
 }) {
   return (
     <Field label={label} required>
-      <div aria-label={label} className="grid grid-cols-2 gap-1 rounded-2xl bg-[color:var(--client-bg)] p-1" role="radiogroup">
+      <div aria-label={label} className={`grid ${options.length === 3 ? "grid-cols-3" : "grid-cols-2"} gap-1 rounded-2xl bg-[color:var(--client-bg)] p-1`} role="radiogroup">
         {options.map((option) => (
           <div className="relative min-w-0" key={option.value}>
             <button
@@ -145,6 +145,17 @@ export function RequestComposerFields({
             { label: t("home"), value: "home" }
           ]}
           value={draft.serviceMode}
+        />
+
+        <SegmentedChoice
+          label={t("preferredTechnicianGender")}
+          onChange={(preferredTechnicianGender) => onChange({ preferredTechnicianGender })}
+          options={[
+            { label: t("anyGender"), value: "any" },
+            { label: t("maleGender"), value: "male" },
+            { label: t("femaleGender"), value: "female" }
+          ]}
+          value={draft.preferredTechnicianGender}
         />
 
         <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-primary-soft)] px-4 py-3">

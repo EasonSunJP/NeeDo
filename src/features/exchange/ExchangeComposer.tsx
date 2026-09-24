@@ -75,6 +75,7 @@ function createEmptyRequestDraft(contentLocale: ExchangeContentLocale): RequestC
     expiresTime: "",
     targetProviderCount: "1",
     serviceMode: "store",
+    preferredTechnicianGender: "any",
     matchMode: "quick",
     budgetMode: "total",
     budgetMinJpy: "",

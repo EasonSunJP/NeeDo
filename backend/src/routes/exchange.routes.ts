@@ -211,6 +211,13 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
     validateRequest({ params: exchangePostIdParamSchema }),
     controller.getPost
   );
+  router.get(
+    "/exchange/posts/:id/publisher-reviews",
+    authenticate(),
+    createAuthorizeMiddleware(EXCHANGE_PERMISSIONS.postDetail),
+    validateRequest({ params: exchangePostIdParamSchema }),
+    controller.getPublisherReviews
+  );
   router.post(
     "/exchange/posts",
     authenticate(),

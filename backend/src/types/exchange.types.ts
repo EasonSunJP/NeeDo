@@ -6,6 +6,7 @@ export type ExchangePostType = "demand" | "intelligence";
 export type ExchangePostStatus = "published" | "withdrawn" | "expired" | "matched" | "closed";
 export type ExchangeServiceMode = "store" | "onsite" | "flexible";
 export type ExchangeDemandServiceMode = "home" | "store";
+export type ExchangeTechnicianGenderPreference = "any" | "male" | "female";
 export type ExchangeMatchMode = "quick" | "selective";
 export type ExchangeBudgetMode = "total" | "per_provider";
 export type ExchangePublisherCapacitySource = "customer_membership" | "shop_merchant";
@@ -17,12 +18,23 @@ export interface ExchangeActorPayload {
   identityType: string;
   displayName: string;
   avatarUrl: string | null;
+  contactUserId?: number;
+  bio?: string | null;
+  bioLocales?: Partial<Record<ContentLocaleCode, string>>;
+  membershipLevel?: string | null;
+  credit?: { ratingAverage: string; reviewCount: number } | null;
 }
 
 export interface ExchangeInteractionCounts {
   comments: number;
   likes: number;
   shares: number;
+}
+
+export interface ExchangePublisherReviewsPayload {
+  contactUserId: number;
+  credit: { ratingAverage: string; reviewCount: number } | null;
+  reviews: Array<{ id: number; rating: number; comment: string; createdAt: string }>;
 }
 
 export interface ExchangeViewerState {
@@ -44,6 +56,7 @@ export interface ExchangeDemandPayload {
   categoryId: number | null;
   businessKeywordIds: number[];
   serviceMode: ExchangeDemandServiceMode;
+  preferredTechnicianGender: ExchangeTechnicianGenderPreference;
   targetProviderCount: number;
   targetProviderLimitSnapshot: number;
   publisherCapacitySource: ExchangePublisherCapacitySource;

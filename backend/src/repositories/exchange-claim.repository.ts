@@ -72,6 +72,7 @@ export interface ExchangeClaimRequestRecord {
     budgetMaxJpy: number;
     categoryId: number | null;
     businessKeywordIds: number[];
+    preferredTechnicianGender?: "any" | "male" | "female";
   } | null;
 }
 
@@ -80,6 +81,7 @@ export interface ExchangeClaimLockedOption {
   shopId: number;
   technicianProfileId: number;
   technicianUserId: number;
+  technicianGender?: string;
   serviceId: number | null;
   technicianServiceId: number | null;
   serviceName: string;
@@ -234,6 +236,7 @@ export class ExchangeClaimRepository {
       Prisma.sql`shop.\`deleted_at\` IS NULL`,
       Prisma.sql`technician.\`status\` = 'published'`,
       Prisma.sql`technician.\`deleted_at\` IS NULL`,
+      Prisma.sql`(demand.\`preferred_technician_gender\` = 'any' OR technician.\`gender\` = demand.\`preferred_technician_gender\`)`,
       Prisma.sql`affiliation.\`active_key\` IS NOT NULL`,
       Prisma.sql`affiliation.\`work_status\` = 'active'`,
       Prisma.sql`affiliation.\`starts_at\` <= ${input.now}`,
@@ -576,6 +579,12 @@ export class ExchangeClaimRepository {
     const knownTechnicianIds = windows.flatMap((window) =>
       window.technicianProfileId ? [window.technicianProfileId] : []);
     if (knownTechnicianIds.length === 0) return { list: [], total: 0 };
+    const genderEligibleIds = request.demand.preferredTechnicianGender !== "male" && request.demand.preferredTechnicianGender !== "female"
+      ? new Set(knownTechnicianIds)
+      : new Set((await this.client.technicianProfile.findMany({
+          where: { id: { in: knownTechnicianIds }, gender: request.demand.preferredTechnicianGender },
+          select: { id: true }
+        })).map((profile) => profile.id));
     const [identities, activeClaims] = await Promise.all([
       this.client.userIdentity.findMany({
         where: {
@@ -632,6 +641,7 @@ export class ExchangeClaimRepository {
             throw new Error("dynamic Claim availability scan exceeds option limit");
           }
           if (slot.id >= 0 || !slot.technicianProfileId || slot.status !== "available"
+            || !genderEligibleIds.has(slot.technicianProfileId)
             || slot.startsAt <= input.now || slot.endsAt > request.serviceEndAt
             || (input.scope.kind === "merchant" && slot.shopId !== input.scope.shopId)
             || (input.scope.kind === "technician"
@@ -719,7 +729,7 @@ export class ExchangeClaimRepository {
         serviceEndAt: true,
         expiresAt: true,
         demand: {
-          select: { matchMode: true, budgetMinJpy: true, budgetMaxJpy: true, categoryId: true, businessKeywordIdsJson: true, deletedAt: true }
+          select: { matchMode: true, budgetMinJpy: true, budgetMaxJpy: true, categoryId: true, businessKeywordIdsJson: true, preferredTechnicianGender: true, deletedAt: true }
         }
       }
     });
@@ -745,6 +755,8 @@ export class ExchangeClaimRepository {
             budgetMinJpy: row.demand.budgetMinJpy,
             budgetMaxJpy: row.demand.budgetMaxJpy,
             categoryId: row.demand.categoryId ?? null,
+            preferredTechnicianGender: row.demand.preferredTechnicianGender === "male" || row.demand.preferredTechnicianGender === "female"
+              ? row.demand.preferredTechnicianGender : "any",
             businessKeywordIds: Array.isArray(row.demand.businessKeywordIdsJson)
               ? row.demand.businessKeywordIdsJson.filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0)
               : []
@@ -1048,6 +1060,7 @@ export class ExchangeClaimRepository {
         technicianProfile: {
           select: {
             userId: true,
+            gender: true,
             technicianShopAffiliations: {
               where: {
                 workStatus: TechnicianShopWorkStatus.ACTIVE,
@@ -1096,6 +1109,7 @@ export class ExchangeClaimRepository {
       shopId: row.shopId,
       technicianProfileId: row.technicianProfileId,
       technicianUserId: row.technicianProfile.userId,
+      technicianGender: row.technicianProfile.gender,
       serviceId: row.serviceId,
       technicianServiceId: row.technicianServiceId,
       serviceName: selectedService.name,

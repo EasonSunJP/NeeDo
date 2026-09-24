@@ -6,6 +6,10 @@ const now = new Date("2026-08-30T03:00:00.000Z");
 const demandRow = {
   id: 41,
   authorUserId: 7,
+  author: { id: 7, customerProfile: { bio: "サービス前に連絡してください", bioLocalesJson: null,
+    isPublic: true, visibility: "public", membershipLevel: "gold", membershipGrantMode: "SELF_SERVICE",
+    membershipStartsAt: null, membershipExpiresAt: null,
+    reviewSummary: { ratingAverage: 4.5, reviewCount: 2, deletedAt: null } } },
   authorIdentityId: 17,
   ownerIdentityId: 17,
   publisherPublicId: "NC12345678",
@@ -33,6 +37,7 @@ const demandRow = {
     categoryId: 1,
     businessKeywordIdsJson: [10],
     serviceMode: "STORE",
+    preferredTechnicianGender: "any",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
     publisherCapacitySource: "CUSTOMER_MEMBERSHIP",
@@ -61,6 +66,22 @@ const demandRow = {
 };
 
 describe("ExchangePostRepository", () => {
+  it("returns at most thirty recent written technician reviews for the Request customer", async () => {
+    const findUnique = jest.fn(async () => ({ author: { customerProfile: { id: 27 } } }));
+    const findMany = jest.fn(async () => [{ id: 501, rating: 5, comment: "丁寧なお客様", createdAt: now }]);
+    const repository = new ExchangePostRepository({
+      exchangePost: { findUnique }, orderReview: { findMany }
+    } as never);
+    await expect(repository.listRecentPublisherReviews(41, new Date("2026-07-31T03:00:00.000Z"))).resolves.toEqual([
+      { id: 501, rating: 5, comment: "丁寧なお客様", createdAt: now.toISOString() }
+    ]);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ customerProfileId: 27, targetType: "CUSTOMER", authorType: "USER", deletedAt: null }),
+      take: 30,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    }));
+  });
+
   it("projects only an active confirmed Request service prepayment as paid", async () => {
     const findFirst = jest.fn(async () => ({
       ...demandRow,
@@ -102,7 +123,7 @@ describe("ExchangePostRepository", () => {
       customerMembership: null, shopScope: null
     },
     input: {
-      type: "demand", categoryId: 1, businessKeywordIds: [10], serviceMode: "store", title: demandRow.title, detail: demandRow.detail,
+      type: "demand", categoryId: 1, businessKeywordIds: [10], serviceMode: "store", preferredTechnicianGender: "any", title: demandRow.title, detail: demandRow.detail,
       contentLocale: "ja", contentTranslations: { en: { title: "Hair styling in Shibuya", detail: "Please help before the event." } }, serviceStartAt: demandRow.serviceStartAt, serviceEndAt: demandRow.serviceEndAt,
       expiresAt: demandRow.expiresAt, targetProviderCount: 1, matchMode: "quick", budgetMode: "total",
       budgetMinJpy: null, budgetMaxJpy: 12000, addressLine1: "渋谷区", addressLine1Public: false, addressLine2: null,
@@ -848,7 +869,12 @@ describe("ExchangePostRepository", () => {
             publicId: "NC12345678",
             identityType: "customer",
             displayName: "佐藤 美咲",
-            avatarUrl: "https://example.test/avatar.jpg"
+            avatarUrl: "https://example.test/avatar.jpg",
+            contactUserId: 7,
+            bio: "サービス前に連絡してください",
+            bioLocales: {},
+            membershipLevel: "gold",
+            credit: { ratingAverage: "4.5", reviewCount: 2 }
           },
           counts: { comments: 4, likes: 21, shares: 5 },
           viewer: {
@@ -864,6 +890,7 @@ describe("ExchangePostRepository", () => {
             categoryId: 1,
             businessKeywordIds: [10],
             serviceMode: "store",
+            preferredTechnicianGender: "any",
             targetProviderCount: 1,
             targetProviderLimitSnapshot: 1,
             publisherCapacitySource: "customer_membership",
@@ -1593,6 +1620,7 @@ describe("ExchangePostRepository", () => {
         categoryId: 1,
         businessKeywordIds: [10],
         serviceMode: "store" as const,
+        preferredTechnicianGender: "any" as const,
         title: demandRow.title,
         detail: demandRow.detail,
         contentLocale: "ja" as const,
@@ -1661,6 +1689,7 @@ describe("ExchangePostRepository", () => {
               categoryId: 1,
               businessKeywordIdsJson: [10],
               serviceMode: "STORE",
+              preferredTechnicianGender: "any",
               targetProviderCount: 1,
               targetProviderLimitSnapshot: 1,
               publisherCapacitySource: "CUSTOMER_MEMBERSHIP",

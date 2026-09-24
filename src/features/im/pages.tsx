@@ -15,6 +15,9 @@ import {
 import { createPortal } from "react-dom";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
+import { getExchangePublisherReviews } from "../exchange/api";
+import { exchangeText } from "../exchange/i18n";
+import type { ExchangePublisherReviews } from "../exchange/types";
 import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
 import { ClientActionDialog } from "../../components/ui/ClientActionDialog";
@@ -2937,6 +2940,9 @@ export function ImDirectoryProfilePage() {
   const t = (source: string) => translateText(source, language);
   const fromRequests = searchParams.get("from") === "requests";
   const requestId = searchParams.get("requestId");
+  const sourcePostId = searchParams.get("sourcePostId");
+  const [publisherReviews, setPublisherReviews] = useState<ExchangePublisherReviews | null>(null);
+  const [publisherReviewsFailed, setPublisherReviewsFailed] = useState(false);
   const [profile, setProfile] = useState<DirectoryProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -2961,6 +2967,21 @@ export function ImDirectoryProfilePage() {
   const isFriendProfile = profile?.user.id === userId && profile?.relationship === "friend" && !activePendingRequest;
   const isSelfProfile = profile?.user.id === userId && profile?.relationship === "self";
   const formalTechnicianProfileCard = buildFormalTechnicianProfileCard(profile);
+
+  useEffect(() => {
+    if ((scope !== "technician" && scope !== "merchant") || !sourcePostId || !/^[1-9]\d*$/u.test(sourcePostId)) {
+      setPublisherReviews(null);
+      setPublisherReviewsFailed(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    setPublisherReviews(null);
+    setPublisherReviewsFailed(false);
+    void getExchangePublisherReviews(sourcePostId, controller.signal)
+      .then((result) => { if (!controller.signal.aborted) setPublisherReviews(result); })
+      .catch(() => { if (!controller.signal.aborted) setPublisherReviewsFailed(true); });
+    return () => controller.abort();
+  }, [scope, sourcePostId]);
 
   useFriendRequestExpiryRefresh(request ? [request] : [], store.refresh);
 
@@ -2987,7 +3008,7 @@ export function ImDirectoryProfilePage() {
   }, [userId]);
 
   useEffect(() => {
-    if (!userId || profile?.user.id !== userId || !isFriendProfile) {
+    if (!userId || profile?.user.id !== userId || !isFriendProfile || sourcePostId) {
       setContactInfoRedirectFailed(false);
       return undefined;
     }
@@ -3015,6 +3036,7 @@ export function ImDirectoryProfilePage() {
     isFriendProfile,
     navigate,
     profile?.user.id,
+    sourcePostId,
     store.ensureDirectConversation,
     userId,
   ]);
@@ -3106,7 +3128,7 @@ export function ImDirectoryProfilePage() {
         title={t("联系人信息")}
       />
       <main className="client-app-gutter min-h-0 flex-1 overflow-y-auto pb-32 pt-4">
-        {isFriendProfile ? (
+        {isFriendProfile && !sourcePostId ? (
           <div className="grid min-h-48 place-items-center px-4 text-center">
             {contactInfoRedirectFailed ? (
               <div className="space-y-4">
@@ -3148,6 +3170,31 @@ export function ImDirectoryProfilePage() {
                 viewerScope={scope}
               />
             )}
+            {sourcePostId && (scope === "technician" || scope === "merchant") ? (
+              <section className="rounded-[26px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-5 py-4" data-testid="customer-credit-reviews">
+                <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{exchangeText("creditRating", language)}</h2>
+                {publisherReviews?.contactUserId === Number(profile.user.id) ? (
+                  <>
+                    <p className="mt-2 text-sm font-black text-[color:var(--client-primary)]">
+                      {publisherReviews.credit?.reviewCount
+                        ? `${Number(publisherReviews.credit.ratingAverage).toFixed(1)}/5 · ${publisherReviews.credit.reviewCount}`
+                        : "—"}
+                    </p>
+                    <h3 className="mt-4 text-sm font-black text-[color:var(--client-text)]">{exchangeText("recentCustomerReviews", language)}</h3>
+                    {publisherReviews.reviews.length ? (
+                      <div className="mt-2 grid gap-2">
+                        {publisherReviews.reviews.map((review) => (
+                          <div className="rounded-[18px] bg-[color:var(--client-bg-soft)] p-3" key={review.id}>
+                            <p className="text-xs font-bold text-[color:var(--client-primary)]">{review.rating}/5 · {new Date(review.createdAt).toLocaleDateString()}</p>
+                            <p className="mt-1 whitespace-pre-wrap break-words text-sm text-[color:var(--client-text)]">{review.comment}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <p className="mt-2 text-sm text-[color:var(--client-muted)]">{exchangeText("noCustomerReviews", language)}</p>}
+                  </>
+                ) : <p className="mt-2 text-sm text-[color:var(--client-muted)]">{exchangeText(publisherReviewsFailed ? "customerReviewsFailed" : "customerReviewsLoading", language)}</p>}
+              </section>
+            ) : null}
             {!isSelfProfile ? (
               <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4">
                 <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{t("标签")}</h2>
