@@ -70,13 +70,15 @@ export function DashboardChartTooltip({
   closeLabel,
   items,
   label,
-  onClose
+  onClose,
+  variant = "admin"
 }: {
   anchor: DashboardChartTooltipAnchor | null;
   closeLabel: string;
   items: DashboardChartTooltipItem[];
   label: string;
   onClose: () => void;
+  variant?: "admin" | "client";
 }) {
   if (!anchor || typeof document === "undefined") return null;
 
@@ -94,7 +96,7 @@ export function DashboardChartTooltip({
   return createPortal(
     <div
       aria-label={label}
-      className="fixed z-[320] min-w-44 max-w-[min(236px,calc(100vw-24px))] rounded-xl border border-line bg-white p-3 text-xs font-bold text-ink shadow-[0_18px_38px_rgba(0,0,0,0.32)]"
+      className={`fixed z-[320] min-w-44 max-w-[min(236px,calc(100vw-24px))] rounded-xl border p-3 text-xs font-bold shadow-[0_18px_38px_rgba(0,0,0,0.32)] ${variant === "client" ? "border-[color:var(--client-line)] bg-[color:var(--client-elevated)] text-[color:var(--client-text)]" : "border-line bg-white text-ink"}`}
       data-dashboard-point-detail="true"
       role="status"
       style={{
@@ -107,7 +109,7 @@ export function DashboardChartTooltip({
         <strong data-no-i18n>{label}</strong>
         <button
           aria-label={closeLabel}
-          className="rounded-md px-1.5 text-ink/45 hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40"
+          className={variant === "client" ? "rounded-md px-1.5 text-[color:var(--client-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]" : "rounded-md px-1.5 text-ink/45 hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40"}
           onClick={onClose}
           type="button"
         >

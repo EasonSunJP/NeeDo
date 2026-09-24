@@ -50,7 +50,7 @@ export function shouldPlayRealtimeNotificationSound(
   }
 
   if (event.type === "notification.created" || event.type === "notification.order_status") {
-    if (positiveIntegerField(payload, "recipientUserId") !== context.currentUserId) {
+    if ((positiveIntegerField(payload, "recipientUserId") ?? event.recipientUserId) !== context.currentUserId) {
       return false;
     }
 

@@ -26,6 +26,7 @@ describe("realtime notification sound policy", () => {
     ["friend request", event("friend_request.created", { targetUserId: 7 })],
     ["generic notification", event("notification.created", { actorUserId: 8, recipientUserId: 7 })],
     ["system notification", event("notification.created", { actorUserId: null, recipientUserId: 7 })],
+    ["official notice with recipient only on the event envelope", event("notification.created", { kind: "official_notice", publicId: "notice-1" })],
     ["new booking", event("notification.order_status", { actorUserId: 8, recipientUserId: 7, payload: { toStatus: "pending" } })],
     ["booking confirmed", event("notification.order_status", { actorUserId: 8, recipientUserId: 7, payload: { toStatus: "confirmed" } })],
     ["booking rejected", event("notification.order_status", { actorUserId: 8, recipientUserId: 7, payload: { toStatus: "rejected" } })],

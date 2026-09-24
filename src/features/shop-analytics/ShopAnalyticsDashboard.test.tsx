@@ -396,6 +396,22 @@ describe("ShopAnalyticsDashboard formal API", () => {
     ).toHaveLength(dashboard.series.buckets.length);
   });
 
+  it("opens the shared top-layer data popup when a trend node is tapped", async () => {
+    const loadDashboard = vi.fn().mockResolvedValue(dashboard);
+    await act(async () => root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />));
+    await waitFor(() => expect(container.textContent).toContain("128,000"));
+
+    const node = container.querySelector<SVGCircleElement>('[data-series="revenue"] [data-chart-node="true"]');
+    await act(async () => node?.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 120, clientY: 180 })));
+
+    const popup = document.querySelector<HTMLElement>('[data-dashboard-point-detail="true"]');
+    expect(popup).not.toBeNull();
+    expect(popup?.textContent).toContain("9/5");
+    expect(popup?.textContent).toContain("￥58,000");
+    expect(popup?.textContent).toContain("4");
+    expect(popup?.className).toContain("z-[320]");
+  });
+
   it("lets each bottom legend hide and restore only its own series", async () => {
     const loadDashboard = vi.fn().mockResolvedValue(dashboard);
 

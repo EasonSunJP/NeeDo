@@ -11,7 +11,7 @@ import { authApi, type GoogleLinkStatus, type VerificationChallengePayload } fro
 import type { AuthSession, PortalScope } from "../../auth/AuthProvider";
 import { useAuth } from "../../auth/AuthProvider";
 import { requestGoogleCredential } from "../../auth/googleIdentity";
-import { PrimaryButton, SecondaryButton, SectionBlock, SegmentedTabs, StickyBottomBar, SurfacePanel } from "../../components/client-ui/AppScaffold";
+import { FeatureSegmentedTabs, PrimaryButton, SecondaryButton, SectionBlock, SegmentedTabs, StickyBottomBar, SurfacePanel } from "../../components/client-ui/AppScaffold";
 import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
 import { FloatingHeaderSearchBar } from "../../components/mobile/FloatingHeaderSearchBar";
 import { businessNavItems } from "../../components/mobile/businessNavItems";
@@ -2723,9 +2723,11 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
       ? `${selectedHomeLocation.city} / ${selectedHomeLocation.area} / ${selectedHomeLocation.district}`
       : initialAreas[0] ?? ""
   ) ?? findServiceAreaPath(initialAreas[0] ?? "");
-  const [selectedPrefectureId, setSelectedPrefectureId] = useState(initialPath?.prefecture.id ?? "jp-prefecture-13000");
-  const [selectedDistrictId, setSelectedDistrictId] = useState(initialPath?.district.id ?? "jp-municipality-13103");
+  const [selectedPrefectureId, setSelectedPrefectureId] = useState(initialPath?.prefecture.id ?? "");
+  const [selectedDistrictId, setSelectedDistrictId] = useState(initialPath?.district.id ?? "");
   const [selectedStreetPath, setSelectedStreetPath] = useState(initialPath);
+  const [activeStep, setActiveStep] = useState<"country" | "prefecture" | "district" | "street">("street");
+  const [showStreetInput, setShowStreetInput] = useState(false);
   const [streetInput, setStreetInput] = useState("");
   const [serviceRangeSaving, setServiceRangeSaving] = useState(false);
   const [serviceRangeError, setServiceRangeError] = useState("");
@@ -2773,6 +2775,7 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
         : [...current, value]
       : [value]);
     setStreetInput("");
+    setShowStreetInput(false);
     setServiceRangeSearchQuery("");
     setServiceRangeError("");
   };
@@ -2867,98 +2870,117 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
       <SettingsDetailPage
         backTo={getSettingsBasePath(portal)}
         contentClassName="space-y-6 pb-32 !pt-[calc(env(safe-area-inset-top)+9.5rem)]"
-        footer={
-          <FloatingHeaderSearchBar
-            actionAriaLabel={t("搜索按钮")}
-            actionLabel={t("搜索")}
-            fieldAriaLabel={t("搜索地点")}
-            inputId="service-range-search"
-            onChange={setServiceRangeSearchQuery}
-            placeholder={t("搜索地点")}
-            value={serviceRangeSearchQuery}
-          />
-        }
+        footer={<FeatureSegmentedTabs
+          items={[
+            { label: t("国家"), value: "country" },
+            { label: t("城市（都道府县）"), value: "prefecture" },
+            { label: t("区域"), value: "district" },
+            { label: t("街道"), value: "street" }
+          ]}
+          onChange={(step) => { setActiveStep(step); setServiceRangeSearchQuery(""); }}
+          value={activeStep}
+          variant="header"
+        />}
         info={t("服务范围不再散落在其他入口，统一从设置中心进入。")}
         navItems={[]}
         onClose={closeServiceRangePage}
         title={t("服务范围")}
       >
-        <div className="space-y-4 pt-1">
-          <section className="space-y-2" aria-label={t("国家")}>
-            <h2 className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("国家")}</h2>
-            <span className="inline-flex min-h-11 items-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)]">{t("日本")}</span>
-          </section>
-          <section className="space-y-2" aria-label={t("城市（都道府县）")}>
-            <h2 className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("城市（都道府县）")}</h2>
-            <div className="flex max-h-44 flex-wrap content-start gap-2 overflow-y-auto">
-              {filteredPrefectures.map((prefecture) => (
+        <div className="space-y-5 pt-1">
+          <div className="flex flex-wrap items-center gap-2 px-1 text-sm font-bold text-[color:var(--client-muted)]" data-no-i18n>
+            <span>{t("日本")}</span><span aria-hidden="true">›</span>
+            <span>{selectedPrefecture?.name ?? "—"}</span><span aria-hidden="true">›</span>
+            <span>{selectedDistrict?.name ?? "—"}</span>
+            {selectedStreetPath?.street ? <><span aria-hidden="true">›</span><span className="text-[color:var(--client-text)]">{selectedStreetPath.street}</span></> : null}
+          </div>
+          {(activeStep === "prefecture" || activeStep === "district") && (
+            <input
+              aria-label={t("搜索地点")}
+              className="min-h-11 w-full rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-5 text-sm text-[color:var(--client-text)]"
+              onChange={(event) => setServiceRangeSearchQuery(event.target.value)}
+              placeholder={t("搜索地点")}
+              value={serviceRangeSearchQuery}
+            />
+          )}
+          <section className="space-y-3" aria-label={activeStep === "country" ? t("国家") : activeStep === "prefecture" ? t("城市（都道府县）") : activeStep === "district" ? t("区域") : t("街道")}>
+            {activeStep === "district" && !selectedPrefecture ? (
+              <button className="min-h-11 rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-5 text-sm font-bold text-[color:var(--client-text)]" onClick={() => setActiveStep("prefecture")} type="button">{t("城市（都道府县）")} ›</button>
+            ) : null}
+            {activeStep === "street" && !selectedDistrict ? (
+              <button className="min-h-11 rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-5 text-sm font-bold text-[color:var(--client-text)]" onClick={() => setActiveStep(selectedPrefecture ? "district" : "prefecture")} type="button">{selectedPrefecture ? t("区域") : t("城市（都道府县）")} ›</button>
+            ) : null}
+            {(activeStep === "country" || activeStep === "prefecture" || (activeStep === "district" && selectedPrefecture) || (activeStep === "street" && selectedDistrict)) && <div className="overflow-hidden rounded-[1.5rem] border border-[color:var(--client-line)] bg-[color:var(--client-surface)]">
+              {activeStep === "country" && <div className="flex min-h-12 items-center justify-between px-5 text-sm font-bold text-[color:var(--client-text)]">{t("日本")}<span aria-hidden="true">✓</span></div>}
+              {activeStep === "prefecture" && filteredPrefectures.map((prefecture) => (
                 <button
                   aria-pressed={selectedPrefectureId === prefecture.id}
-                  className={cn("min-h-11 rounded-full px-4 text-sm font-black", selectedPrefectureId === prefecture.id ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]")}
+                  className="flex min-h-12 w-full items-center justify-between border-b border-[color:var(--client-line)] px-5 text-left text-sm font-bold text-[color:var(--client-text)] last:border-b-0"
+                  data-no-i18n
                   key={prefecture.id}
                   onClick={() => {
-                    if (prefecture.id === selectedPrefectureId) return;
-                    setSelectedPrefectureId(prefecture.id);
-                    setSelectedDistrictId(getServiceAreaDistricts(prefecture.id)[0]?.id ?? "");
-                    if (singleSelection) setAreas([]);
-                    setSelectedStreetPath(null);
+                    if (prefecture.id !== selectedPrefectureId) {
+                      setSelectedPrefectureId(prefecture.id);
+                      setSelectedDistrictId("");
+                      if (singleSelection) setAreas([]);
+                      setSelectedStreetPath(null);
+                    }
+                    setActiveStep("district");
                     setServiceRangeSearchQuery("");
                   }}
                   type="button"
-                >{prefecture.name}</button>
+                >{prefecture.name}<span aria-hidden="true">{selectedPrefectureId === prefecture.id ? "✓" : "›"}</span></button>
               ))}
-            </div>
-          </section>
-          <section className="space-y-2" aria-label={t("区域")}>
-            <h2 className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("区域")}</h2>
-            <div className="flex max-h-44 flex-wrap content-start gap-2 overflow-y-auto">
-              {filteredDistricts.map((district) => (
+              {activeStep === "district" && filteredDistricts.map((district) => (
                 <button
                   aria-pressed={selectedDistrictId === district.id}
-                  className={cn("min-h-11 rounded-full px-4 text-sm font-black", selectedDistrictId === district.id ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]")}
+                  className="flex min-h-12 w-full items-center justify-between border-b border-[color:var(--client-line)] px-5 text-left text-sm font-bold text-[color:var(--client-text)] last:border-b-0"
+                  data-no-i18n
                   key={district.id}
                   onClick={() => {
-                    if (district.id === selectedDistrictId) return;
-                    setSelectedDistrictId(district.id);
-                    if (singleSelection) setAreas([]);
-                    setSelectedStreetPath(null);
+                    if (district.id !== selectedDistrictId) {
+                      setSelectedDistrictId(district.id);
+                      if (singleSelection) setAreas([]);
+                      setSelectedStreetPath(null);
+                    }
+                    setActiveStep("street");
                     setServiceRangeSearchQuery("");
                   }}
                   type="button"
-                >{district.name}</button>
+                >{district.name}<span aria-hidden="true">{selectedDistrictId === district.id ? "✓" : "›"}</span></button>
               ))}
-            </div>
-          </section>
-          <section className="space-y-2" aria-label={t("街道")}>
-            <h2 className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("街道")}</h2>
-            <div className="flex flex-wrap gap-2">
-              {filteredStreets.map((street) => (
+              {activeStep === "street" && filteredStreets.map((street) => (
                 <button
                   aria-pressed={isStreetSelected(street)}
-                  className={cn("min-h-11 rounded-full px-4 text-sm font-black", isStreetSelected(street) ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]")}
+                  className="flex min-h-12 w-full items-center justify-between border-b border-[color:var(--client-line)] px-5 text-left text-sm font-bold text-[color:var(--client-text)] last:border-b-0"
+                  data-no-i18n
                   key={street}
                   onClick={() => chooseStreet(street)}
                   type="button"
-                >{t(street)}</button>
+                >{t(street)}<span aria-hidden="true">{isStreetSelected(street) ? "✓" : "›"}</span></button>
               ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                aria-label={t("输入街道名称")}
-                className="min-h-11 min-w-0 flex-1 rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 text-sm text-[color:var(--client-text)]"
-                maxLength={80}
-                onChange={(event) => setStreetInput(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); chooseStreet(streetInput); } }}
-                placeholder={t("输入街道名称")}
-                value={streetInput}
-              />
-              <button className="min-h-11 rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => chooseStreet(streetInput)} type="button">{t("添加街道")}</button>
-            </div>
+            </div>}
+            {activeStep === "street" && selectedDistrict && !showStreetInput ? (
+              <button className="min-h-11 px-2 text-sm font-bold text-[color:var(--client-primary)]" onClick={() => { setShowStreetInput(true); setStreetInput(serviceRangeSearchQuery); }} type="button">＋ {t("输入街道名称")}</button>
+            ) : null}
+            {activeStep === "street" && selectedDistrict && showStreetInput ? (
+              <div className="flex gap-2">
+                <input
+                  aria-label={t("输入街道名称")}
+                  className="min-h-11 min-w-0 flex-1 rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 text-sm text-[color:var(--client-text)]"
+                  maxLength={80}
+                  onChange={(event) => setStreetInput(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); chooseStreet(streetInput); } }}
+                  placeholder={t("输入街道名称")}
+                  value={streetInput}
+                />
+                <button className="min-h-11 rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => chooseStreet(streetInput)} type="button">{t("添加街道")}</button>
+              </div>
+            ) : null}
           </section>
-          {areas.length > 0 ? (
-            <p className="px-1 text-sm text-[color:var(--client-muted)]">{t("已选")}: {areas.map(t).join("、")}</p>
+          {portal === "technician" && areas.length > 0 ? (
+            <p className="px-1 text-sm text-[color:var(--client-muted)]" data-no-i18n>{t("已选")}: {areas.join("、")}</p>
           ) : null}
-          {serviceRangeSearchQuery && filteredPrefectures.length + filteredDistricts.length + filteredStreets.length === 0 ? (
+          {serviceRangeSearchQuery && (activeStep === "prefecture" ? filteredPrefectures.length : activeStep === "district" ? filteredDistricts.length : filteredStreets.length) === 0 ? (
             <p className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("没有匹配结果")}</p>
           ) : null}
           {serviceRangeError ? <p className="px-1 text-sm font-bold text-red-500" role="alert">{t("保存失败。")} {serviceRangeError}</p> : null}

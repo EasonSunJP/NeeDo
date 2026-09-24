@@ -11,6 +11,7 @@ import type { Customer, Order, Settlement, Store, Technician } from "../../types
 import { cn, yen } from "../../lib/utils";
 import { buildTrendCoordinates } from "../../lib/technicianWorkTrendChart";
 import { translateText } from "../../i18n/translations";
+import { DashboardChartTooltip, useDashboardChartTooltip } from "../dashboard/DashboardChartTooltip";
 import "./registerI18n";
 
 type ShopDashboardLoader = typeof backofficeRealDataApi.dashboard;
@@ -69,6 +70,8 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
   const text = (source: string) => translateText(source, language);
   const [showRevenue, setShowRevenue] = useState(true);
   const [showOrders, setShowOrders] = useState(true);
+  const tooltip = useDashboardChartTooltip(buckets.map((bucket) => bucket.key).join("|"));
+  const selectedBucket = tooltip.active === null ? null : buckets[tooltip.active.index] ?? null;
   const revenueCoordinates = useMemo(
     () => buildShopTrendCoordinates(buckets.map((bucket) => bucket.serviceGmvJpy)),
     [buckets]
@@ -102,7 +105,7 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
   }
 
   return (
-    <div className="min-w-0 overflow-hidden" data-testid="shop-analytics-trend">
+    <div className="min-w-0 overflow-hidden" data-testid="shop-analytics-trend" onKeyDown={(event) => { if (event.key === "Escape") tooltip.dismiss(); }}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-[17px] font-black" data-no-i18n>{text("订单趋势")}</h3>
@@ -158,7 +161,19 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
             <g data-series="revenue">
               <polyline fill="none" points={pointsAttribute(revenueCoordinates)} stroke="var(--client-primary)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" />
               {revenueCoordinates.map((coordinate, index) => (
-                <circle cx={coordinate.x} cy={coordinate.y} data-chart-node="true" fill="var(--client-bg)" key={buckets[index]?.key} r="6" stroke="var(--client-primary)" strokeWidth="4" />
+                <g
+                  aria-label={`${buckets[index]?.label} · ${text("营业额")} ${yen(buckets[index]?.serviceGmvJpy ?? 0)}`}
+                  key={buckets[index]?.key}
+                  onClick={(event) => tooltip.select(index, event)}
+                  onKeyDown={(event) => tooltip.selectOnKeyboard(index, event)}
+                  onMouseEnter={(event) => tooltip.hover(index, event)}
+                  onMouseLeave={tooltip.leave}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <circle cx={coordinate.x} cy={coordinate.y} fill="transparent" r="16" />
+                  <circle cx={coordinate.x} cy={coordinate.y} data-chart-node="true" fill="var(--client-bg)" r="6" stroke="var(--client-primary)" strokeWidth="4" />
+                </g>
               ))}
             </g>
           ) : null}
@@ -166,7 +181,19 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
             <g data-series="orders">
               <polyline fill="none" points={pointsAttribute(orderCoordinates)} stroke="var(--client-accent)" strokeDasharray="10 9" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
               {orderCoordinates.map((coordinate, index) => (
-                <circle cx={coordinate.x} cy={coordinate.y} data-chart-node="true" fill="var(--client-bg)" key={buckets[index]?.key} r="5" stroke="var(--client-accent)" strokeWidth="3" />
+                <g
+                  aria-label={`${buckets[index]?.label} · ${text("订单数")} ${formatCount(buckets[index]?.orderCount ?? 0)}`}
+                  key={buckets[index]?.key}
+                  onClick={(event) => tooltip.select(index, event)}
+                  onKeyDown={(event) => tooltip.selectOnKeyboard(index, event)}
+                  onMouseEnter={(event) => tooltip.hover(index, event)}
+                  onMouseLeave={tooltip.leave}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <circle cx={coordinate.x} cy={coordinate.y} fill="transparent" r="16" />
+                  <circle cx={coordinate.x} cy={coordinate.y} data-chart-node="true" fill="var(--client-bg)" r="5" stroke="var(--client-accent)" strokeWidth="3" />
+                </g>
               ))}
             </g>
           ) : null}
@@ -212,6 +239,17 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
           ))}
         </tbody>
       </table>
+      <DashboardChartTooltip
+        anchor={tooltip.active}
+        closeLabel={text("关闭")}
+        items={selectedBucket ? [
+          { color: "var(--client-primary)", key: "revenue", label: text("营业额"), value: yen(selectedBucket.serviceGmvJpy) },
+          { color: "var(--client-accent)", key: "orders", label: text("订单数"), value: formatCount(selectedBucket.orderCount) }
+        ] : []}
+        label={selectedBucket?.label ?? ""}
+        onClose={tooltip.dismiss}
+        variant="client"
+      />
     </div>
   );
 }

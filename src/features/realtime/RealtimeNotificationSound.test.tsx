@@ -160,6 +160,27 @@ describe("RealtimeNotificationSound", () => {
     expect(play).toHaveBeenCalledTimes(1);
   });
 
+  it("plays again for later IM messages and official notices", async () => {
+    const play = vi.fn(async () => undefined);
+    vi.stubGlobal("Audio", function AudioMock() {
+      return { currentTime: 0, muted: false, pause: vi.fn(), play, preload: "" };
+    });
+    await act(async () => root.render(<RealtimeNotificationSound />));
+
+    for (const [id, type, payload] of [
+      ["im-1", "message.created", { senderUserId: 8 }],
+      ["im-2", "message.created", { senderUserId: 8 }],
+      ["official-1", "notification.created", { kind: "official_notice", publicId: "notice-1" }]
+    ] as const) {
+      await act(async () => {
+        mocks.onEvent?.({ id, type, payload, recipientUserId: 7 });
+        await vi.advanceTimersByTimeAsync(200);
+      });
+    }
+
+    expect(play).toHaveBeenCalledTimes(3);
+  });
+
   it("reacts to the existing portal sound preference without reconnecting SSE", async () => {
     const play = vi.fn(async () => undefined);
     vi.stubGlobal("Audio", function AudioMock() {
