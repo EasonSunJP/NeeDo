@@ -8436,7 +8436,7 @@ body:has(.admin-theme-dark),
 }
 
 .im-conversation-scroll-lock {
-  overscroll-behavior: none !important;
+  overscroll-behavior-y: none !important;
   overflow: hidden !important;
 }
 
@@ -8459,7 +8459,7 @@ html.im-conversation-scroll-lock #root {
   left: var(--im-visual-viewport-left, 0px);
   right: var(--im-visual-viewport-right, 0px);
   width: var(--im-visual-viewport-width, auto);
-  overscroll-behavior: none;
+  overscroll-behavior-y: none;
   overflow: hidden;
 }
 
@@ -8472,7 +8472,7 @@ html.im-conversation-scroll-lock #root {
 .im-conversation-scroll {
   overflow-y: scroll !important;
   overscroll-behavior-y: contain;
-  touch-action: pan-y;
+  touch-action: auto;
   -webkit-overflow-scrolling: touch;
   will-change: scroll-position;
 }

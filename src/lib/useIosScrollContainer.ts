@@ -39,6 +39,8 @@ export function useIosScrollContainer<T extends HTMLElement>(ref: RefObject<T | 
 
     let lastTouchY = 0;
     let startTouchY = 0;
+    let startTouchX = 0;
+    let gestureAxis: "pending" | "horizontal" | "vertical" = "pending";
     let boundaryDragY = 0;
     let dragOffsetY = 0;
     let rubberBandActive = false;
@@ -118,6 +120,8 @@ export function useIosScrollContainer<T extends HTMLElement>(ref: RefObject<T | 
 
       lastTouchY = event.touches[0]?.clientY ?? 0;
       startTouchY = lastTouchY;
+      startTouchX = event.touches[0]?.clientX ?? 0;
+      gestureAxis = "pending";
       const interruptedReset = clearResetTimer();
       if (interruptedReset && !rubberBandActive) {
         element.style.transition = previousInlineStyle.transition;
@@ -137,6 +141,14 @@ export function useIosScrollContainer<T extends HTMLElement>(ref: RefObject<T | 
       }
 
       const currentTouchY = event.touches[0]?.clientY ?? lastTouchY;
+      if (gestureAxis === "pending") {
+        const distanceX = Math.abs((event.touches[0]?.clientX ?? startTouchX) - startTouchX);
+        const distanceY = Math.abs(currentTouchY - startTouchY);
+        if (Math.max(distanceX, distanceY) >= 8) {
+          gestureAxis = distanceX > distanceY ? "horizontal" : "vertical";
+        }
+      }
+      if (gestureAxis !== "vertical") return;
       const deltaY = currentTouchY - lastTouchY;
       lastTouchY = currentTouchY;
 
@@ -173,6 +185,8 @@ export function useIosScrollContainer<T extends HTMLElement>(ref: RefObject<T | 
     const handleTouchEnd = () => {
       lastTouchY = 0;
       startTouchY = 0;
+      startTouchX = 0;
+      gestureAxis = "pending";
       boundaryDragY = 0;
       resetRubberBandOffset();
     };

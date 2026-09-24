@@ -30,11 +30,11 @@ function ScrollLockHarness() {
   return <div />;
 }
 
-function touchEvent(type: string, clientY?: number) {
+function touchEvent(type: string, clientY?: number, clientX = 0) {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperty(event, "touches", {
     configurable: true,
-    value: clientY === undefined ? [] : [{ clientY }]
+    value: clientY === undefined ? [] : [{ clientY, clientX }]
   });
   return event;
 }
@@ -64,6 +64,19 @@ describe("useDocumentScrollLock", () => {
 });
 
 describe("useIosScrollContainer", () => {
+  it("leaves a rightward horizontal gesture available for page navigation", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root!.render(<ScrollSurface />));
+    const surface = container.querySelector<HTMLElement>("[data-testid='scroll-surface']")!;
+    surface.dispatchEvent(touchEvent("touchstart", 300, 5));
+    const move = touchEvent("touchmove", 302, 90);
+    surface.dispatchEvent(move);
+    expect(move.defaultPrevented).toBe(false);
+    expect(surface.style.transform).toBe("");
+  });
+
   it("shows a damped bottom-boundary pull and springs back on release", async () => {
     vi.useFakeTimers();
     const container = document.createElement("div");
