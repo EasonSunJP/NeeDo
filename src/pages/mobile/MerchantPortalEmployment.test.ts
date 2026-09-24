@@ -7,6 +7,8 @@ import { backofficeRealDataApi } from "../../api/backofficeRealData";
 import { coreReadApi, type CoreShopDetail } from "../../features/core-read/api";
 import { pricingModeApi } from "../../features/pricing-mode/api";
 import { merchantManualEmployeeStorageKey, merchantStaffRoleLabelStorageKey } from "../../lib/merchantStaffRoles";
+import * as persistentCacheScope from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import type { Store, Technician } from "../../types/domain";
 import { MerchantPortalContent, MerchantPortalPage } from "./MerchantPortalPage";
 import merchantSource from "./MerchantPortalPage.tsx?raw";
@@ -215,6 +217,7 @@ async function renderDataGate(initialEntry: string) {
         createElement(
           Routes,
           null,
+          createElement(Route, { path: "/merchant", element: createElement(MerchantPortalPage) }),
           createElement(Route, { path: "/merchant/:view", element: createElement(MerchantPortalPage) })
         )
       )
@@ -297,6 +300,47 @@ describe("MerchantPortal formal employment data", () => {
         "merchant-admin",
         expect.objectContaining({ page: 1, status: "published" })
       );
+    });
+
+    it("shows the cached shop immediately when returning from merchant settings", async () => {
+      const ownerKey = JSON.stringify([merchantEmploymentTestState.session.id, null, ""]);
+      const shop = {
+        id: 1,
+        publicId: "shop0000000001",
+        name: "测试门店",
+        city: "東京都",
+        address: "港区",
+        coverUrl: null,
+        description: "测试门店",
+        phone: null,
+        latitude: null,
+        longitude: null,
+        reviewSummary: { ratingAverage: "0", reviewCount: 0, latestReviewAt: null, highlights: [] },
+        completedOrderCount: 0,
+        favoriteCount: 0,
+        shareCount: 0,
+        serviceCategories: [],
+        businessKeywords: [],
+        mediaAssets: [],
+        services: [],
+        technicians: [],
+        createdAt: "2026-09-20T00:00:00.000Z",
+        updatedAt: "2026-09-20T00:00:00.000Z"
+      } satisfies CoreShopDetail;
+      const cached = new Map<string, unknown>([
+        [`merchant:shop:v1:${ownerKey}`, { ownerKey, page: { list: [{ id: 1 }], total: 1, page: 1, page_size: 20 } }],
+        ["core:shop:1", shop],
+        [`merchant:technician-roster:v3:${ownerKey}`, formalTechnicians]
+      ]);
+      vi.spyOn(persistentCacheScope, "getAuthenticatedPersistentCacheScope").mockReturnValue("account:merchant-test");
+      vi.spyOn(persistentResourceCache, "peek").mockImplementation((_scope, key) => cached.get(key) as never);
+      vi.spyOn(persistentResourceCache, "load").mockImplementation(() => new Promise(() => {}));
+      vi.spyOn(backofficeRealDataApi, "merchantShop").mockReturnValue(new Promise(() => {}));
+
+      await renderDataGate("/merchant");
+
+      expect(container.querySelector('[data-testid="merchant-loading-state"]')).toBeNull();
+      expect(container.textContent).toContain("测试门店");
     });
 
     it("renders five role sections as direct siblings with inline counts and an independent form", async () => {

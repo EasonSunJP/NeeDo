@@ -172,7 +172,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("PrivacyModeConfirmDialog");
     expect(merchantSource).toContain("storePrivacyConfirmOpen");
     expect(merchantSource).toContain("confirmStorePrivacyEnabled");
-    expect(merchantSource).toContain('className="relative z-[70] w-full" data-testid="merchant-store-privacy-control"');
+    expect(merchantSource).toContain('className="relative z-[70] h-full w-full" data-testid="merchant-store-privacy-control"');
     expect(merchantSource).toContain("absolute right-0 top-[calc(100%+8px)]");
     expect(merchantSource).toContain("z-[90]");
     expect(merchantSource).toContain('ariaLabel="开启店铺隐私模式"');
@@ -195,7 +195,7 @@ describe("MerchantPortalPage store privacy control", () => {
 
     expect(storeDetailSource).toContain("privacyControl?: ReactNode");
     expect(storeDetailSource).toContain("hasMerchantControls");
-    expect(storeDetailSource).toContain("relative z-50 space-y-3 overflow-visible");
+    expect(storeDetailSource).toContain("relative z-20 space-y-3 overflow-visible");
     expect(storeDetailSource).toContain("min-h-[112px]");
     expect(storeDetailSource).toContain('className="mt-3 grid grid-cols-2 gap-2"');
     expect(storeDetailSource).toContain('<div className="relative z-0">{content}</div>');

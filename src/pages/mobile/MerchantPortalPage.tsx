@@ -1833,7 +1833,13 @@ function MerchantPortalDataGate() {
       ? backofficeRealDataApi.merchantShop()
           .then((page) => ({ ownerKey: merchantShopOwnerKey, page }))
       : null,
-    [merchantShopOwnerKey]
+    [merchantShopOwnerKey],
+    {
+      enabled: Boolean(merchantShopOwnerKey),
+      force: true,
+      key: `merchant:shop:v1:${merchantShopOwnerKey ?? "missing"}`,
+      scope: persistentCacheScope
+    }
   );
   const merchantShopPage = merchantShopQuery.data?.ownerKey === merchantShopOwnerKey
     ? merchantShopQuery.data.page
