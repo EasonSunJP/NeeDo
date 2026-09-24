@@ -404,6 +404,12 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     const editButton = container.querySelector<HTMLButtonElement>('button[aria-label="编辑信息卡"]');
     expect(editButton).not.toBeNull();
     await act(async () => editButton?.click());
+    const editingCard = container.querySelector<HTMLElement>('[data-testid="technician-info-card"] > section');
+    expect(editingCard?.querySelector("header img")?.className).toContain("h-24 w-24");
+    const editingText = editingCard?.textContent ?? "";
+    expect(editingText.indexOf("从业年数")).toBeLessThan(editingText.indexOf("基础信息"));
+    expect(editingText.indexOf("语言能力")).toBeLessThan(editingText.indexOf("自我介绍"));
+    expect(editingText.indexOf("自我介绍")).toBeLessThan(editingText.indexOf("隐私模式"));
     expect(container.querySelector('[data-testid="localized-content-locale-rail"]')).not.toBeNull();
     expect(container.querySelectorAll('[data-testid="localized-text-editor"] textarea')).toHaveLength(1);
     expect(Array.from(container.querySelectorAll('textarea')).filter((textarea) => textarea.value === "预约前请联系。")).toHaveLength(0);
@@ -430,11 +436,12 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     await act(async () => Array.from(container.querySelectorAll<HTMLButtonElement>('[data-testid="technician-profile-language-ability"] button'))
       .find((button) => button.textContent === "English")?.click());
     const saveButton = container.querySelector<HTMLButtonElement>('[data-testid="technician-profile-save-action"]');
-    expect(saveButton?.textContent).toContain("保存并退出编辑模式");
+    expect(saveButton?.textContent).toContain("保存并退出");
     const saveBar = saveButton?.closest<HTMLElement>(".client-bottom-action-shell");
     expect(saveBar?.style.getPropertyValue("--client-main-nav-action-offset")).toBe("0px");
     expect(saveBar?.className).toContain("pointer-events-none");
-    expect(saveButton?.parentElement?.className).toContain("!bg-transparent");
+    expect(saveButton?.parentElement?.parentElement?.className).toContain("!bg-transparent");
+    expect(saveButton?.parentElement?.textContent).toContain("取消");
     expect(saveButton?.closest('[data-testid="technician-info-card"]')?.parentElement?.className)
       .toContain("pb-[calc(132px+env(safe-area-inset-bottom))]");
     await act(async () => saveButton?.click());

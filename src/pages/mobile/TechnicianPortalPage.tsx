@@ -46,6 +46,7 @@ import { resolveAvatarUrl } from "../../lib/defaultAvatar";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn, yen } from "../../lib/utils";
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
+import { formatWalletAmount } from "../../features/wallet/presentation";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { LocalizedTextEditor } from "../../shared/localized-content/LocalizedTextEditor";
@@ -519,24 +520,28 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
       />
       {editing ? (
         <section className={cn(surface.shell, "overflow-visible rounded-[28px] border p-4 shadow-[var(--client-shadow)]")}>
-          <div className="pr-14">
-            <h2 className="text-xl font-black">编辑基础信息</h2>
-            <p className={cn(surface.muted, "mt-1 text-xs font-bold")}>评价标签由正式订单评价生成，不可自行修改。</p>
-          </div>
-          <div className="mt-4 space-y-3">
-            <LocalizedTextEditor
-              fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
-              fallback={{ bio: profile.bio ?? "" }}
-              translations={Object.fromEntries(Object.entries(profile.bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
-              disabled={saving || readingAvatar}
-              onSave={async (locale, values) => onSaved(await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } }))}
-              onSyncAll={async (locale, values) => onSaved(await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } }))}
-            />
-            <div className="relative h-36 w-36">
-              <AvatarImage alt={t("技师头像预览")} className="h-36 w-36 rounded-[28px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] shadow-[0_18px_36px_rgba(0,0,0,0.28)]" src={draft.avatarDataUrl ?? profileAvatarSrc(profile)} />
+          <header className="flex min-w-0 items-start gap-3 pr-12">
+            <div className="relative h-24 w-24 shrink-0 sm:h-32 sm:w-32">
+              <AvatarImage alt={t("技师头像预览")} className="h-24 w-24 rounded-[22px] border-2 border-[color:color-mix(in_srgb,var(--client-primary)_40%,var(--client-line))] object-cover shadow-soft sm:h-32 sm:w-32 sm:rounded-[26px]" src={draft.avatarDataUrl ?? profileAvatarSrc(profile)} />
               <input accept="image/*" aria-label={t("技师头像")} className="hidden" disabled={saving || readingAvatar} onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
-              <IconButton className={cn("absolute bottom-2 right-2 h-10 w-10 border-[2px] text-white shadow-[0_12px_26px_rgba(0,0,0,0.34)]", surface.metric)} icon="edit" label="更换头像" onClick={saving || readingAvatar ? undefined : () => avatarInputRef.current?.click()} />
+              <IconButton className={cn("absolute bottom-1 right-1 h-9 w-9 border-[2px] text-white shadow-[0_12px_26px_rgba(0,0,0,0.34)]", surface.metric)} icon="edit" label="更换头像" onClick={saving || readingAvatar ? undefined : () => avatarInputRef.current?.click()} />
             </div>
+            <div className="min-w-0 flex-1 pt-1">
+              <h1 className="text-[21px] font-black leading-7">{editModel.displayName} <KycVerifiedBadge className="inline-flex align-middle" size="label" /></h1>
+              <span className="mt-2 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_45%,var(--client-line))] bg-[color:var(--client-primary-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-primary)]">{editModel.identityLabel}</span>
+              <p className={cn(surface.muted, "mt-2 truncate text-xs font-bold")}>ID：{editModel.publicId}</p>
+            </div>
+          </header>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {[["从业年数", `${editModel.yearsExperience} 年`], ["接单率", `${editModel.acceptanceRatePercent ?? 100}%`], ["评价", editModel.ratingAverage === null ? "-" : String(editModel.ratingAverage)]].map(([label, value]) => <div className={cn(surface.panel, "min-w-0 rounded-[18px] border p-3")} key={label}><p className={cn(surface.muted, "text-[11px] font-bold")}>{label}</p><strong className="mt-1 block truncate text-lg">{value}</strong></div>)}
+          </div>
+          <div className={cn("mt-2 grid gap-2", walletSummary ? "grid-cols-2" : "grid-cols-1")}>
+            {walletSummary ? <div className={cn(surface.panel, "min-w-0 rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-[11px] font-bold")}>NDP</p><strong className="mt-1 block truncate text-xl">{formatWalletAmount(walletSummary.ndp.available)}</strong></div> : null}
+            <div className={cn(surface.panel, "min-w-0 rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-[11px] font-bold")}>完成订单数</p><strong className="mt-1 block text-xl">{(editModel.completedOrderCount ?? 0).toLocaleString("ja-JP")}</strong></div>
+          </div>
+          <div className="my-4 h-px bg-[color:var(--client-line)]" />
+          <h2 className="text-lg font-black">基础信息</h2>
+          <div className="mt-3 space-y-3">
             <div className="grid grid-cols-3 gap-2">
               <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>性别</span><select className="mt-1 w-full bg-transparent text-sm font-black outline-none" onChange={(event) => setDraft((current) => ({ ...current, gender: event.target.value as TechnicianSelfProfile["gender"] }))} value={draft.gender}><option value="female">女性</option><option value="male">男性</option><option value="private">不公开</option></select></label>
               <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>年龄</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, age: parseNullableNumber(event.target.value) }))} value={draft.age ?? ""} /></label>
@@ -563,6 +568,14 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
                 ))}
               </div>
             </div>
+            <LocalizedTextEditor
+              fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
+              fallback={{ bio: profile.bio ?? "" }}
+              translations={Object.fromEntries(Object.entries(profile.bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
+              disabled={saving || readingAvatar}
+              onSave={async (locale, values) => onSaved(await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } }))}
+              onSyncAll={async (locale, values) => onSaved(await technicianProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } }))}
+            />
             <TechnicianReviewTagSummaryView model={editModel} />
             <section className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-profile-privacy-control">
               <div className="flex items-center justify-between gap-3">
@@ -593,9 +606,10 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
           panelClassName="pointer-events-auto !rounded-none !border-0 !bg-transparent !p-0 !shadow-none !backdrop-blur-none"
           style={profileSaveBarStyle}
         >
-          <button className="w-full rounded-full bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60" disabled={saving || readingAvatar || Boolean(avatarCrop)} data-testid="technician-profile-save-action" onClick={() => void saveProfile()} type="button">
-            {saving ? "正在保存资料" : "保存并退出编辑模式"}
-          </button>
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-2">
+            <button className="rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-4 text-sm font-black text-[color:var(--client-text)] disabled:opacity-60" disabled={saving || readingAvatar || Boolean(avatarCrop)} onClick={cancelEditing} type="button">取消</button>
+            <button className="rounded-full bg-[color:var(--client-primary)] px-3 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60" disabled={saving || readingAvatar || Boolean(avatarCrop)} data-testid="technician-profile-save-action" onClick={() => void saveProfile()} type="button">{saving ? "正在保存资料" : "保存并退出"}</button>
+          </div>
         </StickyBottomBar>
       ) : null}
     </div>

@@ -143,7 +143,7 @@ describe("TechnicianPortalPage formal approved UI", () => {
 
   it("matches the customer edit controls and keeps failed drafts in edit mode", () => {
     expect(source).toContain('data-testid="technician-profile-save-action"');
-    expect(source).toContain("保存并退出编辑模式");
+    expect(source).toContain("保存并退出");
     expect(source).toContain("setDraft(profileDraft(profile))");
     expect(source).toContain("if (saved) setEditing(false)");
     expect(source).toContain("onSaved(saved)");

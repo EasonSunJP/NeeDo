@@ -18,6 +18,7 @@ export type PublicPlatformSettings = {
   loginLogo: PlatformMedia | null;
   requestButton: PlatformMedia | null;
   paymentMethods: Array<"cash" | "ndp">;
+  membershipCardFollowUiTheme: boolean;
 };
 
 export const safePublicPlatformSettings: PublicPlatformSettings = {
@@ -27,5 +28,6 @@ export const safePublicPlatformSettings: PublicPlatformSettings = {
   loginMethods: { password: true, google: false },
   loginLogo: null,
   requestButton: null,
-  paymentMethods: []
+  paymentMethods: [],
+  membershipCardFollowUiTheme: true
 };

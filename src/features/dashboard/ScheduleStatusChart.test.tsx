@@ -29,6 +29,37 @@ describe("ScheduleStatusChart", () => {
     expect(markup).toMatch(/出勤人数|Staff on duty/);
   });
 
+  it("stacks booked and idle shares into one full-height bar only for scheduled periods", () => {
+    const markup = renderToStaticMarkup(<I18nProvider><ScheduleStatusChart
+      buckets={[
+        { key: "booked", label: "预约 10%", scheduleAvailableHours: 9, scheduleBookedHours: 1, scheduleAttendanceCount: 2 },
+        { key: "idle", label: "全部空闲", scheduleAvailableHours: 8, scheduleBookedHours: 0, scheduleAttendanceCount: 1 },
+        { key: "empty", label: "没有排班", scheduleAvailableHours: 0, scheduleBookedHours: 0, scheduleAttendanceCount: 0 }
+      ]}
+      description="排班时长占比与出勤人数"
+      title="排班状态"
+    /></I18nProvider>);
+    const document = new DOMParser().parseFromString(markup, "text/html");
+    const segment = (bucket: string, type: string) => document.querySelector<SVGRectElement>(
+      `[data-schedule-bucket="${bucket}"][data-schedule-status-bar="${type}"]`
+    );
+    const booked = segment("booked", "booked");
+    const available = segment("booked", "available");
+    const idleOnly = segment("idle", "available");
+
+    expect(booked).not.toBeNull();
+    expect(available).not.toBeNull();
+    expect(booked?.getAttribute("x")).toBe(available?.getAttribute("x"));
+    expect(Number(booked?.getAttribute("height"))).toBeCloseTo(20.2, 1);
+    expect(Number(available?.getAttribute("height"))).toBeCloseTo(181.8, 1);
+    expect(Number(available?.getAttribute("height")) + Number(booked?.getAttribute("height"))).toBeCloseTo(202, 1);
+    expect(Number(idleOnly?.getAttribute("height"))).toBeCloseTo(202, 1);
+    expect(segment("idle", "booked")).toBeNull();
+    expect(segment("empty", "available")).toBeNull();
+    expect(segment("empty", "booked")).toBeNull();
+    expect([...document.querySelectorAll('[data-axis-side="left"]')].some((label) => label.textContent === "100%" )).toBe(true);
+  });
+
   it("shows unclipped data details when bars or attendance nodes are hovered and clicked", async () => {
     const container = document.createElement("div");
     document.body.append(container);

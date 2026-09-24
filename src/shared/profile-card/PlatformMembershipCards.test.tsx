@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlatformMembershipDetailCard } from "./PlatformMembershipDetailCard";
 import { PlatformMembershipSimpleCard } from "./PlatformMembershipSimpleCard";
 import {
@@ -8,19 +8,35 @@ import {
 } from "./platformMembershipTheme";
 
 const theme = { detailAccentColor: "#A7FF1E", detailSurfaceColor: "#10242D", detailSurfaceMiddleColor: "#183A32", detailSurfaceBottomColor: "#24314B", detailItemSurfaceColor: "#09161D", detailOuterBorderColor: "#5D8B35", detailItemBorderColor: "#29424D", detailAvatarBorderColor: "#79A84B", simpleTopColor: "#0D2F27", simpleBottomColor: "#132630" };
+const settings = vi.hoisted(() => ({ followUi: true }));
+vi.mock("../../features/platform-settings/PlatformSettingsProvider", () => ({
+  usePlatformSettings: () => ({ settings: { membershipCardFollowUiTheme: settings.followUi } })
+}));
 const profile = { avatarUrl: null, bio: "", displayName: "Mia", ekycVerified: true, entityKind: "customer" as const, languages: [], level: 37, needoId: "u0000000001", tierLabel: "黄金会员" };
 
 describe("shared platform membership cards", () => {
-  it("maps all ten theme colors and keeps empty profile rows visible", () => {
+  afterEach(() => { settings.followUi = true; });
+
+  it("uses UI theme by default while keeping empty profile rows visible", () => {
     const markup = renderToStaticMarkup(<PlatformMembershipDetailCard {...profile} theme={theme} />);
     expect(markup).toContain('/images/generated/profiles/dodo-default-avatar.webp');
-    for (const color of Object.values(theme).slice(0, 8)) expect(markup.toLowerCase()).toContain(color.toLowerCase());
-    expect(markup).toContain("linear-gradient(155deg, #10242D 0%, #183A32 52%, #24314B 100%)");
+    for (const color of Object.values(theme)) expect(markup.toLowerCase()).not.toContain(color.toLowerCase());
+    expect(markup).toContain("var(--client-surface)");
     expect(markup).toContain("语言能力");
     expect(markup).toContain("自我介绍");
     expect(markup).toContain("未设置");
     expect(markup).toContain("Lv.37");
     expect(markup).toContain("eKYC verified");
+  });
+
+  it("uses published tier colors when the operations switch is off", () => {
+    settings.followUi = false;
+    const detail = renderToStaticMarkup(<PlatformMembershipDetailCard {...profile} theme={theme} />);
+    const simple = renderToStaticMarkup(<PlatformMembershipSimpleCard {...profile} simpleBottomColor={theme.simpleBottomColor} simpleTopColor={theme.simpleTopColor} />);
+    expect(detail).toContain("linear-gradient(155deg, #10242D 0%, #183A32 52%, #24314B 100%)");
+    expect(detail).toContain(theme.detailAccentColor);
+    expect(simple).toContain(theme.simpleTopColor);
+    expect(simple).toContain(theme.simpleBottomColor);
   });
 
   it("renders the customer privacy slot after the basic-information labels", () => {

@@ -27,6 +27,7 @@ export interface PlatformSettingsSnapshot {
   ndpPaymentEnabled: boolean;
   anytimeServiceTestEnabled: boolean;
   overdueAppointmentGateEnabled: boolean;
+  membershipCardFollowUiTheme: boolean;
   createdByUserId: number | null;
   createdAt: Date;
 }
@@ -51,6 +52,7 @@ export interface PublicPlatformSettings {
   loginLogo: PlatformBrandMedia | null;
   requestButton: PlatformBrandMedia | null;
   paymentMethods: PlatformPaymentMethod[];
+  membershipCardFollowUiTheme: boolean;
 }
 
 export interface PlatformCapabilityProject {

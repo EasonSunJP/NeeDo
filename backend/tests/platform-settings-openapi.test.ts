@@ -43,6 +43,8 @@ describe("platform settings OpenAPI contract", () => {
         "requestButtonMediaPublicId"
       ])
     );
+    expect(basic.required).not.toContain("membershipCardFollowUiTheme");
+    expect(basic.properties.membershipCardFollowUiTheme).toEqual({ type: "boolean" });
     expect(basic.properties.passwordLoginOtpRule.enum).toEqual([
       "first_login",
       "monthly_first",
@@ -50,6 +52,7 @@ describe("platform settings OpenAPI contract", () => {
     ]);
     expect(basic.properties.anytimeServiceTestEnabled).toEqual({ type: "boolean" });
     expect(basic.properties.overdueAppointmentGateEnabled).toEqual({ type: "boolean" });
+    expect(basic.properties.membershipCardFollowUiTheme).toEqual({ type: "boolean" });
 
     expect(schemas.PlatformOperationsSettings.required).toContain(
       "anytimeServiceTestEnabled"

@@ -15,7 +15,8 @@ const validSettings = {
   loginMethods: { password: true as const, google: true },
   loginLogo: null,
   requestButton: null,
-  paymentMethods: ["cash", "ndp"] as const
+  paymentMethods: ["cash", "ndp"] as const,
+  membershipCardFollowUiTheme: true
 };
 
 describe("public platform settings", () => {
@@ -28,6 +29,8 @@ describe("public platform settings", () => {
 
   it("strictly parses the active public projection", () => {
     expect(parsePublicPlatformSettings(validSettings)).toEqual(validSettings);
+    const { membershipCardFollowUiTheme: _cardTheme, ...legacySettings } = validSettings;
+    expect(parsePublicPlatformSettings(legacySettings).membershipCardFollowUiTheme).toBe(true);
     expect(() => parsePublicPlatformSettings({ ...validSettings, secret: "must-not-leak" })).toThrow("error.api");
   });
 

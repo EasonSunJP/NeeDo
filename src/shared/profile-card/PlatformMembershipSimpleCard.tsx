@@ -1,8 +1,10 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { coreReadApi } from "../../features/core-read/api";
 import { useHomeLayoutStore } from "../../state/homeLayoutStore";
 import { useHomeLocationPreference } from "../../state/homeLocationStore";
 import { resolveAvatarUrl } from "../../lib/defaultAvatar";
+import { usePlatformSettings } from "../../features/platform-settings/PlatformSettingsProvider";
+import { resolveReadableTextColor } from "./platformMembershipTheme";
 import type { SpecialReviewTag } from "./SpecialReviewIconRow";
 import { UnifiedEntityInfoCard } from "./UnifiedEntityInfoCard";
 
@@ -75,11 +77,19 @@ function useTechnicianDistance(
 
 /**
  * Compatibility name retained because membership and IM flows already import
- * it. Theme colors and level no longer create a second card design.
+ * it. Tier colors may restyle the shared card frame when operations disables UI-theme matching.
  */
 export function PlatformMembershipSimpleCard(
   props: PlatformMembershipSimpleCardProps,
 ) {
+  const { settings } = usePlatformSettings();
+  const tierStyle = !settings.membershipCardFollowUiTheme && props.simpleTopColor && props.simpleBottomColor
+    ? {
+        backgroundColor: props.simpleTopColor,
+        backgroundImage: `linear-gradient(180deg, ${props.simpleTopColor}, ${props.simpleBottomColor})`,
+        "--client-text": resolveReadableTextColor(props.simpleTopColor),
+      } as CSSProperties
+    : undefined;
   const publicId = props.entityPublicId ?? null;
   const distanceKm = useTechnicianDistance(props.entityKind, publicId);
   const kind =
@@ -119,6 +129,7 @@ export function PlatformMembershipSimpleCard(
       onOpenDetails={props.onOpenDetails}
       nameSuffix={props.nameSuffix}
       showLanguageTags={false}
+      style={tierStyle}
     />
   );
 }

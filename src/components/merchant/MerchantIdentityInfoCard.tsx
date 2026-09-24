@@ -262,14 +262,6 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
           <div className={cn(surface.metric, "min-w-0 rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-[11px] font-bold")}>评价</p><strong className="mt-1 block text-lg">-</strong></div>
         </div>
 
-        {editing ? <LocalizedTextEditor
-          fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
-          fallback={{ bio: profile.bio ?? "" }}
-          translations={Object.fromEntries(Object.entries(profile.bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
-          disabled={saving || readingAvatar}
-          onSave={async (locale, values) => setProfile(await merchantProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } }))}
-          onSyncAll={async (locale, values) => setProfile(await merchantProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } }))}
-        /> : null}
         <div className="my-4 h-px bg-[color:var(--client-line)]" />
         <h2 className="text-lg font-black">基础信息</h2>
         {editing ? (
@@ -280,6 +272,14 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
               <label className={cn(surface.panel, "rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>身高（cm）</span><input className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none" inputMode="decimal" onChange={(event) => update({ heightCm: event.target.value })} value={draft.heightCm} /></label>
             </div>
             <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>语言能力</p><div className="mt-2 flex flex-wrap gap-1.5">{languages.map((language) => <button className={cn("rounded-full border px-2.5 py-1 text-xs font-black", draft.languages.includes(language) ? surface.chip : surface.metric)} key={language} onClick={() => toggleLanguage(language)} type="button">{language}</button>)}</div></div>
+            <LocalizedTextEditor
+              fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
+              fallback={{ bio: profile.bio ?? "" }}
+              translations={Object.fromEntries(Object.entries(profile.bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
+              disabled={saving || readingAvatar}
+              onSave={async (locale, values) => setProfile(await merchantProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } }))}
+              onSyncAll={async (locale, values) => setProfile(await merchantProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } }))}
+            />
           </div>
         ) : (
           <div className="mt-3 space-y-3">
@@ -292,7 +292,7 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
         {error ? <p className="mt-3 text-sm font-black text-red-500" role="alert">{error}</p> : null}
       </section>
       {avatarCrop ? <AvatarCropEditor crop={avatarCrop} onApply={() => void applyAvatarCrop()} onCancel={() => setAvatarCrop(null)} onChange={setAvatarCrop} /> : null}
-      {editing ? <div className="client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-[80] pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8"><button className="pointer-events-auto block w-full rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60" disabled={saving || readingAvatar || Boolean(avatarCrop)} onClick={() => void save()} type="button">{saving ? "正在保存资料" : "保存并退出编辑模式"}</button></div> : null}
+      {editing ? <div className="client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-[80] pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8"><div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-2"><button className="pointer-events-auto rounded-[22px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-4 text-sm font-black text-[color:var(--client-text)] disabled:opacity-60" disabled={saving || readingAvatar || Boolean(avatarCrop)} onClick={cancelEditing} type="button">取消</button><button className="pointer-events-auto rounded-[22px] bg-[color:var(--client-primary)] px-3 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60" disabled={saving || readingAvatar || Boolean(avatarCrop)} onClick={() => void save()} type="button">{saving ? "正在保存资料" : "保存并退出"}</button></div></div> : null}
     </>
   );
 }

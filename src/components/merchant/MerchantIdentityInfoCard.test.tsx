@@ -98,7 +98,7 @@ describe("MerchantIdentityInfoCard", () => {
     expect(container.querySelectorAll('textarea')).toHaveLength(1);
     expect(container.querySelector('textarea')?.placeholder).toBe("商户负责人");
     const language = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "日本語");
-    const save = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("保存并退出编辑模式"));
+    const save = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("保存并退出"));
     expect(language).not.toBeUndefined();
     expect(save).not.toBeUndefined();
     await act(async () => language?.click());
@@ -125,7 +125,7 @@ describe("MerchantIdentityInfoCard", () => {
 
     const apply = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "套用头像");
     await act(async () => apply?.click());
-    const save = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("保存并退出编辑模式"));
+    const save = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("保存并退出"));
     await act(async () => save?.click());
 
     expect(mocks.createCroppedAvatarDataUrl).toHaveBeenCalledTimes(1);
@@ -136,14 +136,27 @@ describe("MerchantIdentityInfoCard", () => {
     await act(async () => root.render(<MerchantIdentityInfoCard />));
     await waitFor(() => expect(container.textContent).toContain("佐藤 美咲"));
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="编辑资料"]')?.click());
+    const card = container.querySelector<HTMLElement>('[data-testid="merchant-identity-info-card"]');
+    const editingText = card?.textContent ?? "";
+    expect(editingText.indexOf("NDP")).toBeLessThan(editingText.indexOf("基础信息"));
+    const editor = card?.querySelector('[data-testid="localized-text-editor"]');
+    const languageBlock = [...(card?.querySelectorAll("div") ?? [])].find((item) => item.firstElementChild?.textContent === "语言能力");
+    const privacyBlock = card?.querySelector('[data-testid="merchant-profile-privacy-control"]');
+    expect(editor).not.toBeNull();
+    expect(languageBlock?.compareDocumentPosition(editor!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(editor?.compareDocumentPosition(privacyBlock!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     const button = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((item) => item.textContent === "保存并退出编辑模式");
-    const dock = button?.parentElement;
+      .find((item) => item.textContent === "保存并退出");
+    const dock = button?.parentElement?.parentElement;
     expect(dock?.className).toContain("fixed");
     expect(dock?.className).toContain("bottom-0");
     expect(dock?.className).not.toContain("client-bottom-action-shell");
-    expect(dock?.children).toHaveLength(1);
+    expect(dock?.querySelectorAll("button")).toHaveLength(2);
+    expect(dock?.textContent).toContain("取消");
+    await act(async () => [...dock!.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent === "取消")?.click());
+    expect(mocks.updateMine).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("保存并退出");
   });
 
   it("copies the formal merchant ID through the PWA-safe clipboard helper", async () => {

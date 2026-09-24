@@ -38,6 +38,7 @@ function parseOperationsSettings(value: unknown): OperationsPlatformSettings {
     typeof settings.ndpPaymentEnabled !== "boolean" ||
     typeof settings.anytimeServiceTestEnabled !== "boolean" ||
     typeof settings.overdueAppointmentGateEnabled !== "boolean" ||
+    typeof settings.membershipCardFollowUiTheme !== "boolean" ||
     !Array.isArray(settings.loginProviderProjects) ||
     !Array.isArray(settings.paymentProviderProjects)
   ) throw new Error("error.api");

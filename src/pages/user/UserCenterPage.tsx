@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ChangeEvent,
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -50,8 +51,9 @@ import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { cn } from "../../lib/utils";
-import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { PlatformMembershipDetailCard } from "../../shared/profile-card/PlatformMembershipDetailCard";
+import { resolveMembershipDetailGradient, resolveMembershipTheme } from "../../shared/profile-card/platformMembershipTheme";
+import { usePlatformSettings } from "../../features/platform-settings/PlatformSettingsProvider";
 import {
   formatCustomerCreditReviewCount,
   formatCustomerCreditScore,
@@ -534,6 +536,25 @@ function CompleteUserCenterPage({
   const navigate = useNavigate();
   const { language } = useOptionalI18n();
   const { refreshSession } = useAuth();
+  const { settings: platformSettings } = usePlatformSettings();
+  const tierCardTheme = platformSettings.membershipCardFollowUiTheme ? null : resolveMembershipTheme(formalData.membership.theme);
+  const editCardStyle = tierCardTheme ? {
+    "--client-bg": tierCardTheme.detailSurfaceBottomColor,
+    "--client-surface": tierCardTheme.detailSurfaceColor,
+    "--client-elevated": tierCardTheme.detailItemSurfaceColor,
+    "--client-line": tierCardTheme.detailItemBorderColor,
+    "--client-text": tierCardTheme.detailTextColor,
+    "--client-muted": tierCardTheme.detailTextColor,
+    "--client-soft-muted": tierCardTheme.detailTextColor,
+    "--client-primary": tierCardTheme.detailAccentColor,
+    "--client-primary-strong": tierCardTheme.detailAccentColor,
+    "--client-primary-soft": `color-mix(in srgb, ${tierCardTheme.detailAccentColor} 20%, transparent)`,
+    "--client-primary-contrast": tierCardTheme.detailAccentTextColor,
+    backgroundColor: tierCardTheme.detailSurfaceColor,
+    backgroundImage: resolveMembershipDetailGradient(tierCardTheme),
+    borderColor: tierCardTheme.detailOuterBorderColor,
+    color: tierCardTheme.detailTextColor,
+  } as CSSProperties : undefined;
   const currentCustomer = useMemo(
     () => mapCoreCustomerToCustomer(formalData.profile),
     [formalData.profile],
@@ -933,7 +954,7 @@ function CompleteUserCenterPage({
   const profilePrivacyControl = (
     <div
       className={
-        isEditingProfile
+        (isEditingProfile || platformSettings.membershipCardFollowUiTheme)
           ? cn(
               "relative z-30 rounded-[18px] border p-3",
               membershipSurface.panel,
@@ -942,7 +963,7 @@ function CompleteUserCenterPage({
       }
       data-testid="user-profile-privacy-control"
       style={
-        isEditingProfile
+        (isEditingProfile || platformSettings.membershipCardFollowUiTheme)
           ? undefined
           : {
               borderColor: formalData.membership.theme.detailItemBorderColor,
@@ -963,7 +984,7 @@ function CompleteUserCenterPage({
         >
           <p
             className={
-              isEditingProfile
+              (isEditingProfile || platformSettings.membershipCardFollowUiTheme)
                 ? cn("text-xs font-bold", membershipSurface.label)
                 : "text-xs font-bold opacity-60"
             }
@@ -990,7 +1011,7 @@ function CompleteUserCenterPage({
       {activeProfilePrivacy.enabled && profilePrivacyMenuOpen ? (
         <div
           className={
-            isEditingProfile
+            (isEditingProfile || platformSettings.membershipCardFollowUiTheme)
               ? cn(
                   "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl",
                   membershipSurface.shell,
@@ -999,7 +1020,7 @@ function CompleteUserCenterPage({
           }
           data-testid="user-profile-privacy-options"
           style={
-            isEditingProfile
+            (isEditingProfile || platformSettings.membershipCardFollowUiTheme)
               ? undefined
               : {
                   borderColor:
@@ -1015,7 +1036,7 @@ function CompleteUserCenterPage({
             return (
               <div
                 className={
-                  isEditingProfile
+                  (isEditingProfile || platformSettings.membershipCardFollowUiTheme)
                     ? cn(
                         "rounded-[18px] border px-3 py-3 text-left transition",
                         checked
@@ -1026,7 +1047,7 @@ function CompleteUserCenterPage({
                 }
                 key={option.value}
                 style={
-                  isEditingProfile
+                  (isEditingProfile || platformSettings.membershipCardFollowUiTheme)
                     ? undefined
                     : {
                         borderColor:
@@ -1040,7 +1061,7 @@ function CompleteUserCenterPage({
                   <button
                     aria-label={`选择${option.label}`}
                     className={
-                      isEditingProfile
+                    (isEditingProfile || platformSettings.membershipCardFollowUiTheme)
                         ? cn(
                             "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black",
                             checked
@@ -1148,9 +1169,10 @@ function CompleteUserCenterPage({
             ) : (
               <section
                 className={cn(
-                  "relative z-30 overflow-visible rounded-[28px] border p-4 shadow-soft",
+                  "relative z-30 overflow-visible rounded-[28px] border p-5 shadow-soft",
                   membershipSurface.shell,
                 )}
+                style={editCardStyle}
               >
                 <div className="relative">
                   <IconButton
@@ -1175,11 +1197,11 @@ function CompleteUserCenterPage({
                   />
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="shrink-0">
-                      <div className="relative h-36 w-36">
+                      <div className="relative h-28 w-28">
                         <AvatarImage
                           alt="用户头像"
                           className={cn(
-                            "h-36 w-36 rounded-[28px] border-[3px] shadow-[0_18px_36px_rgba(0,0,0,0.28)]",
+                            "h-28 w-28 rounded-[28px] border-[3px] shadow-[0_18px_36px_rgba(0,0,0,0.28)]",
                             membershipSurface.avatar,
                           )}
                           src={visibleProfile.avatar}
@@ -1211,13 +1233,12 @@ function CompleteUserCenterPage({
                         ) : null}
                       </div>
                     </div>
-                    <div className="flex min-h-36 min-w-0 flex-1 flex-col">
+                    <div className="flex min-h-28 min-w-0 flex-1 flex-col">
                       <div className="min-w-0 max-w-[calc(100%-44px)]">
                         {isEditingProfile && profileDraft ? (
                           <div className="flex min-w-0 items-start gap-1.5">
                             <textarea
                               aria-label="昵称"
-                              autoFocus
                               className="-ml-0.5 max-h-[79px] min-h-[26px] max-w-[calc(100%-22px)] flex-none resize-none overflow-hidden break-all rounded-none border-0 bg-transparent px-0.5 py-0 text-lg font-black leading-tight shadow-none outline-none [appearance:none] [field-sizing:content] [overflow-wrap:anywhere]"
                               data-profile-field="nickname"
                               readOnly={isSavingProfile}
@@ -1249,12 +1270,7 @@ function CompleteUserCenterPage({
                         )}
                       </div>
                       <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-                        <CustomerMembershipBadge
-                          className="h-6 w-6"
-                          imageClassName="h-6 w-6"
-                          level={formalData.membership.tierCode}
-                          showFallback={false}
-                        />
+                        <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1 text-xs font-black text-[color:var(--client-primary-strong)]">{platformMembershipTierLabels[formalData.membership.tierCode]}</span>
                         <span
                           className={cn(
                             "inline-flex h-7 shrink-0 items-center text-[11px] font-black",
@@ -1361,22 +1377,6 @@ function CompleteUserCenterPage({
 
                   <div className={cn("my-4 h-px", membershipSurface.divider)} />
 
-                  {isEditingProfile && profileDraft ? <LocalizedTextEditor
-                    disabled={isSavingProfile}
-                    fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
-                    fallback={{ bio: formalData.profile.bio ?? "" }}
-                    translations={Object.fromEntries(Object.entries(bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
-                    onSave={async (locale, values) => {
-                      const saved = await customerProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } });
-                      setBioLocales(saved.bioLocales);
-                      onFormalProfileUpdated(saved);
-                    }}
-                    onSyncAll={async (locale, values) => {
-                      const saved = await customerProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } });
-                      setBioLocales(saved.bioLocales);
-                      onFormalProfileUpdated(saved);
-                    }}
-                  /> : null}
 
                   <div>
                     <h2 className="text-lg font-black">基础信息</h2>
@@ -1622,6 +1622,22 @@ function CompleteUserCenterPage({
                       </>
                     )}
                   </div>
+                  {isEditingProfile && profileDraft ? <LocalizedTextEditor
+                    disabled={isSavingProfile}
+                    fields={[{ key: "bio", label: "自我介绍", maxLength: 2000, multiline: true }]}
+                    fallback={{ bio: formalData.profile.bio ?? "" }}
+                    translations={Object.fromEntries(Object.entries(bioLocales ?? {}).map(([locale, bio]) => [locale, { bio }]))}
+                    onSave={async (locale, values) => {
+                      const saved = await customerProfileApi.updateMine({ localizedBio: { locale, bio: values.bio } });
+                      setBioLocales(saved.bioLocales);
+                      onFormalProfileUpdated(saved);
+                    }}
+                    onSyncAll={async (locale, values) => {
+                      const saved = await customerProfileApi.updateMine({ localizedBio: { locale, bio: values.bio, syncAll: true } });
+                      setBioLocales(saved.bioLocales);
+                      onFormalProfileUpdated(saved);
+                    }}
+                  /> : null}
                   <div className="mt-3">{profilePrivacyControl}</div>
                 </div>
               </section>
@@ -1768,14 +1784,10 @@ function CompleteUserCenterPage({
             className="client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-[80] pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8"
             data-testid="user-profile-save-action"
           >
-            <button
-              className="pointer-events-auto block w-full rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-needo-text)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60"
-              disabled={isSavingProfile}
-              onClick={() => void saveProfileEdit()}
-              type="button"
-            >
-              {isSavingProfile ? "正在保存资料" : "保存并退出编辑模式"}
-            </button>
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-2">
+              <button className="pointer-events-auto rounded-[22px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-4 text-sm font-black text-[color:var(--client-text)] disabled:opacity-60" disabled={isSavingProfile} onClick={cancelProfileEdit} type="button">取消</button>
+              <button className="pointer-events-auto rounded-[22px] bg-[color:var(--client-primary)] px-3 py-4 text-sm font-black text-[color:var(--client-needo-text)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60" disabled={isSavingProfile} onClick={() => void saveProfileEdit()} type="button">{isSavingProfile ? "正在保存资料" : "保存并退出"}</button>
+            </div>
           </div>
         ) : null}
       </div>

@@ -9,7 +9,8 @@ const settingsKeys = [
   "loginMethods",
   "loginLogo",
   "requestButton",
-  "paymentMethods"
+  "paymentMethods",
+  "membershipCardFollowUiTheme"
 ] as const;
 
 function hasExactKeys(value: object, keys: readonly string[]) {
@@ -37,7 +38,8 @@ function parseMedia(value: unknown): PlatformMedia | null {
 }
 
 export function parsePublicPlatformSettings(value: unknown): PublicPlatformSettings {
-  if (!value || typeof value !== "object" || !hasExactKeys(value, settingsKeys)) throw new Error("error.api");
+  if (!value || typeof value !== "object" ||
+    (!hasExactKeys(value, settingsKeys) && !hasExactKeys(value, settingsKeys.slice(0, -1)))) throw new Error("error.api");
   const settings = value as Record<string, unknown>;
   const methods = settings.loginMethods;
   const payments = settings.paymentMethods;
@@ -46,6 +48,7 @@ export function parsePublicPlatformSettings(value: unknown): PublicPlatformSetti
     Number(settings.version) < 1 ||
     typeof settings.siteEnabled !== "boolean" ||
     typeof settings.selfRegistrationEnabled !== "boolean" ||
+    (settings.membershipCardFollowUiTheme !== undefined && typeof settings.membershipCardFollowUiTheme !== "boolean") ||
     !methods ||
     typeof methods !== "object" ||
     !hasExactKeys(methods, ["password", "google"]) ||
@@ -62,13 +65,14 @@ export function parsePublicPlatformSettings(value: unknown): PublicPlatformSetti
     loginMethods: methods as PublicPlatformSettings["loginMethods"],
     loginLogo: parseMedia(settings.loginLogo),
     requestButton: parseMedia(settings.requestButton),
-    paymentMethods: payments as PublicPlatformSettings["paymentMethods"]
+    paymentMethods: payments as PublicPlatformSettings["paymentMethods"],
+    membershipCardFollowUiTheme: settings.membershipCardFollowUiTheme ?? true
   };
 }
 
 export const platformSettingsApi = {
   async getPublic() {
-    const payload = await httpClient.request<unknown>("/platform/settings/public", {
+    const payload = await httpClient.request<unknown>("/platform/settings/public?cardTheme=1", {
       auth: false,
       method: "GET",
       retryOnUnauthorized: false

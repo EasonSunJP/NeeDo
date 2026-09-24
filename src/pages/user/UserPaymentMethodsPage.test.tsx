@@ -41,6 +41,7 @@ const settings = (paymentMethods: Array<"cash" | "ndp">): PublicPlatformSettings
   loginLogo: null,
   requestButton: null,
   paymentMethods,
+  membershipCardFollowUiTheme: true,
 });
 
 const wallet = (activeCurrency: WalletSummary["activeCurrency"]): WalletSummary => ({

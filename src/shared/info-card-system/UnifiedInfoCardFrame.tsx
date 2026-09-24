@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AppIcon, type IconName } from "../../components/client-ui/AppScaffold";
 import { AvatarImage } from "../../components/ui/AvatarImage";
@@ -93,6 +93,7 @@ export function UnifiedInfoCardFrame({
   kind,
   metrics,
   onOpenDetails,
+  style,
 }: {
   actionSlot?: ReactNode;
   ariaLabel: string;
@@ -103,9 +104,11 @@ export function UnifiedInfoCardFrame({
   kind: "service" | "shop" | "technician" | "user";
   metrics?: UnifiedCardMetric[];
   onOpenDetails?: () => void;
+  style?: CSSProperties;
 }) {
   return (
     <article
+      style={style}
       className={cn(
         "relative overflow-hidden border border-[color:color-mix(in_srgb,var(--client-line)_72%,var(--client-primary)_12%)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%)] text-[color:var(--client-text)]",
         density === "compact"

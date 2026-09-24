@@ -15,8 +15,12 @@ export type PlatformSettingsControllerService = Pick<
 export class PlatformSettingsController {
   public constructor(private readonly service: PlatformSettingsControllerService) {}
 
-  public getPublic = this.handle(async (_request, response) => {
-    response.status(200).json(successResponse(await this.service.getPublic()));
+  public getPublic = this.handle(async (request, response) => {
+    const settings = await this.service.getPublic();
+    const { membershipCardFollowUiTheme, ...legacySettings } = settings;
+    response.status(200).json(successResponse(request.query.cardTheme === "1"
+      ? { ...legacySettings, membershipCardFollowUiTheme }
+      : legacySettings));
   });
 
   public getForOperations = this.handle(async (_request, response) => {

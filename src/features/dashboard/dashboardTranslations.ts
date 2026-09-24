@@ -117,6 +117,7 @@ export const dashboardTranslations: Record<string, TranslationEntry> = {
   "空闲时长": { "zh-Hant": "空閒時長", ja: "空き時間", en: "Available hours", ko: "빈 시간" },
   "出勤人数": { "zh-Hant": "出勤人數", ja: "出勤人数", en: "Staff on duty", ko: "출근 인원" },
   "空闲、已预约时长与出勤人数": { "zh-Hant": "空閒、已預約時長與出勤人數", ja: "空き時間・予約済み時間・出勤人数", en: "Available hours, booked hours, and staff on duty", ko: "빈 시간, 예약된 시간 및 출근 인원" },
+  "排班时长占比与出勤人数": { "zh-Hant": "排班時長占比與出勤人數", ja: "シフト時間の内訳と出勤人数", en: "Share of scheduled hours and staff on duty", ko: "근무 시간 비율 및 출근 인원" },
   "NDP 成本": { "zh-Hant": "NDP 成本", ja: "NDP コスト", en: "NDP cost", ko: "NDP 비용" },
   "平台": { "zh-Hant": "平台", ja: "プラットフォーム", en: "Platform", ko: "플랫폼" },
   "用户返点": { "zh-Hant": "用戶返點", ja: "利用者還元", en: "Customer reward", ko: "사용자 리워드" },
